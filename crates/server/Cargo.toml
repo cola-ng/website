@@ -5,18 +5,18 @@ edition.workspace = true
 rust-version.workspace = true
 
 [dependencies]
-argon2 = "0.5"
-base64 = "0.22"
-chrono = { version = "0.4", features = ["serde"] }
-diesel = { version = "2.2", features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }
-diesel_migrations = "2.2"
-dotenvy = "0.15"
-hex = "0.4"
-jsonwebtoken = "9"
-rand = "0.8"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-sha2 = "0.10"
-salvo = "0.76"
-tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
-uuid = { version = "1", features = ["serde", "v4"] }
+argon2 = { workspace = true }
+base64 = { workspace = true }
+chrono = { workspace = true }
+diesel = { workspace = true, features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }
+diesel_migrations = { workspace = true }
+dotenvy = { workspace = true }
+hex = { workspace = true }
+jsonwebtoken = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+salvo = { workspace = true }
+tokio = { workspace = true }
+uuid = { workspace = true, features = ["serde", "v4"] }

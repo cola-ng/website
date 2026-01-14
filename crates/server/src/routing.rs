@@ -5,6 +5,7 @@ use salvo::http::header;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::auth;
@@ -18,6 +19,9 @@ use crate::models::{
 use crate::schema;
 
 pub mod account;
+
+static APP_POOL: OnceLock<DbPool> = OnceLock::new();
+static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
 #[handler]
 pub async fn cors(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
@@ -104,7 +108,7 @@ fn bad_request(message: &str) -> StatusError {
 #[handler]
 pub async fn register(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
     let input: RegisterRequest = req
@@ -123,7 +127,7 @@ pub async fn register(
     let password_hash = auth::hash_password(&input.password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let new_user = NewUser {
         email: email.clone(),
         password_hash,
@@ -180,7 +184,7 @@ pub async fn register(
         }
     })?;
 
-    let config = get_config(depot)?;
+    let config = get_config()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -195,7 +199,7 @@ pub async fn register(
 #[handler]
 pub async fn login(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
     let input: LoginRequest = req
@@ -207,7 +211,7 @@ pub async fn login(
         return Err(bad_request("email is required"));
     }
 
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let password = input.password.clone();
 
     let user: User = with_conn(pool, move |conn| {
@@ -223,7 +227,7 @@ pub async fn login(
         return Err(StatusError::unauthorized().brief("invalid credentials"));
     }
 
-    let config = get_config(depot)?;
+    let config = get_config()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -241,7 +245,7 @@ pub async fn auth_required(
     depot: &mut Depot,
     _res: &mut Response,
 ) -> Result<(), StatusError> {
-    let config = get_config(depot)?;
+    let config = get_config()?;
     let header_value = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -260,7 +264,7 @@ pub async fn auth_required(
 
 #[handler]
 pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let user: User = with_conn(pool, move |conn| {
         use schema::users::dsl::*;
@@ -282,7 +286,7 @@ pub async fn update_me(
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let now = Utc::now();
 
@@ -315,7 +319,7 @@ pub async fn list_records(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id_value = get_user_id(depot)?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -347,7 +351,7 @@ pub async fn create_record(
     if input.record_type.trim().is_empty() {
         return Err(bad_request("record_type is required"));
     }
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let new_record = NewLearningRecord {
         user_id,
@@ -398,7 +402,7 @@ pub async fn create_desktop_code(
         return Err(bad_request("state is required"));
     }
 
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
 
     let code = auth::random_desktop_code();
@@ -444,7 +448,7 @@ pub struct ConsumeDesktopCodeResponse {
 #[handler]
 pub async fn consume_desktop_code(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
     let input: ConsumeDesktopCodeRequest = req
@@ -455,8 +459,8 @@ pub async fn consume_desktop_code(
         return Err(bad_request("code and redirect_uri are required"));
     }
 
-    let pool = get_pool(depot)?;
-    let config = get_config(depot)?;
+    let pool = get_pool()?;
+    let config = get_config()?;
     let code_hash_value = auth::hash_desktop_code(&input.code);
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
@@ -534,7 +538,7 @@ pub async fn chat_send(
         input.message.trim()
     );
 
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let content = json!({
         "user_message": input.message,
@@ -564,16 +568,16 @@ pub async fn chat_send(
     Ok(())
 }
 
-fn get_pool(depot: &Depot) -> Result<&DbPool, StatusError> {
-    depot
-        .get::<DbPool>("pool")
-        .map_err(|_| StatusError::internal_server_error().brief("missing db pool"))
+fn get_pool() -> Result<&'static DbPool, StatusError> {
+    APP_POOL
+        .get()
+        .ok_or_else(|| StatusError::internal_server_error().brief("missing db pool"))
 }
 
-fn get_config(depot: &Depot) -> Result<&AppConfig, StatusError> {
-    depot
-        .get::<AppConfig>("config")
-        .map_err(|_| StatusError::internal_server_error().brief("missing app config"))
+fn get_config() -> Result<&'static AppConfig, StatusError> {
+    APP_CONFIG
+        .get()
+        .ok_or_else(|| StatusError::internal_server_error().brief("missing app config"))
 }
 
 fn get_user_id(depot: &Depot) -> Result<Uuid, StatusError> {
@@ -597,7 +601,7 @@ impl Handler for RequirePermission {
         res: &mut Response,
         ctrl: &mut FlowCtrl,
     ) {
-        let pool = match get_pool(depot) {
+        let pool = match get_pool() {
             Ok(p) => p,
             Err(e) => {
                 res.render(e);
@@ -655,10 +659,10 @@ fn get_path_uuid(req: &Request, key: &str) -> Result<Uuid, StatusError> {
 #[handler]
 async fn admin_delete_user(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let user_id = get_path_uuid(req, "user_id")?;
     with_conn(pool, move |conn| {
         use crate::schema::users::dsl::*;
@@ -695,7 +699,7 @@ enum OauthLoginResponse {
 #[handler]
 async fn oauth_login(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
     let input: OauthLoginRequest = req
@@ -706,7 +710,7 @@ async fn oauth_login(
         return Err(bad_request("provider and provider_user_id are required"));
     }
 
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let provider = input.provider.trim().to_string();
     let provider_user_id = input.provider_user_id.trim().to_string();
     let email = input.email.clone().map(|e| e.trim().to_lowercase());
@@ -739,7 +743,7 @@ async fn oauth_login(
     .map_err(|_| StatusError::internal_server_error().brief("failed to start oauth login"))?;
 
     if let Some(user_id) = identity.user_id {
-        let pool2 = get_pool(depot)?;
+        let pool2 = get_pool()?;
         let user: User = with_conn(pool2, move |conn| {
             use crate::schema::users::dsl::*;
             users.filter(id.eq(user_id)).first::<User>(conn)
@@ -747,7 +751,7 @@ async fn oauth_login(
         .await
         .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
 
-        let config = get_config(depot)?;
+        let config = get_config()?;
         let access_token =
             auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
                 .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -776,7 +780,7 @@ struct OauthBindRequest {
 #[handler]
 async fn oauth_bind(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
     let input: OauthBindRequest = req
@@ -787,7 +791,7 @@ async fn oauth_bind(
     if email_input.is_empty() || input.password.is_empty() {
         return Err(bad_request("email and password are required"));
     }
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let password = input.password.clone();
     let oauth_identity_id = input.oauth_identity_id;
 
@@ -817,7 +821,7 @@ async fn oauth_bind(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials or oauth identity"))?;
 
-    let config = get_config(depot)?;
+    let config = get_config()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -839,14 +843,14 @@ struct OauthSkipRequest {
 #[handler]
 async fn oauth_skip(
     req: &mut Request,
-    depot: &mut Depot,
+    _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
     let input: OauthSkipRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
-    let pool = get_pool(depot)?;
+    let pool = get_pool()?;
     let oauth_identity_id = input.oauth_identity_id;
     let name = input.name.clone().map(|v| v.trim().to_string());
     let email_override = input.email.clone().map(|v| v.trim().to_lowercase());
@@ -888,7 +892,7 @@ async fn oauth_skip(
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
-    let config = get_config(depot)?;
+    let config = get_config()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -901,6 +905,9 @@ async fn oauth_skip(
 }
 
 pub fn router(pool: DbPool, config: AppConfig) -> Router {
+    APP_POOL.get_or_init(|| pool.clone());
+    APP_CONFIG.get_or_init(|| config.clone());
+
     let api = Router::with_path("api")
         .push(Router::with_path("health").get(health))
         .push(account::router())
@@ -915,9 +922,5 @@ pub fn router(pool: DbPool, config: AppConfig) -> Router {
         .hoop(require_permission("users.delete"))
         .push(Router::with_path("users/{user_id}").delete(admin_delete_user));
 
-    Router::new()
-        .hoop(cors)
-        .hoop(StateHoop { pool, config })
-        .push(api)
-        .push(admin)
+    Router::new().hoop(cors).push(api).push(admin)
 }
