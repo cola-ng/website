@@ -102,6 +102,29 @@ fn bad_request(message: &str) -> StatusError {
     StatusError::bad_request().brief(message)
 }
 
+fn require_json_content_type(req: &Request) -> Result<(), StatusError> {
+    let accept = req
+        .headers()
+        .get(header::ACCEPT)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if !accept.contains("application/json") {
+        return Err(StatusError::unsupported_media_type().brief("Accept header must include application/json"));
+    }
+    Ok(())
+}
+
+const ALLOWED_OAUTH_PROVIDERS: &[&str] = &["google", "github"];
+
+fn validate_oauth_provider(provider: &str) -> Result<(), StatusError> {
+    if !ALLOWED_OAUTH_PROVIDERS.contains(&provider.to_lowercase().as_str()) {
+        return Err(StatusError::bad_request().brief(
+            format!("OAuth provider '{}' is not supported. Allowed providers: google, github", provider)
+        ));
+    }
+    Ok(())
+}
+
 async fn with_db<F, R>(f: F) -> Result<R, String>
 where
     F: FnOnce(&mut crate::db::PgPooledConnection) -> Result<R, diesel::result::Error> + Send + 'static,
@@ -121,6 +144,7 @@ pub async fn register(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: RegisterRequest = req
         .parse_json()
         .await
@@ -211,6 +235,7 @@ pub async fn login(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: LoginRequest = req
         .parse_json()
         .await
@@ -279,6 +304,7 @@ pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
+    res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
     res.render(Json(PublicUser::from(user)));
     Ok(())
 }
@@ -289,6 +315,7 @@ pub async fn update_me(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: UpdateUserProfile = req
         .parse_json()
         .await
@@ -339,6 +366,7 @@ pub async fn list_records(
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list records"))?;
 
+    res.headers_mut().insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
     res.render(Json(records));
     Ok(())
 }
@@ -349,6 +377,7 @@ pub async fn create_record(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: CreateRecordRequest = req
         .parse_json()
         .await
@@ -395,6 +424,7 @@ pub async fn create_desktop_code(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: DesktopCodeRequest = req
         .parse_json()
         .await
@@ -454,6 +484,7 @@ pub async fn consume_desktop_code(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: ConsumeDesktopCodeRequest = req
         .parse_json()
         .await
@@ -522,6 +553,7 @@ pub async fn chat_send(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: ChatSendRequest = req
         .parse_json()
         .await
@@ -688,6 +720,7 @@ async fn oauth_login(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: OauthLoginRequest = req
         .parse_json()
         .await
@@ -695,6 +728,7 @@ async fn oauth_login(
     if input.provider.trim().is_empty() || input.provider_user_id.trim().is_empty() {
         return Err(bad_request("provider and provider_user_id are required"));
     }
+    validate_oauth_provider(&input.provider)?;
 
     let provider = input.provider.trim().to_string();
     let provider_user_id = input.provider_user_id.trim().to_string();
@@ -767,6 +801,7 @@ async fn oauth_bind(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: OauthBindRequest = req
         .parse_json()
         .await
@@ -829,6 +864,7 @@ async fn oauth_skip(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
+    require_json_content_type(req)?;
     let input: OauthSkipRequest = req
         .parse_json()
         .await

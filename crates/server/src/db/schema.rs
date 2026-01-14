@@ -1,3 +1,5 @@
+// @generated automatically by Diesel CLI.
+
 diesel::table! {
     desktop_auth_codes (id) {
         id -> Uuid,
@@ -18,18 +20,6 @@ diesel::table! {
         record_type -> Text,
         content -> Jsonb,
         created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    users (id) {
-        id -> Uuid,
-        email -> Text,
-        password_hash -> Text,
-        name -> Nullable<Text>,
-        phone -> Nullable<Text>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
     }
 }
 
@@ -57,6 +47,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    role_permissions (id) {
+        id -> Uuid,
+        role_id -> Uuid,
+        operation -> Text,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     roles (id) {
         id -> Uuid,
         name -> Text,
@@ -73,11 +72,14 @@ diesel::table! {
 }
 
 diesel::table! {
-    role_permissions (id) {
+    users (id) {
         id -> Uuid,
-        role_id -> Uuid,
-        operation -> Text,
+        email -> Text,
+        password_hash -> Text,
+        name -> Nullable<Text>,
+        phone -> Nullable<Text>,
         created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
