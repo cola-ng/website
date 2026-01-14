@@ -1,26 +1,17 @@
 mod auth;
 mod config;
 mod db;
-mod hoops;
 mod models;
 mod routing;
 mod schema;
 
-use std::sync::Arc;
-
-use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
+use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use salvo::prelude::*;
 
 use crate::config::AppConfig;
-use crate::db::{create_pool, DbPool};
+use crate::db::create_pool;
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!("migrations");
-
-#[derive(Clone)]
-struct AppState {
-    config: AppConfig,
-    pool: DbPool,
-}
 
 #[tokio::main]
 async fn main() {

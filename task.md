@@ -21,6 +21,8 @@ For how to use diesel, please refer to its documentation: https://diesel.rs/.
 Also you have a example project: D:\Repos\crates.io. Use same or familiar method to create db connection and connection pool.
 For how to use salvo, please refer to its documentation: https://salvo.rs/ and it's repo: D:\Works\salvo-rs\salvo.
 
+
+复杂任务, 请计划好, 再进行. 过程中可以把中间每一阶段的工作都单独提交到 git 仓库中.
 检查现有的所有后端代码 crates/server. 里面有很多的错误, 因为是从其他项目拷贝过来的. 修复原则是尽量少删除代码, 让程序能够正常工作.
 可以参考 main-beta-last.sql 表里面的相关信息, 在数据库缺失时新建相关数据库. 其中的 permissions 是实现相关权限管理的功能.
 
@@ -32,6 +34,7 @@ For how to use salvo, please refer to its documentation: https://salvo.rs/ and i
 用户可以通过第三方平台通过  oauth  或者 oidc  登录本网站.
 第三方平台登录后, 前端页面 (front) 里面需要给出一个当前用户是否需要绑定现有用户的一个选项. 用户可以选择绑定或者跳过.
 跟用户账号相关的 route 信息放在routing/account.rs 和 controllers/account 文件夹中.
+管理员有权限可以删除用户等.
 
 我们还有一个桌面的系统, 所以需要后端协同前端提供一个从桌面系统登录到网站的接口. 用户登录成功后跳转到用户的桌面应用中.
 

@@ -1,20 +1,23 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use salvo::http::header;
 use salvo::http::StatusCode;
+use salvo::http::header;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
 
 use crate::auth;
+use crate::config::AppConfig;
+use crate::db::DbPool;
 use crate::db::with_conn;
 use crate::models::{
-    DesktopAuthCode, LearningRecord, NewDesktopAuthCode, NewLearningRecord, NewUser,
-    UpdateUserProfile, User,
+    DesktopAuthCode, LearningRecord, NewDesktopAuthCode, NewLearningRecord, NewOauthIdentity,
+    NewRole, NewRolePermission, NewUser, NewUserRole, OauthIdentity, UpdateUserProfile, User,
 };
 use crate::schema;
 
+pub mod account;
 
 #[handler]
 pub async fn cors(req: &mut Request, depot: &mut Depot, res: &mut Response, ctrl: &mut FlowCtrl) {
@@ -130,9 +133,43 @@ pub async fn register(
 
     let user: User = with_conn(pool, move |conn| {
         use schema::users::dsl::*;
-        diesel::insert_into(users)
+        let is_first = users.select(diesel::dsl::count_star()).first::<i64>(conn)? == 0;
+
+        let user = diesel::insert_into(users)
             .values(&new_user)
-            .get_result::<User>(conn)
+            .get_result::<User>(conn)?;
+
+        if is_first {
+            use crate::schema::role_permissions::dsl as rp;
+            use crate::schema::roles::dsl as r;
+            use crate::schema::user_roles::dsl as ur;
+
+            let role = diesel::insert_into(r::roles)
+                .values(&NewRole {
+                    name: "admin".to_string(),
+                })
+                .on_conflict_do_nothing()
+                .get_result::<crate::models::Role>(conn)
+                .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
+
+            let _ = diesel::insert_into(rp::role_permissions)
+                .values(&NewRolePermission {
+                    role_id: role.id,
+                    operation: "users.delete".to_string(),
+                })
+                .on_conflict_do_nothing()
+                .execute(conn);
+
+            let _ = diesel::insert_into(ur::user_roles)
+                .values(&NewUserRole {
+                    user_id: user.id,
+                    role_id: role.id,
+                })
+                .on_conflict_do_nothing()
+                .execute(conn);
+        }
+
+        Ok(user)
     })
     .await
     .map_err(|e| {
@@ -144,12 +181,9 @@ pub async fn register(
     })?;
 
     let config = get_config(depot)?;
-    let access_token = auth::issue_access_token(
-        user.id,
-        &config.jwt_secret,
-        config.jwt_ttl.as_secs(),
-    )
-    .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+    let access_token =
+        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(AuthResponse {
         user: user.into(),
@@ -190,12 +224,9 @@ pub async fn login(
     }
 
     let config = get_config(depot)?;
-    let access_token = auth::issue_access_token(
-        user.id,
-        &config.jwt_secret,
-        config.jwt_ttl.as_secs(),
-    )
-    .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+    let access_token =
+        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(AuthResponse {
         user: user.into(),
@@ -210,7 +241,6 @@ pub async fn auth_required(
     depot: &mut Depot,
     _res: &mut Response,
 ) -> Result<(), StatusError> {
-    let pool = get_pool(depot)?;
     let config = get_config(depot)?;
     let header_value = req
         .headers()
@@ -426,6 +456,7 @@ pub async fn consume_desktop_code(
     }
 
     let pool = get_pool(depot)?;
+    let config = get_config(depot)?;
     let code_hash_value = auth::hash_desktop_code(&input.code);
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
@@ -447,12 +478,9 @@ pub async fn consume_desktop_code(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid or expired code"))?;
 
-    let access_token = auth::issue_access_token(
-        user_id,
-        &state.config.jwt_secret,
-        state.config.jwt_ttl.as_secs(),
-    )
-    .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+    let access_token =
+        auth::issue_access_token(user_id, &config.jwt_secret, config.jwt_ttl.as_secs())
+            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(ConsumeDesktopCodeResponse { access_token }));
     Ok(())
@@ -538,13 +566,13 @@ pub async fn chat_send(
 
 fn get_pool(depot: &Depot) -> Result<&DbPool, StatusError> {
     depot
-        .get::<DbPool>()
+        .get::<DbPool>("pool")
         .map_err(|_| StatusError::internal_server_error().brief("missing db pool"))
 }
 
 fn get_config(depot: &Depot) -> Result<&AppConfig, StatusError> {
     depot
-        .get::<AppConfig>()
+        .get::<AppConfig>("config")
         .map_err(|_| StatusError::internal_server_error().brief("missing app config"))
 }
 
@@ -555,43 +583,341 @@ fn get_user_id(depot: &Depot) -> Result<Uuid, StatusError> {
         .map_err(|_| StatusError::unauthorized().brief("missing user"))
 }
 
+#[derive(Clone)]
+struct RequirePermission {
+    operation: &'static str,
+}
+
+#[salvo::async_trait]
+impl Handler for RequirePermission {
+    async fn handle(
+        &self,
+        req: &mut Request,
+        depot: &mut Depot,
+        res: &mut Response,
+        ctrl: &mut FlowCtrl,
+    ) {
+        let pool = match get_pool(depot) {
+            Ok(p) => p,
+            Err(e) => {
+                res.render(e);
+                ctrl.skip_rest();
+                return;
+            }
+        };
+        let user_id = match get_user_id(depot) {
+            Ok(v) => v,
+            Err(e) => {
+                res.render(e);
+                ctrl.skip_rest();
+                return;
+            }
+        };
+        let operation = self.operation;
+        let allowed = with_conn(pool, move |conn| {
+            use crate::schema::role_permissions::dsl as rp;
+            use crate::schema::user_roles::dsl as ur;
+            use diesel::prelude::*;
+            let exists = diesel::select(diesel::dsl::exists(
+                rp::role_permissions
+                    .inner_join(ur::user_roles.on(ur::role_id.eq(rp::role_id)))
+                    .filter(ur::user_id.eq(user_id))
+                    .filter(rp::operation.eq(operation)),
+            ))
+            .get_result::<bool>(conn)?;
+            Ok(exists)
+        })
+        .await
+        .unwrap_or(false);
+
+        if !allowed {
+            res.render(StatusError::forbidden().brief("permission denied"));
+            ctrl.skip_rest();
+            return;
+        }
+        ctrl.call_next(req, depot, res).await;
+    }
+}
+
+fn require_permission(operation: &'static str) -> RequirePermission {
+    RequirePermission { operation }
+}
+
+fn get_path_uuid(req: &Request, key: &str) -> Result<Uuid, StatusError> {
+    let raw = req
+        .params()
+        .get(key)
+        .cloned()
+        .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
+    Uuid::parse_str(&raw).map_err(|_| StatusError::bad_request().brief("invalid id"))
+}
+
+#[handler]
+async fn admin_delete_user(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> Result<(), StatusError> {
+    let pool = get_pool(depot)?;
+    let user_id = get_path_uuid(req, "user_id")?;
+    with_conn(pool, move |conn| {
+        use crate::schema::users::dsl::*;
+        diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
+        Ok(())
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete user"))?;
+    res.render(Json(json!({ "ok": true })));
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct OauthLoginRequest {
+    provider: String,
+    provider_user_id: String,
+    email: Option<String>,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "status", rename_all = "snake_case")]
+enum OauthLoginResponse {
+    Ok {
+        user: PublicUser,
+        access_token: String,
+    },
+    NeedsBind {
+        oauth_identity_id: Uuid,
+        provider: String,
+        email: Option<String>,
+    },
+}
+
+#[handler]
+async fn oauth_login(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> Result<(), StatusError> {
+    let input: OauthLoginRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| bad_request("invalid json"))?;
+    if input.provider.trim().is_empty() || input.provider_user_id.trim().is_empty() {
+        return Err(bad_request("provider and provider_user_id are required"));
+    }
+
+    let pool = get_pool(depot)?;
+    let provider = input.provider.trim().to_string();
+    let provider_user_id = input.provider_user_id.trim().to_string();
+    let email = input.email.clone().map(|e| e.trim().to_lowercase());
+
+    let identity: OauthIdentity = with_conn(pool, move |conn| {
+        use crate::schema::oauth_identities::dsl as oi;
+        let existing = oi::oauth_identities
+            .filter(oi::provider.eq(&provider))
+            .filter(oi::provider_user_id.eq(&provider_user_id))
+            .first::<OauthIdentity>(conn)
+            .optional()?;
+        if let Some(i) = existing {
+            if email.is_some() && i.email.is_none() {
+                return diesel::update(oi::oauth_identities.filter(oi::id.eq(i.id)))
+                    .set((oi::email.eq(email), oi::updated_at.eq(Utc::now())))
+                    .get_result::<OauthIdentity>(conn);
+            }
+            return Ok(i);
+        }
+        diesel::insert_into(oi::oauth_identities)
+            .values(&NewOauthIdentity {
+                provider,
+                provider_user_id,
+                email,
+                user_id: None,
+            })
+            .get_result::<OauthIdentity>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to start oauth login"))?;
+
+    if let Some(user_id) = identity.user_id {
+        let pool2 = get_pool(depot)?;
+        let user: User = with_conn(pool2, move |conn| {
+            use crate::schema::users::dsl::*;
+            users.filter(id.eq(user_id)).first::<User>(conn)
+        })
+        .await
+        .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
+
+        let config = get_config(depot)?;
+        let access_token =
+            auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+                .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+        res.render(Json(OauthLoginResponse::Ok {
+            user: user.into(),
+            access_token,
+        }));
+        return Ok(());
+    }
+
+    res.render(Json(OauthLoginResponse::NeedsBind {
+        oauth_identity_id: identity.id,
+        provider: identity.provider,
+        email: identity.email,
+    }));
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct OauthBindRequest {
+    oauth_identity_id: Uuid,
+    email: String,
+    password: String,
+}
+
+#[handler]
+async fn oauth_bind(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> Result<(), StatusError> {
+    let input: OauthBindRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| bad_request("invalid json"))?;
+    let email_input = input.email.trim().to_lowercase();
+    if email_input.is_empty() || input.password.is_empty() {
+        return Err(bad_request("email and password are required"));
+    }
+    let pool = get_pool(depot)?;
+    let password = input.password.clone();
+    let oauth_identity_id = input.oauth_identity_id;
+
+    let (user, _identity): (User, OauthIdentity) = with_conn(pool, move |conn| {
+        use crate::schema::oauth_identities::dsl as oi;
+        use crate::schema::users::dsl as u;
+
+        let user = u::users
+            .filter(u::email.eq(&email_input))
+            .first::<User>(conn)?;
+        let ok = crate::auth::verify_password(&password, &user.password_hash)
+            .map_err(|_| diesel::result::Error::NotFound)?;
+        if !ok {
+            return Err(diesel::result::Error::NotFound);
+        }
+
+        let identity = oi::oauth_identities
+            .filter(oi::id.eq(oauth_identity_id))
+            .first::<OauthIdentity>(conn)?;
+
+        let identity = diesel::update(oi::oauth_identities.filter(oi::id.eq(identity.id)))
+            .set((oi::user_id.eq(Some(user.id)), oi::updated_at.eq(Utc::now())))
+            .get_result::<OauthIdentity>(conn)?;
+
+        Ok((user, identity))
+    })
+    .await
+    .map_err(|_| StatusError::unauthorized().brief("invalid credentials or oauth identity"))?;
+
+    let config = get_config(depot)?;
+    let access_token =
+        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+
+    res.render(Json(OauthLoginResponse::Ok {
+        user: user.into(),
+        access_token,
+    }));
+    Ok(())
+}
+
+#[derive(Deserialize)]
+struct OauthSkipRequest {
+    oauth_identity_id: Uuid,
+    name: Option<String>,
+    email: Option<String>,
+}
+
+#[handler]
+async fn oauth_skip(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> Result<(), StatusError> {
+    let input: OauthSkipRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| bad_request("invalid json"))?;
+    let pool = get_pool(depot)?;
+    let oauth_identity_id = input.oauth_identity_id;
+    let name = input.name.clone().map(|v| v.trim().to_string());
+    let email_override = input.email.clone().map(|v| v.trim().to_lowercase());
+
+    let user: User = with_conn(pool, move |conn| {
+        use crate::schema::oauth_identities::dsl as oi;
+        use crate::schema::users::dsl as u;
+
+        let identity = oi::oauth_identities
+            .filter(oi::id.eq(oauth_identity_id))
+            .first::<OauthIdentity>(conn)?;
+        if identity.user_id.is_some() {
+            return Err(diesel::result::Error::NotFound);
+        }
+        let email = email_override
+            .or(identity.email.clone())
+            .unwrap_or_else(|| {
+                format!("{}@{}.local", identity.provider_user_id, identity.provider)
+            });
+
+        let password_hash = crate::auth::hash_password(&Uuid::new_v4().to_string())
+            .map_err(|_| diesel::result::Error::RollbackTransaction)?;
+
+        let user = diesel::insert_into(u::users)
+            .values(&NewUser {
+                email: email.clone(),
+                password_hash,
+                name: name.clone().filter(|s| !s.is_empty()),
+                phone: None,
+            })
+            .get_result::<User>(conn)?;
+
+        let _ = diesel::update(oi::oauth_identities.filter(oi::id.eq(identity.id)))
+            .set((oi::user_id.eq(Some(user.id)), oi::updated_at.eq(Utc::now())))
+            .execute(conn)?;
+
+        Ok(user)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
+
+    let config = get_config(depot)?;
+    let access_token =
+        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+
+    res.render(Json(OauthLoginResponse::Ok {
+        user: user.into(),
+        access_token,
+    }));
+    Ok(())
+}
+
 pub fn router(pool: DbPool, config: AppConfig) -> Router {
     let api = Router::with_path("api")
         .push(Router::with_path("health").get(health))
-        .push(
-            Router::with_path("auth")
-                .push(Router::with_path("register").post(register))
-                .push(Router::with_path("login").post(login)),
-        )
-        .push(
-            Router::with_path("me")
-                .hoop(auth_required)
-                .get(me)
-                .put(update_me)
-                .push(
-                    Router::with_path("records")
-                        .get(list_records)
-                        .post(create_record),
-                ),
-        )
-        .push(
-            Router::with_path("desktop/auth")
-                .push(
-                    Router::with_path("code")
-                        .hoop(auth_required)
-                        .post(create_desktop_code),
-                )
-                .push(Router::with_path("consume").post(consume_desktop_code)),
-        )
+        .push(account::router())
         .push(
             Router::with_path("chat")
                 .hoop(auth_required)
                 .push(Router::with_path("send").post(chat_send)),
         );
 
+    let admin = Router::with_path("api/admin")
+        .hoop(auth_required)
+        .hoop(require_permission("users.delete"))
+        .push(Router::with_path("users/{user_id}").delete(admin_delete_user));
+
     Router::new()
         .hoop(cors)
-        .data(pool)
-        .data(config)
+        .hoop(StateHoop { pool, config })
         .push(api)
+        .push(admin)
 }

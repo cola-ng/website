@@ -12,6 +12,15 @@ export type AuthResponse = {
   access_token: string
 }
 
+export type OauthLoginResponse =
+  | { status: 'ok'; user: PublicUser; access_token: string }
+  | {
+      status: 'needs_bind'
+      oauth_identity_id: string
+      provider: string
+      email: string | null
+    }
+
 export type ChatSendResponse = {
   reply: string
   corrections: string[]
@@ -125,3 +134,35 @@ export function desktopConsumeCode(input: {
   })
 }
 
+export function oauthLogin(input: {
+  provider: string
+  provider_user_id: string
+  email?: string
+}): Promise<OauthLoginResponse> {
+  return requestJson<OauthLoginResponse>('/api/auth/oauth/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function oauthBind(input: {
+  oauth_identity_id: string
+  email: string
+  password: string
+}): Promise<OauthLoginResponse> {
+  return requestJson<OauthLoginResponse>('/api/auth/oauth/bind', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
+
+export function oauthSkip(input: {
+  oauth_identity_id: string
+  name?: string
+  email?: string
+}): Promise<OauthLoginResponse> {
+  return requestJson<OauthLoginResponse>('/api/auth/oauth/skip', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  })
+}
