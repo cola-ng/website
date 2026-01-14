@@ -5,6 +5,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../co
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
+import { OAuthButton } from '../components/OAuthButton'
+import { OAUTH_PROVIDERS } from '../lib/oauth-config'
 import { login, oauthBind, oauthLogin, oauthSkip, register } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
@@ -16,8 +18,6 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
   const [name, setName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
-  const [oauthProvider, setOauthProvider] = React.useState('google')
-  const [oauthProviderUserId, setOauthProviderUserId] = React.useState('')
   const [oauthEmail, setOauthEmail] = React.useState('')
   const [needsBind, setNeedsBind] = React.useState<{
     oauthIdentityId: string
@@ -51,15 +51,15 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
     }
   }
 
-  const onOauthLogin = async () => {
+  const onOauthLogin = async (provider: string, userId: string, email?: string) => {
     setError(null)
     setNeedsBind(null)
     setLoading(true)
     try {
       const resp = await oauthLogin({
-        provider: oauthProvider,
-        provider_user_id: oauthProviderUserId,
-        email: oauthEmail || undefined,
+        provider,
+        provider_user_id: userId,
+        email: email || undefined,
       })
       if (resp.status === 'ok') {
         setAuth(resp.access_token, resp.user)
@@ -205,87 +205,52 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
         </Button>
 
         <div className="rounded-md border p-4 space-y-4">
-          <div className="space-y-1">
-            <div className="text-sm font-medium">Third-party login</div>
-            <div className="text-xs text-muted-foreground">
-              If the account is new, choose bind or skip.
-            </div>
+          <div className="grid gap-2 md:grid-cols-1">
+            {Object.entries(OAUTH_PROVIDERS).map(([key, config]) =>
+              config.enabled ? (
+                <OAuthButton
+                  key={key}
+                  provider={key as keyof typeof OAUTH_PROVIDERS}
+                  onLoginStart={onOauthLogin}
+                />
+              ) : null
+            )}
           </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label htmlFor="oauth-provider">Provider</Label>
-              <Input
-                id="oauth-provider"
-                value={oauthProvider}
-                onChange={(e) => setOauthProvider(e.target.value)}
-                placeholder="google"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="oauth-subject">Provider user id</Label>
-              <Input
-                id="oauth-subject"
-                value={oauthProviderUserId}
-                onChange={(e) => setOauthProviderUserId(e.target.value)}
-                placeholder="subject / openid sub"
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2">
-            <Label htmlFor="oauth-email">Email (optional)</Label>
-            <Input
-              id="oauth-email"
-              value={oauthEmail}
-              onChange={(e) => setOauthEmail(e.target.value)}
-              autoComplete="email"
-            />
-          </div>
-
-          <Button
-            variant="secondary"
-            className="w-full"
-            onClick={onOauthLogin}
-            disabled={loading}
-          >
-            Continue with {oauthProvider || 'provider'}
-          </Button>
-
-          {needsBind ? (
-            <div className="space-y-3">
-              <div className="text-sm">
-                No linked account for <span className="font-medium">{needsBind.provider}</span>.
-              </div>
-              <Tabs defaultValue="bind">
-                <TabsList className="w-full">
-                  <TabsTrigger value="bind" className="w-full">
-                    Bind existing
-                  </TabsTrigger>
-                  <TabsTrigger value="skip" className="w-full">
-                    Skip (create new)
-                  </TabsTrigger>
-                </TabsList>
-                <TabsContent value="bind" className="space-y-3">
-                  <div className="text-xs text-muted-foreground">
-                    Enter your existing email/password to bind.
-                  </div>
-                  <Button className="w-full" onClick={onOauthBind} disabled={loading}>
-                    Bind
-                  </Button>
-                </TabsContent>
-                <TabsContent value="skip" className="space-y-3">
-                  <div className="text-xs text-muted-foreground">
-                    Create a new account and link this login.
-                  </div>
-                  <Button className="w-full" onClick={onOauthSkip} disabled={loading}>
-                    Create & continue
-                  </Button>
-                </TabsContent>
-              </Tabs>
-            </div>
-          ) : null}
         </div>
+
+        {needsBind ? (
+          <div className="space-y-3">
+            <div className="text-sm">
+              No linked account for <span className="font-medium">{needsBind.provider}</span>.
+            </div>
+            <Tabs defaultValue="bind">
+              <TabsList className="w-full">
+                <TabsTrigger value="bind" className="w-full">
+                  Bind existing
+                </TabsTrigger>
+                <TabsTrigger value="skip" className="w-full">
+                  Skip (create new)
+                </TabsTrigger>
+              </TabsList>
+              <TabsContent value="bind" className="space-y-3">
+                <div className="text-xs text-muted-foreground">
+                  Enter your existing email/password to bind.
+                </div>
+                <Button className="w-full" onClick={onOauthBind} disabled={loading}>
+                  Bind
+                </Button>
+              </TabsContent>
+              <TabsContent value="skip" className="space-y-3">
+                <div className="text-xs text-muted-foreground">
+                  Create a new account and link this login.
+                </div>
+                <Button className="w-full" onClick={onOauthSkip} disabled={loading}>
+                  Create & continue
+                </Button>
+              </TabsContent>
+            </Tabs>
+          </div>
+        ) : null}
 
         <div className="text-xs text-muted-foreground">
           By continuing, you agree to learn bravely: make mistakes, improve fast.
