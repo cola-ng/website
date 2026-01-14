@@ -31,7 +31,7 @@ docker-compose up -d
 ```
 
 This will start:
-- Backend service on port 5800
+- Backend service on port 6019
 - Frontend service on port 80
 - PostgreSQL database on port 5432
 
@@ -64,7 +64,7 @@ Docker images are published to GHCR at:
 The backend service expects the following environment variables:
 - `DATABASE_URL`: PostgreSQL database connection string
 - `JWT_SECRET`: Secret key for JWT token signing
-- `BIND_ADDR`: Address to bind the server to (default: 0.0.0.0:5800)
+- `BIND_ADDR`: Address to bind the server to (default: 0.0.0.0:6019)
 
 ## Deployment
 

@@ -6,11 +6,11 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     ports:
-      - "5800:5800"
+      - "6019:6019"
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/colang_db
       - JWT_SECRET=your_jwt_secret_key
-      - BIND_ADDR=0.0.0.0:5800
+      - BIND_ADDR=0.0.0.0:6019
     depends_on:
       - db
     restart: unless-stopped

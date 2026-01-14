@@ -10,7 +10,7 @@ pub struct AppConfig {
 
 impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
-        let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:5800".into());
+        let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "127.0.0.1:6019".into());
         let database_url =
             std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required".to_string())?;
         let jwt_secret =
