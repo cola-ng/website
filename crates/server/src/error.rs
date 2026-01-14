@@ -68,82 +68,30 @@ impl Writer for AppError {
     async fn write(mut self, _req: &mut Request, depot: &mut Depot, res: &mut Response) {
         let code = match &self {
             AppError::StatusError(e) => e.code,
-            AppError::LoginError(e) => {
-                StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
-            }
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         res.status_code(code);
-        let cuser = depot.current_user().ok();
-        if let Some(cuser) = &cuser {
-            tracing::error!(error = &*self.to_string(), user_id = ?cuser.id, user_name = %cuser.ident_name, "error happened");
-        } else {
-            tracing::error!(
-                error = &*self.to_string(),
-                "error happened, user not logged in."
-            );
-        }
-        let in_kernel = cuser.map(|u| u.in_kernel).unwrap_or(false);
-        if let AppError::StatusInfo(e) = self {
-            res.render(e);
-            return;
-        }
-        if let AppError::LoginError(e) = self {
-            res.render(salvo::writing::Json(e));
-            return;
-        }
+        tracing::error!(
+            error = &*self.to_string(),
+            "error happened, user not logged in."
+        );
         let data = match self {
             AppError::Salvo(e) => {
-                if in_kernel {
-                    StatusError::internal_server_error()
-                        .brief(format!("Unknown error happened in salvo: {e}"))
-                        .cause(e)
-                } else {
-                    StatusError::internal_server_error().brief("Unknown error happened in salvo.")
-                }
+                StatusError::internal_server_error().brief("Unknown error happened in salvo.")
             }
             AppError::FrequentlyRequest => StatusError::bad_request(),
             AppError::Public(msg) => StatusError::internal_server_error().brief(msg),
-            AppError::Internal(msg) => {
-                if in_kernel {
-                    StatusError::internal_server_error().brief(msg)
-                } else {
-                    StatusError::internal_server_error()
-                }
-            }
+            AppError::Internal(msg) => StatusError::internal_server_error(),
             AppError::Diesel(e) => {
                 tracing::error!(error = ?e, "diesel db error");
                 if let diesel::result::Error::NotFound = e {
                     StatusError::not_found().brief("Resource not found.")
-                } else if in_kernel {
-                    StatusError::internal_server_error()
-                        .brief(format!("Database error: {e}"))
-                        .cause(e)
                 } else {
                     StatusError::internal_server_error().brief("Database error.")
                 }
             }
-            AppError::S3BuildError(e) => {
-                tracing::error!(error = ?e, "aws s3 build error");
-                if in_kernel {
-                    StatusError::internal_server_error()
-                        .brief(format!("Aws s3 build error: {e}"))
-                        .cause(e)
-                } else {
-                    StatusError::internal_server_error().brief("Aws s3 build error")
-                }
-            }
-            AppError::Stripe(e) => StatusError::internal_server_error().brief(e.to_string()),
             AppError::StatusError(e) => e,
-            e => {
-                if in_kernel {
-                    StatusError::internal_server_error()
-                        .brief(format!("Unknown error happened: {e}"))
-                        .cause(e)
-                } else {
-                    StatusError::internal_server_error().brief("Unknown error happened.")
-                }
-            }
+            e => StatusError::internal_server_error().brief("Unknown error happened."),
         };
         res.render(data);
     }
@@ -165,72 +113,5 @@ impl EndpointOutRegister for AppError {
             oapi::Response::new("Bad request")
                 .add_content("application/json", StatusError::to_schema(components)),
         );
-    }
-}
-
-#[derive(Serialize, ToSchema, Debug)]
-pub struct LoginError {
-    pub user: Option<User>,
-    #[salvo(schema(value_type = u16))]
-    pub code: u16,
-    pub name: String,
-    pub brief: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub detail: Option<String>,
-}
-impl LoginError {
-    pub fn new<N, S, D>(code: StatusCode, name: N, brief: S, detail: D) -> Self
-    where
-        N: Into<String>,
-        S: Into<String>,
-        D: Into<String>,
-    {
-        Self {
-            code: code.as_u16(),
-            name: name.into(),
-            brief: brief.into(),
-            detail: Some(detail.into()),
-            user: None,
-        }
-    }
-    pub fn bad_request() -> Self {
-        Self {
-            code: StatusCode::BAD_REQUEST.as_u16(),
-            name: "Bad Request".into(),
-            brief: "Bad Request".into(),
-            detail: None,
-            user: None,
-        }
-    }
-    pub fn internal_server_error() -> Self {
-        Self {
-            code: StatusCode::INTERNAL_SERVER_ERROR.as_u16(),
-            name: "Internal server error".into(),
-            brief: "Internal server error".into(),
-            detail: None,
-            user: None,
-        }
-    }
-
-    pub fn detail(mut self, detail: impl Into<String>) -> Self {
-        self.detail = Some(detail.into());
-        self
-    }
-
-    pub fn brief(mut self, brief: impl Into<String>) -> Self {
-        self.brief = brief.into();
-        self
-    }
-
-    pub fn user(mut self, user: User) -> Self {
-        self.user = Some(user);
-        self
-    }
-}
-
-impl StdError for LoginError {}
-impl Display for LoginError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}({})", self.brief, self.code)
     }
 }
