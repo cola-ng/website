@@ -4,13 +4,13 @@ use std::fmt::Display;
 use std::io;
 use std::string::FromUtf8Error;
 
-use async_trait::async_trait;
+use salvo::async_trait;
 use salvo::http::{StatusCode, StatusError};
 use salvo::oapi::{self, EndpointOutRegister, ToSchema};
 use salvo::prelude::{Depot, Request, Response, Writer};
+use serde::Serialize;
 use thiserror::Error;
 
-use crate::DepotExt;
 use crate::models::User;
 
 #[derive(Error, Debug)]
@@ -35,52 +35,14 @@ pub enum AppError {
     SerdeJson(#[from] serde_json::error::Error),
     #[error("diesel: `{0}`")]
     Diesel(#[from] diesel::result::Error),
-    #[error("zip: `{0}`")]
-    Zip(#[from] zip::result::ZipError),
-    #[error("font parse: `{0}`")]
-    FontParse(#[from] ttf_parser::FaceParsingError),
     #[error("http: `{0}`")]
     StatusError(#[from] salvo::http::StatusError),
-    #[error("http: `{0}`")]
-    StatusInfo(#[from] crate::StatusInfo),
-    #[error("login: `{0}`")]
-    LoginError(#[from] crate::LoginError),
     #[error("http parse: `{0}`")]
     HttpParse(#[from] salvo::http::ParseError),
-    // #[error("pulsar: `{0}`")]
-    // Pulsar(#[from] ::pulsar::Error),
-    #[error("reqwest: `{0}`")]
-    Reqwest(#[from] reqwest::Error),
     #[error("r2d2: `{0}`")]
     R2d2(#[from] diesel::r2d2::PoolError),
-    #[error("handlebars render: `{0}`")]
-    HandlebarsRender(#[from] handlebars::RenderError),
-    #[error("stripe: `{0}`")]
-    Stripe(#[from] stripe::StripeError),
-    #[error("stripe ParseIdError: `{0}`")]
-    ParseIdError(#[from] stripe::ParseIdError),
     #[error("utf8: `{0}`")]
     Utf8Error(#[from] std::str::Utf8Error),
-    #[error("redis: `{0}`")]
-    Redis(#[from] redis::RedisError),
-    // #[error("consumer: `{0}`")]
-    // Consumer(#[from] pulsar::error::ConsumerError),
-    #[error("GlobError error: `{0}`")]
-    Glob(#[from] globwalk::GlobError),
-    #[error("image error: `{0}`")]
-    Image(#[from] image::ImageError),
-    #[error("PersistError: `{0}`")]
-    PersistError(#[from] tempfile::PersistError),
-    #[error("S3BuildError: `{0}`")]
-    S3BuildError(#[from] aws_sdk_s3::error::BuildError),
-    // #[error("NotifyError: `{0}`")]
-    // NotifyError(#[from] notify::Error),
-    #[error("gemini_rust client error: `{0}`")]
-    GeminiClient(#[from] gemini_rust::client::Error),
-    #[error("gcp_auth error: `{0}`")]
-    GcpAuth(#[from] gcp_auth::Error),
-    #[error("base64 decode error: `{0}`")]
-    Base64Decode(#[from] base64::DecodeError),
 }
 
 impl From<&str> for AppError {
@@ -106,7 +68,9 @@ impl Writer for AppError {
     async fn write(mut self, _req: &mut Request, depot: &mut Depot, res: &mut Response) {
         let code = match &self {
             AppError::StatusError(e) => e.code,
-            AppError::LoginError(e) => StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            AppError::LoginError(e) => {
+                StatusCode::from_u16(e.code).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR)
+            }
             _ => StatusCode::INTERNAL_SERVER_ERROR,
         };
         res.status_code(code);
@@ -114,7 +78,10 @@ impl Writer for AppError {
         if let Some(cuser) = &cuser {
             tracing::error!(error = &*self.to_string(), user_id = ?cuser.id, user_name = %cuser.ident_name, "error happened");
         } else {
-            tracing::error!(error = &*self.to_string(), "error happened, user not logged in.");
+            tracing::error!(
+                error = &*self.to_string(),
+                "error happened, user not logged in."
+            );
         }
         let in_kernel = cuser.map(|u| u.in_kernel).unwrap_or(false);
         if let AppError::StatusInfo(e) = self {
@@ -149,7 +116,9 @@ impl Writer for AppError {
                 if let diesel::result::Error::NotFound = e {
                     StatusError::not_found().brief("Resource not found.")
                 } else if in_kernel {
-                    StatusError::internal_server_error().brief(format!("Database error: {e}")).cause(e)
+                    StatusError::internal_server_error()
+                        .brief(format!("Database error: {e}"))
+                        .cause(e)
                 } else {
                     StatusError::internal_server_error().brief("Database error.")
                 }
@@ -157,7 +126,9 @@ impl Writer for AppError {
             AppError::S3BuildError(e) => {
                 tracing::error!(error = ?e, "aws s3 build error");
                 if in_kernel {
-                    StatusError::internal_server_error().brief(format!("Aws s3 build error: {e}")).cause(e)
+                    StatusError::internal_server_error()
+                        .brief(format!("Aws s3 build error: {e}"))
+                        .cause(e)
                 } else {
                     StatusError::internal_server_error().brief("Aws s3 build error")
                 }
@@ -181,15 +152,18 @@ impl EndpointOutRegister for AppError {
     fn register(components: &mut oapi::Components, operation: &mut oapi::Operation) {
         operation.responses.insert(
             StatusCode::INTERNAL_SERVER_ERROR.as_str(),
-            oapi::Response::new("Internal server error").add_content("application/json", StatusError::to_schema(components)),
+            oapi::Response::new("Internal server error")
+                .add_content("application/json", StatusError::to_schema(components)),
         );
         operation.responses.insert(
             StatusCode::NOT_FOUND.as_str(),
-            oapi::Response::new("Not found").add_content("application/json", StatusError::to_schema(components)),
+            oapi::Response::new("Not found")
+                .add_content("application/json", StatusError::to_schema(components)),
         );
         operation.responses.insert(
             StatusCode::BAD_REQUEST.as_str(),
-            oapi::Response::new("Bad request").add_content("application/json", StatusError::to_schema(components)),
+            oapi::Response::new("Bad request")
+                .add_content("application/json", StatusError::to_schema(components)),
         );
     }
 }

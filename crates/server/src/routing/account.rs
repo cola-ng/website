@@ -10,17 +10,17 @@ pub fn router() -> Router {
         .push(
             Router::with_path("auth")
                 .push(
-                    Router::with_path("oauth")
-                        .push(Router::with_path("login").post(oauth_login))
-                        .push(Router::with_path("bind").post(oauth_bind))
-                        .push(Router::with_path("skip").post(oauth_skip)),
-                )
-                .push(
                     Router::with_path("code")
                         .hoop(auth_required)
                         .post(create_desktop_code),
                 )
                 .push(Router::with_path("consume").post(consume_desktop_code)),
+        )
+        .push(
+            Router::with_path("oauth")
+                .push(Router::with_path("login").post(oauth_login))
+                .push(Router::with_path("bind").post(oauth_bind))
+                .push(Router::with_path("skip").post(oauth_skip)),
         )
         .push(Router::with_path("register").post(register))
         .push(Router::with_path("login").post(login))

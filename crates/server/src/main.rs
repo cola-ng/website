@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod models;
 mod routing;
+mod error;
 
 use salvo::prelude::*;
 
