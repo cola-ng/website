@@ -40,6 +40,7 @@ async function requestJson<T>(
   init: RequestInit & { token?: string } = {}
 ): Promise<T> {
   const headers = new Headers(init.headers)
+  headers.set('accept', 'application/json')
   headers.set('content-type', 'application/json')
   if (init.token) headers.set('authorization', `Bearer ${init.token}`)
 

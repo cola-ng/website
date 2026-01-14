@@ -29,6 +29,8 @@ async fn main() {
     db::init(&db_config);
 
     let router = routing::router(app_config);
+    
+    println!("router:::::{:?}", router);
 
     let acceptor = TcpListener::new(bind_addr).bind().await;
     Server::new(acceptor).serve(router).await;
