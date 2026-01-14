@@ -1,10 +1,8 @@
-version: '3.8'
-
 services:
   backend:
     build:
       context: .
-      dockerfile: backend/Dockerfile
+      dockerfile: crates/server/Dockerfile
     ports:
       - "6019:6019"
     environment:
@@ -18,7 +16,7 @@ services:
   frontend:
     build:
       context: .
-      dockerfile: frontend/Dockerfile
+      dockerfile: front/Dockerfile
     ports:
       - "80:80"
     depends_on:
@@ -26,9 +24,9 @@ services:
     restart: unless-stopped
 
   db:
-    image: postgres:15
+    image: postgres:18
     environment:
-      POSTGRES_DB: colang_db
+      POSTGRES_DB: colang
       POSTGRES_USER: user
       POSTGRES_PASSWORD: password
     volumes:
