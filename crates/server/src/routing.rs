@@ -470,7 +470,7 @@ pub struct ConsumeDesktopCodeResponse {
 }
 
 #[handler]
-pub async fn consume_desktop_code(
+pub async fn consume_code(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,

@@ -1,7 +1,7 @@
 use salvo::prelude::*;
 
 use super::{
-    auth_required, consume_desktop_code, create_desktop_code, create_record, list_records, login,
+    auth_required, consume_code, create_desktop_code, create_record, list_records, login,
     me, oauth_bind, oauth_login, oauth_skip, register, update_me,
 };
 
@@ -14,7 +14,7 @@ pub fn router() -> Router {
                         .hoop(auth_required)
                         .post(create_desktop_code),
                 )
-                .push(Router::with_path("consume").post(consume_desktop_code)),
+                .push(Router::with_path("consume").post(consume_code)),
         )
         .push(
             Router::with_path("oauth")
