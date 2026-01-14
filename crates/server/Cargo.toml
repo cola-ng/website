@@ -18,7 +18,10 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
 salvo = { workspace = true }
+scheduled-thread-pool = { workspace = true }
 tokio = { workspace = true }
+url = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+byteorder = { workspace = true }

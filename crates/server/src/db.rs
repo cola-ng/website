@@ -1,11 +1,9 @@
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
 
-use diesel::prelude::*;
 use diesel::r2d2::{self, State};
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use scheduled_thread_pool::ScheduledThreadPool;
-pub(crate) use serde_json::Value as JsonValue;
 use url::Url;
 
 extern crate tracing;
@@ -19,8 +17,6 @@ pub mod full_text_search;
 pub mod pool;
 pub use pool::{DieselPool, PgPooledConnection, PoolError};
 
-pub mod schema;
-
 pub static DIESEL_POOL: OnceLock<DieselPool> = OnceLock::new();
 pub static REPLICA_POOL: OnceLock<Option<DieselPool>> = OnceLock::new();
 
@@ -29,7 +25,7 @@ pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 pub fn init(config: &DbConfig) {
     let builder = r2d2::Pool::builder()
         .max_size(config.pool_size)
-        .min_idle(config.min_idle)
+        .min_idle(Some(config.min_idle))
         .connection_timeout(Duration::from_millis(config.connection_timeout))
         .connection_customizer(Box::new(config::ConnectionConfig {
             statement_timeout: config.statement_timeout,

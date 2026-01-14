@@ -8,6 +8,18 @@ pub struct AppConfig {
     pub jwt_ttl: Duration,
 }
 
+#[derive(Clone)]
+pub struct DbConfig {
+    pub url: String,
+    pub pool_size: u32,
+    pub min_idle: u32,
+    pub connection_timeout: u64,
+    pub helper_threads: usize,
+    pub statement_timeout: u64,
+    pub tcp_timeout: u64,
+    pub enforce_tls: bool,
+}
+
 impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
         let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:6019".into());

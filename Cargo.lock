@@ -196,6 +196,7 @@ version = "0.1.0"
 dependencies = [
  "argon2",
  "base64",
+ "byteorder",
  "chrono",
  "diesel",
  "diesel_migrations",
@@ -204,12 +205,14 @@ dependencies = [
  "jsonwebtoken",
  "rand 0.8.5",
  "salvo",
+ "scheduled-thread-pool",
  "serde",
  "serde_json",
  "sha2",
  "thiserror 2.0.17",
  "tokio",
  "tracing",
+ "url",
  "uuid",
 ]
 
@@ -2352,6 +2355,7 @@ dependencies = [
  "idna",
  "percent-encoding",
  "serde",
+ "serde_derive",
 ]
 
 [[package]]

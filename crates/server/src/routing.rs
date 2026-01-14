@@ -10,9 +10,7 @@ use uuid::Uuid;
 
 use crate::auth;
 use crate::config::AppConfig;
-use crate::db::DbPool;
 use crate::db::schema;
-use crate::db::with_conn;
 use crate::models::{
     DesktopAuthCode, LearningRecord, NewDesktopAuthCode, NewLearningRecord, NewOauthIdentity,
     NewRole, NewRolePermission, NewUser, NewUserRole, OauthIdentity, UpdateUserProfile, User,
@@ -20,7 +18,6 @@ use crate::models::{
 
 pub mod account;
 
-static APP_POOL: OnceLock<DbPool> = OnceLock::new();
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
 #[handler]
@@ -105,6 +102,19 @@ fn bad_request(message: &str) -> StatusError {
     StatusError::bad_request().brief(message)
 }
 
+async fn with_db<F, R>(f: F) -> Result<R, String>
+where
+    F: FnOnce(&mut crate::db::PgPooledConnection) -> Result<R, diesel::result::Error> + Send + 'static,
+    R: Send + 'static,
+{
+    tokio::task::spawn_blocking(move || {
+        let mut conn = crate::db::connect().map_err(|e| e.to_string())?;
+        f(&mut conn).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[handler]
 pub async fn register(
     req: &mut Request,
@@ -127,7 +137,6 @@ pub async fn register(
     let password_hash = auth::hash_password(&input.password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
-    let pool = get_pool()?;
     let new_user = NewUser {
         email: email.clone(),
         password_hash,
@@ -135,7 +144,7 @@ pub async fn register(
         phone: None,
     };
 
-    let user: User = with_conn(pool, move |conn| {
+    let user: User = with_db(move |conn| {
         use schema::users::dsl::*;
         let is_first = users.select(diesel::dsl::count_star()).first::<i64>(conn)? == 0;
 
@@ -211,10 +220,9 @@ pub async fn login(
         return Err(bad_request("email is required"));
     }
 
-    let pool = get_pool()?;
     let password = input.password.clone();
 
-    let user: User = with_conn(pool, move |conn| {
+    let user: User = with_db(move |conn| {
         use schema::users::dsl::*;
         users.filter(email.eq(email_input)).first::<User>(conn)
     })
@@ -264,9 +272,8 @@ pub async fn auth_required(
 
 #[handler]
 pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
-    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
-    let user: User = with_conn(pool, move |conn| {
+    let user: User = with_db(move |conn| {
         use schema::users::dsl::*;
         users.filter(id.eq(user_id)).first::<User>(conn)
     })
@@ -286,11 +293,10 @@ pub async fn update_me(
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
-    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let now = Utc::now();
 
-    let updated: User = with_conn(pool, move |conn| {
+    let updated: User = with_db(move |conn| {
         use schema::users::dsl::*;
         diesel::update(users.filter(id.eq(user_id)))
             .set((
@@ -319,11 +325,10 @@ pub async fn list_records(
     depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
-    let pool = get_pool()?;
     let user_id_value = get_user_id(depot)?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let records: Vec<LearningRecord> = with_conn(pool, move |conn| {
+    let records: Vec<LearningRecord> = with_db(move |conn| {
         use schema::learning_records::dsl::*;
         learning_records
             .filter(user_id.eq(user_id_value))
@@ -351,14 +356,13 @@ pub async fn create_record(
     if input.record_type.trim().is_empty() {
         return Err(bad_request("record_type is required"));
     }
-    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let new_record = NewLearningRecord {
         user_id,
         record_type: input.record_type,
         content: input.content,
     };
-    let record: LearningRecord = with_conn(pool, move |conn| {
+    let record: LearningRecord = with_db(move |conn| {
         use schema::learning_records::dsl::*;
         diesel::insert_into(learning_records)
             .values(&new_record)
@@ -402,7 +406,6 @@ pub async fn create_desktop_code(
         return Err(bad_request("state is required"));
     }
 
-    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
 
     let code = auth::random_desktop_code();
@@ -416,7 +419,7 @@ pub async fn create_desktop_code(
         expires_at,
     };
 
-    let _saved: DesktopAuthCode = with_conn(pool, move |conn| {
+    let _saved: DesktopAuthCode = with_db(move |conn| {
         use schema::desktop_auth_codes::dsl::*;
         diesel::insert_into(desktop_auth_codes)
             .values(&record)
@@ -459,13 +462,12 @@ pub async fn consume_desktop_code(
         return Err(bad_request("code and redirect_uri are required"));
     }
 
-    let pool = get_pool()?;
     let config = get_config()?;
     let code_hash_value = auth::hash_desktop_code(&input.code);
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
 
-    let user_id: Uuid = with_conn(pool, move |conn| {
+    let user_id: Uuid = with_db(move |conn| {
         use schema::desktop_auth_codes::dsl::*;
         let item: DesktopAuthCode = desktop_auth_codes
             .filter(code_hash.eq(code_hash_value))
@@ -538,7 +540,6 @@ pub async fn chat_send(
         input.message.trim()
     );
 
-    let pool = get_pool()?;
     let user_id = get_user_id(depot)?;
     let content = json!({
         "user_message": input.message,
@@ -551,7 +552,7 @@ pub async fn chat_send(
         record_type: "chat_turn".to_string(),
         content,
     };
-    let _ = with_conn(pool, move |conn| {
+    let _ = with_db(move |conn| {
         use schema::learning_records::dsl::*;
         diesel::insert_into(learning_records)
             .values(&record)
@@ -566,12 +567,6 @@ pub async fn chat_send(
         suggestions,
     }));
     Ok(())
-}
-
-fn get_pool() -> Result<&'static DbPool, StatusError> {
-    APP_POOL
-        .get()
-        .ok_or_else(|| StatusError::internal_server_error().brief("missing db pool"))
 }
 
 fn get_config() -> Result<&'static AppConfig, StatusError> {
@@ -601,14 +596,6 @@ impl Handler for RequirePermission {
         res: &mut Response,
         ctrl: &mut FlowCtrl,
     ) {
-        let pool = match get_pool() {
-            Ok(p) => p,
-            Err(e) => {
-                res.render(e);
-                ctrl.skip_rest();
-                return;
-            }
-        };
         let user_id = match get_user_id(depot) {
             Ok(v) => v,
             Err(e) => {
@@ -618,7 +605,7 @@ impl Handler for RequirePermission {
             }
         };
         let operation = self.operation;
-        let allowed = with_conn(pool, move |conn| {
+        let allowed = with_db(move |conn| {
             use crate::db::schema::role_permissions::dsl as rp;
             use crate::db::schema::user_roles::dsl as ur;
             use diesel::prelude::*;
@@ -662,9 +649,8 @@ async fn admin_delete_user(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
-    let pool = get_pool()?;
     let user_id = get_path_uuid(req, "user_id")?;
-    with_conn(pool, move |conn| {
+    with_db(move |conn| {
         use crate::db::schema::users::dsl::*;
         diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
         Ok(())
@@ -710,12 +696,11 @@ async fn oauth_login(
         return Err(bad_request("provider and provider_user_id are required"));
     }
 
-    let pool = get_pool()?;
     let provider = input.provider.trim().to_string();
     let provider_user_id = input.provider_user_id.trim().to_string();
     let email = input.email.clone().map(|e| e.trim().to_lowercase());
 
-    let identity: OauthIdentity = with_conn(pool, move |conn| {
+    let identity: OauthIdentity = with_db(move |conn| {
         use crate::db::schema::oauth_identities::dsl as oi;
         let existing = oi::oauth_identities
             .filter(oi::provider.eq(&provider))
@@ -743,8 +728,7 @@ async fn oauth_login(
     .map_err(|_| StatusError::internal_server_error().brief("failed to start oauth login"))?;
 
     if let Some(user_id) = identity.user_id {
-        let pool2 = get_pool()?;
-        let user: User = with_conn(pool2, move |conn| {
+        let user: User = with_db(move |conn| {
             use crate::db::schema::users::dsl::*;
             users.filter(id.eq(user_id)).first::<User>(conn)
         })
@@ -791,11 +775,10 @@ async fn oauth_bind(
     if email_input.is_empty() || input.password.is_empty() {
         return Err(bad_request("email and password are required"));
     }
-    let pool = get_pool()?;
     let password = input.password.clone();
     let oauth_identity_id = input.oauth_identity_id;
 
-    let (user, _identity): (User, OauthIdentity) = with_conn(pool, move |conn| {
+    let (user, _identity): (User, OauthIdentity) = with_db(move |conn| {
         use crate::db::schema::oauth_identities::dsl as oi;
         use crate::db::schema::users::dsl as u;
 
@@ -850,12 +833,11 @@ async fn oauth_skip(
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
-    let pool = get_pool()?;
     let oauth_identity_id = input.oauth_identity_id;
     let name = input.name.clone().map(|v| v.trim().to_string());
     let email_override = input.email.clone().map(|v| v.trim().to_lowercase());
 
-    let user: User = with_conn(pool, move |conn| {
+    let user: User = with_db(move |conn| {
         use crate::db::schema::oauth_identities::dsl as oi;
         use crate::db::schema::users::dsl as u;
 
@@ -904,8 +886,7 @@ async fn oauth_skip(
     Ok(())
 }
 
-pub fn router(pool: DbPool, config: AppConfig) -> Router {
-    APP_POOL.get_or_init(|| pool.clone());
+pub fn router(config: AppConfig) -> Router {
     APP_CONFIG.get_or_init(|| config.clone());
 
     let api = Router::with_path("api")
