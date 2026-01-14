@@ -21,10 +21,17 @@ For how to use diesel, please refer to its documentation: https://diesel.rs/.
 Also you have a example project: D:\Repos\crates.io. Use same or familiar method to create db connection and connection pool.
 For how to use salvo, please refer to its documentation: https://salvo.rs/ and it's repo: D:\Works\salvo-rs\salvo.
 
+检查现有的所有后端代码 crates/server. 里面有很多的错误, 因为是从其他项目拷贝过来的. 修复原则是尽量少删除代码, 让程序能够正常工作.
+可以参考 main-beta-last.sql 表里面的相关信息, 在数据库缺失时新建相关数据库. 其中的 permissions 是实现相关权限管理的功能.
+
 后端功能包括:
 用户注册和登录
 用户可以在网站上创建一个账号, 并登录到网站.
 用户可以在网站上设置个人信息, 如姓名, 邮箱, 手机号等.
 用户可以在网站上查看自己的学习记录, 如复习计划, 错误记录等.
+用户可以通过第三方平台通过  oauth  或者 oidc  登录本网站.
+第三方平台登录后, 前端页面 (front) 里面需要给出一个当前用户是否需要绑定现有用户的一个选项. 用户可以选择绑定或者跳过.
+跟用户账号相关的 route 信息放在routing/account.rs 和 controllers/account 文件夹中.
 
 我们还有一个桌面的系统, 所以需要后端协同前端提供一个从桌面系统登录到网站的接口. 用户登录成功后跳转到用户的桌面应用中.
+

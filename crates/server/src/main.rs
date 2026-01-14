@@ -34,9 +34,7 @@ async fn main() {
             .expect("failed to run migrations");
     }
 
-    let state = Arc::new(AppState { config, pool });
-
-    let router = routing::router(state);
+    let router = routing::router(pool, config);
 
     let acceptor = TcpListener::new(bind_addr).bind().await;
     Server::new(acceptor).serve(router).await;
