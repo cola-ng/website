@@ -10,7 +10,7 @@ use crate::{DepotExt, PagedResult, db};
 pub fn list_actions(req: &mut Request, realm_id: QueryParam<i64, true>, depot: &mut Depot) -> PagedResult<Action> {
     let cuser = depot.current_user()?;
     let realm_id = realm_id.into_inner();
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let data = query_pagation_data!(
         req,
         res,

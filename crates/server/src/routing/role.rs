@@ -29,7 +29,7 @@ pub fn authed_root(path: impl Into<String>) -> Router {
 #[endpoint(tags("role"))]
 pub fn show(role_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Role> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(conn)?
@@ -39,7 +39,7 @@ pub fn show(role_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Role> {
 #[endpoint(tags("role"))]
 pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let data = query_pagation_data!(
         req,
         res,
@@ -56,7 +56,7 @@ pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
 #[endpoint(tags("role"))]
 pub fn delete(role_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
 
     let role = roles::table
         .find(role_id.into_inner())
@@ -67,7 +67,7 @@ pub fn delete(role_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInf
 }
 #[endpoint(tags("role"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let info = bulk_delete_records!(req, depot, res, roles, Role, db::delete_role, &mut conn);
     Ok(info)
 }
@@ -86,7 +86,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Ro
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let realm = realms::table.find(pdata.realm_id).first::<Realm>(conn)?;
     require_all_permitted_in_realm!(res, cuser, &realm, "create", crate::permission::roles, conn);
 
@@ -126,7 +126,7 @@ struct UpdateInData {
 pub fn update(role_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<Role> {
     let mut pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let exist_role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(conn)?

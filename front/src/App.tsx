@@ -1,7 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { AuthProvider, useAuth } from './lib/auth'
-import { DesktopAuthorizePage } from './pages/DesktopAuthorizePage'
+import { AuthorizePage } from './pages/AuthorizePage'
 import { HomePage } from './pages/HomePage'
 
 function AppRoutes() {
@@ -9,7 +9,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/" element={<HomePage />} />
-      <Route path="/desktop/authorize" element={<DesktopAuthorizePage />} />
+      <Route path="/auth" element={<AuthorizePage />} />
       <Route path="/app" element={token ? <HomePage /> : <Navigate to="/" replace />} />
     </Routes>
   )

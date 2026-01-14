@@ -106,7 +106,7 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
         .on_conflict(users::id)
         .do_update()
         .set(&new_user)
-        .get_result::<User>(&mut connect()?)?;
+        .get_result::<User>(&mut conn()?)?;
     if let Some(password) = password {
         let hash = crate::utils::hash_password(password)?;
         diesel::insert_into(user_passwords::table)
@@ -115,7 +115,7 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
                 hash,
                 created_at: Utc::now(),
             })
-            .execute(&mut connect()?)?;
+            .execute(&mut conn()?)?;
     }
     Ok(user)
 }
@@ -137,7 +137,7 @@ pub async fn find_from_openid_token(token: &str) -> AppResult<i64> {
     let Ok((user_id, expires_at)) = user_openid_tokens::table
         .filter(user_openid_tokens::token.eq(token))
         .select((user_openid_tokens::user_id, user_openid_tokens::expires_at))
-        .first::<(i64, DateTime<Utc>)>(&mut connect()?)
+        .first::<(i64, DateTime<Utc>)>(&mut conn()?)
     else {
         return Err(StatusError::unauthorized()
             .brief("OpenID token is unrecognised")
@@ -146,7 +146,7 @@ pub async fn find_from_openid_token(token: &str) -> AppResult<i64> {
     if expires_at < Utc::now() {
         tracing::warn!("OpenID token is expired, removing");
         diesel::delete(user_openid_tokens::table.filter(user_openid_tokens::token.eq(token)))
-            .execute(&mut connect()?)?;
+            .execute(&mut conn()?)?;
 
         return Err(StatusError::unauthorized()
             .brief("OpenID token is expired")
@@ -171,7 +171,7 @@ pub fn create_login_token(user_id: i64, token: &str) -> AppResult<u64> {
         .on_conflict(user_login_tokens::token)
         .do_update()
         .set(user_login_tokens::expires_at.eq(expires_at))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
 
     Ok(expires_in)
 }
@@ -182,7 +182,7 @@ pub fn take_login_token(token: &str) -> AppResult<i64> {
     let Ok((user_id, expires_at)) = user_login_tokens::table
         .filter(user_login_tokens::token.eq(token))
         .select((user_login_tokens::user_id, user_login_tokens::expires_at))
-        .first::<(i64, DateTime<Utc>)>(&mut connect()?)
+        .first::<(i64, DateTime<Utc>)>(&mut conn()?)
     else {
         return Err(StatusError::forbidden()
             .brief("Login token is unrecognised.")
@@ -192,14 +192,14 @@ pub fn take_login_token(token: &str) -> AppResult<i64> {
     if expires_at < Utc::now() {
         trace!(?user_id, ?token, "Removing expired login token");
         diesel::delete(user_login_tokens::table.filter(user_login_tokens::token.eq(token)))
-            .execute(&mut connect()?)?;
+            .execute(&mut conn()?)?;
         return Err(StatusError::forbidden()
             .brief("login token is expired.")
             .into());
     }
 
     diesel::delete(user_login_tokens::table.filter(user_login_tokens::token.eq(token)))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
 
     Ok(user_id)
 }
@@ -210,7 +210,7 @@ pub fn valid_refresh_token(user_id: i64, device_id: i64, token: &str) -> AppResu
         .filter(user_refresh_tokens::device_id.eq(device_id))
         .filter(user_refresh_tokens::token.eq(token))
         .select(user_refresh_tokens::expires_at)
-        .first::<DateTime<Utc>>(&mut connect()?)
+        .first::<DateTime<Utc>>(&mut conn()?)
     else {
         return Err(StatusError::unauthorized()
             .brief("invalid refresh token")
@@ -228,7 +228,7 @@ pub fn make_user_admin(user_id: i64) -> AppResult<()> {
     let user_id = user_id.to_owned();
     diesel::update(users::table.filter(users::id.eq(&user_id)))
         .set(users::is_admin.eq(true))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -247,14 +247,14 @@ pub fn get_data<E: DeserializeOwned>(user_id: i64, kind: &str) -> AppResult<E> {
 pub fn get_global_datas(user_id: i64) -> AppResult<Vec<UserData>> {
     let datas = user_datas::table
         .filter(user_datas::user_id.eq(user_id))
-        .load::<UserData>(&mut connect()?)?;
+        .load::<UserData>(&mut conn()?)?;
     Ok(datas)
 }
 
 pub async fn deactivate_account(user_id: i64) -> AppResult<()> {
     diesel::update(users::table.find(user_id))
         .set(users::deactivated_at.eq(Utc::now()))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -262,20 +262,20 @@ pub fn is_admin(user_id: i64) -> AppResult<bool> {
     users::table
         .filter(users::id.eq(user_id))
         .select(users::is_admin)
-        .first::<bool>(&mut connect()?)
+        .first::<bool>(&mut conn()?)
         .map_err(Into::into)
 }
 
 /// Check if a user has an account on this homeserver.
 pub fn user_exists(username: &str) -> AppResult<bool> {
     let query = users::table.filter(users::name.eq(username));
-    diesel_exists!(query, &mut connect()?).map_err(Into::into)
+    diesel_exists!(query, &mut conn()?).map_err(Into::into)
 }
 
 pub fn get_user(user_id: i64) -> AppResult<User> {
     users::table
         .find(user_id)
-        .first::<User>(&mut connect()?)
+        .first::<User>(&mut conn()?)
         .map_err(Into::into)
 }
 
@@ -283,7 +283,7 @@ pub fn get_user(user_id: i64) -> AppResult<User> {
 pub fn count() -> AppResult<u64> {
     let count = user_passwords::table
         .select(dsl::count(user_passwords::user_id).aggregate_distinct())
-        .first::<i64>(&mut connect()?)?;
+        .first::<i64>(&mut conn()?)?;
     Ok(count as u64)
 }
 
@@ -292,7 +292,7 @@ pub fn display_name(user_id: i64) -> AppResult<Option<String>> {
     user_profiles::table
         .filter(user_profiles::user_id.eq(user_id))
         .select(user_profiles::display_name)
-        .first::<Option<String>>(&mut connect()?)
+        .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
@@ -300,14 +300,14 @@ pub fn display_name(user_id: i64) -> AppResult<Option<String>> {
 pub fn set_display_name(user_id: i64, display_name: &str) -> AppResult<()> {
     diesel::update(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
         .set(user_profiles::display_name.eq(display_name))
-        .execute(&mut connect()?)
+        .execute(&mut conn()?)
         .map(|_| ())
         .map_err(Into::into)
 }
 pub fn remove_display_name(user_id: i64) -> AppResult<()> {
     diesel::update(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
         .set(user_profiles::display_name.eq::<Option<String>>(None))
-        .execute(&mut connect()?)
+        .execute(&mut conn()?)
         .map(|_| ())
         .map_err(Into::into)
 }
@@ -317,7 +317,7 @@ pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
     user_profiles::table
         .filter(user_profiles::user_id.eq(user_id))
         .select(user_profiles::avatar_url)
-        .first::<Option<String>>(&mut connect()?)
+        .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
@@ -325,13 +325,13 @@ pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
 pub fn set_avatar_url(user_id: i64, avatar_url: &str) -> AppResult<()> {
     diesel::update(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
         .set(user_profiles::avatar_url.eq(avatar_url))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
 pub fn delete_profile(user_id: i64) -> AppResult<()> {
     diesel::delete(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -340,7 +340,7 @@ pub fn blurhash(user_id: i64) -> AppResult<Option<String>> {
     user_profiles::table
         .filter(user_profiles::user_id.eq(user_id))
         .select(user_profiles::blurhash)
-        .first::<Option<String>>(&mut connect()?)
+        .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
@@ -350,7 +350,7 @@ pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
     let deactivated_at = users::table
         .filter(users::id.eq(user_id))
         .select(users::deactivated_at)
-        .first::<Option<DateTime<Utc>>>(&mut connect()?)
+        .first::<Option<DateTime<Utc>>>(&mut conn()?)
         .optional()?
         .flatten();
     Ok(deactivated_at.is_some())
@@ -360,19 +360,19 @@ pub fn all_device_ids(user_id: i64) -> AppResult<Vec<i64>> {
     user_devices::table
         .filter(user_devices::user_id.eq(user_id))
         .select(user_devices::id)
-        .load::<i64>(&mut connect()?)
+        .load::<i64>(&mut conn()?)
         .map_err(Into::into)
 }
 
 pub fn delete_access_tokens(user_id: i64) -> AppResult<()> {
     diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
 pub fn delete_refresh_tokens(user_id: i64) -> AppResult<()> {
     diesel::delete(user_refresh_tokens::table.filter(user_refresh_tokens::user_id.eq(user_id)))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -385,10 +385,10 @@ pub fn remove_all_devices(user_id: i64) -> AppResult<()> {
 pub fn deactivate(user_id: i64) -> AppResult<()> {
     diesel::update(users::table.find(user_id))
         .set((users::deactivated_at.eq(Utc::now()),))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
 
     diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
 
     Ok(())
 }
@@ -397,7 +397,7 @@ pub fn deactivate(user_id: i64) -> AppResult<()> {
 pub fn set_admin(user_id: i64, is_admin: bool) -> AppResult<()> {
     diesel::update(users::table.find(user_id))
         .set(users::is_admin.eq(is_admin))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -409,14 +409,14 @@ pub fn set_locked(user_id: i64, locked: bool, locker_id: Option<i64>) -> AppResu
                 users::locked_at.eq(Some(Utc::now())),
                 users::locked_by.eq(locker_id.map(|u| u.to_owned())),
             ))
-            .execute(&mut connect()?)?;
+            .execute(&mut conn()?)?;
     } else {
         diesel::update(users::table.find(user_id))
             .set((
                 users::locked_at.eq::<Option<DateTime<Utc>>>(None),
                 users::locked_by.eq::<Option<i64>>(None),
             ))
-            .execute(&mut connect()?)?;
+            .execute(&mut conn()?)?;
     }
     Ok(())
 }
@@ -458,7 +458,7 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     }
 
     // Get total count before pagination
-    let total: i64 = users::table.count().get_result(&mut connect()?)?;
+    let total: i64 = users::table.count().get_result(&mut conn()?)?;
 
     // Apply ordering
     let dir_asc = filter.dir.as_ref().map(|d| d == "f").unwrap_or(true);
@@ -508,7 +508,7 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     let limit = filter.limit.unwrap_or(100).min(1000);
     query = query.limit(limit);
 
-    let users = query.load::<User>(&mut connect()?)?;
+    let users = query.load::<User>(&mut conn()?)?;
 
     Ok(users)
 }
@@ -518,7 +518,7 @@ pub fn get_password_hash(user_id: i64) -> AppResult<String> {
         .filter(user_passwords::user_id.eq(user_id))
         .order_by(user_passwords::id.desc())
         .select(user_passwords::hash)
-        .first::<String>(&mut connect()?)
+        .first::<String>(&mut conn()?)
         .map_err(Into::into)
 }
 
@@ -555,7 +555,7 @@ pub fn set_password(user_id: i64, password: &str) -> AppResult<()> {
                 hash,
                 created_at: Utc::now(),
             })
-            .execute(&mut connect()?)?;
+            .execute(&mut conn()?)?;
         Ok(())
     } else {
         Err(StatusError::internal_server_error()

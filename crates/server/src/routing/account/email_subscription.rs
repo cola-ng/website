@@ -12,7 +12,7 @@ use crate::{AppError, DepotExt, JsonResult, PagedResult};
 #[endpoint(tags("account"))]
 pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<EmailSubscription> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let query = email_subscriptions::table.filter(email_subscriptions::user_id.eq(cuser.id));
     let data = query_pagation_data!(
         req,
@@ -40,7 +40,7 @@ pub fn upsert(pdata: JsonBody<Vec<UpsertInItem>>, depot: &mut Depot) -> JsonResu
     let pdata = pdata.into_inner();
 
     let cuser = depot.current_user()?;
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let subscriptions = conn.transaction::<Vec<EmailSubscription>, AppError, _>(|conn| {
         diesel::delete(email_subscriptions::table.filter(email_subscriptions::user_id.eq(cuser.id))).execute(conn)?;
 

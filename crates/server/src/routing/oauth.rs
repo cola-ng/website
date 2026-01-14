@@ -85,7 +85,7 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
     let expires_in = tok.expires_in().map(|t| t.as_secs()).unwrap_or(0);
     let expires_in = Utc::now().add(TimeDelta::try_seconds(expires_in as i64).unwrap());
     let me = crate::oauth::get_me(access_token, &pdata.platform).await?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     conn.transaction::<_, AppError, _>(|conn| {
         let user_id = oauth_users::table
             .filter(oauth_users::me_id.eq(&me.id))
@@ -283,7 +283,7 @@ pub fn create_account_and_login(
         return Err(StatusError::internal_server_error().brief("password hash has error").into());
     };
 
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let referral_code = referral_code.into_inner().unwrap_or_default();
     let referred_by = if !referral_code.is_empty() {
         realms::table
@@ -442,7 +442,7 @@ pub enum BindOkData {
 #[endpoint(tags("oauth"))]
 pub fn bind(pdata: JsonBody<BindInData>, res: &mut Response) -> JsonResult<BindOkData> {
     let pdata = pdata.into_inner();
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(pdata.user_id).get_result::<User>(conn)?;
     if user.is_locked || user.is_disabled {
         return Err(StatusError::bad_request().brief("This user is locked or disabled.").into());

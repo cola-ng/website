@@ -13,7 +13,7 @@ use crate::{AppResult, DepotExt, JsonResult, PagedResult, StatusInfo, db};
 
 #[endpoint(tags("account"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<OauthUser> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let cuser = depot.current_user()?;
     let query = oauth_users::table.filter(oauth_users::user_id.eq(cuser.id));
     let data = query_pagation_data!(
@@ -32,7 +32,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<OauthUser
 
 #[endpoint(tags("account"))]
 pub async fn remove(oauth_user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let cuser = depot.current_user()?;
     diesel::delete(
         oauth_users::table
@@ -61,7 +61,7 @@ pub async fn authorize_and_bind(pdata: JsonBody<AuthorizeAndBindInData>, depot: 
         return Err(StatusError::not_found().into());
     }
     let cuser = depot.current_user()?;
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let ouser = oauth_users::table
         .filter(oauth_users::user_id.eq(cuser.id))
         .filter(oauth_users::platform.eq(&pdata.platform))
@@ -107,7 +107,7 @@ pub async fn authorize_and_bind(pdata: JsonBody<AuthorizeAndBindInData>, depot: 
         expires_in,
         refresh_token.map(|v| &**v),
         pdata.shopify_shop.as_deref(),
-        &mut *db::connect()?,
+        &mut *db::conn()?,
     )?;
     Ok(Json(ouser))
 }

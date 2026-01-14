@@ -8,7 +8,7 @@ use crate::{DepotExt, PagedResult, db};
 #[endpoint(tags("wallet"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<UsedCoupon> {
     let _cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let data = query_pagation_data!(
         req,
         res,

@@ -14,7 +14,7 @@ pub fn authed_root(path: impl Into<String>) -> Router {
 pub async fn show(operation_id: PathParam<i64>) -> JsonResult<Operation> {
     let operation_id = operation_id.into_inner();
     if operation_id > 0 {
-        let operation = operations::table.find(operation_id).first::<Operation>(&mut db::connect()?)?;
+        let operation = operations::table.find(operation_id).first::<Operation>(&mut db::conn()?)?;
         Ok(Json(operation))
     } else {
         Err(StatusError::bad_request().brief("parse id param error").into())

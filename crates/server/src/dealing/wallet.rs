@@ -34,7 +34,7 @@ pub async fn supervise_job() {
     }
 }
 pub async fn supervise() -> AppResult<()> {
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
 
     let obtained_coupons = if crate::deploy_stage() != DeployStage::Prod {
         wallet_obtained_coupons::table

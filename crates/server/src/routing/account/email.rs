@@ -14,7 +14,7 @@ use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo};
 #[endpoint(tags("account"))]
 pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Email> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let query = emails::table.filter(emails::user_id.eq(cuser.id));
     let data = query_pagation_data!(
         req,
@@ -44,7 +44,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Em
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let email = conn.transaction::<Email, AppError, _>(|conn| {
         check_email_other_taken!(None, &value, conn);
         let new_email = NewEmail {
@@ -66,7 +66,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Em
 #[endpoint(tags("account"))]
 pub fn set_master(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
     if email.user_id != cuser.id {
         return Err(StatusError::forbidden().into());
@@ -102,7 +102,7 @@ pub fn set_master(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<Stat
 #[endpoint(tags("account"))]
 pub fn resend_verification(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
     let user = users::table.find(email.user_id).first::<User>(conn)?;
 
@@ -120,7 +120,7 @@ pub fn resend_verification(email_id: PathParam<i64>, depot: &mut Depot) -> AppRe
 #[endpoint(tags("account"))]
 pub fn delete(email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
     if email.user_id != cuser.id {
         return Err(StatusError::bad_request().into());
@@ -147,7 +147,7 @@ pub fn update(email_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &m
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
     let email = conn.transaction::<_, AppError, _>(|conn| {
         let exist_email = emails::table

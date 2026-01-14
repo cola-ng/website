@@ -7,7 +7,7 @@ import { AuthCard } from '../widgets/AuthCard'
 import { useAuth } from '../lib/auth'
 import { desktopCreateCode } from '../lib/api'
 
-export function DesktopAuthorizePage() {
+export function AuthorizePage() {
   const { token } = useAuth()
   const [params] = useSearchParams()
   const navigate = useNavigate()

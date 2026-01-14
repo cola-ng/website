@@ -14,7 +14,7 @@ use crate::{AppError, DepotExt, JsonResult};
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -37,7 +37,7 @@ pub async fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depo
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
@@ -75,7 +75,7 @@ pub async fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
@@ -103,7 +103,7 @@ pub async fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -137,7 +137,7 @@ pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &m
 //         return Err(StatusError::bad_request().brief( &msg).into());
 //     }
 //     let cuser = depot.current_user()?;
-//     let conn = &mut db::connect()?;
+//     let conn = &mut db::conn()?;
 //     let user =  users::table.find(phone_id.into_inner()).first::< User>(conn)?;
 
 //     user.assign_to(cuser, "edit", conn);
@@ -170,7 +170,7 @@ pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &m
 #[endpoint(tags("user"))]
 pub async fn set_master(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Phone> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))

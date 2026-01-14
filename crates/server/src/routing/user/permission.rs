@@ -25,7 +25,7 @@ pub async fn has_partial_permissions(
 ) -> JsonResult<Vec<HasPartialPermissionsItem>> {
     let mut pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
@@ -77,7 +77,7 @@ pub async fn has_record_permissions(
 ) -> JsonResult<Vec<HasRecordPermissionsOkItem>> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))

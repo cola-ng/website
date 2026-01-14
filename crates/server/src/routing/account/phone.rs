@@ -14,7 +14,7 @@ use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo};
 #[endpoint(tags("account"))]
 pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Phone> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let query = phones::table.filter(phones::user_id.eq(cuser.id));
     let data = query_pagation_data!(
         req,
@@ -43,7 +43,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Ph
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let phone = conn.transaction::<Phone, AppError, _>(|conn| {
         // check_phone_other_taken!(Some(cuser.id), &pdata.value, conn);
         let new_phone = NewPhone {
@@ -65,7 +65,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Ph
 #[endpoint(tags("account"))]
 pub fn set_master(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
     if phone.user_id != cuser.id {
         return Err(StatusError::forbidden().into());
@@ -100,7 +100,7 @@ pub fn set_master(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<Stat
 #[endpoint(tags("account"))]
 pub fn resend_verification(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
     let user = users::table.find(phone.user_id).first::<User>(conn)?;
     if phone.user_id != cuser.id {
@@ -116,7 +116,7 @@ pub fn resend_verification(phone_id: PathParam<i64>, depot: &mut Depot) -> AppRe
 #[endpoint(tags("account"))]
 pub fn delete(phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
     if phone.user_id != cuser.id {
         return Err(StatusError::bad_request().into());
@@ -142,7 +142,7 @@ pub async fn update(phone_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, dep
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
     let phone = conn.transaction::<_, AppError, _>(|conn| {
         // let exist_phone = phones::table.filter(phones::value.eq(&pdata.value))

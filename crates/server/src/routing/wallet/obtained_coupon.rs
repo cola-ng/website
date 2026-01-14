@@ -16,7 +16,7 @@ use crate::{AppError, AppResult, DepotExt, ErrorItem, JsonResult, PagedResult, S
 #[endpoint(tags("wallet"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<ObtainedCoupon> {
     let _cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let data = query_pagation_data!(
         req,
         res,
@@ -34,7 +34,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<ObtainedC
 #[endpoint(tags("wallet"))]
 pub async fn show(obtained_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<ObtainedCoupon> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let obtained_coupon = wallet_obtained_coupons::table
         .find(obtained_id.into_inner())
         .first::<ObtainedCoupon>(conn)?;
@@ -47,7 +47,7 @@ pub async fn show(obtained_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<
 #[endpoint(tags("wallet"))]
 pub async fn delete(obtained_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let obtained_coupon = wallet_obtained_coupons::table
         .find(obtained_id.into_inner())
         .first::<ObtainedCoupon>(conn)?;
@@ -60,7 +60,7 @@ pub async fn delete(obtained_id: PathParam<i64>, depot: &mut Depot) -> AppResult
 }
 #[endpoint(tags("wallet"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let info = bulk_delete_records!(
         req,
         depot,
@@ -95,7 +95,7 @@ pub async fn obtain(pdata: JsonBody<ObtainInData>, depot: &mut Depot) -> JsonRes
         description,
     } = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let realm = realms::table.find(realm_id).first::<Realm>(conn)?.assign_to(cuser, "wallet.edit", conn)?;
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -130,7 +130,7 @@ struct UpdateInData {
 pub async fn update(obtained_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<ObtainedCoupon> {
     let mut pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let obtained_coupon = wallet_obtained_coupons::table
         .find(obtained_id.into_inner())
         .first::<ObtainedCoupon>(conn)?;

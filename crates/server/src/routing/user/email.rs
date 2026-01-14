@@ -14,7 +14,7 @@ use crate::{AppError, DepotExt, JsonResult, db};
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -40,7 +40,7 @@ pub fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depot: &mu
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -79,7 +79,7 @@ pub fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &mut De
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -106,7 +106,7 @@ pub fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &mut De
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -139,7 +139,7 @@ pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &m
 //         return Err(StatusError::bad_request().brief(&msg).into());
 //     }
 //     let cuser = depot.current_user()?;
-//     let conn = &mut db::connect()?;
+//     let conn = &mut db::conn()?;
 //     let user =  users::table.find(user_id.into_inner()).first::< User>(conn)?;
 
 //     user.assign_to(cuser, "edit", conn);
@@ -177,7 +177,7 @@ pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &m
 #[endpoint(tags("user"))]
 pub async fn set_master(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Email> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?

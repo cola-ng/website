@@ -14,7 +14,7 @@ use crate::{AppError, AppResult, DepotExt, data, db};
 #[endpoint(tags("role"))]
 pub fn list(role_id: PathParam<i64>, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(conn)?
@@ -54,7 +54,7 @@ pub async fn update(
 
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(&mut conn)?

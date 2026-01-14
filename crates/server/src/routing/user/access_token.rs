@@ -16,7 +16,7 @@ use crate::{AppError, AppResult, DepotExt, ErrorItem, JsonResult, StatusInfo};
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
 
     let token = access_tokens::table.find(user_id.into_inner()).first::<AccessToken>(conn)?;
     let _ = users::table.find(token.user_id).first::<User>(conn)?.assign_to(cuser, "edit", conn)?;
@@ -25,7 +25,7 @@ pub async fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<Sta
 }
 #[endpoint(tags("user"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let info = bulk_delete_records!(
         req,
         depot,
@@ -45,7 +45,7 @@ pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<Stat
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<AccessToken>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .permit(cuser, "edit", conn)?
         .filter(users::id.eq(user_id.into_inner()))
@@ -84,7 +84,7 @@ pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonRes
         return Err(StatusError::bad_request().brief(e).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     if !cuser.is_root {
         return Err(StatusError::forbidden().into());
     }
@@ -132,7 +132,7 @@ struct UpdateInData {
 pub async fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<AccessToken> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?

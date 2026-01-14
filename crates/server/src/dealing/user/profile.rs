@@ -16,7 +16,7 @@ pub struct UserProfile {
 pub fn get_profile(user_id: i64) -> AppResult<Option<UserProfile>> {
     let profile = user_profiles::table
         .filter(user_profiles::user_id.eq(user_id))
-        .first::<UserProfile>(&mut connect()?)
+        .first::<UserProfile>(&mut conn()?)
         .optional()?;
     Ok(profile)
 }

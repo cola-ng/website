@@ -12,7 +12,7 @@ pub mod stream {
     #[endpoint(tags("account"))]
     pub fn watch(stream_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
         let cuser = depot.current_user()?;
-        let conn = &mut db::connect()?;
+        let conn = &mut db::conn()?;
         let stream = interflow_streams::table
             .find(stream_id.into_inner())
             .first::<Stream>(conn)?
@@ -23,7 +23,7 @@ pub mod stream {
     #[endpoint(tags("account"))]
     pub fn unwatch(stream_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
         let cuser = depot.current_user()?;
-        let conn = &mut db::connect()?;
+        let conn = &mut db::conn()?;
         diesel::delete(
             interflow_watchers::table
                 .filter(interflow_watchers::user_id.eq(cuser.id))
@@ -41,7 +41,7 @@ pub mod stream {
     #[endpoint(tags("account"))]
     pub fn has_watched(stream_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<HasWatchedOkData> {
         let cuser = depot.current_user()?;
-        let conn = &mut db::connect()?;
+        let conn = &mut db::conn()?;
         let query = interflow_watchers::table
             .filter(interflow_watchers::user_id.eq(cuser.id))
             .filter(interflow_watchers::stream_id.eq(stream_id.into_inner()));
@@ -53,7 +53,7 @@ pub mod stream {
     #[endpoint(tags("account"))]
     pub fn watched_ids(_req: &mut Request, depot: &mut Depot) -> JsonResult<Vec<i64>> {
         let cuser = depot.current_user()?;
-        let conn = &mut db::connect()?;
+        let conn = &mut db::conn()?;
         let stream_ids: Vec<i64> = interflow_watchers::table
             .filter(interflow_watchers::user_id.eq(cuser.id))
             .select(interflow_watchers::stream_id)

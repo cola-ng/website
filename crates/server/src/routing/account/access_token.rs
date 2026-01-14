@@ -15,7 +15,7 @@ use crate::{AppError, AppResult, DepotExt, ErrorItem, JsonResult, StatusInfo};
 #[endpoint(tags("account"))]
 pub fn delete(token_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
 
     let access_token = access_tokens::table.find(token_id.into_inner()).first::<AccessToken>(conn)?;
     users::table
@@ -27,7 +27,7 @@ pub fn delete(token_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusIn
 }
 #[endpoint(tags("account"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let info = bulk_delete_records!(
         req,
         depot,
@@ -51,7 +51,7 @@ pub fn list(_req: &mut Request, depot: &mut Depot) -> JsonResult<Vec<AccessToken
     let query = access_tokens::table
         .filter(access_tokens::user_id.eq(cuser.id))
         .filter(access_tokens::kind.eq("api"));
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     Ok(Json(query.get_results::<AccessToken>(conn)?))
 }
 
@@ -87,7 +87,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Cr
     let Ok(jwt_token) = crate::create_jwt_token(cuser, &exp) else {
         return Err(StatusError::internal_server_error().brief("create jwt token error").into());
     };
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let output = conn.transaction::<_, AppError, _>(|conn| {
         let query = access_tokens::table
             .filter(access_tokens::user_id.eq(cuser.id))
@@ -132,7 +132,7 @@ struct UpdateInData {
 pub fn update(token_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<AccessToken> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let exist_token = access_tokens::table.find(token_id.into_inner()).first::<AccessToken>(conn)?;
     if exist_token.user_id != cuser.id {
         return Err(StatusError::bad_request().brief("access token is not correct").into());

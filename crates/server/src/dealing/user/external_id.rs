@@ -30,7 +30,7 @@ pub fn get_user_by_external_id(auth_provider: &str, external_id: &str) -> AppRes
         .filter(user_external_ids::auth_provider.eq(auth_provider))
         .filter(user_external_ids::external_id.eq(external_id))
         .select(user_external_ids::user_id)
-        .first::<i64>(&mut connect()?)
+        .first::<i64>(&mut conn()?)
         .optional()
         .map_err(Into::into)
 }
@@ -39,7 +39,7 @@ pub fn get_user_by_external_id(auth_provider: &str, external_id: &str) -> AppRes
 pub fn get_external_ids_by_user(user_id: i64) -> AppResult<Vec<UserExternalId>> {
     user_external_ids::table
         .filter(user_external_ids::user_id.eq(user_id))
-        .load::<UserExternalId>(&mut connect()?)
+        .load::<UserExternalId>(&mut conn()?)
         .map_err(Into::into)
 }
 
@@ -52,7 +52,7 @@ pub fn record_external_id(auth_provider: &str, external_id: &str, user_id: i64) 
             user_id: user_id.to_owned(),
             created_at: Utc::now(),
         })
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -61,7 +61,7 @@ pub fn replace_external_ids(
     user_id: i64,
     new_external_ids: &[(String, String)], // (auth_provider, external_id)
 ) -> AppResult<()> {
-    let mut conn = connect()?;
+    let mut conn = conn()?;
 
     // Delete existing external IDs for this user
     diesel::delete(user_external_ids::table.filter(user_external_ids::user_id.eq(user_id)))
@@ -90,6 +90,6 @@ pub fn delete_external_id(auth_provider: &str, external_id: &str) -> AppResult<(
             .filter(user_external_ids::auth_provider.eq(auth_provider))
             .filter(user_external_ids::external_id.eq(external_id)),
     )
-    .execute(&mut connect()?)?;
+    .execute(&mut conn()?)?;
     Ok(())
 }

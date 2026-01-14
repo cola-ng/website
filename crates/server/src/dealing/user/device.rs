@@ -63,7 +63,7 @@ pub fn create_device(
             last_seen_at: Utc::now(),
             created_at: Utc::now(),
         })
-        .get_result::<UserDevice>(&mut connect()?)?;
+        .get_result::<UserDevice>(&mut conn()?)?;
 
     diesel::insert_into(user_access_tokens::table)
         .values(NewAccessToken::new(
@@ -72,20 +72,20 @@ pub fn create_device(
             token.to_owned(),
             None,
         ))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(device)
 }
 
 pub fn get_device(device_id: i64) -> AppResult<UserDevice> {
     user_devices::table
         .find(device_id)
-        .first::<UserDevice>(&mut connect()?)
+        .first::<UserDevice>(&mut conn()?)
         .map_err(Into::into)
 }
 
 pub fn is_device_exists(device_id: i64) -> AppResult<bool> {
     let query = user_devices::table.filter(user_devices::id.eq(device_id));
-    diesel_exists!(query, &mut connect()?).map_err(Into::into)
+    diesel_exists!(query, &mut conn()?).map_err(Into::into)
 }
 
 pub fn set_refresh_token(
@@ -95,7 +95,7 @@ pub fn set_refresh_token(
     expires_at: DateTime<Utc>,
     ultimate_session_expires_at: DateTime<Utc>,
 ) -> AppResult<i64> {
-    let id = connect()?.transaction::<_, DieselError, _>(|conn| {
+    let id = conn()?.transaction::<_, DieselError, _>(|conn| {
         diesel::delete(
             user_refresh_tokens::table
                 .filter(user_refresh_tokens::user_id.eq(user_id))
@@ -133,7 +133,7 @@ pub fn set_access_token(
         .on_conflict((user_access_tokens::user_id, user_access_tokens::device_id))
         .do_update()
         .set(user_access_tokens::token.eq(token))
-        .execute(&mut connect()?)?;
+        .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -143,7 +143,7 @@ pub fn delete_access_tokens(user_id: i64, device_id: i64) -> AppResult<()> {
             .filter(user_access_tokens::user_id.eq(user_id))
             .filter(user_access_tokens::device_id.eq(device_id)),
     )
-    .execute(&mut connect()?)?;
+    .execute(&mut conn()?)?;
     Ok(())
 }
 
@@ -153,6 +153,6 @@ pub fn delete_refresh_tokens(user_id: i64, device_id: i64) -> AppResult<()> {
             .filter(user_refresh_tokens::user_id.eq(user_id))
             .filter(user_refresh_tokens::device_id.eq(device_id)),
     )
-    .execute(&mut connect()?)?;
+    .execute(&mut conn()?)?;
     Ok(())
 }

@@ -10,7 +10,7 @@ use crate::{AppResult, DepotExt, PagedResult, StatusInfo, db};
 #[endpoint(tags("role"))]
 pub fn list(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(conn)?
@@ -38,7 +38,7 @@ pub fn list(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> Pa
 pub async fn add(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let ids = crate::parse_ids_from_request(req, "id", "ids").await;
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(conn)?
@@ -81,7 +81,7 @@ pub async fn add(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) 
 #[endpoint(tags("user"))]
 pub async fn remove(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let ids = crate::parse_ids_from_request(req, "id", "ids").await;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let cuser = depot.current_user()?.must_in_kernel()?;
     let role = roles::table
         .find(role_id.into_inner())

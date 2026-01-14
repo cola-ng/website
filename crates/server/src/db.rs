@@ -38,12 +38,12 @@ pub fn init(config: &DbConfig) {
     migrate();
 }
 pub fn migrate() {
-    let conn = &mut connect().expect("db connect should worked");
+    let conn = &mut conn().expect("db connect should worked");
     conn.run_pending_migrations(MIGRATIONS)
         .expect("migrate db should worked");
 }
 
-pub fn connect() -> Result<PgPooledConnection, PoolError> {
+pub fn conn() -> Result<PgPooledConnection, PoolError> {
     match DIESEL_POOL.get().expect("diesel pool should set").get() {
         Ok(conn) => Ok(conn),
         Err(e) => {
@@ -52,6 +52,22 @@ pub fn connect() -> Result<PgPooledConnection, PoolError> {
         }
     }
 }
+
+pub async fn with_conn<F, R>(f: F) -> Result<R, String>
+where
+    F: FnOnce(&mut crate::db::PgPooledConnection) -> Result<R, diesel::result::Error>
+        + Send
+        + 'static,
+    R: Send + 'static,
+{
+    tokio::task::spawn_blocking(move || {
+        let mut conn = crate::db::conn().map_err(|e| e.to_string())?;
+        f(&mut conn).map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 pub fn state() -> State {
     DIESEL_POOL.get().expect("diesel pool should set").state()
 }

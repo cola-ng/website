@@ -29,7 +29,7 @@ pub fn set_data(user_id: i64, event_type: &str, json_data: JsonValue) -> AppResu
     let user_data = user_datas::table
         .filter(user_datas::user_id.eq(user_id))
         .filter(user_datas::data_type.eq(event_type))
-        .first::<UserData>(&mut connect()?)
+        .first::<UserData>(&mut conn()?)
         .optional()?;
     if let Some(user_data) = user_data
         && user_data.json_data == json_data
@@ -48,7 +48,7 @@ pub fn set_data(user_id: i64, event_type: &str, json_data: JsonValue) -> AppResu
         .on_conflict((user_datas::user_id, user_datas::data_type))
         .do_update()
         .set(&new_data)
-        .get_result::<UserData>(&mut connect()?)
+        .get_result::<UserData>(&mut conn()?)
         .map_err(Into::into)
 }
 
@@ -58,6 +58,6 @@ pub fn get_data<E: DeserializeOwned>(user_id: i64, kind: &str) -> AppResult<E> {
         .filter(user_datas::user_id.eq(user_id))
         .filter(user_datas::data_type.eq(kind))
         .order_by(user_datas::id.desc())
-        .first::<UserData>(&mut connect()?)?;
+        .first::<UserData>(&mut conn()?)?;
     Ok(serde_json::from_value(row.json_data)?)
 }

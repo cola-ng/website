@@ -17,7 +17,7 @@ pub async fn show(
     req: &mut Request,
     res: &mut Response,
 ) -> AppResult<()> {
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(&mut conn)?;
     drop(conn);
 
@@ -33,7 +33,7 @@ pub async fn show(
 #[endpoint(tags("user"))]
 pub async fn upload(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> JsonResult<User> {
     let cuser = depot.current_user()?;
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(&mut conn)?;
     if !user.permitted(cuser, "edit", &mut conn)? {
         return Err(StatusError::forbidden().into());
@@ -52,7 +52,7 @@ pub async fn upload(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depo
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<()> {
     let cuser = depot.current_user()?;
-    let mut conn = db::connect()?;
+    let mut conn = db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(&mut conn)?;
     if !user.permitted(cuser, "edit", &mut conn)? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());

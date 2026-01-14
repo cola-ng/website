@@ -13,7 +13,7 @@ use crate::{AppError, AppResult, DepotExt, PagedResult, StatusInfo, db};
 #[endpoint(tags("wallet"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Balance> {
     let _cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let data = query_pagation_data!(
         req,
         res,
@@ -53,7 +53,7 @@ pub async fn create(pdata: JsonBody<CreateBalanceInData>, depot: &mut Depot) -> 
     if pdata.current_amount <= 0.into() {
         return Err(StatusError::bad_request().brief("The current_amount must be greater than 0.").into());
     }
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     realms::table
         .find(pdata.realm_id)
         .get_result::<Realm>(conn)?
@@ -167,7 +167,7 @@ pub async fn update(balance_id: PathParam<i64>, pdata: JsonBody<UpdateBalanceInD
             return Err(StatusError::bad_request().brief("The current_amount must be greater than 0.").into());
         }
     }
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let balance = wallet_balances::table.find(balance_id.into_inner()).first::<Balance>(conn)?;
     let _realm = realms::table
         .find(balance.realm_id)

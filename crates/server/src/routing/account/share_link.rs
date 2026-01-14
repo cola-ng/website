@@ -9,7 +9,7 @@ use crate::{DepotExt, PagedResult};
 #[endpoint(tags("account"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<ShareLink> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let query = share_links::table.filter(share_links::owner_id.eq(cuser.id));
     let data = query_pagation_data!(
         req,

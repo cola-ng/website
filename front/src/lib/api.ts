@@ -57,7 +57,7 @@ export function register(input: {
   password: string
   name?: string
 }): Promise<AuthResponse> {
-  return requestJson<AuthResponse>('/api/auth/register', {
+  return requestJson<AuthResponse>('/api/register', {
     method: 'POST',
     body: JSON.stringify(input),
   })
@@ -67,7 +67,7 @@ export function login(input: {
   email: string
   password: string
 }): Promise<AuthResponse> {
-  return requestJson<AuthResponse>('/api/auth/login', {
+  return requestJson<AuthResponse>('/api/login', {
     method: 'POST',
     body: JSON.stringify(input),
   })
@@ -118,7 +118,7 @@ export function desktopCreateCode(
   token: string,
   input: { redirect_uri: string; state: string }
 ): Promise<{ code: string; redirect_uri: string; state: string; expires_at: string }> {
-  return requestJson('/api/desktop/auth/code', {
+  return requestJson('/api/auth/code', {
     method: 'POST',
     token,
     body: JSON.stringify(input),
@@ -129,7 +129,7 @@ export function desktopConsumeCode(input: {
   code: string
   redirect_uri: string
 }): Promise<{ access_token: string }> {
-  return requestJson('/api/desktop/auth/consume', {
+  return requestJson('/api/auth/consume', {
     method: 'POST',
     body: JSON.stringify(input),
   })

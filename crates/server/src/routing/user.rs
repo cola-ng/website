@@ -76,7 +76,7 @@ pub fn show(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<User> {
     // 防止在模拟用户形式下无法拿到自己原本的用户信息。前端界面需要。
     let cuser = depot.jwt_user()?;
     // let jwt_user = depot.jwt_user();
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = if cuser.in_kernel {
         users::table
             .find(user_id.into_inner())
@@ -97,7 +97,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
     // 防止在模拟用户形式下无法拿到自己原本的用户信息。前端界面需要。
     let cuser = depot.jwt_user()?;
     // let jwt_user = depot.jwt_user();
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let users = if !cuser.in_kernel {
         let query = users::table
             .permit(cuser, "view", conn)?
@@ -132,7 +132,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
 }
 #[endpoint(tags("user"))]
 pub fn reject(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
     let cuser = depot.current_user()?;
     if !cuser.in_kernel {
@@ -145,7 +145,7 @@ pub fn reject(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInf
 #[endpoint(tags("user"))]
 pub fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
 
     let user = users::table
         .find(user_id.into_inner())
@@ -156,7 +156,7 @@ pub fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInf
 }
 #[endpoint(tags("user"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let info = bulk_delete_records!(req, depot, res, users, User, db::delete_user, conn);
     Ok(info)
 }
@@ -194,7 +194,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let realm = match pdata.realm_id {
         Some(realm_id) => {
             if crate::is_kernel_realm_id(realm_id) || !cuser.in_kernel {
@@ -318,7 +318,7 @@ struct UpdateInData {
 pub fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -336,7 +336,7 @@ struct SetPointsInData {
 pub fn set_points(user_id: PathParam<i64>, pdata: JsonBody<SetPointsInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
     if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -354,7 +354,7 @@ struct SetLimitedInData {
 pub fn set_limited(user_id: PathParam<i64>, pdata: JsonBody<SetLimitedInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
     if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -378,7 +378,7 @@ struct SetLockedInData {
 pub fn set_locked(user_id: PathParam<i64>, pdata: JsonBody<SetLockedInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
     if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -402,7 +402,7 @@ struct SetDisabledInData {
 pub fn set_disabled(user_id: PathParam<i64>, pdata: JsonBody<SetDisabledInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
     if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -430,7 +430,7 @@ struct SetInKernelInData {
 pub fn set_in_kernel(user_id: PathParam<i64>, pdata: JsonBody<SetInKernelInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
     if user.in_kernel == pdata.value {
         return Ok(Json(user));
@@ -536,7 +536,7 @@ pub fn invite(pdata: JsonBody<InviteInData>, depot: &mut Depot) -> JsonResult<Us
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let realm = if let Some(realm_id) = pdata.realm_id {
         if crate::is_kernel_realm_id(realm_id) {
             //don't allow in console.
@@ -643,7 +643,7 @@ pub fn invite(pdata: JsonBody<InviteInData>, depot: &mut Depot) -> JsonResult<Us
 #[endpoint(tags("user"))]
 pub fn resend_invitation_email(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -687,7 +687,7 @@ pub fn is_other_taken(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let email_value: String = req.query("email").unwrap_or_default();
     let phone_value: String = req.query("phone").unwrap_or_default();
     let mut taken = false;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     if !ident_name.is_empty() {
         taken = validator::is_ident_name_other_taken(user_id, &ident_name, conn)?;
     }
@@ -711,7 +711,7 @@ pub async fn list_realms(user_id: PathParam<i64>, req: &mut Request, depot: &mut
     // let action = req.query::<String>("action").unwrap_or_else(|| "view".into());
     let for_entity = req.query::<String>("for_entity").unwrap_or_default();
     let for_action = req.query::<String>("for_action").unwrap_or_default();
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .find(user_id.into_inner())
         .first::<User>(conn)?
@@ -764,7 +764,7 @@ pub async fn list_realms(user_id: PathParam<i64>, req: &mut Request, depot: &mut
 #[endpoint(tags("user"))]
 pub async fn list_steward_of_realms(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<Realm> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
 
     if !cuser.in_kernel {
@@ -797,7 +797,7 @@ pub async fn list_steward_of_realms(user_id: PathParam<i64>, req: &mut Request, 
 #[endpoint(tags("user"))]
 pub async fn list_root_of_realms(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<Realm> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
 
     if !cuser.in_kernel && cuser.id != user.id {
@@ -831,7 +831,7 @@ pub async fn list_root_of_realms(user_id: PathParam<i64>, req: &mut Request, dep
 #[endpoint(tags("user"))]
 pub async fn list_roles(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
 
     let query = if cuser.in_kernel || cuser.id == user.id {

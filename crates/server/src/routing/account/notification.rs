@@ -11,7 +11,7 @@ use crate::{AppResult, DepotExt, JsonResult, PagedData, PagedResult, StatusInfo,
 #[endpoint(tags("account"))]
 pub fn show(notification_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Notification> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let notification = notifications::table
         .find(notification_id.into_inner())
         .first::<Notification>(conn)?
@@ -21,7 +21,7 @@ pub fn show(notification_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<No
 #[endpoint(tags("account"))]
 pub fn delete(notification_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
 
     let notification = notifications::table
         .find(notification_id.into_inner())
@@ -32,7 +32,7 @@ pub fn delete(notification_id: PathParam<i64>, depot: &mut Depot) -> AppResult<S
 }
 #[endpoint(tags("account"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let info = bulk_delete_records!(req, depot, res, notifications, Notification, db::delete_notification, conn);
     Ok(info)
 }
@@ -44,7 +44,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Notificat
     if let Some(stream_id) = req.query::<i64>("stream_id") {
         query = query.filter(notifications::stream_id.eq(stream_id));
     }
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let data = query_pagation_data!(
         req,
         res,
@@ -79,7 +79,7 @@ struct NotificationOutGroup {
 pub fn list_groups(req: &mut Request, depot: &mut Depot) -> PagedResult<NotificationOutGroup> {
     let cuser = depot.current_user()?;
     let query = notification_groups::table.filter(notification_groups::owner_id.eq(cuser.id)).into_boxed();
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let mut data = query_pagation_data!(
         req,
         res,
@@ -134,7 +134,7 @@ pub fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> 
     let notification_id: i64 = req.query("id").or_else(|| req.query("notification_id")).unwrap_or(0);
     let stream_id: i64 = req.query("stream_id").unwrap_or(0);
     let thread_id: i64 = req.query("thread_id").unwrap_or(0);
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     if notification_id > 0 {
         diesel::update(
             notifications::table
@@ -173,7 +173,7 @@ pub fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> 
 #[endpoint(tags("account"))]
 pub fn mark_all_read(_req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     diesel::update(notifications::table.filter(notifications::owner_id.eq(cuser.id)))
         .filter(notifications::is_read.eq(false))
         .set((notifications::is_read.eq(true), notifications::read_at.eq(Utc::now())))

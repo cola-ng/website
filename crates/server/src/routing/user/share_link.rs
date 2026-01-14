@@ -11,7 +11,7 @@ use crate::{DepotExt, PagedResult};
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<ShareLink> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::connect()?;
+    let conn = &mut db::conn()?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
