@@ -1,7 +1,8 @@
 [package]
-name = "colang_backend"
-version = "0.1.0"
-edition = "2021"
+name = "colang"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 argon2 = "0.5"

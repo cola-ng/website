@@ -58,17 +58,17 @@ jobs:
         
     - name: Install dependencies
       run: |
-        cd frontend
+        cd front
         npm ci
         
     - name: Type check
       run: |
-        cd frontend
+        cd front
         npm run build
         
     - name: Lint
       run: |
-        cd frontend
+        cd front
         npx eslint src --ext ts,tsx --report-unused-disable-directives --max-warnings 0
 
   build-docker-images:
@@ -86,7 +86,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./backend/Dockerfile
+        file: ./crates/server/Dockerfile
         load: true
         tags: colang-backend:latest
         cache-from: type=gha
@@ -96,7 +96,7 @@ jobs:
       uses: docker/build-push-action@v5
       with:
         context: .
-        file: ./frontend/Dockerfile
+        file: ./front/Dockerfile
         load: true
         tags: colang-frontend:latest
         cache-from: type=gha
