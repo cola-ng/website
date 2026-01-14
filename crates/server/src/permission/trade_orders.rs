@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use crate::AppResult;
 use crate::db::PermitFilter;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 
 table_permit!(trade_orders::table);
 

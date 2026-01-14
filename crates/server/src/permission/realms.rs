@@ -9,13 +9,13 @@ use std::collections::HashSet;
 use crate::AppResult;
 use crate::db::PermitFilter;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 
 macro_rules! all_entity_permit_realms_filter {
     ($user:expr, $model:ty, $entity:expr, $action:expr, $conn:expr) => {{
         use crate::db::PermitFilter;
         use crate::models::*;
-        use crate::schema::*;
+        use crate::db::schema::*;
         use diesel::prelude::*;
         use std::collections::HashSet;
 

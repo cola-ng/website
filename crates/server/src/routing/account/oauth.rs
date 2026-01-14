@@ -8,7 +8,7 @@ use serde::Deserialize;
 use std::ops::Add;
 
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppResult, DepotExt, JsonResult, PagedResult, StatusInfo, db};
 
 #[endpoint(tags("account"))]

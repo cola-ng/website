@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::AppResult;
 use crate::db::url_filter::JoinedOption;
-use crate::schema::*;
+use crate::db::schema::*;
 
 pub static REALM_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
     vec!["id", "name", "kind", "level", "labels", "updated_by", "created_by"]

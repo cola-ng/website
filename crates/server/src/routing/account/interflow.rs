@@ -6,7 +6,7 @@ pub mod stream {
 
     use crate::models::interflow::*;
     use crate::permission::Accessible;
-    use crate::schema::*;
+    use crate::db::schema::*;
     use crate::{AppResult, DepotExt, JsonResult, StatusInfo, db};
 
     #[endpoint(tags("account"))]

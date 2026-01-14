@@ -5,7 +5,7 @@ use salvo::prelude::*;
 use crate::db;
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{DepotExt, PagedResult};
 
 #[endpoint(tags("user"))]

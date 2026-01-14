@@ -7,7 +7,7 @@ use salvo::prelude::*;
 use crate::models::wallet::*;
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppError, AppResult, DepotExt, PagedResult, StatusInfo, db};
 
 #[endpoint(tags("wallet"))]

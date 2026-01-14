@@ -17,7 +17,7 @@ use crate::db;
 use crate::models::*;
 use crate::permission::Accessible;
 use crate::routers::full_routed;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::things::realm::create_user_realm;
 use crate::utils::{password, validator};
 use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo, things};

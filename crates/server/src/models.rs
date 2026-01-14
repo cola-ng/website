@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::schema::{
+use crate::db::schema::{
     desktop_auth_codes, learning_records, oauth_identities, oauth_login_sessions, role_permissions,
     roles, user_roles, users,
 };

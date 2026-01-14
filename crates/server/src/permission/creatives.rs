@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use crate::AppResult;
 use crate::db::PermitFilter;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 
 table_permit!(creatives::table);
 pub fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut PgConnection) -> AppResult<bool> {

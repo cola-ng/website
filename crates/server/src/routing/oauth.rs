@@ -12,7 +12,7 @@ use serde_json::Value;
 
 use crate::models::trade::*;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::utils::{password, validator};
 use crate::{AppError, AppResult, JsonResult, StatusInfo, db, things};
 

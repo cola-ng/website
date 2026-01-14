@@ -2,7 +2,7 @@ use salvo::prelude::*;
 
 use crate::models::wallet::*;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{DepotExt, PagedResult, db};
 
 #[endpoint(tags("wallet"))]

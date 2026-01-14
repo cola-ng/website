@@ -7,7 +7,7 @@ use serde::Deserialize;
 
 use crate::db;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::utils::validator;
 use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo};
 

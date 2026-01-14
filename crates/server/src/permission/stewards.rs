@@ -7,7 +7,7 @@ use crate::AppResult;
 use crate::db::PermitFilter;
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 
 table_permit!(stewards::table);
 pub fn all_permitted_in_kernel(user: &User, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
@@ -47,7 +47,7 @@ pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppR
 
 fn steward_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
     use crate::models::*;
-    use crate::schema::*;
+    use crate::db::schema::*;
     use diesel::prelude::*;
     if user.in_kernel {
         let role_ids_query = role_users::table.filter(role_users::user_id.eq(user.id)).select(role_users::role_id);

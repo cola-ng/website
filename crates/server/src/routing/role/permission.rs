@@ -8,7 +8,7 @@ use serde::Deserialize;
 
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppError, AppResult, DepotExt, data, db};
 
 #[endpoint(tags("role"))]

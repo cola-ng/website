@@ -10,6 +10,7 @@ use url::Url;
 
 extern crate tracing;
 mod config;
+pub mod schema;
 
 pub use crate::config::DbConfig;
 

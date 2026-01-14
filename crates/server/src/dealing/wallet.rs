@@ -7,7 +7,7 @@ use ulid::Ulid;
 use crate::models::trade::*;
 use crate::models::wallet::*;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::utils::email::disable_track_img;
 use crate::{AppResult, DeployStage, db};
 

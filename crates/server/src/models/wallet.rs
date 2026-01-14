@@ -7,7 +7,7 @@ use serde_json::Value;
 
 use crate::db::url_filter::JoinedOption;
 use crate::models::trade::Coupon;
-use crate::schema::*;
+use crate::db::schema::*;
 
 pub static BALANCE_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
     vec!["id", "realm_id", "kind", "current_amount", "initial_amount"]

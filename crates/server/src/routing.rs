@@ -11,12 +11,12 @@ use uuid::Uuid;
 use crate::auth;
 use crate::config::AppConfig;
 use crate::db::DbPool;
+use crate::db::schema;
 use crate::db::with_conn;
 use crate::models::{
     DesktopAuthCode, LearningRecord, NewDesktopAuthCode, NewLearningRecord, NewOauthIdentity,
     NewRole, NewRolePermission, NewUser, NewUserRole, OauthIdentity, UpdateUserProfile, User,
 };
-use crate::schema;
 
 pub mod account;
 
@@ -144,9 +144,9 @@ pub async fn register(
             .get_result::<User>(conn)?;
 
         if is_first {
-            use crate::schema::role_permissions::dsl as rp;
-            use crate::schema::roles::dsl as r;
-            use crate::schema::user_roles::dsl as ur;
+            use crate::db::schema::role_permissions::dsl as rp;
+            use crate::db::schema::roles::dsl as r;
+            use crate::db::schema::user_roles::dsl as ur;
 
             let role = diesel::insert_into(r::roles)
                 .values(&NewRole {
@@ -619,8 +619,8 @@ impl Handler for RequirePermission {
         };
         let operation = self.operation;
         let allowed = with_conn(pool, move |conn| {
-            use crate::schema::role_permissions::dsl as rp;
-            use crate::schema::user_roles::dsl as ur;
+            use crate::db::schema::role_permissions::dsl as rp;
+            use crate::db::schema::user_roles::dsl as ur;
             use diesel::prelude::*;
             let exists = diesel::select(diesel::dsl::exists(
                 rp::role_permissions
@@ -665,7 +665,7 @@ async fn admin_delete_user(
     let pool = get_pool()?;
     let user_id = get_path_uuid(req, "user_id")?;
     with_conn(pool, move |conn| {
-        use crate::schema::users::dsl::*;
+        use crate::db::schema::users::dsl::*;
         diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
         Ok(())
     })
@@ -716,7 +716,7 @@ async fn oauth_login(
     let email = input.email.clone().map(|e| e.trim().to_lowercase());
 
     let identity: OauthIdentity = with_conn(pool, move |conn| {
-        use crate::schema::oauth_identities::dsl as oi;
+        use crate::db::schema::oauth_identities::dsl as oi;
         let existing = oi::oauth_identities
             .filter(oi::provider.eq(&provider))
             .filter(oi::provider_user_id.eq(&provider_user_id))
@@ -745,7 +745,7 @@ async fn oauth_login(
     if let Some(user_id) = identity.user_id {
         let pool2 = get_pool()?;
         let user: User = with_conn(pool2, move |conn| {
-            use crate::schema::users::dsl::*;
+            use crate::db::schema::users::dsl::*;
             users.filter(id.eq(user_id)).first::<User>(conn)
         })
         .await
@@ -796,8 +796,8 @@ async fn oauth_bind(
     let oauth_identity_id = input.oauth_identity_id;
 
     let (user, _identity): (User, OauthIdentity) = with_conn(pool, move |conn| {
-        use crate::schema::oauth_identities::dsl as oi;
-        use crate::schema::users::dsl as u;
+        use crate::db::schema::oauth_identities::dsl as oi;
+        use crate::db::schema::users::dsl as u;
 
         let user = u::users
             .filter(u::email.eq(&email_input))
@@ -856,8 +856,8 @@ async fn oauth_skip(
     let email_override = input.email.clone().map(|v| v.trim().to_lowercase());
 
     let user: User = with_conn(pool, move |conn| {
-        use crate::schema::oauth_identities::dsl as oi;
-        use crate::schema::users::dsl as u;
+        use crate::db::schema::oauth_identities::dsl as oi;
+        use crate::db::schema::users::dsl as u;
 
         let identity = oi::oauth_identities
             .filter(oi::id.eq(oauth_identity_id))

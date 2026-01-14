@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use crate::db;
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::utils::validator;
 use crate::{AppError, AppResult, DepotExt, ErrorItem, JsonResult, StatusInfo};
 

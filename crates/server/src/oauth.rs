@@ -10,7 +10,7 @@ use salvo::http::StatusError;
 
 use crate::AppResult;
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 
 pub struct OauthConfig {
     pub client_id: String,

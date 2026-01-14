@@ -6,7 +6,7 @@ use serde::Deserialize;
 
 use crate::db::{self};
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppError, DepotExt, JsonResult, PagedResult};
 
 #[endpoint(tags("account"))]

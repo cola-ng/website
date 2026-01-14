@@ -3,7 +3,6 @@ mod config;
 mod db;
 mod models;
 mod routing;
-mod schema;
 
 use diesel_migrations::{EmbeddedMigrations, MigrationHarness, embed_migrations};
 use salvo::prelude::*;

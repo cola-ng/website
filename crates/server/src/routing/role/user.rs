@@ -4,7 +4,7 @@ use salvo::prelude::*;
 
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppResult, DepotExt, PagedResult, StatusInfo, db};
 
 #[endpoint(tags("role"))]

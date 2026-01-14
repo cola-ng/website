@@ -3,7 +3,7 @@ use salvo::oapi::extract::*;
 use salvo::prelude::*;
 
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{JsonResult, db};
 
 pub fn authed_root(path: impl Into<String>) -> Router {

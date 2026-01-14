@@ -5,7 +5,7 @@ use salvo::prelude::*;
 
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppResult, DepotExt, JsonResult, db, things, utils};
 
 #[endpoint(tags("user"))]

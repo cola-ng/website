@@ -7,7 +7,7 @@ use std::collections::{HashMap, HashSet};
 use crate::db;
 use crate::models::*;
 use crate::permission::Accessible;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{DepotExt, JsonResult};
 
 #[derive(Serialize, Deserialize, ToSchema, Debug)]

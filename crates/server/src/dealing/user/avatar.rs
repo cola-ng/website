@@ -4,7 +4,7 @@ use diesel::prelude::*;
 use salvo::http::form::FilePart;
 
 use crate::models::*;
-use crate::schema::*;
+use crate::db::schema::*;
 use crate::{AppError, AppResult, db, utils};
 
 pub static SCALED_SIZES: [usize; 3] = [1280, 640, 320];

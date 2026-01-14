@@ -80,7 +80,7 @@ macro_rules! stock_entity_impl {
 
 macro_rules! filter_for_realm_owner {
     ($fragments:expr, $user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use crate::schema::*;
+        use crate::db::schema::*;
         use diesel::prelude::*;
         use $edb as edb;
 
