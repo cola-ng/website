@@ -6,7 +6,7 @@ services:
     ports:
       - "6019:6019"
     environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/colang_db
+      - DATABASE_URL=postgresql://user:password@db:5432/colang
       - JWT_SECRET=your_jwt_secret_key
       - BIND_ADDR=0.0.0.0:6019
     depends_on:
