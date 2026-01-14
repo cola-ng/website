@@ -33,7 +33,6 @@ For how to use salvo, please refer to its documentation: https://salvo.rs/ and i
 用户可以在网站上查看自己的学习记录, 如复习计划, 错误记录等.
 用户可以通过第三方平台通过  oauth  或者 oidc  登录本网站.
 第三方平台登录后, 前端页面 (front) 里面需要给出一个当前用户是否需要绑定现有用户的一个选项. 用户可以选择绑定或者跳过.
-跟用户账号相关的 route 信息放在routing/account.rs 和 controllers/account 文件夹中.
 管理员有权限可以删除用户等.
 
 我们还有一个桌面的系统, 所以需要后端协同前端提供一个从桌面系统登录到网站的接口. 用户登录成功后跳转到用户的桌面应用中.

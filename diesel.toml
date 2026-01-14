@@ -1,0 +1,6 @@
+[print_schema]
+file = "crates/server/src/db/schema.rs"
+
+[migrations_directory]
+dir = "crates/server/migrations"
+
