@@ -11,13 +11,14 @@ chrono = { workspace = true }
 diesel = { workspace = true, features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }
 diesel_migrations = { workspace = true }
 dotenvy = { workspace = true }
+figment = { workspace = true, features = ["env", "toml", "yaml", "json"] }
 hex = { workspace = true }
 jsonwebtoken = { workspace = true }
 rand = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
-salvo = { workspace = true, features = ["cors", "logging", "oapi", "compression"] }
+salvo = { workspace = true, features = ["cors", "logging", "oapi", "compression", "rustls"] }
 scheduled-thread-pool = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }

@@ -61,7 +61,7 @@ pub fn decode_access_token(token: &str, jwt_secret: &str) -> Result<AccessClaims
     Ok(data.claims)
 }
 
-pub fn random_desktop_code() -> String {
+pub fn random_code() -> String {
     let mut bytes = [0u8; 32];
     OsRng.fill_bytes(&mut bytes);
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)

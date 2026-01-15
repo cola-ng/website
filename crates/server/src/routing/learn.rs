@@ -4,7 +4,8 @@ use salvo::http::StatusCode;
 use salvo::prelude::*;
 use serde::Deserialize;
 
-use crate::db::{schema, with_conn};
+use crate::db::schema::*;
+use crate::db::with_conn;
 use crate::models::learn::*;
 
 // ============================================================================
@@ -76,8 +77,8 @@ pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Resul
         .ok_or_else(|| bad_request("missing id"))?;
 
     let dialogues: Vec<SceneDialogue> = with_conn(move |conn| {
-        asset_dialogues
-            .filter(scene_id.eq(scene_id))
+        asset_dialogues::table
+            .filter(asset_dialogues::scene_id.eq(scene_id))
             .load::<SceneDialogue>(conn)
     })
     .await
@@ -97,9 +98,9 @@ pub async fn get_asset_dialogue_turns(
         .ok_or_else(|| bad_request("missing dialogue_id"))?;
 
     let turns: Vec<DialogueTurn> = with_conn(move |conn| {
-        asset_dialogue_turns
-            .filter(dialogue_id.eq(dialogue_id))
-            .order(turn_number.asc())
+        asset_dialogue_turns::table
+            .filter(asset_dialogue_turns::dialogue_id.eq(dialogue_id))
+            .order(asset_dialogue_turns::turn_number.asc())
             .load::<DialogueTurn>(conn)
     })
     .await
@@ -269,14 +270,18 @@ pub async fn list_learn_issue_words(
 
     let words: Vec<IssueWord> = with_conn(move |conn| {
         let mut query = learn_issue_words
-            .filter(user_id.eq(user_id))
-            .order(created_at.desc())
+            .filter(learn_issue_words::user_id.eq(user_id))
+            .order(learn_issue_words::created_at.desc())
             .limit(limit)
             .into_boxed();
 
         if due_only {
             let now = Utc::now();
-            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
+            query = query.filter(
+                learn_issue_words::next_review_at
+                    .is_null()
+                    .or(learn_issue_words::next_review_at.le(now)),
+            );
         }
 
         query.load::<IssueWord>(conn)
@@ -363,14 +368,14 @@ pub async fn list_sessions(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let sessions: Vec<LearningSession> = with_conn(move |conn| {
-        let mut query = learn_sessions
-            .filter(user_id.eq(user_id))
-            .order(started_at.desc())
+        let mut query = learn_sessions::table
+            .filter(learn_sessions::user_id.eq(user_id))
+            .order(learn_sessions::started_at.desc())
             .limit(limit)
             .into_boxed();
 
         if let Some(st) = session_type_param {
-            query = query.filter(session_type.eq(st));
+            query = query.filter(learn_sessions::session_type.eq(st));
         }
 
         query.load::<LearningSession>(conn)
@@ -459,9 +464,9 @@ pub async fn update_session(
 
     let session: LearningSession = with_conn(move |conn| {
         diesel::update(
-            learn_sessions
-                .filter(session_id.eq(session_id_param))
-                .filter(user_id.eq(user_id)),
+            learn_sessions::table
+                .filter(learn_sessions::session_id.eq(session_id_param))
+                .filter(learn_sessions::user_id.eq(user_id)),
         )
         .set(&update)
         .get_result::<LearningSession>(conn)
@@ -502,14 +507,14 @@ pub async fn list_learn_conversations(
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
     let convos: Vec<Conversation> = with_conn(move |conn| {
-        let mut query = learn_conversations
-            .filter(user_id.eq(user_id))
-            .order(created_at.desc())
+        let mut query = learn_conversations::table
+            .filter(learn_conversations::user_id.eq(user_id))
+            .order(learn_conversations::created_at.desc())
             .limit(limit)
             .into_boxed();
 
         if let Some(sid) = session_id_param {
-            query = query.filter(session_id.eq(sid));
+            query = query.filter(learn_conversations::session_id.eq(sid));
         }
 
         query.load::<Conversation>(conn)
@@ -583,15 +588,19 @@ pub async fn list_vocabulary(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let vocab: Vec<UserVocabulary> = with_conn(move |conn| {
-        let mut query = learn_vocabularies
-            .filter(user_id.eq(user_id))
-            .order(first_seen_at.desc())
+        let mut query = learn_vocabularies::table
+            .filter(learn_vocabularies::user_id.eq(user_id))
+            .order(learn_vocabularies::first_seen_at.desc())
             .limit(limit)
             .into_boxed();
 
         if due_only {
             let now = Utc::now();
-            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
+            query = query.filter(
+                learn_vocabularies::next_review_at
+                    .is_null()
+                    .or(learn_vocabularies::next_review_at.le(now)),
+            );
         }
 
         query.load::<UserVocabulary>(conn)
@@ -733,9 +742,9 @@ pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> Result<
     let user_id = get_user_id(depot)?;
 
     let achievements: Vec<UserAchievement> = with_conn(move |conn| {
-        learn_achievements
-            .filter(user_id.eq(user_id))
-            .order(earned_at.desc())
+        learn_achievements::table
+            .filter(learn_achievements::user_id.eq(user_id))
+            .order(learn_achievements::earned_at.desc())
             .load::<UserAchievement>(conn)
     })
     .await

@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use salvo::catcher::Catcher;
@@ -5,18 +7,17 @@ use salvo::compression::{Compression, CompressionLevel};
 use salvo::conn::rustls::{Keycert, RustlsConfig};
 use salvo::conn::tcp::DynTcpAcceptors;
 use salvo::cors::{self, AllowHeaders, Cors};
-use salvo::http::Method;
+use salvo::http::{Method, header};
 use salvo::logging::Logger;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::OnceLock;use salvo::http::header;
 
 use crate::auth;
 use crate::config::AppConfig;
-use crate::db::{schema, with_conn};
-use crate::models::auth::AuthCode;
-use crate::models::base::{NewUser, User};
+use crate::db::schema::*;
+use crate::db::with_conn;
+use crate::models::{AuthCode, NewUser, User};
 
 pub mod account;
 pub mod asset;
@@ -99,8 +100,8 @@ pub async fn register(
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
     let new_user = NewUser {
-        email: email.clone(),
         name: input.name.clone(),
+        email: Some(email.clone()),
         phone: None,
     };
 
@@ -155,7 +156,7 @@ pub async fn register(
     let new_password = NewPassword {
         hash: password_hash,
     };
-    let config = get_config()?;
+    let config = config::get()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -195,7 +196,7 @@ pub async fn login(
         return Err(StatusError::unauthorized().brief("invalid credentials"));
     }
 
-    let config = get_config()?;
+    let config = config::get()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -213,7 +214,7 @@ pub async fn auth_required(
     depot: &mut Depot,
     _res: &mut Response,
 ) -> Result<(), StatusError> {
-    let config = get_config()?;
+    let config = config::get()?;
     let header_value = req
         .headers()
         .get(header::AUTHORIZATION)
@@ -308,7 +309,7 @@ pub async fn create_desktop_code(
 
     let user_id = get_user_id(depot)?;
 
-    let code = auth::random_desktop_code();
+    let code = auth::random_code();
     let code_hash = auth::hash_desktop_code(&code);
     let expires_at = Utc::now() + chrono::Duration::minutes(5);
     let record = NewAuthCode {
@@ -362,7 +363,7 @@ pub async fn consume_code(
         return Err(bad_request("code and redirect_uri are required"));
     }
 
-    let config = get_config()?;
+    let config = config::get()?;
     let code_hash_value = auth::hash_desktop_code(&input.code);
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
@@ -468,12 +469,6 @@ pub async fn chat_send(
     Ok(())
 }
 
-fn get_config() -> Result<&'static AppConfig, StatusError> {
-    APP_CONFIG
-        .get()
-        .ok_or_else(|| StatusError::internal_server_error().brief("missing app config"))
-}
-
 fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
     depot
         .get::<i64>("user_id")
@@ -505,9 +500,10 @@ impl Handler for RequirePermission {
         };
         let operation = self.operation;
         let allowed = with_conn(move |conn| {
+            use diesel::prelude::*;
+
             use crate::db::schema::role_permissions::dsl as rp;
             use crate::db::schema::user_roles::dsl as ur;
-            use diesel::prelude::*;
             let exists = diesel::select(diesel::dsl::exists(
                 rp::role_permissions
                     .inner_join(ur::user_roles.on(ur::role_id.eq(rp::role_id)))
@@ -633,7 +629,7 @@ async fn oauth_login(
             .await
             .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
 
-        let config = get_config()?;
+        let config = config::get()?;
         let access_token =
             auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
                 .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -703,7 +699,7 @@ async fn oauth_login(
 //     .await
 //     .map_err(|_| StatusError::unauthorized().brief("invalid credentials or oauth identity"))?;
 
-//     let config = get_config()?;
+//     let config = config::get()?;
 //     let access_token =
 //         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
 //             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -753,7 +749,7 @@ async fn oauth_login(
 //                 format!("{}@{}.local", identity.provider_user_id, identity.provider)
 //             });
 
-//         let password_hash = crate::auth::hash_password(&crate::auth::random_desktop_code())
+//         let password_hash = crate::auth::hash_password(&crate::auth::random_code())
 //             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
 
 //         let user = diesel::insert_into(u::users)
@@ -774,7 +770,7 @@ async fn oauth_login(
 //     .await
 //     .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
-//     let config = get_config()?;
+//     let config = config::get()?;
 //     let access_token =
 //         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
 //             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;

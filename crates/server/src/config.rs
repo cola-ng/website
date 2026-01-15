@@ -1,4 +1,11 @@
+use std::iter::once;
+use std::ops::Deref;
+use std::path::Path;
+use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
+
+use figment::Figment;
+use figment::providers::{Env, Format, Json, Toml, Yaml};
 
 #[derive(Clone)]
 pub struct AppConfig {
@@ -38,4 +45,28 @@ impl AppConfig {
             jwt_ttl: Duration::from_secs(jwt_ttl_seconds),
         })
     }
+}
+
+pub static CONFIG: OnceLock<AppConfig> = OnceLock::new();
+
+// pub fn init(config_path: impl AsRef<Path>) {
+//     let config_path = config_path.as_ref();
+//     if !config_path.exists() {
+//         panic!("config file not found: `{}`", config_path.display());
+//     }
+
+//     let raw_conf = figment_from_path(config_path).merge(Env::prefixed("COLANG_").global());
+//     let conf = match raw_conf.extract::<AppConfig>() {
+//         Ok(s) => s,
+//         Err(e) => {
+//             eprintln!("it looks like your config is invalid. The following error occurred: {e}");
+//             std::process::exit(1);
+//         }
+//     };
+
+//     CONFIG.set(conf).expect("config should be set once");
+// }
+
+pub fn get() -> &'static AppConfig {
+    CONFIG.get().unwrap()
 }

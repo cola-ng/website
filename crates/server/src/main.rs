@@ -5,11 +5,13 @@ mod error;
 mod models;
 mod routing;
 pub use error::AppError;
-
 use salvo::prelude::*;
 
 use crate::config::AppConfig;
 use crate::db::DbConfig;
+
+#[derive(Serialize, ToSchema, Clone, Copy, Debug)]
+pub struct EmptyObject {}
 
 pub type AppResult<T> = Result<T, AppError>;
 pub type DieselResult<T> = Result<T, diesel::result::Error>;

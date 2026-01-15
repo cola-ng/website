@@ -2,7 +2,6 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-
 use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};

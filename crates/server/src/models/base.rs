@@ -2,7 +2,6 @@ use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-
 use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
@@ -33,7 +32,10 @@ use crate::db::schema::*;
 //         "phones", "id"=>"user_id", "p.value"=>"value";
 //     ]
 // });
-// pub static USER_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or ident_name ilike E'%{{data}}%' or display_name ilike E'%{{data}}%' or id in (select user_id from emails where emails.value ilike E'%{{data}}%') or id in (select user_id from phones where phones.value ilike E'%{{data}}%')";
+// pub static USER_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or ident_name ilike
+// E'%{{data}}%' or display_name ilike E'%{{data}}%' or id in (select user_id from emails where
+// emails.value ilike E'%{{data}}%') or id in (select user_id from phones where phones.value ilike
+// E'%{{data}}%')";
 #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
 pub struct User {
     pub id: i64,
@@ -152,8 +154,8 @@ pub struct NewPassword {
 //     pub description: Option<String>,
 // }
 
-// #[derive(Identifiable, Insertable, Queryable, QueryableByName, Serialize, ToSchema, Clone, Debug)]
-// #[diesel(table_name = permissions)]
+// #[derive(Identifiable, Insertable, Queryable, QueryableByName, Serialize, ToSchema, Clone,
+// Debug)] #[diesel(table_name = permissions)]
 // pub struct Permission {
 //     pub id: i64,
 //     pub role_id: i64,
@@ -182,8 +184,8 @@ pub struct NewPassword {
 //         .map(String::from)
 //         .collect()
 // });
-// pub static EMAIL_SUBSCRIPTION_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
-// /// 如果对应的记录不存在，认为是默认接收提醒邮件的。
+// pub static EMAIL_SUBSCRIPTION_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> =
+// LazyLock::new(Vec::new); /// 如果对应的记录不存在，认为是默认接收提醒邮件的。
 // /// - trade_order_created
 // /// - stock_exhibit_develop_approved(应该不需要，现在只发内部管理员)
 // /// - interflow_thread_created
@@ -398,9 +400,9 @@ pub struct NewAccessToken<'a> {
 //         .collect()
 // });
 // pub static NOTIFICATION_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
-// pub static NOTIFICATION_SEARCH_TMPL: &str = r#"id::varchar(255)='{{data}}' or subject ilike E'%{{data}}%' or body ilike E'%{{data}}%'"#;
-// #[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
-// #[diesel(table_name = notifications)]
+// pub static NOTIFICATION_SEARCH_TMPL: &str = r#"id::varchar(255)='{{data}}' or subject ilike
+// E'%{{data}}%' or body ilike E'%{{data}}%'"#; #[derive(Identifiable, Insertable, Queryable,
+// Serialize, ToSchema, Clone, Debug)] #[diesel(table_name = notifications)]
 // pub struct Notification {
 //     pub id: i64,
 //     pub owner_id: i64,
@@ -443,9 +445,9 @@ pub struct NewAccessToken<'a> {
 //         .collect()
 // });
 // pub static EMAIL_MESSAGE_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
-// pub static EMAIL_MESSAGE_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or subject ilike E'%{{data}}%' or recipient_email ilike E'%{{data}}%'";
-// #[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
-// #[diesel(table_name = email_messages)]
+// pub static EMAIL_MESSAGE_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or subject ilike
+// E'%{{data}}%' or recipient_email ilike E'%{{data}}%'"; #[derive(Identifiable, Insertable,
+// Queryable, Serialize, ToSchema, Clone, Debug)] #[diesel(table_name = email_messages)]
 // pub struct EmailMessage {
 //     pub id: i64,
 //     pub kind: String,

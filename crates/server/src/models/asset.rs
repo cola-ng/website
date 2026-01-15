@@ -565,7 +565,6 @@ pub struct UpdateUserVocabulary {
     pub next_review_at: Option<DateTime<Utc>>,
 }
 
-
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_suggestions)]
 #[diesel(belongs_to(AssistantConversation, foreign_key = conversation_id))]
