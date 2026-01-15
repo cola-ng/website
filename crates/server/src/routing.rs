@@ -10,7 +10,7 @@ use salvo::logging::Logger;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::sync::OnceLock;
+use std::sync::OnceLock;use salvo::http::header;
 
 use crate::auth;
 use crate::config::AppConfig;
@@ -311,7 +311,7 @@ pub async fn create_desktop_code(
     let code = auth::random_desktop_code();
     let code_hash = auth::hash_desktop_code(&code);
     let expires_at = Utc::now() + chrono::Duration::minutes(5);
-    let record = NewDesktopAuthCode {
+    let record = NewAuthCode {
         user_id,
         code_hash: code_hash.clone(),
         redirect_uri: input.redirect_uri.clone(),
@@ -319,10 +319,10 @@ pub async fn create_desktop_code(
         expires_at,
     };
 
-    let _saved: DesktopAuthCode = with_conn(move |conn| {
+    let _saved: AuthCode = with_conn(move |conn| {
         diesel::insert_into(auth_codes)
             .values(&record)
-            .get_result::<DesktopAuthCode>(conn)
+            .get_result::<AuthCode>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create desktop code"))?;
@@ -368,12 +368,12 @@ pub async fn consume_code(
     let now = Utc::now();
 
     let user_id: i64 = with_conn(move |conn| {
-        let item: DesktopAuthCode = auth_codes
+        let item: AuthCode = auth_codes
             .filter(code_hash.eq(code_hash_value))
             .filter(redirect_uri.eq(redirect_uri_value))
             .filter(used_at.is_null())
             .filter(expires_at.gt(now))
-            .first::<DesktopAuthCode>(conn)?;
+            .first::<AuthCode>(conn)?;
 
         diesel::update(auth_codes.filter(id.eq(item.id)))
             .set(used_at.eq(now))

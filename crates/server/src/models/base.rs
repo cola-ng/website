@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::AppResult;
 use crate::db::schema::*;
-use crate::db::url_filter::JoinedOption;
+// use crate::db::url_filter::JoinedOption;
 
 // pub static USER_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
 //     vec![
@@ -69,6 +69,8 @@ pub struct User {
 #[diesel(table_name = users)]
 pub struct NewUser {
     pub name: String,
+    pub email: Option<String>,
+    pub phone: Option<String>,
     pub display_name: Option<String>,
     pub inviter_id: Option<i64>,
     pub profile: Value,

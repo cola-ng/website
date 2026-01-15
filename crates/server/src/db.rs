@@ -12,7 +12,7 @@ pub mod schema;
 
 pub use crate::config::DbConfig;
 
-pub mod full_text_search;
+// pub mod full_text_search;
 
 pub mod pool;
 pub use pool::{DieselPool, PgPooledConnection, PoolError};

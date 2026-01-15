@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use crate::AppResult;
 use crate::db::schema::*;
-use crate::db::url_filter::JoinedOption;
+// use crate::db::url_filter::JoinedOption;
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
 #[diesel(table_name = auth_codes)]
