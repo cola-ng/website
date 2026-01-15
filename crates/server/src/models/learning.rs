@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::schema::{
-    assistant_conversations, assistant_suggestions, classic_dialogue_clips, classic_dialogue_sources,
-    conversation_annotations, conversations, daily_stats, dialogue_turns, issue_words, key_phrases,
-    learning_sessions, reading_exercises, reading_practice_attempts, reading_sentences, scenarios,
-    scene_dialogues, user_achievements, user_vocabulary, word_practice_log,
+    assistant_learn_conversations, learn_suggestions, asset_classic_clips, asset_classic_sources,
+    learn_conversation_annotations, learn_conversations, learn_daily_stats, asset_dialogue_turns, learn_issue_words, asset_phrases,
+    learn_sessions, asset_read_exercises, learn_read_practices, asset_read_sentences, scenes,
+    asset_dialogues, learn_achievements, learn_vocabularies, learn_word_practices,
 };
 
 // ============================================================================
@@ -15,8 +15,8 @@ use crate::db::schema::{
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = scenarios)]
-pub struct Scenario {
+#[diesel(table_name = scenes)]
+pub struct Scene {
     pub id: i64,
     pub name_en: String,
     pub name_zh: String,
@@ -31,8 +31,8 @@ pub struct Scenario {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = scenarios)]
-pub struct NewScenario {
+#[diesel(table_name = scenes)]
+pub struct NewScene {
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
@@ -45,11 +45,11 @@ pub struct NewScenario {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = scene_dialogues)]
-#[diesel(belongs_to(Scenario))]
+#[diesel(table_name = asset_dialogues)]
+#[diesel(belongs_to(Scene))]
 pub struct SceneDialogue {
     pub id: i64,
-    pub scenario_id: i64,
+    pub scene_id: i64,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
@@ -61,9 +61,9 @@ pub struct SceneDialogue {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = scene_dialogues)]
+#[diesel(table_name = asset_dialogues)]
 pub struct NewSceneDialogue {
-    pub scenario_id: i64,
+    pub scene_id: i64,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
@@ -74,11 +74,11 @@ pub struct NewSceneDialogue {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = dialogue_turns)]
+#[diesel(table_name = asset_dialogue_turns)]
 #[diesel(belongs_to(SceneDialogue))]
 pub struct DialogueTurn {
     pub id: i64,
-    pub scene_dialogue_id: i64,
+    pub dialogue_id: i64,
     pub turn_number: i32,
     pub speaker_role: String,
     pub speaker_name: Option<String>,
@@ -86,14 +86,14 @@ pub struct DialogueTurn {
     pub content_zh: String,
     pub audio_path: Option<String>,
     pub phonetic_transcription: Option<String>,
-    pub key_phrases: Option<Value>,
+    pub asset_phrases: Option<Value>,
     pub notes: Option<String>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dialogue_turns)]
+#[diesel(table_name = asset_dialogue_turns)]
 pub struct NewDialogueTurn {
-    pub scene_dialogue_id: i64,
+    pub dialogue_id: i64,
     pub turn_number: i32,
     pub speaker_role: String,
     pub speaker_name: Option<String>,
@@ -101,12 +101,12 @@ pub struct NewDialogueTurn {
     pub content_zh: String,
     pub audio_path: Option<String>,
     pub phonetic_transcription: Option<String>,
-    pub key_phrases: Option<Value>,
+    pub asset_phrases: Option<Value>,
     pub notes: Option<String>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = classic_dialogue_sources)]
+#[diesel(table_name = asset_classic_sources)]
 pub struct ClassicDialogueSource {
     pub id: i64,
     pub source_type: String,
@@ -121,7 +121,7 @@ pub struct ClassicDialogueSource {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = classic_dialogue_sources)]
+#[diesel(table_name = asset_classic_sources)]
 pub struct NewClassicDialogueSource {
     pub source_type: String,
     pub title: String,
@@ -134,7 +134,7 @@ pub struct NewClassicDialogueSource {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = classic_dialogue_clips)]
+#[diesel(table_name = asset_classic_clips)]
 #[diesel(belongs_to(ClassicDialogueSource, foreign_key = source_id))]
 pub struct ClassicDialogueClip {
     pub id: i64,
@@ -157,7 +157,7 @@ pub struct ClassicDialogueClip {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = classic_dialogue_clips)]
+#[diesel(table_name = asset_classic_clips)]
 pub struct NewClassicDialogueClip {
     pub source_id: i64,
     pub clip_title_en: String,
@@ -176,7 +176,7 @@ pub struct NewClassicDialogueClip {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = reading_exercises)]
+#[diesel(table_name = asset_read_exercises)]
 pub struct ReadingExercise {
     pub id: i64,
     pub title_en: String,
@@ -189,7 +189,7 @@ pub struct ReadingExercise {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = reading_exercises)]
+#[diesel(table_name = asset_read_exercises)]
 pub struct NewReadingExercise {
     pub title_en: String,
     pub title_zh: String,
@@ -200,7 +200,7 @@ pub struct NewReadingExercise {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = reading_sentences)]
+#[diesel(table_name = asset_read_sentences)]
 #[diesel(belongs_to(ReadingExercise, foreign_key = exercise_id))]
 pub struct ReadingSentence {
     pub id: i64,
@@ -215,7 +215,7 @@ pub struct ReadingSentence {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = reading_sentences)]
+#[diesel(table_name = asset_read_sentences)]
 pub struct NewReadingSentence {
     pub exercise_id: i64,
     pub sentence_order: i32,
@@ -228,7 +228,7 @@ pub struct NewReadingSentence {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = key_phrases)]
+#[diesel(table_name = asset_phrases)]
 pub struct KeyPhrase {
     pub id: i64,
     pub phrase_en: String,
@@ -244,7 +244,7 @@ pub struct KeyPhrase {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = key_phrases)]
+#[diesel(table_name = asset_phrases)]
 pub struct NewKeyPhrase {
     pub phrase_en: String,
     pub phrase_zh: String,
@@ -261,7 +261,7 @@ pub struct NewKeyPhrase {
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = issue_words)]
+#[diesel(table_name = learn_issue_words)]
 pub struct IssueWord {
     pub id: i64,
     pub user_id: i64,
@@ -280,7 +280,7 @@ pub struct IssueWord {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = issue_words)]
+#[diesel(table_name = learn_issue_words)]
 pub struct NewIssueWord {
     pub user_id: i64,
     pub word: String,
@@ -291,7 +291,7 @@ pub struct NewIssueWord {
 }
 
 #[derive(AsChangeset, Deserialize)]
-#[diesel(table_name = issue_words)]
+#[diesel(table_name = learn_issue_words)]
 pub struct UpdateIssueWord {
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
@@ -301,14 +301,14 @@ pub struct UpdateIssueWord {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = learning_sessions)]
+#[diesel(table_name = learn_sessions)]
 pub struct LearningSession {
     pub id: i64,
     pub session_id: String,
     pub user_id: i64,
     pub session_type: Option<String>,
-    pub scenario_id: Option<i64>,
-    pub scene_dialogue_id: Option<i64>,
+    pub scene_id: Option<i64>,
+    pub dialogue_id: Option<i64>,
     pub classic_clip_id: Option<i64>,
     pub started_at: DateTime<Utc>,
     pub ended_at: Option<DateTime<Utc>>,
@@ -323,18 +323,18 @@ pub struct LearningSession {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = learning_sessions)]
+#[diesel(table_name = learn_sessions)]
 pub struct NewLearningSession {
     pub session_id: String,
     pub user_id: i64,
     pub session_type: Option<String>,
-    pub scenario_id: Option<i64>,
-    pub scene_dialogue_id: Option<i64>,
+    pub scene_id: Option<i64>,
+    pub dialogue_id: Option<i64>,
     pub classic_clip_id: Option<i64>,
 }
 
 #[derive(AsChangeset, Deserialize)]
-#[diesel(table_name = learning_sessions)]
+#[diesel(table_name = learn_sessions)]
 pub struct UpdateLearningSession {
     pub ended_at: Option<DateTime<Utc>>,
     pub duration_seconds: Option<i32>,
@@ -348,7 +348,7 @@ pub struct UpdateLearningSession {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = conversations)]
+#[diesel(table_name = learn_conversations)]
 pub struct Conversation {
     pub id: i64,
     pub user_id: i64,
@@ -366,7 +366,7 @@ pub struct Conversation {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = conversations)]
+#[diesel(table_name = learn_conversations)]
 pub struct NewConversation {
     pub user_id: i64,
     pub session_id: String,
@@ -382,7 +382,7 @@ pub struct NewConversation {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = conversation_annotations)]
+#[diesel(table_name = learn_conversation_annotations)]
 #[diesel(belongs_to(Conversation))]
 pub struct ConversationAnnotation {
     pub id: i64,
@@ -400,7 +400,7 @@ pub struct ConversationAnnotation {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = conversation_annotations)]
+#[diesel(table_name = learn_conversation_annotations)]
 pub struct NewConversationAnnotation {
     pub user_id: i64,
     pub conversation_id: i64,
@@ -415,7 +415,7 @@ pub struct NewConversationAnnotation {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = word_practice_log)]
+#[diesel(table_name = learn_word_practices)]
 #[diesel(belongs_to(IssueWord, foreign_key = word_id))]
 pub struct WordPracticeLog {
     pub id: i64,
@@ -428,7 +428,7 @@ pub struct WordPracticeLog {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = word_practice_log)]
+#[diesel(table_name = learn_word_practices)]
 pub struct NewWordPracticeLog {
     pub user_id: i64,
     pub word_id: i64,
@@ -438,7 +438,7 @@ pub struct NewWordPracticeLog {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = reading_practice_attempts)]
+#[diesel(table_name = learn_read_practices)]
 #[diesel(belongs_to(ReadingSentence, foreign_key = sentence_id))]
 pub struct ReadingPracticeAttempt {
     pub id: i64,
@@ -458,7 +458,7 @@ pub struct ReadingPracticeAttempt {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = reading_practice_attempts)]
+#[diesel(table_name = learn_read_practices)]
 pub struct NewReadingPracticeAttempt {
     pub user_id: i64,
     pub sentence_id: i64,
@@ -475,7 +475,7 @@ pub struct NewReadingPracticeAttempt {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = user_achievements)]
+#[diesel(table_name = learn_achievements)]
 pub struct UserAchievement {
     pub id: i64,
     pub user_id: i64,
@@ -488,7 +488,7 @@ pub struct UserAchievement {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = user_achievements)]
+#[diesel(table_name = learn_achievements)]
 pub struct NewUserAchievement {
     pub user_id: i64,
     pub achievement_type: String,
@@ -499,7 +499,7 @@ pub struct NewUserAchievement {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = daily_stats)]
+#[diesel(table_name = learn_daily_stats)]
 pub struct DailyStat {
     pub id: i64,
     pub user_id: i64,
@@ -513,7 +513,7 @@ pub struct DailyStat {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = daily_stats)]
+#[diesel(table_name = learn_daily_stats)]
 pub struct NewDailyStat {
     pub user_id: i64,
     pub stat_date: NaiveDate,
@@ -526,7 +526,7 @@ pub struct NewDailyStat {
 }
 
 #[derive(AsChangeset, Deserialize)]
-#[diesel(table_name = daily_stats)]
+#[diesel(table_name = learn_daily_stats)]
 pub struct UpdateDailyStat {
     pub minutes_studied: Option<i32>,
     pub words_practiced: Option<i32>,
@@ -537,7 +537,7 @@ pub struct UpdateDailyStat {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = user_vocabulary)]
+#[diesel(table_name = learn_vocabularies)]
 pub struct UserVocabulary {
     pub id: i64,
     pub user_id: i64,
@@ -552,7 +552,7 @@ pub struct UserVocabulary {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = user_vocabulary)]
+#[diesel(table_name = learn_vocabularies)]
 pub struct NewUserVocabulary {
     pub user_id: i64,
     pub word: String,
@@ -560,7 +560,7 @@ pub struct NewUserVocabulary {
 }
 
 #[derive(AsChangeset, Deserialize)]
-#[diesel(table_name = user_vocabulary)]
+#[diesel(table_name = learn_vocabularies)]
 pub struct UpdateUserVocabulary {
     pub word_zh: Option<String>,
     pub mastery_level: Option<i32>,
@@ -571,7 +571,7 @@ pub struct UpdateUserVocabulary {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = assistant_conversations)]
+#[diesel(table_name = assistant_learn_conversations)]
 pub struct AssistantConversation {
     pub id: i64,
     pub user_id: i64,
@@ -586,7 +586,7 @@ pub struct AssistantConversation {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = assistant_conversations)]
+#[diesel(table_name = assistant_learn_conversations)]
 pub struct NewAssistantConversation {
     pub user_id: i64,
     pub session_id: String,
@@ -594,7 +594,7 @@ pub struct NewAssistantConversation {
 }
 
 #[derive(AsChangeset, Deserialize)]
-#[diesel(table_name = assistant_conversations)]
+#[diesel(table_name = assistant_learn_conversations)]
 pub struct UpdateAssistantConversation {
     pub message_count: Option<i32>,
     pub ai_suggestions_count: Option<i32>,
@@ -604,7 +604,7 @@ pub struct UpdateAssistantConversation {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = assistant_suggestions)]
+#[diesel(table_name = learn_suggestions)]
 #[diesel(belongs_to(AssistantConversation, foreign_key = conversation_id))]
 pub struct AssistantSuggestion {
     pub id: i64,
@@ -617,7 +617,7 @@ pub struct AssistantSuggestion {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = assistant_suggestions)]
+#[diesel(table_name = learn_suggestions)]
 pub struct NewAssistantSuggestion {
     pub user_id: i64,
     pub conversation_id: i64,

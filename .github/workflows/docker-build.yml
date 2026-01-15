@@ -129,5 +129,5 @@ jobs:
 
       - name: Deploy to container service
         run: |
-          echo "Deployment configuration created. In a real deployment scenario, this would deploy to your container service."
+          echo "Deployment configuration created. In a real deployment scene, this would deploy to your container service."
           cat docker-compose-deploy.yml

@@ -1,7 +1,7 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
-    assistant_conversations (id) {
+    assistant_learn_conversations (id) {
         id -> Int8,
         user_id -> Int8,
         session_id -> Text,
@@ -16,7 +16,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    assistant_suggestions (id) {
+    learn_suggestions (id) {
         id -> Int8,
         user_id -> Int8,
         conversation_id -> Int8,
@@ -28,7 +28,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    classic_dialogue_clips (id) {
+    asset_classic_clips (id) {
         id -> Int8,
         source_id -> Int8,
         clip_title_en -> Text,
@@ -50,7 +50,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    classic_dialogue_sources (id) {
+    asset_classic_sources (id) {
         id -> Int8,
         source_type -> Text,
         title -> Text,
@@ -65,7 +65,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    conversation_annotations (id) {
+    learn_conversation_annotations (id) {
         id -> Int8,
         user_id -> Int8,
         conversation_id -> Int8,
@@ -82,7 +82,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    conversations (id) {
+    learn_conversations (id) {
         id -> Int8,
         user_id -> Int8,
         session_id -> Text,
@@ -100,7 +100,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    daily_stats (id) {
+    learn_daily_stats (id) {
         id -> Int8,
         user_id -> Int8,
         stat_date -> Date,
@@ -114,7 +114,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    desktop_auth_codes (id) {
+    auth_codes (id) {
         id -> Int8,
         user_id -> Int8,
         code_hash -> Text,
@@ -127,9 +127,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    dialogue_turns (id) {
+    asset_dialogue_turns (id) {
         id -> Int8,
-        scene_dialogue_id -> Int8,
+        dialogue_id -> Int8,
         turn_number -> Int4,
         speaker_role -> Text,
         speaker_name -> Nullable<Text>,
@@ -137,13 +137,13 @@ diesel::table! {
         content_zh -> Text,
         audio_path -> Nullable<Text>,
         phonetic_transcription -> Nullable<Text>,
-        key_phrases -> Nullable<Jsonb>,
+        asset_phrases -> Nullable<Jsonb>,
         notes -> Nullable<Text>,
     }
 }
 
 diesel::table! {
-    issue_words (id) {
+    learn_issue_words (id) {
         id -> Int8,
         user_id -> Int8,
         word -> Text,
@@ -162,7 +162,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    key_phrases (id) {
+    asset_phrases (id) {
         id -> Int8,
         phrase_en -> Text,
         phrase_zh -> Text,
@@ -178,23 +178,13 @@ diesel::table! {
 }
 
 diesel::table! {
-    learning_records (id) {
-        id -> Int8,
-        user_id -> Int8,
-        record_type -> Text,
-        content -> Jsonb,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    learning_sessions (id) {
+    learn_sessions (id) {
         id -> Int8,
         session_id -> Text,
         user_id -> Int8,
         session_type -> Nullable<Text>,
-        scenario_id -> Nullable<Int8>,
-        scene_dialogue_id -> Nullable<Int8>,
+        scene_id -> Nullable<Int8>,
+        dialogue_id -> Nullable<Int8>,
         classic_clip_id -> Nullable<Int8>,
         started_at -> Timestamptz,
         ended_at -> Nullable<Timestamptz>,
@@ -233,7 +223,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    reading_exercises (id) {
+    asset_read_exercises (id) {
         id -> Int8,
         title_en -> Text,
         title_zh -> Text,
@@ -246,7 +236,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    reading_practice_attempts (id) {
+    learn_read_practices (id) {
         id -> Int8,
         user_id -> Int8,
         sentence_id -> Int8,
@@ -265,7 +255,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    reading_sentences (id) {
+    asset_read_sentences (id) {
         id -> Int8,
         exercise_id -> Int8,
         sentence_order -> Int4,
@@ -296,7 +286,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    scenarios (id) {
+    scenes (id) {
         id -> Int8,
         name_en -> Text,
         name_zh -> Text,
@@ -312,9 +302,9 @@ diesel::table! {
 }
 
 diesel::table! {
-    scene_dialogues (id) {
+    asset_dialogues (id) {
         id -> Int8,
-        scenario_id -> Int8,
+        scene_id -> Int8,
         title_en -> Text,
         title_zh -> Text,
         description_en -> Nullable<Text>,
@@ -327,7 +317,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_achievements (id) {
+    learn_achievements (id) {
         id -> Int8,
         user_id -> Int8,
         achievement_type -> Text,
@@ -348,7 +338,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_vocabulary (id) {
+    learn_vocabularies (id) {
         id -> Int8,
         user_id -> Int8,
         word -> Text,
@@ -375,7 +365,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    word_practice_log (id) {
+    learn_word_practices (id) {
         id -> Int8,
         user_id -> Int8,
         word_id -> Int8,
@@ -386,61 +376,59 @@ diesel::table! {
     }
 }
 
-diesel::joinable!(assistant_conversations -> users (user_id));
-diesel::joinable!(assistant_suggestions -> assistant_conversations (conversation_id));
-diesel::joinable!(assistant_suggestions -> users (user_id));
-diesel::joinable!(classic_dialogue_clips -> classic_dialogue_sources (source_id));
-diesel::joinable!(conversation_annotations -> conversations (conversation_id));
-diesel::joinable!(conversation_annotations -> users (user_id));
-diesel::joinable!(conversations -> users (user_id));
-diesel::joinable!(daily_stats -> users (user_id));
-diesel::joinable!(desktop_auth_codes -> users (user_id));
-diesel::joinable!(dialogue_turns -> scene_dialogues (scene_dialogue_id));
-diesel::joinable!(issue_words -> users (user_id));
-diesel::joinable!(learning_records -> users (user_id));
-diesel::joinable!(learning_sessions -> classic_dialogue_clips (classic_clip_id));
-diesel::joinable!(learning_sessions -> scenarios (scenario_id));
-diesel::joinable!(learning_sessions -> scene_dialogues (scene_dialogue_id));
-diesel::joinable!(learning_sessions -> users (user_id));
+diesel::joinable!(assistant_learn_conversations -> users (user_id));
+diesel::joinable!(learn_suggestions -> assistant_learn_conversations (conversation_id));
+diesel::joinable!(learn_suggestions -> users (user_id));
+diesel::joinable!(asset_classic_clips -> asset_classic_sources (source_id));
+diesel::joinable!(learn_conversation_annotations -> learn_conversations (conversation_id));
+diesel::joinable!(learn_conversation_annotations -> users (user_id));
+diesel::joinable!(learn_conversations -> users (user_id));
+diesel::joinable!(learn_daily_stats -> users (user_id));
+diesel::joinable!(auth_codes -> users (user_id));
+diesel::joinable!(asset_dialogue_turns -> asset_dialogues (dialogue_id));
+diesel::joinable!(learn_issue_words -> users (user_id));
+diesel::joinable!(learn_sessions -> asset_classic_clips (classic_clip_id));
+diesel::joinable!(learn_sessions -> scenes (scene_id));
+diesel::joinable!(learn_sessions -> asset_dialogues (dialogue_id));
+diesel::joinable!(learn_sessions -> users (user_id));
 diesel::joinable!(oauth_identities -> users (user_id));
-diesel::joinable!(reading_practice_attempts -> reading_sentences (sentence_id));
-diesel::joinable!(reading_practice_attempts -> users (user_id));
-diesel::joinable!(reading_sentences -> reading_exercises (exercise_id));
+diesel::joinable!(learn_read_practices -> asset_read_sentences (sentence_id));
+diesel::joinable!(learn_read_practices -> users (user_id));
+diesel::joinable!(asset_read_sentences -> asset_read_exercises (exercise_id));
 diesel::joinable!(role_permissions -> roles (role_id));
-diesel::joinable!(scene_dialogues -> scenarios (scenario_id));
-diesel::joinable!(user_achievements -> users (user_id));
+diesel::joinable!(asset_dialogues -> scenes (scene_id));
+diesel::joinable!(learn_achievements -> users (user_id));
 diesel::joinable!(user_roles -> roles (role_id));
 diesel::joinable!(user_roles -> users (user_id));
-diesel::joinable!(user_vocabulary -> users (user_id));
-diesel::joinable!(word_practice_log -> issue_words (word_id));
-diesel::joinable!(word_practice_log -> users (user_id));
+diesel::joinable!(learn_vocabularies -> users (user_id));
+diesel::joinable!(learn_word_practices -> learn_issue_words (word_id));
+diesel::joinable!(learn_word_practices -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    assistant_conversations,
-    assistant_suggestions,
-    classic_dialogue_clips,
-    classic_dialogue_sources,
-    conversation_annotations,
-    conversations,
-    daily_stats,
-    desktop_auth_codes,
-    dialogue_turns,
-    issue_words,
-    key_phrases,
-    learning_records,
-    learning_sessions,
+    assistant_learn_conversations,
+    learn_suggestions,
+    asset_classic_clips,
+    asset_classic_sources,
+    learn_conversation_annotations,
+    learn_conversations,
+    learn_daily_stats,
+    auth_codes,
+    asset_dialogue_turns,
+    learn_issue_words,
+    asset_phrases,
+    learn_sessions,
     oauth_identities,
     oauth_login_sessions,
-    reading_exercises,
-    reading_practice_attempts,
-    reading_sentences,
+    asset_read_exercises,
+    learn_read_practices,
+    asset_read_sentences,
     role_permissions,
     roles,
-    scenarios,
-    scene_dialogues,
-    user_achievements,
+    scenes,
+    asset_dialogues,
+    learn_achievements,
     user_roles,
-    user_vocabulary,
+    learn_vocabularies,
     users,
-    word_practice_log,
+    learn_word_practices,
 );

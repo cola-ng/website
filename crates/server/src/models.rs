@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::schema::{
-    desktop_auth_codes, learning_records, oauth_identities, oauth_login_sessions, role_permissions,
+    auth_codes, oauth_identities, oauth_login_sessions, role_permissions,
     roles, user_roles, users,
 };
 
@@ -40,26 +40,7 @@ pub struct UpdateUserProfile {
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = learning_records)]
-#[diesel(belongs_to(User))]
-pub struct LearningRecord {
-    pub id: i64,
-    pub user_id: i64,
-    pub record_type: String,
-    pub content: Value,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = learning_records)]
-pub struct NewLearningRecord {
-    pub user_id: i64,
-    pub record_type: String,
-    pub content: Value,
-}
-
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
-#[diesel(table_name = desktop_auth_codes)]
+#[diesel(table_name = auth_codes)]
 #[diesel(belongs_to(User))]
 pub struct DesktopAuthCode {
     pub id: i64,
@@ -73,7 +54,7 @@ pub struct DesktopAuthCode {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = desktop_auth_codes)]
+#[diesel(table_name = auth_codes)]
 pub struct NewDesktopAuthCode {
     pub user_id: i64,
     pub code_hash: String,

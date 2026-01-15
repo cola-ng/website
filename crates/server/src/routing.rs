@@ -331,71 +331,6 @@ pub async fn update_me(
 }
 
 #[derive(Deserialize)]
-pub struct CreateRecordRequest {
-    record_type: String,
-    content: serde_json::Value,
-}
-
-#[handler]
-pub async fn list_records(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id_value = get_user_id(depot)?;
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let records: Vec<LearningRecord> = with_conn(move |conn| {
-        use schema::learning_records::dsl::*;
-        learning_records
-            .filter(user_id.eq(user_id_value))
-            .order(created_at.desc())
-            .limit(limit)
-            .load::<LearningRecord>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list records"))?;
-
-    res.headers_mut()
-        .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
-    res.render(Json(records));
-    Ok(())
-}
-
-#[handler]
-pub async fn create_record(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    require_json_content_type(req)?;
-    let input: CreateRecordRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-    if input.record_type.trim().is_empty() {
-        return Err(bad_request("record_type is required"));
-    }
-    let user_id = get_user_id(depot)?;
-    let new_record = NewLearningRecord {
-        user_id,
-        record_type: input.record_type,
-        content: input.content,
-    };
-    let record: LearningRecord = with_conn(move |conn| {
-        use schema::learning_records::dsl::*;
-        diesel::insert_into(learning_records)
-            .values(&new_record)
-            .get_result::<LearningRecord>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create record"))?;
-    res.status_code(StatusCode::CREATED);
-    res.render(Json(record));
-    Ok(())
-}
-
-#[derive(Deserialize)]
 pub struct DesktopCodeRequest {
     redirect_uri: String,
     state: String,
@@ -441,8 +376,8 @@ pub async fn create_desktop_code(
     };
 
     let _saved: DesktopAuthCode = with_conn(move |conn| {
-        use schema::desktop_auth_codes::dsl::*;
-        diesel::insert_into(desktop_auth_codes)
+        use schema::auth_codes::dsl::*;
+        diesel::insert_into(auth_codes)
             .values(&record)
             .get_result::<DesktopAuthCode>(conn)
     })
@@ -490,15 +425,15 @@ pub async fn consume_code(
     let now = Utc::now();
 
     let user_id: i64 = with_conn(move |conn| {
-        use schema::desktop_auth_codes::dsl::*;
-        let item: DesktopAuthCode = desktop_auth_codes
+        use schema::auth_codes::dsl::*;
+        let item: DesktopAuthCode = auth_codes
             .filter(code_hash.eq(code_hash_value))
             .filter(redirect_uri.eq(redirect_uri_value))
             .filter(used_at.is_null())
             .filter(expires_at.gt(now))
             .first::<DesktopAuthCode>(conn)?;
 
-        diesel::update(desktop_auth_codes.filter(id.eq(item.id)))
+        diesel::update(auth_codes.filter(id.eq(item.id)))
             .set(used_at.eq(now))
             .execute(conn)?;
         Ok(item.user_id)
