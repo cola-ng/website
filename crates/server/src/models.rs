@@ -2,7 +2,6 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use uuid::Uuid;
 
 use crate::db::schema::{
     desktop_auth_codes, learning_records, oauth_identities, oauth_login_sessions, role_permissions,
@@ -12,7 +11,7 @@ use crate::db::schema::{
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = users)]
 pub struct User {
-    pub id: Uuid,
+    pub id: i64,
     pub email: String,
     pub password_hash: String,
     pub name: Option<String>,
@@ -41,8 +40,8 @@ pub struct UpdateUserProfile {
 #[diesel(table_name = learning_records)]
 #[diesel(belongs_to(User))]
 pub struct LearningRecord {
-    pub id: Uuid,
-    pub user_id: Uuid,
+    pub id: i64,
+    pub user_id: i64,
     pub record_type: String,
     pub content: Value,
     pub created_at: DateTime<Utc>,
@@ -51,7 +50,7 @@ pub struct LearningRecord {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = learning_records)]
 pub struct NewLearningRecord {
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub record_type: String,
     pub content: Value,
 }
@@ -60,8 +59,8 @@ pub struct NewLearningRecord {
 #[diesel(table_name = desktop_auth_codes)]
 #[diesel(belongs_to(User))]
 pub struct DesktopAuthCode {
-    pub id: Uuid,
-    pub user_id: Uuid,
+    pub id: i64,
+    pub user_id: i64,
     pub code_hash: String,
     pub redirect_uri: String,
     pub state: String,
@@ -73,7 +72,7 @@ pub struct DesktopAuthCode {
 #[derive(Insertable)]
 #[diesel(table_name = desktop_auth_codes)]
 pub struct NewDesktopAuthCode {
-    pub user_id: Uuid,
+    pub user_id: i64,
     pub code_hash: String,
     pub redirect_uri: String,
     pub state: String,
@@ -83,7 +82,7 @@ pub struct NewDesktopAuthCode {
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = roles)]
 pub struct Role {
-    pub id: Uuid,
+    pub id: i64,
     pub name: String,
     pub created_at: DateTime<Utc>,
 }
@@ -98,8 +97,8 @@ pub struct NewRole {
 #[diesel(table_name = role_permissions)]
 #[diesel(belongs_to(Role))]
 pub struct RolePermission {
-    pub id: Uuid,
-    pub role_id: Uuid,
+    pub id: i64,
+    pub role_id: i64,
     pub operation: String,
     pub created_at: DateTime<Utc>,
 }
@@ -107,7 +106,7 @@ pub struct RolePermission {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = role_permissions)]
 pub struct NewRolePermission {
-    pub role_id: Uuid,
+    pub role_id: i64,
     pub operation: String,
 }
 
@@ -117,27 +116,27 @@ pub struct NewRolePermission {
 #[diesel(belongs_to(Role))]
 #[allow(dead_code)]
 pub struct UserRole {
-    pub user_id: Uuid,
-    pub role_id: Uuid,
+    pub user_id: i64,
+    pub role_id: i64,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable)]
 #[diesel(table_name = user_roles)]
 pub struct NewUserRole {
-    pub user_id: Uuid,
-    pub role_id: Uuid,
+    pub user_id: i64,
+    pub role_id: i64,
 }
 
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
 #[diesel(table_name = oauth_identities)]
 #[diesel(belongs_to(User))]
 pub struct OauthIdentity {
-    pub id: Uuid,
+    pub id: i64,
     pub provider: String,
     pub provider_user_id: String,
     pub email: Option<String>,
-    pub user_id: Option<Uuid>,
+    pub user_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -148,13 +147,13 @@ pub struct NewOauthIdentity {
     pub provider: String,
     pub provider_user_id: String,
     pub email: Option<String>,
-    pub user_id: Option<Uuid>,
+    pub user_id: Option<i64>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = oauth_login_sessions)]
 pub struct OauthLoginSession {
-    pub id: Uuid,
+    pub id: i64,
     pub provider: String,
     pub state: String,
     pub redirect_uri: String,

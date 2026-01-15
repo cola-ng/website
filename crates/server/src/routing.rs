@@ -6,7 +6,6 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::sync::OnceLock;
-use uuid::Uuid;
 
 use crate::auth;
 use crate::config::AppConfig;
@@ -58,7 +57,7 @@ pub async fn health(res: &mut Response) {
 
 #[derive(Serialize)]
 pub struct PublicUser {
-    id: Uuid,
+    id: i64,
     email: String,
     name: Option<String>,
     phone: Option<String>,
@@ -278,7 +277,7 @@ pub async fn auth_required(
         .ok_or_else(|| StatusError::unauthorized().brief("invalid authorization"))?;
     let claims = auth::decode_access_token(token, &config.jwt_secret)
         .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
-    let user_id = Uuid::parse_str(&claims.sub)
+    let user_id: i64 = claims.sub.parse()
         .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
     depot.insert("user_id", user_id);
     Ok(())
@@ -489,7 +488,7 @@ pub async fn consume_code(
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
 
-    let user_id: Uuid = with_conn(move |conn| {
+    let user_id: i64 = with_conn(move |conn| {
         use schema::desktop_auth_codes::dsl::*;
         let item: DesktopAuthCode = desktop_auth_codes
             .filter(code_hash.eq(code_hash_value))
@@ -598,9 +597,9 @@ fn get_config() -> Result<&'static AppConfig, StatusError> {
         .ok_or_else(|| StatusError::internal_server_error().brief("missing app config"))
 }
 
-fn get_user_id(depot: &Depot) -> Result<Uuid, StatusError> {
+fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
     depot
-        .get::<Uuid>("user_id")
+        .get::<i64>("user_id")
         .copied()
         .map_err(|_| StatusError::unauthorized().brief("missing user"))
 }
@@ -657,13 +656,13 @@ fn require_permission(operation: &'static str) -> RequirePermission {
     RequirePermission { operation }
 }
 
-fn get_path_uuid(req: &Request, key: &str) -> Result<Uuid, StatusError> {
+fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
     let raw = req
         .params()
         .get(key)
         .cloned()
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
-    Uuid::parse_str(&raw).map_err(|_| StatusError::bad_request().brief("invalid id"))
+    raw.parse().map_err(|_| StatusError::bad_request().brief("invalid id"))
 }
 
 #[handler]
@@ -672,7 +671,7 @@ async fn admin_delete_user(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> Result<(), StatusError> {
-    let user_id = get_path_uuid(req, "user_id")?;
+    let user_id = get_path_id(req, "user_id")?;
     with_conn(move |conn| {
         use crate::db::schema::users::dsl::*;
         diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
@@ -699,7 +698,7 @@ enum OauthLoginResponse {
         access_token: String,
     },
     NeedsBind {
-        oauth_identity_id: Uuid,
+        oauth_identity_id: i64,
         provider: String,
         email: Option<String>,
     },
@@ -781,7 +780,7 @@ async fn oauth_login(
 
 #[derive(Deserialize)]
 struct OauthBindRequest {
-    oauth_identity_id: Uuid,
+    oauth_identity_id: i64,
     email: String,
     password: String,
 }
@@ -844,7 +843,7 @@ async fn oauth_bind(
 
 #[derive(Deserialize)]
 struct OauthSkipRequest {
-    oauth_identity_id: Uuid,
+    oauth_identity_id: i64,
     name: Option<String>,
     email: Option<String>,
 }
@@ -880,7 +879,7 @@ async fn oauth_skip(
                 format!("{}@{}.local", identity.provider_user_id, identity.provider)
             });
 
-        let password_hash = crate::auth::hash_password(&Uuid::new_v4().to_string())
+        let password_hash = crate::auth::hash_password(&crate::auth::random_desktop_code())
             .map_err(|_| diesel::result::Error::RollbackTransaction)?;
 
         let user = diesel::insert_into(u::users)

@@ -6,7 +6,6 @@ use rand::rngs::OsRng;
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccessClaims {
@@ -33,7 +32,7 @@ pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, Stri
 }
 
 pub fn issue_access_token(
-    user_id: Uuid,
+    user_id: i64,
     jwt_secret: &str,
     ttl_seconds: u64,
 ) -> Result<String, String> {
