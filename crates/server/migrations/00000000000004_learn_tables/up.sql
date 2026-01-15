@@ -30,7 +30,7 @@ CREATE TABLE IF NOT EXISTS learn_sessions (
     session_id TEXT NOT NULL UNIQUE,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     session_type TEXT CHECK(session_type IN ('free_talk', 'scene', 'classic_dialogue', 'reading', 'review', 'assistant')),
-    scene_id BIGINT REFERENCES scenes(id) ON DELETE SET NULL,
+    scene_id BIGINT REFERENCES asset_scenes(id) ON DELETE SET NULL,
     dialogue_id BIGINT REFERENCES asset_dialogues(id) ON DELETE SET NULL,
     classic_clip_id BIGINT REFERENCES asset_classic_clips(id) ON DELETE SET NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -178,11 +178,8 @@ CREATE INDEX IF NOT EXISTS idx_user_vocab_review ON learn_vocabularies(next_revi
 CREATE TABLE IF NOT EXISTS learn_suggestions (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    conversation_id BIGINT NOT NULL REFERENCES assistant_learn_conversations(id) ON DELETE CASCADE,
     suggestion_type TEXT CHECK(suggestion_type IN ('response', 'correction', 'translation', 'vocabulary')),
     suggested_text TEXT NOT NULL,
     was_accepted BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE INDEX IF NOT EXISTS idx_learn_suggestions_convo ON learn_suggestions(conversation_id, created_at);

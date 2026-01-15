@@ -5,7 +5,7 @@
 -- SCENARIOS
 -- ============================================================================
 
-INSERT INTO scenes (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty_level, category, display_order, is_active) VALUES
+INSERT INTO asset_scenes (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty_level, category, display_order, is_active) VALUES
 ('Airport Check-in', '机场值机', 'Practice learn_conversations at airport check-in counters', '练习机场值机柜台对话', '✈️', 'beginner', 'travel', 1, true),
 ('Hotel Reservation', '酒店预订', 'Learn to book rooms and handle hotel situations', '学习预订房间和处理酒店情况', '🏨', 'beginner', 'travel', 2, true),
 ('Restaurant Ordering', '餐厅点餐', 'Order food and interact with restaurant staff', '点餐和与餐厅员工互动', '🍽️', 'beginner', 'daily', 3, true),
@@ -23,21 +23,21 @@ INSERT INTO scenes (name_en, name_zh, description_en, description_zh, icon_emoji
 
 -- Airport Check-in dialogues
 INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty_level) VALUES
-((SELECT id FROM scenes WHERE name_en = 'Airport Check-in'), 'Basic Check-in', '基础值机', 'A simple check-in conversation', '简单的值机对话', 8, 120, 'beginner'),
-((SELECT id FROM scenes WHERE name_en = 'Airport Check-in'), 'Overweight Luggage', '行李超重', 'Handling overweight baggage situation', '处理行李超重的情况', 10, 180, 'intermediate'),
-((SELECT id FROM scenes WHERE name_en = 'Airport Check-in'), 'Seat Upgrade Request', '升舱请求', 'Requesting a seat upgrade', '请求升舱', 8, 150, 'intermediate');
+((SELECT id FROM asset_scenes WHERE name_en = 'Airport Check-in'), 'Basic Check-in', '基础值机', 'A simple check-in conversation', '简单的值机对话', 8, 120, 'beginner'),
+((SELECT id FROM asset_scenes WHERE name_en = 'Airport Check-in'), 'Overweight Luggage', '行李超重', 'Handling overweight baggage situation', '处理行李超重的情况', 10, 180, 'intermediate'),
+((SELECT id FROM asset_scenes WHERE name_en = 'Airport Check-in'), 'Seat Upgrade Request', '升舱请求', 'Requesting a seat upgrade', '请求升舱', 8, 150, 'intermediate');
 
 -- Hotel Reservation dialogues
 INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty_level) VALUES
-((SELECT id FROM scenes WHERE name_en = 'Hotel Reservation'), 'Making a Reservation', '预订房间', 'Booking a hotel room', '预订酒店房间', 8, 120, 'beginner'),
-((SELECT id FROM scenes WHERE name_en = 'Hotel Reservation'), 'Checking In', '办理入住', 'Hotel check-in process', '酒店入住流程', 6, 90, 'beginner'),
-((SELECT id FROM scenes WHERE name_en = 'Hotel Reservation'), 'Room Complaint', '房间投诉', 'Handling issues with the room', '处理房间问题', 10, 180, 'intermediate');
+((SELECT id FROM asset_scenes WHERE name_en = 'Hotel Reservation'), 'Making a Reservation', '预订房间', 'Booking a hotel room', '预订酒店房间', 8, 120, 'beginner'),
+((SELECT id FROM asset_scenes WHERE name_en = 'Hotel Reservation'), 'Checking In', '办理入住', 'Hotel check-in process', '酒店入住流程', 6, 90, 'beginner'),
+((SELECT id FROM asset_scenes WHERE name_en = 'Hotel Reservation'), 'Room Complaint', '房间投诉', 'Handling issues with the room', '处理房间问题', 10, 180, 'intermediate');
 
 -- Restaurant dialogues
 INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty_level) VALUES
-((SELECT id FROM scenes WHERE name_en = 'Restaurant Ordering'), 'Ordering a Meal', '点餐', 'Basic restaurant ordering', '基础餐厅点餐', 8, 120, 'beginner'),
-((SELECT id FROM scenes WHERE name_en = 'Restaurant Ordering'), 'Special Dietary Needs', '特殊饮食需求', 'Explaining allergies and preferences', '解释过敏和偏好', 10, 150, 'intermediate'),
-((SELECT id FROM scenes WHERE name_en = 'Restaurant Ordering'), 'Paying the Bill', '结账', 'Asking for the check and paying', '要账单和付款', 6, 90, 'beginner');
+((SELECT id FROM asset_scenes WHERE name_en = 'Restaurant Ordering'), 'Ordering a Meal', '点餐', 'Basic restaurant ordering', '基础餐厅点餐', 8, 120, 'beginner'),
+((SELECT id FROM asset_scenes WHERE name_en = 'Restaurant Ordering'), 'Special Dietary Needs', '特殊饮食需求', 'Explaining allergies and preferences', '解释过敏和偏好', 10, 150, 'intermediate'),
+((SELECT id FROM asset_scenes WHERE name_en = 'Restaurant Ordering'), 'Paying the Bill', '结账', 'Asking for the check and paying', '要账单和付款', 6, 90, 'beginner');
 
 -- ============================================================================
 -- DIALOGUE TURNS

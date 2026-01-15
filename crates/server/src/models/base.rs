@@ -69,9 +69,10 @@ pub struct User {
 }
 #[derive(Insertable, Deserialize, Clone, Debug)]
 #[diesel(table_name = users)]
-pub struct NewUser<'a> {
+pub struct NewUser {
 
-    pub name: &'a str,
+    pub name: String,
+    pub display_name: Option<String>,
     pub inviter_id: Option<i64>,
     pub invite_replied: Option<bool>,
     pub profile: Value,
@@ -79,6 +80,23 @@ pub struct NewUser<'a> {
     pub updated_by: Option<i64>,
     pub created_by: Option<i64>,
 }
+
+#[derive(Identifiable, Debug, Clone)]
+#[diesel(table_name = user_passwords)]
+pub struct Password {
+    pub id: i64,
+    pub user_id: i64,
+    pub hash: String,
+    pub created_at: DateTime<Utc>,
+}
+#[derive(Insertable, Queryable, Debug, Clone)]
+#[diesel(table_name = user_passwords)]
+pub struct NewPassword {
+    pub user_id: i64,
+    pub hash: String,
+    pub created_at: DateTime<Utc>,
+}
+
 
 // pub static ROLE_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
 //     vec!["id", "name", "description", "owner_id", "updated_by", "created_by"]
@@ -369,7 +387,7 @@ pub static OAUTH_ACCESS_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| 
 pub static OAUTH_ACCESS_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
 #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
 #[diesel(table_name = oauth_accesses)]
-pub struct OauthRealmAccess {
+pub struct OauthAccess {
     pub id: i64,
     pub owner_id: i64,
     pub platform: String,

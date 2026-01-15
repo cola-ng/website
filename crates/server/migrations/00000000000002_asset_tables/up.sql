@@ -13,11 +13,11 @@ CREATE TABLE IF NOT EXISTS asset_scenes (
     UNIQUE(name_en)
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_scenes_active ON scenes(is_active, display_order);
+CREATE INDEX IF NOT EXISTS idx_asset_scenes_active ON asset_scenes(is_active, display_order);
 
 CREATE TABLE IF NOT EXISTS asset_dialogues (
     id BIGSERIAL PRIMARY KEY,
-    scene_id BIGINT NOT NULL REFERENCES scenes(id) ON DELETE CASCADE,
+    scene_id BIGINT NOT NULL REFERENCES asset_scenes(id) ON DELETE CASCADE,
     title_en TEXT NOT NULL,
     title_zh TEXT NOT NULL,
     description_en TEXT,
