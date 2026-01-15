@@ -1,11 +1,11 @@
 import * as React from 'react'
 
-import type { PublicUser } from './api'
+import type { User } from './api'
 
 type AuthState = {
   token: string | null
-  user: PublicUser | null
-  setAuth: (token: string, user: PublicUser) => void
+  user: User | null
+  setAuth: (token: string, user: User) => void
   clear: () => void
 }
 
@@ -18,17 +18,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = React.useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY)
   )
-  const [user, setUser] = React.useState<PublicUser | null>(() => {
+  const [user, setUser] = React.useState<User | null>(() => {
     const raw = localStorage.getItem(USER_KEY)
     if (!raw) return null
     try {
-      return JSON.parse(raw) as PublicUser
+      return JSON.parse(raw) as User
     } catch {
       return null
     }
   })
 
-  const setAuth = React.useCallback((nextToken: string, nextUser: PublicUser) => {
+  const setAuth = React.useCallback((nextToken: string, nextUser: User) => {
     localStorage.setItem(TOKEN_KEY, nextToken)
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
     setToken(nextToken)

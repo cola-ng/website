@@ -11,7 +11,7 @@ use salvo::prelude::{Depot, Request, Response, Writer};
 use serde::Serialize;
 use thiserror::Error;
 
-use crate::models::User;
+use crate::models::base::User;
 
 #[derive(Error, Debug)]
 pub enum AppError {

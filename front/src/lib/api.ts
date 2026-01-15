@@ -1,4 +1,4 @@
-export type PublicUser = {
+export type User = {
   id: string
   email: string
   name: string | null
@@ -8,12 +8,12 @@ export type PublicUser = {
 }
 
 export type AuthResponse = {
-  user: PublicUser
+  user: User
   access_token: string
 }
 
 export type OauthLoginResponse =
-  | { status: 'ok'; user: PublicUser; access_token: string }
+  | { status: 'ok'; user: User; access_token: string }
   | {
       status: 'needs_bind'
       oauth_identity_id: string
@@ -73,15 +73,15 @@ export function login(input: {
   })
 }
 
-export function me(token: string): Promise<PublicUser> {
-  return requestJson<PublicUser>('/api/me', { method: 'GET', token })
+export function me(token: string): Promise<User> {
+  return requestJson<User>('/api/me', { method: 'GET', token })
 }
 
 export function updateMe(
   token: string,
   input: { name?: string | null; phone?: string | null }
-): Promise<PublicUser> {
-  return requestJson<PublicUser>('/api/me', {
+): Promise<User> {
+  return requestJson<User>('/api/me', {
     method: 'PUT',
     token,
     body: JSON.stringify(input),

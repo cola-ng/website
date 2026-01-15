@@ -1,14 +1,27 @@
 mod auth;
 mod config;
 mod db;
+mod error;
 mod models;
 mod routing;
-mod error;
+pub use error::AppError;
 
 use salvo::prelude::*;
 
 use crate::config::AppConfig;
 use crate::db::DbConfig;
+
+pub type AppResult<T> = Result<T, AppError>;
+pub type DieselResult<T> = Result<T, diesel::result::Error>;
+pub type JsonResult<T> = Result<Json<T>, AppError>;
+pub type EmptyResult = Result<Json<EmptyObject>, AppError>;
+
+pub fn json_ok<T>(data: T) -> JsonResult<T> {
+    Ok(Json(data))
+}
+pub fn empty_ok() -> JsonResult<EmptyObject> {
+    Ok(Json(EmptyObject {}))
+}
 
 #[tokio::main]
 async fn main() {
@@ -30,7 +43,7 @@ async fn main() {
     db::init(&db_config);
 
     let router = routing::router(app_config);
-    
+
     println!("router:::::{:?}", router);
 
     let acceptor = TcpListener::new(bind_addr).bind().await;

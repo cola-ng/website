@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 
@@ -13,29 +12,28 @@ use crate::AppResult;
 use crate::db::url_filter::JoinedOption;
 use crate::db::schema::*;
 
-pub static USER_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    vec![
-        "id",
-        "ident_name",
-        "display_name",
-        "in_kernel",
-        "is_limited",
-        "inviter_id",
-        "updated_by",
-        "created_by",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect()
-});
-pub static USER_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(|| {
-    url_filter_joined_options![
-        "emails", "id"=>"user_id", "e.value"=>"value";
-        "phones", "id"=>"user_id", "p.value"=>"value";
-    ]
-});
-// pub static USER_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or ident_name ilike E'%{{data}}%' or display_name ilike E'%{{data}}%'";
-pub static USER_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or ident_name ilike E'%{{data}}%' or display_name ilike E'%{{data}}%' or id in (select user_id from emails where emails.value ilike E'%{{data}}%') or id in (select user_id from phones where phones.value ilike E'%{{data}}%')";
+// pub static USER_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
+//     vec![
+//         "id",
+//         "ident_name",
+//         "display_name",
+//         "in_kernel",
+//         "is_limited",
+//         "inviter_id",
+//         "updated_by",
+//         "created_by",
+//     ]
+//     .into_iter()
+//     .map(String::from)
+//     .collect()
+// });
+// pub static USER_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(|| {
+//     url_filter_joined_options![
+//         "emails", "id"=>"user_id", "e.value"=>"value";
+//         "phones", "id"=>"user_id", "p.value"=>"value";
+//     ]
+// });
+// pub static USER_SEARCH_TMPL: &str = "id::varchar(255)='{{data}}' or ident_name ilike E'%{{data}}%' or display_name ilike E'%{{data}}%' or id in (select user_id from emails where emails.value ilike E'%{{data}}%') or id in (select user_id from phones where phones.value ilike E'%{{data}}%')";
 #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
 pub struct User {
     pub id: i64,
@@ -74,7 +72,6 @@ pub struct NewUser {
     pub name: String,
     pub display_name: Option<String>,
     pub inviter_id: Option<i64>,
-    pub invite_replied: Option<bool>,
     pub profile: Value,
 
     pub updated_by: Option<i64>,
@@ -348,43 +345,43 @@ pub struct NewAccessToken<'a> {
     pub created_by: Option<i64>,
 }
 
-#[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
-pub struct SecurityCode {
-    pub id: i64,
-    pub user_id: i64,
-    pub email: Option<String>,
-    pub phone: Option<String>,
-    pub value: String,
-    pub send_method: String,
-    pub consumed_at: Option<DateTime<Utc>>,
-    pub expires_at: DateTime<Utc>,
+// #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
+// pub struct SecurityCode {
+//     pub id: i64,
+//     pub user_id: i64,
+//     pub email: Option<String>,
+//     pub phone: Option<String>,
+//     pub value: String,
+//     pub send_method: String,
+//     pub consumed_at: Option<DateTime<Utc>>,
+//     pub expires_at: DateTime<Utc>,
 
-    pub updated_by: Option<i64>,
-    pub updated_at: DateTime<Utc>,
-    pub created_by: Option<i64>,
-    pub created_at: DateTime<Utc>,
-}
+//     pub updated_by: Option<i64>,
+//     pub updated_at: DateTime<Utc>,
+//     pub created_by: Option<i64>,
+//     pub created_at: DateTime<Utc>,
+// }
 
-#[derive(Insertable, Debug)]
-#[diesel(table_name = security_codes)]
-pub struct NewSecurityCode<'a> {
-    pub user_id: i64,
-    pub email: Option<&'a str>,
-    pub phone: Option<&'a str>,
-    pub value: &'a str,
-    pub send_method: &'a str,
-    pub expires_at: DateTime<Utc>,
+// #[derive(Insertable, Debug)]
+// #[diesel(table_name = security_codes)]
+// pub struct NewSecurityCode<'a> {
+//     pub user_id: i64,
+//     pub email: Option<&'a str>,
+//     pub phone: Option<&'a str>,
+//     pub value: &'a str,
+//     pub send_method: &'a str,
+//     pub expires_at: DateTime<Utc>,
 
-    pub updated_by: Option<i64>,
-    pub created_by: Option<i64>,
-}
-pub static OAUTH_ACCESS_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    vec!["id", "owner_id", "platform", "token_type", "updated_by", "created_by"]
-        .into_iter()
-        .map(String::from)
-        .collect()
-});
-pub static OAUTH_ACCESS_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
+//     pub updated_by: Option<i64>,
+//     pub created_by: Option<i64>,
+// }
+// pub static OAUTH_ACCESS_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
+//     vec!["id", "owner_id", "platform", "token_type", "updated_by", "created_by"]
+//         .into_iter()
+//         .map(String::from)
+//         .collect()
+// });
+// pub static OAUTH_ACCESS_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
 #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
 #[diesel(table_name = oauth_accesses)]
 pub struct OauthAccess {

@@ -1,6 +1,5 @@
 use std::sync::LazyLock;
 
-use bigdecimal::BigDecimal;
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 

@@ -7,6 +7,8 @@ use serde::Deserialize;
 use crate::db::{schema, with_conn};
 use crate::models::learn::*;
 
+use crate::db::schema::*;
+
 // ============================================================================
 // Helper functions
 // ============================================================================
@@ -33,11 +35,10 @@ pub async fn list_scenes(req: &mut Request, res: &mut Response) -> Result<(), St
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let scenes: Vec<Scene> = with_conn(move |conn| {
-        use schema::scenes::dsl::*;
-        let mut query = scenes
-            .filter(is_active.eq(true))
-            .order(display_order.asc())
-            .limit(limit)
+        let mut query = asset_scenes::table
+            .filter(asset_scenes::is_active.eq(true))
+            .order(asset_scenes::display_order.asc())
+            .limit(asset_scenes::limit)
             .into_boxed();
 
         if let Some(cat) = category_param {
@@ -74,10 +75,7 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), Stat
 }
 
 #[handler]
-pub async fn get_asset_dialogues(
-    req: &mut Request,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
     let scene_id: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
@@ -96,7 +94,10 @@ pub async fn get_asset_dialogues(
 }
 
 #[handler]
-pub async fn get_asset_dialogue_turns(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn get_asset_dialogue_turns(
+    req: &mut Request,
+    res: &mut Response,
+) -> Result<(), StatusError> {
     let dialogue_id: i64 = req
         .param::<i64>("dialogue_id")
         .ok_or_else(|| bad_request("missing dialogue_id"))?;
@@ -288,11 +289,7 @@ pub async fn list_learn_issue_words(
 
         if due_only {
             let now = Utc::now();
-            query = query.filter(
-                next_review_at
-                    .is_null()
-                    .or(next_review_at.le(now)),
-            );
+            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
         }
 
         query.load::<IssueWord>(conn)
@@ -457,7 +454,11 @@ pub async fn update_session(
 
     let ended_at_parsed = input
         .ended_at
-        .map(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&Utc)))
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|d| d.with_timezone(&Utc))
+        })
         .flatten();
 
     let update = UpdateLearningSession {
@@ -532,7 +533,9 @@ pub async fn list_learn_conversations(
         query.load::<Conversation>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list learn_conversations"))?;
+    .map_err(|_| {
+        StatusError::internal_server_error().brief("failed to list learn_conversations")
+    })?;
 
     res.render(Json(convos));
     Ok(())
@@ -608,11 +611,7 @@ pub async fn list_vocabulary(
 
         if due_only {
             let now = Utc::now();
-            query = query.filter(
-                next_review_at
-                    .is_null()
-                    .or(next_review_at.le(now)),
-            );
+            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
         }
 
         query.load::<UserVocabulary>(conn)
@@ -753,10 +752,7 @@ pub async fn upsert_daily_stat(
 // ============================================================================
 
 #[handler]
-pub async fn list_achievements(
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
     let user_id = get_user_id(depot)?;
 
     let achievements: Vec<UserAchievement> = with_conn(move |conn| {
