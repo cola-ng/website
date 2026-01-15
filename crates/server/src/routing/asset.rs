@@ -5,7 +5,7 @@ use salvo::prelude::*;
 use serde::Deserialize;
 
 use crate::db::{schema, with_conn};
-use crate::models::learning::*;
+use crate::models::learn::*;
 
 // ============================================================================
 // Helper functions

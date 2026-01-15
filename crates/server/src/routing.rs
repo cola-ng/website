@@ -16,7 +16,8 @@ use crate::models::{
 };
 
 pub mod account;
-pub mod learning;
+pub mod learn;
+pub mod asset;
 
 static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
@@ -854,7 +855,7 @@ pub fn router(config: AppConfig) -> Router {
     let api = Router::with_path("api")
         .push(Router::with_path("health").get(health))
         .push(account::router())
-        .push(learning::router(auth_required))
+        .push(learn::router(auth_required))
         .push(
             Router::with_path("chat")
                 .hoop(auth_required)

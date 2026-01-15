@@ -8,8 +8,9 @@ use crate::db::schema::{
     roles, user_roles, users,
 };
 
-pub mod learning;
-pub use learning::*;
+pub mod asset;
+pub mod learn;
+pub mod user;
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = users)]
