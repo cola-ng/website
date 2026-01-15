@@ -4,6 +4,9 @@ import { AuthProvider, useAuth } from './lib/auth'
 import { AuthorizePage } from './pages/AuthorizePage'
 import { HomePage } from './pages/HomePage'
 import { MePage } from './pages/MePage'
+import { FeedbackPage } from './pages/FeedbackPage'
+import { TermsPage } from './pages/TermsPage'
+import { PrivacyPage } from './pages/PrivacyPage'
 
 function AppRoutes() {
   const { token } = useAuth()
@@ -13,6 +16,9 @@ function AppRoutes() {
       <Route path="/auth" element={<AuthorizePage />} />
       <Route path="/app" element={token ? <HomePage /> : <Navigate to="/" replace />} />
       <Route path="/me" element={token ? <MePage /> : <Navigate to="/" replace />} />
+      <Route path="/feedback" element={<FeedbackPage />} />
+      <Route path="/terms" element={<TermsPage />} />
+      <Route path="/privacy" element={<PrivacyPage />} />
     </Routes>
   )
 }
