@@ -3,19 +3,14 @@ use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::db::schema::{
-     learn_suggestions, asset_classic_clips, asset_classic_sources,
-    learn_conversation_annotations, learn_conversations, learn_daily_stats, asset_dialogue_turns, learn_issue_words, asset_phrases,
-    learn_sessions, asset_read_exercises, learn_read_practices, asset_read_sentences, scenes,
-    asset_dialogues, learn_achievements, learn_vocabularies, learn_word_practices,
-};
+use crate::db::schema::*;
 
 // ============================================================================
 // Shared content models (no user_id)
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = scenes)]
+#[diesel(table_name = asset_scenes)]
 pub struct Scene {
     pub id: i64,
     pub name_en: String,
@@ -31,7 +26,7 @@ pub struct Scene {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = scenes)]
+#[diesel(table_name = asset_scenes)]
 pub struct NewScene {
     pub name_en: String,
     pub name_zh: String,
@@ -570,46 +565,11 @@ pub struct UpdateUserVocabulary {
     pub next_review_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = assistant_learn_conversations)]
-pub struct AssistantConversation {
-    pub id: i64,
-    pub user_id: i64,
-    pub session_id: String,
-    pub external_app: Option<String>,
-    pub message_count: Option<i32>,
-    pub ai_suggestions_count: Option<i32>,
-    pub grammar_corrections_count: Option<i32>,
-    pub translations_count: Option<i32>,
-    pub started_at: DateTime<Utc>,
-    pub ended_at: Option<DateTime<Utc>>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = assistant_learn_conversations)]
-pub struct NewAssistantConversation {
-    pub user_id: i64,
-    pub session_id: String,
-    pub external_app: Option<String>,
-}
-
-#[derive(AsChangeset, Deserialize)]
-#[diesel(table_name = assistant_learn_conversations)]
-pub struct UpdateAssistantConversation {
-    pub message_count: Option<i32>,
-    pub ai_suggestions_count: Option<i32>,
-    pub grammar_corrections_count: Option<i32>,
-    pub translations_count: Option<i32>,
-    pub ended_at: Option<DateTime<Utc>>,
-}
-
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_suggestions)]
-#[diesel(belongs_to(AssistantConversation, foreign_key = conversation_id))]
-pub struct AssistantSuggestion {
+pub struct Suggestion {
     pub id: i64,
     pub user_id: i64,
-    pub conversation_id: i64,
     pub suggestion_type: Option<String>,
     pub suggested_text: String,
     pub was_accepted: Option<bool>,
@@ -618,9 +578,8 @@ pub struct AssistantSuggestion {
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = learn_suggestions)]
-pub struct NewAssistantSuggestion {
+pub struct NewSuggestion {
     pub user_id: i64,
-    pub conversation_id: i64,
     pub suggestion_type: Option<String>,
     pub suggested_text: String,
     pub was_accepted: Option<bool>,

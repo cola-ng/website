@@ -61,28 +61,21 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), Stat
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
 
-    let scene: Scene = with_conn(move |conn| {
-        
-        scenes.filter(id.eq(scene_id)).first::<Scene>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::not_found().brief("scene not found"))?;
+    let scene: Scene = with_conn(move |conn| scenes.filter(id.eq(scene_id)).first::<Scene>(conn))
+        .await
+        .map_err(|_| StatusError::not_found().brief("scene not found"))?;
 
     res.render(Json(scene));
     Ok(())
 }
 
 #[handler]
-pub async fn get_asset_dialogues(
-    req: &mut Request,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
     let scene_id: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
 
     let dialogues: Vec<SceneDialogue> = with_conn(move |conn| {
-        
         asset_dialogues
             .filter(scene_id.eq(scene_id))
             .load::<SceneDialogue>(conn)
@@ -95,13 +88,15 @@ pub async fn get_asset_dialogues(
 }
 
 #[handler]
-pub async fn get_asset_dialogue_turns(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn get_asset_dialogue_turns(
+    req: &mut Request,
+    res: &mut Response,
+) -> Result<(), StatusError> {
     let dialogue_id: i64 = req
         .param::<i64>("dialogue_id")
         .ok_or_else(|| bad_request("missing dialogue_id"))?;
 
     let turns: Vec<DialogueTurn> = with_conn(move |conn| {
-        
         asset_dialogue_turns
             .filter(dialogue_id.eq(dialogue_id))
             .order(turn_number.asc())
@@ -127,7 +122,6 @@ pub async fn list_classic_sources(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let sources: Vec<ClassicDialogueSource> = with_conn(move |conn| {
-        
         let mut query = asset_classic_sources.limit(limit).into_boxed();
 
         if let Some(st) = source_type_param {
@@ -149,7 +143,6 @@ pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> Result
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let clips: Vec<ClassicDialogueClip> = with_conn(move |conn| {
-        
         let mut query = asset_classic_clips
             .order(popularity_score.desc())
             .limit(limit)
@@ -182,7 +175,6 @@ pub async fn list_asset_read_exercises(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let exercises: Vec<ReadingExercise> = with_conn(move |conn| {
-        
         let mut query = asset_read_exercises.limit(limit).into_boxed();
 
         if let Some(diff) = difficulty {
@@ -211,7 +203,6 @@ pub async fn get_asset_read_sentences(
         .ok_or_else(|| bad_request("missing id"))?;
 
     let sentences: Vec<ReadingSentence> = with_conn(move |conn| {
-        
         asset_read_sentences
             .filter(exercise_id.eq(exercise_id_param))
             .order(sentence_order.asc())
@@ -235,7 +226,6 @@ pub async fn list_asset_phrases(req: &mut Request, res: &mut Response) -> Result
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let phrases: Vec<KeyPhrase> = with_conn(move |conn| {
-        
         let mut query = asset_phrases.limit(limit).into_boxed();
 
         if let Some(cat) = category_param {
@@ -278,7 +268,6 @@ pub async fn list_learn_issue_words(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let words: Vec<IssueWord> = with_conn(move |conn| {
-        
         let mut query = learn_issue_words
             .filter(user_id.eq(user_id))
             .order(created_at.desc())
@@ -287,11 +276,7 @@ pub async fn list_learn_issue_words(
 
         if due_only {
             let now = Utc::now();
-            query = query.filter(
-                next_review_at
-                    .is_null()
-                    .or(next_review_at.le(now)),
-            );
+            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
         }
 
         query.load::<IssueWord>(conn)
@@ -329,7 +314,6 @@ pub async fn create_issue_word(
     };
 
     let word: IssueWord = with_conn(move |conn| {
-        
         diesel::insert_into(learn_issue_words)
             .values(&new_word)
             .get_result::<IssueWord>(conn)
@@ -379,7 +363,6 @@ pub async fn list_sessions(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let sessions: Vec<LearningSession> = with_conn(move |conn| {
-        
         let mut query = learn_sessions
             .filter(user_id.eq(user_id))
             .order(started_at.desc())
@@ -425,7 +408,6 @@ pub async fn create_session(
     };
 
     let session: LearningSession = with_conn(move |conn| {
-        
         diesel::insert_into(learn_sessions)
             .values(&new_session)
             .get_result::<LearningSession>(conn)
@@ -456,7 +438,11 @@ pub async fn update_session(
 
     let ended_at_parsed = input
         .ended_at
-        .map(|s| chrono::DateTime::parse_from_rfc3339(&s).ok().map(|d| d.with_timezone(&Utc)))
+        .map(|s| {
+            chrono::DateTime::parse_from_rfc3339(&s)
+                .ok()
+                .map(|d| d.with_timezone(&Utc))
+        })
         .flatten();
 
     let update = UpdateLearningSession {
@@ -472,7 +458,6 @@ pub async fn update_session(
     };
 
     let session: LearningSession = with_conn(move |conn| {
-        
         diesel::update(
             learn_sessions
                 .filter(session_id.eq(session_id_param))
@@ -517,7 +502,6 @@ pub async fn list_learn_conversations(
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
     let convos: Vec<Conversation> = with_conn(move |conn| {
-        
         let mut query = learn_conversations
             .filter(user_id.eq(user_id))
             .order(created_at.desc())
@@ -531,7 +515,9 @@ pub async fn list_learn_conversations(
         query.load::<Conversation>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list learn_conversations"))?;
+    .map_err(|_| {
+        StatusError::internal_server_error().brief("failed to list learn_conversations")
+    })?;
 
     res.render(Json(convos));
     Ok(())
@@ -564,7 +550,6 @@ pub async fn create_conversation(
     };
 
     let convo: Conversation = with_conn(move |conn| {
-        
         diesel::insert_into(learn_conversations)
             .values(&new_convo)
             .get_result::<Conversation>(conn)
@@ -598,7 +583,6 @@ pub async fn list_vocabulary(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let vocab: Vec<UserVocabulary> = with_conn(move |conn| {
-        
         let mut query = learn_vocabularies
             .filter(user_id.eq(user_id))
             .order(first_seen_at.desc())
@@ -607,11 +591,7 @@ pub async fn list_vocabulary(
 
         if due_only {
             let now = Utc::now();
-            query = query.filter(
-                next_review_at
-                    .is_null()
-                    .or(next_review_at.le(now)),
-            );
+            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
         }
 
         query.load::<UserVocabulary>(conn)
@@ -646,7 +626,6 @@ pub async fn create_vocabulary(
     };
 
     let vocab: UserVocabulary = with_conn(move |conn| {
-        
         diesel::insert_into(learn_vocabularies)
             .values(&new_vocab)
             .get_result::<UserVocabulary>(conn)
@@ -684,7 +663,6 @@ pub async fn list_learn_daily_stats(
     let limit = req.query::<i64>("limit").unwrap_or(30).clamp(1, 365);
 
     let stats: Vec<DailyStat> = with_conn(move |conn| {
-        
         learn_daily_stats
             .filter(user_id.eq(user_id))
             .order(stat_date.desc())
@@ -725,7 +703,6 @@ pub async fn upsert_daily_stat(
     };
 
     let stat: DailyStat = with_conn(move |conn| {
-        
         diesel::insert_into(learn_daily_stats)
             .values(&new_stat)
             .on_conflict((user_id, stat_date))
@@ -752,14 +729,10 @@ pub async fn upsert_daily_stat(
 // ============================================================================
 
 #[handler]
-pub async fn list_achievements(
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
     let user_id = get_user_id(depot)?;
 
     let achievements: Vec<UserAchievement> = with_conn(move |conn| {
-        
         learn_achievements
             .filter(user_id.eq(user_id))
             .order(earned_at.desc())

@@ -105,7 +105,6 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        
         let is_first = users.select(diesel::dsl::count_star()).first::<i64>(conn)? == 0;
 
         let user = diesel::insert_into(users)
@@ -186,12 +185,9 @@ pub async fn login(
 
     let password = input.password.clone();
 
-    let user: User = with_conn(move |conn| {
-        
-        users.filter(email.eq(email_input)).first::<User>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
+    let user: User = with_conn(move |conn| users.filter(email.eq(email_input)).first::<User>(conn))
+        .await
+        .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
     let ok = auth::verify_password(&password, &user.password_hash)
         .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
@@ -239,12 +235,9 @@ pub async fn auth_required(
 #[handler]
 pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
     let user_id = get_user_id(depot)?;
-    let user: User = with_conn(move |conn| {
-        
-        users.filter(id.eq(user_id)).first::<User>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::not_found().brief("user not found"))?;
+    let user: User = with_conn(move |conn| users.filter(id.eq(user_id)).first::<User>(conn))
+        .await
+        .map_err(|_| StatusError::not_found().brief("user not found"))?;
     res.headers_mut()
         .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
     res.render(Json(User::from(user)));
@@ -266,7 +259,6 @@ pub async fn update_me(
     let now = Utc::now();
 
     let updated: User = with_conn(move |conn| {
-        
         diesel::update(users.filter(id.eq(user_id)))
             .set((
                 name.eq(input.name),
@@ -328,7 +320,6 @@ pub async fn create_desktop_code(
     };
 
     let _saved: DesktopAuthCode = with_conn(move |conn| {
-        
         diesel::insert_into(auth_codes)
             .values(&record)
             .get_result::<DesktopAuthCode>(conn)
@@ -377,7 +368,6 @@ pub async fn consume_code(
     let now = Utc::now();
 
     let user_id: i64 = with_conn(move |conn| {
-        
         let item: DesktopAuthCode = auth_codes
             .filter(code_hash.eq(code_hash_value))
             .filter(redirect_uri.eq(redirect_uri_value))
@@ -463,7 +453,6 @@ pub async fn chat_send(
         content,
     };
     let _ = with_conn(move |conn| {
-        
         diesel::insert_into(learning_records)
             .values(&record)
             .execute(conn)?;
@@ -562,7 +551,6 @@ async fn admin_delete_user(
 ) -> Result<(), StatusError> {
     let user_id = get_path_id(req, "user_id")?;
     with_conn(move |conn| {
-        
         diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
         Ok(())
     })
@@ -641,12 +629,9 @@ async fn oauth_login(
     .map_err(|_| StatusError::internal_server_error().brief("failed to start oauth login"))?;
 
     if let Some(user_id) = identity.user_id {
-        let user: User = with_conn(move |conn| {
-            
-            users.filter(id.eq(user_id)).first::<User>(conn)
-        })
-        .await
-        .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
+        let user: User = with_conn(move |conn| users.filter(id.eq(user_id)).first::<User>(conn))
+            .await
+            .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
 
         let config = get_config()?;
         let access_token =

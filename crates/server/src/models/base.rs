@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::AppResult;
-use crate::db::url_filter::JoinedOption;
 use crate::db::schema::*;
+use crate::db::url_filter::JoinedOption;
 
 // pub static USER_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
 //     vec![
@@ -41,9 +41,9 @@ pub struct User {
     pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
-    
+
     pub avatar: Option<String>,
-    pub display_name Option<String>,
+    pub display_name: Option<String>,
 
     pub verified_at: Option<DateTime<Utc>>,
 
@@ -68,7 +68,6 @@ pub struct User {
 #[derive(Insertable, Deserialize, Clone, Debug)]
 #[diesel(table_name = users)]
 pub struct NewUser {
-
     pub name: String,
     pub display_name: Option<String>,
     pub inviter_id: Option<i64>,
@@ -93,7 +92,6 @@ pub struct NewPassword {
     pub hash: String,
     pub created_at: DateTime<Utc>,
 }
-
 
 // pub static ROLE_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
 //     vec!["id", "name", "description", "owner_id", "updated_by", "created_by"]
@@ -308,10 +306,18 @@ pub struct NewPassword {
 // }
 
 pub static ACCESS_TOKEN_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    vec!["id", "user_id", "name", "kind", "value", "updated_by", "created_by"]
-        .into_iter()
-        .map(String::from)
-        .collect()
+    vec![
+        "id",
+        "user_id",
+        "name",
+        "kind",
+        "value",
+        "updated_by",
+        "created_by",
+    ]
+    .into_iter()
+    .map(String::from)
+    .collect()
 });
 pub static ACCESS_TOKEN_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
 #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
