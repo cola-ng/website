@@ -64,7 +64,6 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), Stat
         .ok_or_else(|| bad_request("missing id"))?;
 
     let scene: Scene = with_conn(move |conn| {
-        use schema::scenes::dsl::*;
         scenes.filter(id.eq(scene_id)).first::<Scene>(conn)
     })
     .await
@@ -81,7 +80,6 @@ pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Resul
         .ok_or_else(|| bad_request("missing id"))?;
 
     let dialogues: Vec<SceneDialogue> = with_conn(move |conn| {
-        use schema::asset_dialogues::dsl::*;
         asset_dialogues
             .filter(scene_id.eq(scene_id))
             .load::<SceneDialogue>(conn)
@@ -213,7 +211,6 @@ pub async fn get_asset_read_sentences(
         .ok_or_else(|| bad_request("missing id"))?;
 
     let sentences: Vec<ReadingSentence> = with_conn(move |conn| {
-        use schema::asset_read_sentences::dsl::*;
         asset_read_sentences
             .filter(exercise_id.eq(exercise_id_param))
             .order(sentence_order.asc())
@@ -280,7 +277,6 @@ pub async fn list_learn_issue_words(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let words: Vec<IssueWord> = with_conn(move |conn| {
-        use schema::learn_issue_words::dsl::*;
         let mut query = learn_issue_words
             .filter(user_id.eq(user_id))
             .order(created_at.desc())
@@ -568,8 +564,7 @@ pub async fn create_conversation(
     };
 
     let convo: Conversation = with_conn(move |conn| {
-        use schema::learn_conversations::dsl::*;
-        diesel::insert_into(learn_conversations)
+        diesel::insert_into(learn_conversations::table)
             .values(&new_convo)
             .get_result::<Conversation>(conn)
     })

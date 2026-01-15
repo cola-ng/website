@@ -100,7 +100,6 @@ pub async fn register(
 
     let new_user = NewUser {
         email: email.clone(),
-        password_hash,
         name: input.name.clone(),
         phone: None,
     };
@@ -154,6 +153,9 @@ pub async fn register(
         }
     })?;
 
+    let new_password = NewPassword {
+        hash: password_hash,
+    };
     let config = get_config()?;
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())

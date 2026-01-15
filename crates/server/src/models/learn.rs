@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::db::schema::{
-    assistant_learn_conversations, learn_suggestions, asset_classic_clips, asset_classic_sources,
+     learn_suggestions, asset_classic_clips, asset_classic_sources,
     learn_conversation_annotations, learn_conversations, learn_daily_stats, asset_dialogue_turns, learn_issue_words, asset_phrases,
     learn_sessions, asset_read_exercises, learn_read_practices, asset_read_sentences, scenes,
     asset_dialogues, learn_achievements, learn_vocabularies, learn_word_practices,
