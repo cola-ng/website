@@ -105,7 +105,7 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        use schema::users::dsl::*;
+        
         let is_first = users.select(diesel::dsl::count_star()).first::<i64>(conn)? == 0;
 
         let user = diesel::insert_into(users)
@@ -187,7 +187,7 @@ pub async fn login(
     let password = input.password.clone();
 
     let user: User = with_conn(move |conn| {
-        use schema::users::dsl::*;
+        
         users.filter(email.eq(email_input)).first::<User>(conn)
     })
     .await
@@ -240,7 +240,7 @@ pub async fn auth_required(
 pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
     let user_id = get_user_id(depot)?;
     let user: User = with_conn(move |conn| {
-        use schema::users::dsl::*;
+        
         users.filter(id.eq(user_id)).first::<User>(conn)
     })
     .await
@@ -266,7 +266,7 @@ pub async fn update_me(
     let now = Utc::now();
 
     let updated: User = with_conn(move |conn| {
-        use schema::users::dsl::*;
+        
         diesel::update(users.filter(id.eq(user_id)))
             .set((
                 name.eq(input.name),
@@ -328,7 +328,7 @@ pub async fn create_desktop_code(
     };
 
     let _saved: DesktopAuthCode = with_conn(move |conn| {
-        use schema::auth_codes::dsl::*;
+        
         diesel::insert_into(auth_codes)
             .values(&record)
             .get_result::<DesktopAuthCode>(conn)
@@ -377,7 +377,7 @@ pub async fn consume_code(
     let now = Utc::now();
 
     let user_id: i64 = with_conn(move |conn| {
-        use schema::auth_codes::dsl::*;
+        
         let item: DesktopAuthCode = auth_codes
             .filter(code_hash.eq(code_hash_value))
             .filter(redirect_uri.eq(redirect_uri_value))
@@ -463,7 +463,7 @@ pub async fn chat_send(
         content,
     };
     let _ = with_conn(move |conn| {
-        use schema::learning_records::dsl::*;
+        
         diesel::insert_into(learning_records)
             .values(&record)
             .execute(conn)?;
@@ -562,7 +562,7 @@ async fn admin_delete_user(
 ) -> Result<(), StatusError> {
     let user_id = get_path_id(req, "user_id")?;
     with_conn(move |conn| {
-        use crate::db::schema::users::dsl::*;
+        
         diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
         Ok(())
     })
@@ -642,7 +642,7 @@ async fn oauth_login(
 
     if let Some(user_id) = identity.user_id {
         let user: User = with_conn(move |conn| {
-            use crate::db::schema::users::dsl::*;
+            
             users.filter(id.eq(user_id)).first::<User>(conn)
         })
         .await
