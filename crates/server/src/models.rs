@@ -8,6 +8,9 @@ use crate::db::schema::{
     roles, user_roles, users,
 };
 
+pub mod learning;
+pub use learning::*;
+
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = users)]
 pub struct User {
