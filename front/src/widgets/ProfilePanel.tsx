@@ -15,6 +15,11 @@ export function ProfilePanel() {
   const [error, setError] = React.useState<string | null>(null)
   const [saved, setSaved] = React.useState(false)
 
+  React.useEffect(() => {
+    setName(user?.name || '')
+    setPhone(user?.phone || '')
+  }, [user?.name, user?.phone])
+
   const save = async () => {
     if (!token || !user) return
     setLoading(true)
