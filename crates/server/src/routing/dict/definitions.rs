@@ -67,3 +67,4 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<DictWordDefiniti
     .map_err(|_| StatusError::internal_server_error().brief("failed to create definition"))?;
     json_ok(created)
 }
+

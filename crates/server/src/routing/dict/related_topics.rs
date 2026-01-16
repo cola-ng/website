@@ -35,9 +35,7 @@ pub async fn create_related_topic(req: &mut Request) -> JsonResult<DictRelatedTo
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.topic_name.trim().is_empty() {
-        return Err(StatusError::bad_request()
-            .brief("topic_name is required")
-            .into());
+        return Err(StatusError::bad_request().brief("topic_name is required").into());
     }
     let created: DictRelatedTopic = with_conn(move |conn| {
         diesel::insert_into(dict_related_topics::table)
@@ -53,3 +51,4 @@ pub async fn create_related_topic(req: &mut Request) -> JsonResult<DictRelatedTo
     .map_err(|_| StatusError::internal_server_error().brief("failed to create related topic"))?;
     json_ok(created)
 }
+

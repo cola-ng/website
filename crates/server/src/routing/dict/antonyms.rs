@@ -12,9 +12,7 @@ pub async fn list_antonyms(req: &mut Request) -> JsonResult<Vec<DictWordAntonymV
     let word_id = super::get_path_id(req, "id")?;
     let rows: Vec<(DictWordAntonym, DictWord)> = with_conn(move |conn| {
         dict_word_antonyms::table
-            .inner_join(
-                dict_words::table.on(dict_word_antonyms::antonym_word_id.eq(dict_words::id)),
-            )
+            .inner_join(dict_words::table.on(dict_word_antonyms::antonym_word_id.eq(dict_words::id)))
             .filter(dict_word_antonyms::word_id.eq(word_id))
             .load(conn)
     })
@@ -25,10 +23,7 @@ pub async fn list_antonyms(req: &mut Request) -> JsonResult<Vec<DictWordAntonymV
         rows.into_iter()
             .map(|(link, w)| DictWordAntonymView {
                 link,
-                antonym: WordRef {
-                    id: w.id,
-                    word: w.word,
-                },
+                antonym: WordRef { id: w.id, word: w.word },
             })
             .collect(),
     )
@@ -64,3 +59,4 @@ pub async fn create_antonym(req: &mut Request) -> JsonResult<DictWordAntonym> {
 
     json_ok(created)
 }
+

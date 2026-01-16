@@ -70,3 +70,4 @@ pub async fn create_collocation(req: &mut Request) -> JsonResult<DictWordColloca
 
     json_ok(created)
 }
+

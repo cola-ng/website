@@ -60,3 +60,4 @@ pub async fn create_etymology(req: &mut Request) -> JsonResult<DictWordEtymology
 
     json_ok(created)
 }
+

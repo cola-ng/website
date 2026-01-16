@@ -24,10 +24,7 @@ pub async fn list_word_family(req: &mut Request) -> JsonResult<Vec<DictWordFamil
             .into_iter()
             .map(|(link, w)| DictWordFamilyView {
                 link,
-                related: WordRef {
-                    id: w.id,
-                    word: w.word,
-                },
+                related: WordRef { id: w.id, word: w.word },
             })
             .collect(),
     )
@@ -63,3 +60,4 @@ pub async fn create_word_family(req: &mut Request) -> JsonResult<DictWordFamilyL
 
     json_ok(created)
 }
+

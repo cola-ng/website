@@ -271,8 +271,8 @@ export function oauthSkip(input: {
   })
 }
 
-export function queryWord(word: string): Promise<WordQueryResponse> {
-  return requestJson<WordQueryResponse>(`/api/dict/words/${encodeURIComponent(word)}`, {
+export function lookup(word: string): Promise<WordQueryResponse> {
+  return requestJson<WordQueryResponse>(`/api/dict/lookup/${encodeURIComponent(word)}`, {
     method: 'GET',
   })
 }

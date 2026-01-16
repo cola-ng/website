@@ -64,3 +64,4 @@ pub async fn create_example(req: &mut Request) -> JsonResult<DictWordExample> {
     .map_err(|_| StatusError::internal_server_error().brief("failed to create example"))?;
     json_ok(created)
 }
+

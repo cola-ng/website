@@ -21,6 +21,21 @@ pub struct DbConfig {
     pub enforce_tls: bool,
 }
 
+impl Default for DbConfig {
+    fn default() -> Self {
+        Self {
+            url: String::new(),
+            pool_size: 15,
+            min_idle: 5,
+            connection_timeout: 30000,
+            helper_threads: 4,
+            statement_timeout: 5000,
+            tcp_timeout: 30000,
+            enforce_tls: false,
+        }
+    }
+}
+
 pub static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 impl AppConfig {
     pub fn init() {

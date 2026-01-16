@@ -53,3 +53,4 @@ pub async fn create_form(req: &mut Request) -> JsonResult<DictWordForm> {
     .map_err(|_| StatusError::internal_server_error().brief("failed to create form"))?;
     json_ok(created)
 }
+

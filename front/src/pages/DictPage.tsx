@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Search, BookOpen, Volume2, Star, ChevronRight } from 'lucide-react'
-import { queryWord, type WordQueryResponse } from '../lib/api'
+import { lookup, type WordQueryResponse } from '../lib/api'
 
 export function DictPage() {
   const [query, setQuery] = useState('')
@@ -15,7 +15,7 @@ export function DictPage() {
     setLoading(true)
     setError('')
     try {
-      const data = await queryWord(query.trim())
+      const data = await lookup(query.trim())
       setResult(data)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch word')

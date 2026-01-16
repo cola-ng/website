@@ -37,9 +37,7 @@ pub async fn create_usage_note(req: &mut Request) -> JsonResult<DictWordUsageNot
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.note_en.trim().is_empty() {
-        return Err(StatusError::bad_request()
-            .brief("note_en is required")
-            .into());
+        return Err(StatusError::bad_request().brief("note_en is required").into());
     }
     let created: DictWordUsageNote = with_conn(move |conn| {
         diesel::insert_into(dict_word_usage_notes::table)
@@ -57,3 +55,4 @@ pub async fn create_usage_note(req: &mut Request) -> JsonResult<DictWordUsageNot
     .map_err(|_| StatusError::internal_server_error().brief("failed to create usage note"))?;
     json_ok(created)
 }
+

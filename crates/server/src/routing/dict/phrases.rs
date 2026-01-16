@@ -12,9 +12,7 @@ pub async fn list_phrases(req: &mut Request) -> JsonResult<Vec<DictPhrase>> {
     let word_id = super::get_path_id(req, "id")?;
     let phrases: Vec<DictPhrase> = with_conn(move |conn| {
         dict_phrases::table
-            .inner_join(
-                dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)),
-            )
+            .inner_join(dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)))
             .filter(dict_phrase_words::word_id.eq(word_id))
             .filter(
                 dict_phrases::phrase_type
@@ -35,9 +33,7 @@ pub async fn list_idioms(req: &mut Request) -> JsonResult<Vec<DictPhrase>> {
     let word_id = super::get_path_id(req, "id")?;
     let idioms: Vec<DictPhrase> = with_conn(move |conn| {
         dict_phrases::table
-            .inner_join(
-                dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)),
-            )
+            .inner_join(dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)))
             .filter(dict_phrase_words::word_id.eq(word_id))
             .filter(dict_phrases::phrase_type.eq(Some("idiom")))
             .select(dict_phrases::all_columns)
@@ -74,10 +70,9 @@ async fn create_phrase_impl(
     }
     let phrase = input.phrase.trim().to_string();
     let phrase_lower = phrase.to_lowercase();
-    let phrase_type = force_type.map(|v| v.to_string()).or(input
-        .phrase_type
-        .map(|v| v.trim().to_string())
-        .filter(|v| !v.is_empty()));
+    let phrase_type = force_type
+        .map(|v| v.to_string())
+        .or(input.phrase_type.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()));
     let word_position = input.word_position.unwrap_or(1);
 
     with_conn(move |conn| {

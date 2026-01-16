@@ -55,3 +55,4 @@ pub async fn create_category(req: &mut Request) -> JsonResult<DictWordCategory> 
     .map_err(|_| StatusError::internal_server_error().brief("failed to create category"))?;
     json_ok(created)
 }
+

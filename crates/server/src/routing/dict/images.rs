@@ -57,14 +57,8 @@ pub async fn create_image(req: &mut Request) -> JsonResult<DictWordImage> {
         diesel::insert_into(dict_word_images::table)
             .values(&NewDictWordImage {
                 word_id,
-                image_url: input
-                    .image_url
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty()),
-                image_path: input
-                    .image_path
-                    .map(|v| v.trim().to_string())
-                    .filter(|v| !v.is_empty()),
+                image_url: input.image_url.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+                image_path: input.image_path.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
                 image_type: input.image_type,
                 alt_text_en: input.alt_text_en,
                 alt_text_zh: input.alt_text_zh,
@@ -77,3 +71,4 @@ pub async fn create_image(req: &mut Request) -> JsonResult<DictWordImage> {
     .map_err(|_| StatusError::internal_server_error().brief("failed to create image"))?;
     json_ok(created)
 }
+
