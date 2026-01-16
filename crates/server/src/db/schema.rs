@@ -333,6 +333,14 @@ diesel::table! {
 }
 
 diesel::table! {
+    role_users (user_id, role_id) {
+        role_id -> Int8,
+        user_id -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     roles (id) {
         id -> Int8,
         code -> Text,
@@ -352,14 +360,6 @@ diesel::table! {
         id -> Int8,
         user_id -> Int8,
         hash -> Text,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    user_roles (user_id, role_id) {
-        user_id -> Int8,
-        role_id -> Int8,
         created_at -> Timestamptz,
     }
 }
@@ -411,8 +411,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     oauth_identities,
     oauth_login_sessions,
     role_permissions,
+    role_users,
     roles,
     user_passwords,
-    user_roles,
     users,
 );

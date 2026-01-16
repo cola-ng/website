@@ -361,7 +361,7 @@ pub async fn create_conversation(
     };
 
     let convo: Conversation = with_conn(move |conn| {
-        diesel::insert_into(learn_conversations)
+        diesel::insert_into(learn_conversations::table)
             .values(&new_convo)
             .get_result::<Conversation>(conn)
     })

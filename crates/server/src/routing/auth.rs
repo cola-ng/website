@@ -116,35 +116,31 @@ pub async fn register(
             .values(&new_user)
             .get_result::<User>(conn)?;
 
-        if is_first {
-            use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::roles::dsl as r;
-            use crate::db::schema::user_roles::dsl as ur;
+        // if is_first {
+        //     let role = diesel::insert_into(roles::table)
+        //         .values(&NewRole {
+        //             name: "admin".to_string(),
+        //         })
+        //         .on_conflict_do_nothing()
+        //         .get_result::<Role>(conn)
+        //         .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
 
-            let role = diesel::insert_into(r::roles)
-                .values(&NewRole {
-                    name: "admin".to_string(),
-                })
-                .on_conflict_do_nothing()
-                .get_result::<Role>(conn)
-                .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
+        //     let _ = diesel::insert_into(rp::role_permissions)
+        //         .values(&NewRolePermission {
+        //             role_id: role.id,
+        //             operation: "users.delete".to_string(),
+        //         })
+        //         .on_conflict_do_nothing()
+        //         .execute(conn);
 
-            let _ = diesel::insert_into(rp::role_permissions)
-                .values(&NewRolePermission {
-                    role_id: role.id,
-                    operation: "users.delete".to_string(),
-                })
-                .on_conflict_do_nothing()
-                .execute(conn);
-
-            let _ = diesel::insert_into(ur::user_roles)
-                .values(&NewUserRole {
-                    user_id: user.id,
-                    role_id: role.id,
-                })
-                .on_conflict_do_nothing()
-                .execute(conn);
-        }
+        //     let _ = diesel::insert_into(role_users)
+        //         .values(&RoleUser {
+        //             user_id: user.id,
+        //             role_id: role.id,
+        //         })
+        //         .on_conflict_do_nothing()
+        //         .execute(conn);
+        // }
 
         Ok(user)
     })
@@ -393,10 +389,10 @@ impl Handler for RequirePermission {
             use diesel::prelude::*;
 
             use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::user_roles::dsl as ur;
+            use crate::db::schema::role_users::dsl as ur;
             let exists = diesel::select(diesel::dsl::exists(
                 rp::role_permissions
-                    .inner_join(ur::user_roles.on(ur::role_id.eq(rp::role_id)))
+                    .inner_join(ur::role_users.on(ur::role_id.eq(rp::role_id)))
                     .filter(ur::user_id.eq(user_id))
                     .filter(rp::operation.eq(operation)),
             ))

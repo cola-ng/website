@@ -101,7 +101,7 @@ pub async fn register(
         if is_first {
             use crate::db::schema::role_permissions::dsl as rp;
             use crate::db::schema::roles::dsl as r;
-            use crate::db::schema::user_roles::dsl as ur;
+            use crate::db::schema::role_users::dsl as ur;
 
             let role = diesel::insert_into(r::roles)
                 .values(&NewRole {
@@ -119,8 +119,8 @@ pub async fn register(
                 .on_conflict_do_nothing()
                 .execute(conn);
 
-            let _ = diesel::insert_into(ur::user_roles)
-                .values(&NewUserRole {
+            let _ = diesel::insert_into(ur::role_users)
+                .values(&RoleUser {
                     user_id: user.id,
                     role_id: role.id,
                 })
@@ -300,10 +300,10 @@ impl Handler for RequirePermission {
             use diesel::prelude::*;
 
             use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::user_roles::dsl as ur;
+            use crate::db::schema::role_users::dsl as ur;
             let exists = diesel::select(diesel::dsl::exists(
                 rp::role_permissions
-                    .inner_join(ur::user_roles.on(ur::role_id.eq(rp::role_id)))
+                    .inner_join(ur::role_users.on(ur::role_id.eq(rp::role_id)))
                     .filter(ur::user_id.eq(user_id))
                     .filter(rp::operation.eq(operation)),
             ))

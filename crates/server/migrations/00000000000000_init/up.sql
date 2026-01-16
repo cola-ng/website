@@ -59,10 +59,10 @@ CREATE TABLE IF NOT EXISTS roles (
   created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-drop table if exists user_roles;
-CREATE TABLE IF NOT EXISTS user_roles (
-  user_id BIGINT NOT NULL,
+drop table if exists role_users;
+CREATE TABLE IF NOT EXISTS role_users (
   role_id BIGINT NOT NULL,
+  user_id BIGINT NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, role_id)
 );

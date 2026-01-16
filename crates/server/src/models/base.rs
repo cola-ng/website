@@ -130,11 +130,11 @@ pub struct NewRole {
     pub created_by: Option<i64>,
 }
 
-// #[derive(Queryable, Insertable, Serialize, Debug)]
-// pub struct RoleUser {
-//     pub role_id: i64,
-//     pub user_id: i64,
-// }
+#[derive(Queryable, Insertable, Serialize, Debug)]
+pub struct RoleUser {
+    pub role_id: i64,
+    pub user_id: i64,
+}
 
 // #[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
 // pub struct Operation {
