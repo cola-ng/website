@@ -85,6 +85,9 @@ pub async fn register(
         name: input.name.clone(),
         email: Some(email.clone()),
         phone: None,
+        display_name: None,
+        created_by: None,
+        updated_by: None,
     };
 
     let user: User = with_conn(move |conn| {
@@ -97,35 +100,35 @@ pub async fn register(
             .values(&new_user)
             .get_result::<User>(conn)?;
 
-        if is_first {
-            use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::role_users::dsl as ur;
-            use crate::db::schema::roles::dsl as r;
+        // if is_first {
+        //     use crate::db::schema::role_permissions::dsl as rp;
+        //     use crate::db::schema::role_users::dsl as ur;
+        //     use crate::db::schema::roles::dsl as r;
 
-            let role = diesel::insert_into(r::roles)
-                .values(&NewRole {
-                    name: "admin".to_string(),
-                })
-                .on_conflict_do_nothing()
-                .get_result::<Role>(conn)
-                .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
+        //     let role = diesel::insert_into(r::roles)
+        //         .values(&NewRole {
+        //             name: "admin".to_string(),
+        //         })
+        //         .on_conflict_do_nothing()
+        //         .get_result::<Role>(conn)
+        //         .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
 
-            let _ = diesel::insert_into(rp::role_permissions)
-                .values(&NewRolePermission {
-                    role_id: role.id,
-                    operation: "users.delete".to_string(),
-                })
-                .on_conflict_do_nothing()
-                .execute(conn);
+        //     let _ = diesel::insert_into(rp::role_permissions)
+        //         .values(&NewRolePermission {
+        //             role_id: role.id,
+        //             operation: "users.delete".to_string(),
+        //         })
+        //         .on_conflict_do_nothing()
+        //         .execute(conn);
 
-            let _ = diesel::insert_into(ur::role_users)
-                .values(&RoleUser {
-                    user_id: user.id,
-                    role_id: role.id,
-                })
-                .on_conflict_do_nothing()
-                .execute(conn);
-        }
+        //     let _ = diesel::insert_into(ur::role_users)
+        //         .values(&RoleUser {
+        //             user_id: user.id,
+        //             role_id: role.id,
+        //         })
+        //         .on_conflict_do_nothing()
+        //         .execute(conn);
+        // }
 
         Ok(user)
     })
@@ -144,7 +147,7 @@ pub async fn register(
     };
     let config = AppConfig::get();
     let access_token =
-        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        dealing::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(AuthResponse {

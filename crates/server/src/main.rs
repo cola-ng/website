@@ -3,6 +3,7 @@ mod config;
 mod db;
 mod error;
 mod models;
+mod hoops;
 mod routing;
 pub use error::AppError;
 use salvo::prelude::*;

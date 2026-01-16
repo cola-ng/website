@@ -65,6 +65,22 @@ impl From<std::env::VarError> for AppError {
     }
 }
 
+impl AppError {
+    pub fn public<S: Into<String>>(msg: S) -> Self {
+        Self::Public(msg.into())
+    }
+
+    pub fn internal<S: Into<String>>(msg: S) -> Self {
+        Self::Internal(msg.into())
+    }
+
+    pub fn is_not_found(&self) -> bool {
+        match self {
+            Self::Diesel(diesel::result::Error::NotFound) => true,
+            _ => false,
+        }
+    }
+}
 #[async_trait]
 impl Writer for AppError {
     async fn write(mut self, _req: &mut Request, depot: &mut Depot, res: &mut Response) {

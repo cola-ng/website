@@ -131,77 +131,7 @@ pub async fn full_user_deactivate(user_id: i64) -> AppResult<()> {
     Ok(())
 }
 
-/// Find out which user an OpenID access token belongs to.
-pub async fn find_from_openid_token(token: &str) -> AppResult<i64> {
-    let Ok((user_id, expires_at)) = user_openid_tokens::table
-        .filter(user_openid_tokens::token.eq(token))
-        .select((user_openid_tokens::user_id, user_openid_tokens::expires_at))
-        .first::<(i64, DateTime<Utc>)>(&mut conn()?)
-    else {
-        return Err(StatusError::unauthorized()
-            .brief("OpenID token is unrecognised")
-            .into());
-    };
-    if expires_at < Utc::now() {
-        tracing::warn!("OpenID token is expired, removing");
-        diesel::delete(user_openid_tokens::table.filter(user_openid_tokens::token.eq(token)))
-            .execute(&mut conn()?)?;
-
-        return Err(StatusError::unauthorized()
-            .brief("OpenID token is expired")
-            .into());
-    }
-
-    Ok(user_id)
-}
-
-/// Creates a short-lived login token, which can be used to log in using the
-/// `m.login.token` mechanism.
-pub fn create_login_token(user_id: i64, token: &str) -> AppResult<u64> {
-    let expires_in = crate::AppConfig::get().login_token_ttl;
-    let expires_at = Utc::now() + TimeDelta::milliseconds(expires_in as i64);
-
-    diesel::insert_into(user_login_tokens::table)
-        .values((
-            user_login_tokens::user_id.eq(user_id),
-            user_login_tokens::token.eq(token),
-            user_login_tokens::expires_at.eq(expires_at),
-        ))
-        .on_conflict(user_login_tokens::token)
-        .do_update()
-        .set(user_login_tokens::expires_at.eq(expires_at))
-        .execute(&mut conn()?)?;
-
-    Ok(expires_in)
-}
-
 /// Find out which user a login token belongs to.
-/// Removes the token to prevent double-use attacks.
-pub fn take_login_token(token: &str) -> AppResult<i64> {
-    let Ok((user_id, expires_at)) = user_login_tokens::table
-        .filter(user_login_tokens::token.eq(token))
-        .select((user_login_tokens::user_id, user_login_tokens::expires_at))
-        .first::<(i64, DateTime<Utc>)>(&mut conn()?)
-    else {
-        return Err(StatusError::forbidden()
-            .brief("Login token is unrecognised.")
-            .into());
-    };
-
-    if expires_at < Utc::now() {
-        trace!(?user_id, ?token, "Removing expired login token");
-        diesel::delete(user_login_tokens::table.filter(user_login_tokens::token.eq(token)))
-            .execute(&mut conn()?)?;
-        return Err(StatusError::forbidden()
-            .brief("login token is expired.")
-            .into());
-    }
-
-    diesel::delete(user_login_tokens::table.filter(user_login_tokens::token.eq(token)))
-        .execute(&mut conn()?)?;
-
-    Ok(user_id)
-}
 
 pub fn valid_refresh_token(user_id: i64, device_id: i64, token: &str) -> AppResult<()> {
     let Ok(expires_at) = user_refresh_tokens::table
@@ -229,25 +159,6 @@ pub fn make_user_admin(user_id: i64) -> AppResult<()> {
         .set(users::is_admin.eq(true))
         .execute(&mut conn()?)?;
     Ok(())
-}
-
-/// Places one event in the account data of the user and removes the previous entry.
-#[tracing::instrument(skip(user_id, event_type, json_data))]
-pub fn set_data(user_id: i64, event_type: &str, json_data: JsonValue) -> AppResult<UserData> {
-    let user_data = dealing::user::set_data(user_id, event_type, json_data)?;
-    Ok(user_data)
-}
-
-pub fn get_data<E: DeserializeOwned>(user_id: i64, kind: &str) -> AppResult<E> {
-    let data = dealing::user::get_data::<E>(user_id, kind)?;
-    Ok(data)
-}
-
-pub fn get_global_datas(user_id: i64) -> AppResult<Vec<UserData>> {
-    let datas = user_datas::table
-        .filter(user_datas::user_id.eq(user_id))
-        .load::<UserData>(&mut conn()?)?;
-    Ok(datas)
 }
 
 pub async fn deactivate_account(user_id: i64) -> AppResult<()> {
@@ -288,24 +199,24 @@ pub fn count() -> AppResult<u64> {
 
 /// Returns the display_name of a user on this homeserver.
 pub fn display_name(user_id: i64) -> AppResult<Option<String>> {
-    user_profiles::table
-        .filter(user_profiles::user_id.eq(user_id))
-        .select(user_profiles::display_name)
+    users::table
+        .filter(users::user_id.eq(user_id))
+        .select(users::display_name)
         .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
 }
 pub fn set_display_name(user_id: i64, display_name: &str) -> AppResult<()> {
-    diesel::update(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
-        .set(user_profiles::display_name.eq(display_name))
+    diesel::update(users::table.filter(users::id.eq(user_id)))
+        .set(users::display_name.eq(display_name))
         .execute(&mut conn()?)
         .map(|_| ())
         .map_err(Into::into)
 }
 pub fn remove_display_name(user_id: i64) -> AppResult<()> {
-    diesel::update(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
-        .set(user_profiles::display_name.eq::<Option<String>>(None))
+    diesel::update(users::table.filter(users::id.eq(user_id)))
+        .set(users::display_name.eq::<Option<String>>(None))
         .execute(&mut conn()?)
         .map(|_| ())
         .map_err(Into::into)
@@ -314,7 +225,7 @@ pub fn remove_display_name(user_id: i64) -> AppResult<()> {
 /// Get the avatar_url of a user.
 pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
     users::table
-        .filter(users::user_id.eq(user_id))
+        .filter(users::id.eq(user_id))
         .select(users::avatar)
         .first::<Option<String>>(&mut conn()?)
         .optional()
@@ -322,7 +233,7 @@ pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
         .map_err(Into::into)
 }
 pub fn set_avatar_url(user_id: i64, avatar_url: &str) -> AppResult<()> {
-    diesel::update(users::table.filter(users::user_id.eq(user_id)))
+    diesel::update(users::table.filter(users::id.eq(user_id)))
         .set(users::avatar.eq(avatar_url))
         .execute(&mut conn()?)?;
     Ok(())

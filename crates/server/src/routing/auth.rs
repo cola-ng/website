@@ -196,7 +196,7 @@ pub async fn login(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
-    let ok = auth::verify_password(user.id, &input.password)
+    let ok = dealing::auth::verify_password(user.id, &input.password)
         .await
         .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
     if !ok {

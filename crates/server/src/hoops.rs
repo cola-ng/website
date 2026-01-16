@@ -5,6 +5,9 @@ use url::Url;
 
 use crate::{AppError, AppResult};
 
+mod auth;
+pub use auth::auth_by_access_token;
+
 #[handler]
 pub async fn ensure_accept(req: &mut Request) {
     if req.accept().is_empty() {

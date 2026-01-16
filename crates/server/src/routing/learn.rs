@@ -7,10 +7,11 @@ use serde::Deserialize;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
+use crate::hoops;
 
-pub fn router(auth_hoop: impl Handler) -> Router {
+pub fn router() -> Router {
     Router::with_path("learn")
-        .hoop(auth_hoop)
+        .hoop(hoops::auth_by_access_token)
         .push(
             Router::with_path("issue-words")
                 .get(list_issue_words)
