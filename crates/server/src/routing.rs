@@ -38,6 +38,7 @@ pub fn router(_config: AppConfig) -> Router {
         .push(Router::with_path("health").get(health))
         .push(account::router())
         .push(auth::router())
+        .push(asset::router())
         .push(learn::router())
 }
 

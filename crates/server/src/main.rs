@@ -32,7 +32,7 @@ pub fn empty_ok() -> JsonResult<EmptyObject> {
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-    let app_config = AppConfig::from_env().expect("invalid config");
+    let app_config = AppConfig::init().expect("invalid config");
     let bind_addr = app_config.bind_addr.clone();
 
     let db_config = DbConfig {

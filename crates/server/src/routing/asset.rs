@@ -10,7 +10,7 @@ use crate::models::asset::*;
 use crate::models::learn::*;
 use crate::{AppResult, DepotExt};
 
-pub fn router(_auth_hoop: impl Handler) -> Router {
+pub fn router() -> Router {
     Router::with_path("asset")
         .push(
             Router::with_path("scenes")
