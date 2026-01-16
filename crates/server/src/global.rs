@@ -1,11 +1,24 @@
 use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use serde::Serialize;
+use salvo::prelude::*;
 
-use crate::AppResult;
+use crate::AppError;
 
 #[derive(Serialize, ToSchema, Clone, Copy, Debug)]
 pub struct EmptyObject {}
+
+pub type AppResult<T> = Result<T, AppError>;
+pub type DieselResult<T> = Result<T, diesel::result::Error>;
+pub type JsonResult<T> = Result<Json<T>, AppError>;
+pub type EmptyResult = Result<Json<EmptyObject>, AppError>;
+
+pub fn json_ok<T>(data: T) -> JsonResult<T> {
+    Ok(Json(data))
+}
+pub fn empty_ok() -> JsonResult<EmptyObject> {
+    Ok(Json(EmptyObject {}))
+}
 
 pub trait DepotExt {
     fn user_id(&self) -> AppResult<i64>;

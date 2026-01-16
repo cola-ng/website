@@ -656,8 +656,9 @@ fn extract_etymology_info(info: &str) -> (Option<String>, Option<String>, Option
 
     // Try to extract origin word and meaning
     // Format: [词根]: bas, bass (L bassus)=low 低的
-    let origin_info = if let Some(start) = info.find("【词根】:") {
-        let rest = &info[start + 5..];
+    const ETYMOLOGY_MARKER: &str = "【词根】:";
+    let origin_info = if let Some(start) = info.find(ETYMOLOGY_MARKER) {
+        let rest = &info[start + ETYMOLOGY_MARKER.len()..];
         if let Some(end) = rest.find('=') {
             Some(rest[..end].trim().to_string())
         } else {
@@ -689,8 +690,9 @@ fn extract_part_of_speech(info: &str) -> Option<String> {
 fn extract_example_from_definition(definition: &str) -> Option<String> {
     // Look for example sentences in the definition
     // Format: ...／Example sentence. 翻译
-    if let Some(pos) = definition.find("／") {
-        let example_part = &definition[pos + 3..];
+    const EXAMPLE_MARKER: &str = "／";
+    if let Some(pos) = definition.find(EXAMPLE_MARKER) {
+        let example_part = &definition[pos + EXAMPLE_MARKER.len()..];
         if let Some(end) = example_part.find('。') {
             let char_count = example_part[..end].chars().count() + 1;
             return Some(example_part.chars().take(char_count).collect::<String>().trim().to_string());

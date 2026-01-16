@@ -17,18 +17,6 @@ use salvo::prelude::*;
 use crate::config::AppConfig;
 use crate::db::DbConfig;
 
-pub type AppResult<T> = Result<T, AppError>;
-pub type DieselResult<T> = Result<T, diesel::result::Error>;
-pub type JsonResult<T> = Result<Json<T>, AppError>;
-pub type EmptyResult = Result<Json<EmptyObject>, AppError>;
-
-pub fn json_ok<T>(data: T) -> JsonResult<T> {
-    Ok(Json(data))
-}
-pub fn empty_ok() -> JsonResult<EmptyObject> {
-    Ok(Json(EmptyObject {}))
-}
-
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
