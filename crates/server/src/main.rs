@@ -1,10 +1,11 @@
-pub mod dealing;
+pub mod auth;
 mod config;
 mod db;
 mod error;
-mod models;
 mod hoops;
+mod models;
 mod routing;
+pub mod user;
 pub use error::AppError;
 use salvo::prelude::*;
 use serde::Serialize;

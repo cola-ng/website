@@ -12,7 +12,7 @@ use crate::config::JwtConfig;
 use crate::db::conn;
 use crate::db::schema::*;
 use crate::models::{NewPassword, NewUser, User, UserData};
-use crate::{AppError, AppResult, JsonValue, config, dealing, diesel_exists, utils};
+use crate::{AppError, AppResult, JsonValue, config, diesel_exists, utils};
 
 #[derive(Debug, Deserialize)]
 pub struct JwtClaims {
@@ -90,7 +90,7 @@ fn init_jwt_validator(config: &JwtConfig) -> AppResult<Validation> {
 }
 
 pub fn is_username_available(name: &str) -> AppResult<bool> {
-    let available = !dealing::user::user_exists(name)?;
+    let available = !user::user_exists(name)?;
     Ok(available)
 }
 
@@ -119,39 +119,25 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
     Ok(user)
 }
 
-/// Runs through all the deactivation steps:
-///
-/// - Mark as deactivated
-/// - Removing display name
-/// - Removing avatar URL and blurhash
-/// - Removing all profile data
-pub async fn full_user_deactivate(user_id: i64) -> AppResult<()> {
-    dealing::user::deactivate(user_id).ok();
-    dealing::user::delete_profile(user_id).ok();
-    Ok(())
-}
-
-/// Find out which user a login token belongs to.
-
-pub fn valid_refresh_token(user_id: i64, device_id: i64, token: &str) -> AppResult<()> {
-    let Ok(expires_at) = user_refresh_tokens::table
-        .filter(user_refresh_tokens::user_id.eq(user_id))
-        .filter(user_refresh_tokens::device_id.eq(device_id))
-        .filter(user_refresh_tokens::token.eq(token))
-        .select(user_refresh_tokens::expires_at)
-        .first::<DateTime<Utc>>(&mut conn()?)
-    else {
-        return Err(StatusError::unauthorized()
-            .brief("invalid refresh token")
-            .into());
-    };
-    if expires_at < Utc::now() {
-        return Err(StatusError::unauthorized()
-            .brief("refresh token expired")
-            .into());
-    }
-    Ok(())
-}
+// pub fn valid_refresh_token(user_id: i64, device_id: i64, token: &str) -> AppResult<()> {
+//     let Ok(expires_at) = user_refresh_tokens::table
+//         .filter(user_refresh_tokens::user_id.eq(user_id))
+//         .filter(user_refresh_tokens::device_id.eq(device_id))
+//         .filter(user_refresh_tokens::token.eq(token))
+//         .select(user_refresh_tokens::expires_at)
+//         .first::<DateTime<Utc>>(&mut conn()?)
+//     else {
+//         return Err(StatusError::unauthorized()
+//             .brief("invalid refresh token")
+//             .into());
+//     };
+//     if expires_at < Utc::now() {
+//         return Err(StatusError::unauthorized()
+//             .brief("refresh token expired")
+//             .into());
+//     }
+//     Ok(())
+// }
 
 pub fn make_user_admin(user_id: i64) -> AppResult<()> {
     let user_id = user_id.to_owned();
@@ -257,30 +243,27 @@ pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
 //         .map_err(Into::into)
 // }
 
-pub fn delete_access_tokens(user_id: i64) -> AppResult<()> {
-    diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))
-        .execute(&mut conn()?)?;
-    Ok(())
-}
+// pub fn delete_access_tokens(user_id: i64) -> AppResult<()> {
+//     diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))
+//         .execute(&mut conn()?)?;
+//     Ok(())
+// }
 
-pub fn delete_refresh_tokens(user_id: i64) -> AppResult<()> {
-    diesel::delete(user_refresh_tokens::table.filter(user_refresh_tokens::user_id.eq(user_id)))
-        .execute(&mut conn()?)?;
-    Ok(())
-}
+// pub fn delete_refresh_tokens(user_id: i64) -> AppResult<()> {
+//     diesel::delete(user_refresh_tokens::table.filter(user_refresh_tokens::user_id.eq(user_id)))
+//         .execute(&mut conn()?)?;
+//     Ok(())
+// }
 
-pub fn remove_all_devices(user_id: i64) -> AppResult<()> {
-    delete_access_tokens(user_id)?;
-    delete_refresh_tokens(user_id)?;
-    Ok(())
-}
+// pub fn remove_all_devices(user_id: i64) -> AppResult<()> {
+//     delete_access_tokens(user_id)?;
+//     delete_refresh_tokens(user_id)?;
+//     Ok(())
+// }
 
 pub fn deactivate(user_id: i64) -> AppResult<()> {
     diesel::update(users::table.find(user_id))
         .set((users::deactivated_at.eq(Utc::now()),))
-        .execute(&mut conn()?)?;
-
-    diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))
         .execute(&mut conn()?)?;
 
     Ok(())
@@ -413,31 +396,6 @@ pub fn get_password_hash(user_id: i64) -> AppResult<String> {
         .select(user_passwords::hash)
         .first::<String>(&mut conn()?)
         .map_err(Into::into)
-}
-
-pub fn verify_password(user: &User, password: &str) -> AppResult<()> {
-    if user.deactivated_at.is_some() {
-        return Err(StatusError::unauthorized()
-            .brief("the user has been deactivated")
-            .into());
-    }
-    let hash = dealing::user::get_password_hash(user.id)
-        .map_err(|_| StatusError::unauthorized().brief("wrong username or password"))?;
-    if hash.is_empty() {
-        return Err(StatusError::unauthorized()
-            .brief("the user has been deactivated")
-            .into());
-    }
-
-    let hash_matches = argon2::verify_encoded(&hash, password.as_bytes()).unwrap_or(false);
-
-    if !hash_matches {
-        Err(StatusError::unauthorized()
-            .brief("wrong username or password")
-            .into())
-    } else {
-        Ok(())
-    }
 }
 
 pub fn set_password(user_id: i64, password: &str) -> AppResult<()> {

@@ -14,15 +14,54 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::auth;
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
+use crate::auth;
+use crate::hoops::require_auth;
 use crate::models::*;
 
 pub mod account;
 pub mod asset;
 pub mod learn;
+
+pub fn router(config: AppConfig) -> Router {
+    let api = Router::with_path("api")
+        .push(Router::with_path("health").get(health))
+        .push(
+            Router::with_path("chat")
+                .hoop(require_auth)
+                .push(Router::with_path("send").post(chat_send)),
+        );
+
+    let admin = Router::with_path("api/admin")
+        .hoop(require_auth)
+        .hoop(require_permission("users.delete"))
+        .push(Router::with_path("users/{user_id}").delete(admin_delete_user));
+
+    Router::new()
+        .hoop(
+            Cors::new()
+                .allow_origin(cors::Any)
+                .allow_methods([
+                    Method::GET,
+                    Method::POST,
+                    Method::PUT,
+                    Method::DELETE,
+                    Method::OPTIONS,
+                ])
+                .allow_headers(AllowHeaders::list([
+                    salvo::http::header::ACCEPT,
+                    salvo::http::header::CONTENT_TYPE,
+                    salvo::http::header::AUTHORIZATION,
+                    salvo::http::header::RANGE,
+                ]))
+                .max_age(Duration::from_secs(86400))
+                .into_handler(),
+        )
+        .push(api)
+        .push(admin)
+}
 
 #[handler]
 pub async fn health(res: &mut Response) {
@@ -162,7 +201,7 @@ pub async fn register(
     };
     let config = AppConfig::get();
     let access_token =
-        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        daling::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(AuthResponse {
@@ -196,8 +235,7 @@ pub async fn login(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
-    let ok = dealing::auth::verify_password(user.id, &input.password)
-        .await
+    let ok = auth::verify_password(user.id, &input.password)
         .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
     if !ok {
         return Err(StatusError::unauthorized().brief("invalid credentials"));
@@ -214,32 +252,6 @@ pub async fn login(
     }));
     Ok(())
 }
-
-#[handler]
-pub async fn auth_required(
-    req: &mut Request,
-    depot: &mut Depot,
-    _res: &mut Response,
-) -> Result<(), StatusError> {
-    let config = AppConfig::get();
-    let header_value = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| StatusError::unauthorized().brief("missing authorization"))?;
-    let token = header_value
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| StatusError::unauthorized().brief("invalid authorization"))?;
-    let claims = auth::decode_access_token(token, &config.jwt_secret)
-        .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
-    let user_id: i64 = claims
-        .sub
-        .parse()
-        .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
-    depot.insert("user_id", user_id);
-    Ok(())
-}
-
 
 #[derive(Deserialize)]
 pub struct CodeRequest {
@@ -276,7 +288,7 @@ pub async fn create_code(
     let user_id = get_user_id(depot)?;
 
     let code = auth::random_code();
-    let code_hash = auth::hash_desktop_code(&code);
+    let code_hash = auth::hash_code(&code);
     let expires_at = Utc::now() + chrono::Duration::minutes(5);
     let record = NewAuthCode {
         user_id,
@@ -671,43 +683,3 @@ async fn admin_delete_user(
 //     }));
 //     Ok(())
 // }
-
-pub fn router(config: AppConfig) -> Router {
-    let api = Router::with_path("api")
-        .push(Router::with_path("health").get(health))
-        .push(account::router())
-        .push(learn::router(auth_required))
-        .push(
-            Router::with_path("chat")
-                .hoop(auth_required)
-                .push(Router::with_path("send").post(chat_send)),
-        );
-
-    let admin = Router::with_path("api/admin")
-        .hoop(auth_required)
-        .hoop(require_permission("users.delete"))
-        .push(Router::with_path("users/{user_id}").delete(admin_delete_user));
-
-    Router::new()
-        .hoop(
-            Cors::new()
-                .allow_origin(cors::Any)
-                .allow_methods([
-                    Method::GET,
-                    Method::POST,
-                    Method::PUT,
-                    Method::DELETE,
-                    Method::OPTIONS,
-                ])
-                .allow_headers(AllowHeaders::list([
-                    salvo::http::header::ACCEPT,
-                    salvo::http::header::CONTENT_TYPE,
-                    salvo::http::header::AUTHORIZATION,
-                    salvo::http::header::RANGE,
-                ]))
-                .max_age(Duration::from_secs(86400))
-                .into_handler(),
-        )
-        .push(api)
-        .push(admin)
-}

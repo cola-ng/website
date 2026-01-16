@@ -11,7 +11,7 @@ use crate::hoops;
 
 pub fn router() -> Router {
     Router::with_path("learn")
-        .hoop(hoops::auth_by_access_token)
+        .hoop(hoops::require_auth)
         .push(
             Router::with_path("issue-words")
                 .get(list_issue_words)

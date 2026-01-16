@@ -75,7 +75,6 @@ pub struct NewUser {
     pub phone: Option<String>,
     pub display_name: Option<String>,
     pub inviter_id: Option<i64>,
-    pub profile: Value,
 
     pub updated_by: Option<i64>,
     pub created_by: Option<i64>,
@@ -309,37 +308,37 @@ pub struct RoleUser {
 //     pub created_by: Option<i64>,
 // }
 
-pub static ACCESS_TOKEN_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
-    vec![
-        "id",
-        "user_id",
-        "name",
-        "kind",
-        "value",
-        "updated_by",
-        "created_by",
-    ]
-    .into_iter()
-    .map(String::from)
-    .collect()
-});
-pub static ACCESS_TOKEN_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
-#[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
-// #[belongs_to(User)]
-pub struct AccessToken {
-    pub id: i64,
-    pub user_id: i64,
-    pub name: Option<String>,
-    pub kind: String,
-    pub value: String,
-    pub device: Option<String>,
-    pub expires_at: DateTime<Utc>,
+// pub static ACCESS_TOKEN_FILTER_FIELDS: LazyLock<Vec<String>> = LazyLock::new(|| {
+//     vec![
+//         "id",
+//         "user_id",
+//         "name",
+//         "kind",
+//         "value",
+//         "updated_by",
+//         "created_by",
+//     ]
+//     .into_iter()
+//     .map(String::from)
+//     .collect()
+// });
+// pub static ACCESS_TOKEN_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
+// #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
+// // #[belongs_to(User)]
+// pub struct AccessToken {
+//     pub id: i64,
+//     pub user_id: i64,
+//     pub name: Option<String>,
+//     pub kind: String,
+//     pub value: String,
+//     pub device: Option<String>,
+//     pub expires_at: DateTime<Utc>,
 
-    pub updated_by: Option<i64>,
-    pub updated_at: DateTime<Utc>,
-    pub created_by: Option<i64>,
-    pub created_at: DateTime<Utc>,
-}
+//     pub updated_by: Option<i64>,
+//     pub updated_at: DateTime<Utc>,
+//     pub created_by: Option<i64>,
+//     pub created_at: DateTime<Utc>,
+// }
 
 #[derive(Insertable, Serialize, Clone, Debug)]
 #[diesel(table_name = access_tokens)]

@@ -1,6 +1,7 @@
 use salvo::prelude::*;
 
-use super::{auth_required, consume_code, create_code, login, me, register, update_me};
+use super::{consume_code, create_code, login, me, register, update_me};
+use crate::hoops::require_auth;
 
 pub fn router() -> Router {
     Router::new()
@@ -8,7 +9,7 @@ pub fn router() -> Router {
             Router::with_path("auth")
                 .push(
                     Router::with_path("code")
-                        .hoop(auth_required)
+                        .hoop(require_auth)
                         .post(create_code),
                 )
                 .push(Router::with_path("consume").post(consume_code)),
@@ -23,7 +24,7 @@ pub fn router() -> Router {
         .push(Router::with_path("login").post(login))
         .push(
             Router::with_path("me")
-                .hoop(auth_required)
+                .hoop(require_auth)
                 .get(me)
                 .put(update_me)
                 .push(

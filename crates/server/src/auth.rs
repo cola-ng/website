@@ -23,12 +23,33 @@ pub fn hash_password(password: &str) -> Result<String, String> {
         .map(|h| h.to_string())
 }
 
-pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, String> {
+pub async fn verify_password(password: &str, password_hash: &str) -> AppResult<()> {
+    if user.deactivated_at.is_some() {
+        return Err(StatusError::unauthorized()
+            .brief("the user has been deactivated")
+            .into());
+    }
+    let hash = user::get_password_hash(user.id)
+        .map_err(|_| StatusError::unauthorized().brief("wrong username or password"))?;
+    if hash.is_empty() {
+        return Err(StatusError::unauthorized()
+            .brief("the user has been deactivated")
+            .into());
+    }
+    
     let parsed =
-        PasswordHash::new(password_hash).map_err(|_| "invalid password hash".to_string())?;
-    Ok(Argon2::default()
+        PasswordHash::new(password_hash).map_err(|_| StatusError::unauthorized().brief("invalid password hash"))?;
+     let hash_matches = Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
-        .is_ok())
+        .is_ok();
+
+     if !hash_matches {
+        Err(StatusError::unauthorized()
+            .brief("wrong username or password")
+            .into())
+    } else {
+        Ok(())
+    }
 }
 
 pub fn issue_access_token(
