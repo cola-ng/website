@@ -35,6 +35,109 @@ export type LearningRecord = {
   created_at: string
 }
 
+export type DictWord = {
+  id: number
+  word: string
+  phonetic_us: string | null
+  phonetic_uk: string | null
+  audio_us: string | null
+  audio_uk: string | null
+  difficulty_level: string | null
+  frequency_rank: number | null
+  core_level: string | null
+  created_at: string
+  updated_at: string
+}
+
+export type DictWordDefinition = {
+  id: number
+  word_id: number
+  definition_en: string
+  definition_zh: string | null
+  part_of_speech: string | null
+  definition_order: number
+  register: string | null
+  region: string | null
+  context: string | null
+  usage_notes: string | null
+  is_primary: boolean
+  created_at: string
+}
+
+export type DictWordExample = {
+  id: number
+  word_id: number
+  example_en: string
+  example_zh: string | null
+  example_order: number
+  created_at: string
+}
+
+export type DictSynonym = {
+  id: number
+  word_id: number
+  synonym: string
+  created_at: string
+}
+
+export type DictAntonym = {
+  id: number
+  word_id: number
+  antonym: string
+  created_at: string
+}
+
+export type DictWordCollocation = {
+  id: number
+  word_id: number
+  collocation: string
+  collocation_type: string | null
+  example_en: string | null
+  example_zh: string | null
+  created_at: string
+}
+
+export type DictWordPhrase = {
+  id: number
+  word_id: number
+  phrase: string
+  meaning_zh: string | null
+  example_en: string | null
+  example_zh: string | null
+  created_at: string
+}
+
+export type DictCommonError = {
+  id: number
+  word_id: number
+  error_type: string
+  error_example: string | null
+  correct_example: string | null
+  explanation: string | null
+  created_at: string
+}
+
+export type DictWordRoot = {
+  id: number
+  word_id: number
+  root: string
+  meaning: string | null
+  language: string | null
+  created_at: string
+}
+
+export type WordQueryResponse = {
+  word: DictWord
+  definitions: DictWordDefinition[]
+  examples: DictWordExample[]
+  synonyms: DictSynonym[]
+  antonyms: DictAntonym[]
+  collocations: DictWordCollocation[]
+  phrases: DictWordPhrase[]
+  common_errors: DictCommonError[]
+  roots: DictWordRoot[]
+}
+
 async function requestJson<T>(
   path: string,
   init: RequestInit & { token?: string } = {}
@@ -165,5 +268,11 @@ export function oauthSkip(input: {
   return requestJson<OauthLoginResponse>('/api/auth/oauth/skip', {
     method: 'POST',
     body: JSON.stringify(input),
+  })
+}
+
+export function queryWord(word: string): Promise<WordQueryResponse> {
+  return requestJson<WordQueryResponse>(`/api/dict/words/${encodeURIComponent(word)}`, {
+    method: 'GET',
   })
 }

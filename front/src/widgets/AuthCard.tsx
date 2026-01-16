@@ -18,7 +18,6 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
   const [name, setName] = React.useState('')
   const [error, setError] = React.useState<string | null>(null)
   const [loading, setLoading] = React.useState(false)
-  const [oauthEmail, setOauthEmail] = React.useState('')
   const [needsBind, setNeedsBind] = React.useState<{
     oauthIdentityId: string
     provider: string
@@ -111,7 +110,7 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
       const resp = await oauthSkip({
         oauth_identity_id: needsBind.oauthIdentityId,
         name: name || undefined,
-        email: oauthEmail || needsBind.email || undefined,
+        email: needsBind.email || undefined,
       })
       if (resp.status === 'ok') {
         setAuth(resp.access_token, resp.user)

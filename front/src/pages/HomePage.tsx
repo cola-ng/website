@@ -5,6 +5,7 @@ import { AuthCard } from '../widgets/AuthCard'
 import { Button } from '../components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useAuth } from '../lib/auth'
+import { Link } from 'react-router-dom'
 
 export function HomePage() {
   const { token, user, clear } = useAuth()
@@ -15,6 +16,11 @@ export function HomePage() {
         <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center p-6">
           <div className="w-full max-w-md">
             <AuthCard />
+            <div className="mt-4 flex justify-center">
+              <Button asChild variant="outline">
+                <Link to="/dict">Dictionary</Link>
+              </Button>
+            </div>
           </div>
         </div>
       </div>
@@ -45,6 +51,9 @@ export function HomePage() {
                 Logged in
               </div>
             </div>
+            <Button asChild variant="outline">
+              <Link to="/dict">Dictionary</Link>
+            </Button>
             <Button variant="outline" onClick={clear}>
               Log out
             </Button>

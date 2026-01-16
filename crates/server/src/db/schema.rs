@@ -206,6 +206,281 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_frequency_bands (id) {
+        id -> Int8,
+        word_id -> Int8,
+        corpus_name -> Text,
+        corpus_type -> Nullable<Text>,
+        band -> Nullable<Text>,
+        rank -> Nullable<Int4>,
+        frequency_per_million -> Nullable<Float4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_import_batch (id) {
+        id -> Int8,
+        batch_name -> Text,
+        source -> Nullable<Text>,
+        source_type -> Nullable<Text>,
+        total_words -> Nullable<Int4>,
+        successful_words -> Nullable<Int4>,
+        failed_words -> Nullable<Int4>,
+        status -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
+        started_at -> Nullable<Timestamptz>,
+        completed_at -> Nullable<Timestamptz>,
+        created_by -> Nullable<Int8>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_phrase_words (id) {
+        id -> Int8,
+        phrase_id -> Int8,
+        word_id -> Int8,
+        word_position -> Int4,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_phrases (id) {
+        id -> Int8,
+        phrase -> Text,
+        phrase_lower -> Text,
+        phrase_type -> Nullable<Text>,
+        meaning_en -> Text,
+        meaning_zh -> Nullable<Text>,
+        origin -> Nullable<Text>,
+        example_en -> Nullable<Text>,
+        example_zh -> Nullable<Text>,
+        difficulty_level -> Nullable<Int4>,
+        frequency_score -> Nullable<Int4>,
+        is_active -> Nullable<Bool>,
+        created_by -> Nullable<Int8>,
+        updated_by -> Nullable<Int8>,
+        updated_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_related_topics (id) {
+        id -> Int8,
+        word_id -> Int8,
+        topic_name -> Text,
+        topic_category -> Nullable<Text>,
+        relevance_score -> Nullable<Float4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_antonyms (id) {
+        id -> Int8,
+        word_id -> Int8,
+        antonym_word_id -> Int8,
+        antonym_type -> Nullable<Text>,
+        context -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_categories (id) {
+        id -> Int8,
+        word_id -> Int8,
+        category_type -> Nullable<Text>,
+        category_name -> Text,
+        category_value -> Text,
+        confidence_score -> Nullable<Float4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_collocations (id) {
+        id -> Int8,
+        word_id -> Int8,
+        collocation_type -> Nullable<Text>,
+        collocated_word_id -> Nullable<Int8>,
+        phrase -> Text,
+        phrase_en -> Text,
+        phrase_zh -> Nullable<Text>,
+        frequency_score -> Nullable<Int4>,
+        register -> Nullable<Text>,
+        example_en -> Nullable<Text>,
+        example_zh -> Nullable<Text>,
+        is_common -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_definitions (id) {
+        id -> Int8,
+        word_id -> Int8,
+        definition_en -> Text,
+        definition_zh -> Nullable<Text>,
+        part_of_speech -> Nullable<Text>,
+        definition_order -> Nullable<Int4>,
+        register -> Nullable<Text>,
+        region -> Nullable<Text>,
+        context -> Nullable<Text>,
+        usage_notes -> Nullable<Text>,
+        is_primary -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_etymology (id) {
+        id -> Int8,
+        word_id -> Int8,
+        origin_language -> Nullable<Text>,
+        origin_word -> Nullable<Text>,
+        origin_meaning -> Nullable<Text>,
+        etymology_en -> Nullable<Text>,
+        etymology_zh -> Nullable<Text>,
+        first_attested_year -> Nullable<Int4>,
+        historical_forms -> Nullable<Jsonb>,
+        cognate_words -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_examples (id) {
+        id -> Int8,
+        word_id -> Int8,
+        definition_id -> Nullable<Int8>,
+        sentence_en -> Text,
+        sentence_zh -> Nullable<Text>,
+        source -> Nullable<Text>,
+        author -> Nullable<Text>,
+        example_order -> Nullable<Int4>,
+        difficulty_level -> Nullable<Int4>,
+        is_common -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_family (id) {
+        id -> Int8,
+        root_word_id -> Int8,
+        related_word_id -> Int8,
+        relationship_type -> Nullable<Text>,
+        morpheme -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_forms (id) {
+        id -> Int8,
+        word_id -> Int8,
+        form_type -> Nullable<Text>,
+        form -> Text,
+        is_irregular -> Nullable<Bool>,
+        notes -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_images (id) {
+        id -> Int8,
+        word_id -> Int8,
+        image_url -> Nullable<Text>,
+        image_path -> Nullable<Text>,
+        image_type -> Nullable<Text>,
+        alt_text_en -> Nullable<Text>,
+        alt_text_zh -> Nullable<Text>,
+        is_primary -> Nullable<Bool>,
+        created_by -> Nullable<Int8>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_pronunciations (id) {
+        id -> Int8,
+        word_id -> Int8,
+        ipa -> Text,
+        audio_url -> Nullable<Text>,
+        audio_path -> Nullable<Text>,
+        dialect -> Nullable<Text>,
+        is_primary -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_synonyms (id) {
+        id -> Int8,
+        word_id -> Int8,
+        synonym_word_id -> Int8,
+        similarity_score -> Nullable<Float4>,
+        context -> Nullable<Text>,
+        nuance_notes -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_thesaurus (id) {
+        id -> Int8,
+        word_id -> Int8,
+        entry_type -> Nullable<Text>,
+        related_word_id -> Int8,
+        semantic_field -> Nullable<Text>,
+        relationship_strength -> Nullable<Float4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_usage_notes (id) {
+        id -> Int8,
+        word_id -> Int8,
+        note_type -> Nullable<Text>,
+        note_en -> Text,
+        note_zh -> Nullable<Text>,
+        examples_en -> Nullable<Jsonb>,
+        examples_zh -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_words (id) {
+        id -> Int8,
+        word -> Text,
+        word_lower -> Text,
+        word_type -> Nullable<Text>,
+        frequency_score -> Nullable<Int4>,
+        difficulty_level -> Nullable<Int4>,
+        syllable_count -> Nullable<Int4>,
+        is_lemma -> Nullable<Bool>,
+        lemma_id -> Nullable<Int8>,
+        audio_url -> Nullable<Text>,
+        audio_path -> Nullable<Text>,
+        phonetic_transcription -> Nullable<Text>,
+        ipa_text -> Nullable<Text>,
+        word_count -> Nullable<Int4>,
+        is_active -> Nullable<Bool>,
+        created_by -> Nullable<Int8>,
+        updated_by -> Nullable<Int8>,
+        updated_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_achievements (id) {
         id -> Int8,
         user_id -> Int8,
@@ -403,6 +678,25 @@ diesel::allow_tables_to_appear_in_same_query!(
     base_role_users,
     base_roles,
     base_users,
+    dict_frequency_bands,
+    dict_import_batch,
+    dict_phrase_words,
+    dict_phrases,
+    dict_related_topics,
+    dict_word_antonyms,
+    dict_word_categories,
+    dict_word_collocations,
+    dict_word_definitions,
+    dict_word_etymology,
+    dict_word_examples,
+    dict_word_family,
+    dict_word_forms,
+    dict_word_images,
+    dict_word_pronunciations,
+    dict_word_synonyms,
+    dict_word_thesaurus,
+    dict_word_usage_notes,
+    dict_words,
     learn_achievements,
     learn_conversation_annotations,
     learn_conversations,

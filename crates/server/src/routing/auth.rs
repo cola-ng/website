@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
-use crate::hoops::requirec_auth;
+use crate::hoops::require_auth;
 use crate::models::*;
 use crate::{AppResult, DepotExt, JsonResult, json_ok};
 

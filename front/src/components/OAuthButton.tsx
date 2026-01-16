@@ -1,5 +1,3 @@
-import * as React from 'react'
-
 import { Button } from './ui/button'
 import { OAUTH_PROVIDERS, type OAuthProviderKey } from '../lib/oauth-config'
 import { Github, Chrome } from 'lucide-react'

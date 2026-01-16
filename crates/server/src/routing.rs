@@ -12,6 +12,7 @@ use crate::{AppResult, DepotExt};
 mod account;
 mod asset;
 mod auth;
+mod dict;
 mod learn;
 
 pub fn router() -> Router {
@@ -39,6 +40,7 @@ pub fn router() -> Router {
         .push(account::router())
         .push(auth::router())
         .push(asset::router())
+        .push(dict::router())
         .push(learn::router())
 }
 

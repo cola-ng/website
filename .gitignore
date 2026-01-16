@@ -2,11 +2,12 @@
 /target/
 **/*.rs.bk
 
-/front/node_modules/
-/front/dist/
-/front/dist-ssr/
-/front/.vite/
-/front/*.local
+# Node / frontend build
+/frontend/node_modules/
+/frontend/dist/
+/frontend/dist-ssr/
+/frontend/.vite/
+/frontend/*.local
 
 # Env / secrets
 .env
