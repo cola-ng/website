@@ -1,6 +1,4 @@
 use std::borrow::Cow;
-use std::error::Error as StdError;
-use std::fmt::Display;
 use std::io;
 use std::string::FromUtf8Error;
 
@@ -8,10 +6,7 @@ use salvo::async_trait;
 use salvo::http::{StatusCode, StatusError};
 use salvo::oapi::{self, EndpointOutRegister, ToSchema};
 use salvo::prelude::{Depot, Request, Response, Writer};
-use serde::Serialize;
 use thiserror::Error;
-
-use crate::models::User;
 
 #[derive(Error, Debug)]
 pub enum AppError {

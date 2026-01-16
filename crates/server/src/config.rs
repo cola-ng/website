@@ -1,11 +1,6 @@
-use std::iter::once;
-use std::ops::Deref;
-use std::path::Path;
-use std::sync::{LazyLock, OnceLock};
-use std::time::Duration;
 
-use figment::Figment;
-use figment::providers::{Env, Format, Json, Toml, Yaml};
+use std::sync::{ OnceLock};
+use std::time::Duration;
 
 #[derive(Clone)]
 pub struct AppConfig {

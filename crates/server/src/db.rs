@@ -18,7 +18,6 @@ pub mod pool;
 pub use pool::{DieselPool, PgPooledConnection, PoolError};
 
 pub static DIESEL_POOL: OnceLock<DieselPool> = OnceLock::new();
-pub static REPLICA_POOL: OnceLock<Option<DieselPool>> = OnceLock::new();
 
 pub const MIGRATIONS: EmbeddedMigrations = embed_migrations!();
 

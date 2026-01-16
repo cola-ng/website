@@ -56,8 +56,6 @@ pub async fn login(
         return Err(StatusError::bad_request().brief("email is required").into());
     }
 
-    let password = input.password.clone();
-
     let user: User = with_conn(move |conn| {
         base_users::table
             .filter(base_users::email.eq(email_input))
@@ -66,7 +64,7 @@ pub async fn login(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
-     crate::auth::verify_password(&user, &password)
+     crate::auth::verify_password(&user, &input.password)
         .await?;
 
     let config = AppConfig::get();
