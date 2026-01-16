@@ -130,7 +130,7 @@ pub struct NewConversation {
     pub hesitation_count: Option<i32>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_conversation_annotations)]
 #[diesel(belongs_to(Conversation))]
 pub struct ConversationAnnotation {
@@ -163,7 +163,7 @@ pub struct NewConversationAnnotation {
     pub severity: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_word_practices)]
 #[diesel(belongs_to(IssueWord, foreign_key = word_id))]
 pub struct WordPracticeLog {
@@ -186,9 +186,8 @@ pub struct NewWordPracticeLog {
     pub notes: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_read_practices)]
-#[diesel(belongs_to(ReadingSentence, foreign_key = sentence_id))]
 pub struct ReadingPracticeAttempt {
     pub id: i64,
     pub user_id: i64,

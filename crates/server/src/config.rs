@@ -1,5 +1,4 @@
-
-use std::sync::{ OnceLock};
+use std::sync::OnceLock;
 use std::time::Duration;
 
 #[derive(Clone)]

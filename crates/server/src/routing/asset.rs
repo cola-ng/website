@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::db::schema::*;
 use crate::db::with_conn;
+use crate::models::asset::*;
 use crate::models::learn::*;
 use crate::{AppResult, DepotExt};
 

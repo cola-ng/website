@@ -975,10 +975,8 @@ pub async fn reset_conversations(depot: &mut Depot, res: &mut Response) -> AppRe
     let user_id = depot.user_id()?;
 
     let deleted_count = with_conn(move |conn| {
-        diesel::delete(
-            learn_conversations::table.filter(learn_conversations::user_id.eq(user_id)),
-        )
-        .execute(conn)
+        diesel::delete(learn_conversations::table.filter(learn_conversations::user_id.eq(user_id)))
+            .execute(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset conversations"))?;
@@ -1190,20 +1188,18 @@ pub async fn reset_all_learn_data(depot: &mut Depot, res: &mut Response) -> AppR
         });
 
         // Sessions
-        let count = diesel::delete(
-            learn_sessions::table.filter(learn_sessions::user_id.eq(user_id)),
-        )
-        .execute(conn)?;
+        let count =
+            diesel::delete(learn_sessions::table.filter(learn_sessions::user_id.eq(user_id)))
+                .execute(conn)?;
         tables_reset.push(ResetResponse {
             deleted_count: count,
             table: "learn_sessions".to_string(),
         });
 
         // Issue words
-        let count = diesel::delete(
-            learn_issue_words::table.filter(learn_issue_words::user_id.eq(user_id)),
-        )
-        .execute(conn)?;
+        let count =
+            diesel::delete(learn_issue_words::table.filter(learn_issue_words::user_id.eq(user_id)))
+                .execute(conn)?;
         tables_reset.push(ResetResponse {
             deleted_count: count,
             table: "learn_issue_words".to_string(),
@@ -1220,10 +1216,9 @@ pub async fn reset_all_learn_data(depot: &mut Depot, res: &mut Response) -> AppR
         });
 
         // Daily stats
-        let count = diesel::delete(
-            learn_daily_stats::table.filter(learn_daily_stats::user_id.eq(user_id)),
-        )
-        .execute(conn)?;
+        let count =
+            diesel::delete(learn_daily_stats::table.filter(learn_daily_stats::user_id.eq(user_id)))
+                .execute(conn)?;
         tables_reset.push(ResetResponse {
             deleted_count: count,
             table: "learn_daily_stats".to_string(),
@@ -1240,10 +1235,9 @@ pub async fn reset_all_learn_data(depot: &mut Depot, res: &mut Response) -> AppR
         });
 
         // Suggestions
-        let count = diesel::delete(
-            learn_suggestions::table.filter(learn_suggestions::user_id.eq(user_id)),
-        )
-        .execute(conn)?;
+        let count =
+            diesel::delete(learn_suggestions::table.filter(learn_suggestions::user_id.eq(user_id)))
+                .execute(conn)?;
         tables_reset.push(ResetResponse {
             deleted_count: count,
             table: "learn_suggestions".to_string(),

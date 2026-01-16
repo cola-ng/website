@@ -64,8 +64,7 @@ pub async fn login(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
-     crate::auth::verify_password(&user, &input.password)
-        .await?;
+    crate::auth::verify_password(&user, &input.password).await?;
 
     let config = AppConfig::get();
     let access_token =

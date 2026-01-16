@@ -1,4 +1,3 @@
-
 use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use serde::Serialize;

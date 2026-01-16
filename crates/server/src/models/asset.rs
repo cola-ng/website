@@ -39,7 +39,7 @@ pub struct NewScene {
     pub is_active: Option<bool>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = asset_dialogues)]
 #[diesel(belongs_to(Scene))]
 pub struct Dialogue {
@@ -127,7 +127,7 @@ pub struct NewClassicDialogueSource {
     pub difficulty_level: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = asset_classic_clips)]
 #[diesel(belongs_to(ClassicDialogueSource, foreign_key = source_id))]
 pub struct ClassicDialogueClip {
@@ -193,7 +193,7 @@ pub struct NewReadingExercise {
     pub exercise_type: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = asset_read_sentences)]
 #[diesel(belongs_to(ReadingExercise, foreign_key = exercise_id))]
 pub struct ReadingSentence {

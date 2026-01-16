@@ -13,7 +13,7 @@ use crate::db::url_filter::JoinedOption;
 use crate::db::schema::*;
 
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable,  Serialize, Debug, Clone)]
 #[diesel(table_name = oauth_identities)]
 #[diesel(belongs_to(User))]
 pub struct OauthIdentity {

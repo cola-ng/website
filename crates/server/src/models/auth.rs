@@ -1,4 +1,3 @@
-
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use serde::Serialize;
