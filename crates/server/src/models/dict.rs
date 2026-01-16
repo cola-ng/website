@@ -9,13 +9,22 @@ use crate::db::schema::*;
 pub struct DictWord {
     pub id: i64,
     pub word: String,
-    pub phonetic_us: Option<String>,
-    pub phonetic_uk: Option<String>,
-    pub audio_us: Option<String>,
-    pub audio_uk: Option<String>,
+    pub word_lower: String,
+    pub word_type: Option<String>,
+    pub frequency_score: Option<i32>,
     pub difficulty_level: Option<i32>,
-    pub word_frequency_rank: Option<i32>,
-    pub is_primary: bool,
+    pub syllable_count: Option<i32>,
+    pub is_lemma: Option<bool>,
+    pub lemma_id: Option<i64>,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub phonetic_transcription: Option<String>,
+    pub ipa_text: Option<String>,
+    pub word_count: Option<i32>,
+    pub is_active: Option<bool>,
+    pub created_by: Option<i64>,
+    pub updated_by: Option<i64>,
+    pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -23,13 +32,41 @@ pub struct DictWord {
 #[diesel(table_name = dict_words)]
 pub struct NewDictWord {
     pub word: String,
-    pub phonetic_us: Option<String>,
-    pub phonetic_uk: Option<String>,
-    pub audio_us: Option<String>,
-    pub audio_uk: Option<String>,
+    pub word_lower: String,
+    pub word_type: Option<String>,
+    pub frequency_score: Option<i32>,
     pub difficulty_level: Option<i32>,
-    pub word_frequency_rank: Option<i32>,
-    pub is_primary: bool,
+    pub syllable_count: Option<i32>,
+    pub is_lemma: Option<bool>,
+    pub lemma_id: Option<i64>,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub phonetic_transcription: Option<String>,
+    pub ipa_text: Option<String>,
+    pub word_count: Option<i32>,
+    pub is_active: Option<bool>,
+    pub created_by: Option<i64>,
+    pub updated_by: Option<i64>,
+}
+
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = dict_words)]
+pub struct UpdateDictWord {
+    pub word: Option<String>,
+    pub word_lower: Option<String>,
+    pub word_type: Option<String>,
+    pub frequency_score: Option<i32>,
+    pub difficulty_level: Option<i32>,
+    pub syllable_count: Option<i32>,
+    pub is_lemma: Option<bool>,
+    pub lemma_id: Option<i64>,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub phonetic_transcription: Option<String>,
+    pub ipa_text: Option<String>,
+    pub word_count: Option<i32>,
+    pub is_active: Option<bool>,
+    pub updated_by: Option<i64>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -40,12 +77,12 @@ pub struct DictWordDefinition {
     pub definition_en: String,
     pub definition_zh: Option<String>,
     pub part_of_speech: Option<String>,
-    pub definition_order: i32,
+    pub definition_order: Option<i32>,
     pub register: Option<String>,
     pub region: Option<String>,
     pub context: Option<String>,
     pub usage_notes: Option<String>,
-    pub is_primary: bool,
+    pub is_primary: Option<bool>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -56,12 +93,12 @@ pub struct NewDictWordDefinition {
     pub definition_en: String,
     pub definition_zh: Option<String>,
     pub part_of_speech: Option<String>,
-    pub definition_order: i32,
+    pub definition_order: Option<i32>,
     pub register: Option<String>,
     pub region: Option<String>,
     pub context: Option<String>,
     pub usage_notes: Option<String>,
-    pub is_primary: bool,
+    pub is_primary: Option<bool>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -69,10 +106,14 @@ pub struct NewDictWordDefinition {
 pub struct DictWordExample {
     pub id: i64,
     pub word_id: i64,
-    pub example_en: String,
-    pub example_zh: Option<String>,
-    pub example_order: i32,
+    pub definition_id: Option<i64>,
+    pub sentence_en: String,
+    pub sentence_zh: Option<String>,
     pub source: Option<String>,
+    pub author: Option<String>,
+    pub example_order: Option<i32>,
+    pub difficulty_level: Option<i32>,
+    pub is_common: Option<bool>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -80,47 +121,55 @@ pub struct DictWordExample {
 #[diesel(table_name = dict_word_examples)]
 pub struct NewDictWordExample {
     pub word_id: i64,
-    pub example_en: String,
-    pub example_zh: Option<String>,
-    pub example_order: i32,
+    pub definition_id: Option<i64>,
+    pub sentence_en: String,
+    pub sentence_zh: Option<String>,
     pub source: Option<String>,
+    pub author: Option<String>,
+    pub example_order: Option<i32>,
+    pub difficulty_level: Option<i32>,
+    pub is_common: Option<bool>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_synonyms)]
-pub struct DictSynonym {
+#[diesel(table_name = dict_word_synonyms)]
+pub struct DictWordSynonym {
     pub id: i64,
     pub word_id: i64,
-    pub synonym_word: String,
+    pub synonym_word_id: i64,
     pub similarity_score: Option<f32>,
+    pub context: Option<String>,
+    pub nuance_notes: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_word_synonyms)]
+pub struct NewDictWordSynonym {
+    pub word_id: i64,
+    pub synonym_word_id: i64,
+    pub similarity_score: Option<f32>,
+    pub context: Option<String>,
+    pub nuance_notes: Option<String>,
+}
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_word_antonyms)]
+pub struct DictWordAntonym {
+    pub id: i64,
+    pub word_id: i64,
+    pub antonym_word_id: i64,
+    pub antonym_type: Option<String>,
     pub context: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_synonyms)]
-pub struct NewDictSynonym {
+#[diesel(table_name = dict_word_antonyms)]
+pub struct NewDictWordAntonym {
     pub word_id: i64,
-    pub synonym_word: String,
-    pub similarity_score: Option<f32>,
-    pub context: Option<String>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_antonyms)]
-pub struct DictAntonym {
-    pub id: i64,
-    pub word_id: i64,
-    pub antonym_word: String,
-    pub context: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_antonyms)]
-pub struct NewDictAntonym {
-    pub word_id: i64,
-    pub antonym_word: String,
+    pub antonym_word_id: i64,
+    pub antonym_type: Option<String>,
     pub context: Option<String>,
 }
 
@@ -129,8 +178,10 @@ pub struct NewDictAntonym {
 pub struct DictWordForm {
     pub id: i64,
     pub word_id: i64,
-    pub form_type: String,
-    pub form_value: String,
+    pub form_type: Option<String>,
+    pub form: String,
+    pub is_irregular: Option<bool>,
+    pub notes: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -138,120 +189,143 @@ pub struct DictWordForm {
 #[diesel(table_name = dict_word_forms)]
 pub struct NewDictWordForm {
     pub word_id: i64,
-    pub form_type: String,
-    pub form_value: String,
+    pub form_type: Option<String>,
+    pub form: String,
+    pub is_irregular: Option<bool>,
+    pub notes: Option<String>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_collocations)]
-pub struct DictCollocation {
+#[diesel(table_name = dict_word_collocations)]
+pub struct DictWordCollocation {
     pub id: i64,
     pub word_id: i64,
-    pub collocation_text: String,
-    pub collocation_zh: Option<String>,
     pub collocation_type: Option<String>,
-    pub frequency: Option<i32>,
+    pub collocated_word_id: Option<i64>,
+    pub phrase: String,
+    pub phrase_en: String,
+    pub phrase_zh: Option<String>,
+    pub frequency_score: Option<i32>,
+    pub register: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
+    pub is_common: Option<bool>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_collocations)]
-pub struct NewDictCollocation {
+#[diesel(table_name = dict_word_collocations)]
+pub struct NewDictWordCollocation {
     pub word_id: i64,
-    pub collocation_text: String,
-    pub collocation_zh: Option<String>,
     pub collocation_type: Option<String>,
-    pub frequency: Option<i32>,
+    pub collocated_word_id: Option<i64>,
+    pub phrase: String,
+    pub phrase_en: String,
+    pub phrase_zh: Option<String>,
+    pub frequency_score: Option<i32>,
+    pub register: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
+    pub is_common: Option<bool>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_families)]
-pub struct DictWordFamily {
+#[diesel(table_name = dict_word_family)]
+pub struct DictWordFamilyLink {
     pub id: i64,
-    pub word_id: i64,
-    pub family_type: String,
-    pub related_word: String,
+    pub root_word_id: i64,
+    pub related_word_id: i64,
+    pub relationship_type: Option<String>,
+    pub morpheme: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_families)]
-pub struct NewDictWordFamily {
-    pub word_id: i64,
-    pub family_type: String,
-    pub related_word: String,
+#[diesel(table_name = dict_word_family)]
+pub struct NewDictWordFamilyLink {
+    pub root_word_id: i64,
+    pub related_word_id: i64,
+    pub relationship_type: Option<String>,
+    pub morpheme: Option<String>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_phrases)]
 pub struct DictPhrase {
     pub id: i64,
-    pub word_id: i64,
-    pub phrase_en: String,
-    pub phrase_zh: Option<String>,
+    pub phrase: String,
+    pub phrase_lower: String,
     pub phrase_type: Option<String>,
+    pub meaning_en: String,
+    pub meaning_zh: Option<String>,
+    pub origin: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
+    pub difficulty_level: Option<i32>,
+    pub frequency_score: Option<i32>,
+    pub is_active: Option<bool>,
+    pub created_by: Option<i64>,
+    pub updated_by: Option<i64>,
+    pub updated_at: DateTime<Utc>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = dict_phrases)]
 pub struct NewDictPhrase {
-    pub word_id: i64,
-    pub phrase_en: String,
-    pub phrase_zh: Option<String>,
+    pub phrase: String,
+    pub phrase_lower: String,
     pub phrase_type: Option<String>,
+    pub meaning_en: String,
+    pub meaning_zh: Option<String>,
+    pub origin: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
+    pub difficulty_level: Option<i32>,
+    pub frequency_score: Option<i32>,
+    pub is_active: Option<bool>,
+    pub created_by: Option<i64>,
+    pub updated_by: Option<i64>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_idioms)]
-pub struct DictIdiom {
+#[diesel(table_name = dict_phrase_words)]
+pub struct DictPhraseWord {
     pub id: i64,
+    pub phrase_id: i64,
     pub word_id: i64,
-    pub idiom_en: String,
-    pub idiom_zh: Option<String>,
-    pub meaning_en: Option<String>,
-    pub meaning_zh: Option<String>,
-    pub example_en: Option<String>,
-    pub example_zh: Option<String>,
+    pub word_position: i32,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_idioms)]
-pub struct NewDictIdiom {
+#[diesel(table_name = dict_phrase_words)]
+pub struct NewDictPhraseWord {
+    pub phrase_id: i64,
     pub word_id: i64,
-    pub idiom_en: String,
-    pub idiom_zh: Option<String>,
-    pub meaning_en: Option<String>,
-    pub meaning_zh: Option<String>,
-    pub example_en: Option<String>,
-    pub example_zh: Option<String>,
+    pub word_position: i32,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_tags)]
-pub struct DictWordTag {
+#[diesel(table_name = dict_word_categories)]
+pub struct DictWordCategory {
     pub id: i64,
     pub word_id: i64,
-    pub tag_name: String,
-    pub tag_category: Option<String>,
+    pub category_type: Option<String>,
+    pub category_name: String,
+    pub category_value: String,
+    pub confidence_score: Option<f32>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_tags)]
-pub struct NewDictWordTag {
+#[diesel(table_name = dict_word_categories)]
+pub struct NewDictWordCategory {
     pub word_id: i64,
-    pub tag_name: String,
-    pub tag_category: Option<String>,
+    pub category_type: Option<String>,
+    pub category_name: String,
+    pub category_value: String,
+    pub confidence_score: Option<f32>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -275,47 +349,57 @@ pub struct NewDictRelatedTopic {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_etymology)]
-pub struct DictEtymology {
+#[diesel(table_name = dict_word_etymology)]
+pub struct DictWordEtymology {
     pub id: i64,
     pub word_id: i64,
-    pub origin: Option<String>,
     pub origin_language: Option<String>,
-    pub historical_forms: Option<String>,
-    pub first_known_use: Option<String>,
-    pub notes: Option<String>,
+    pub origin_word: Option<String>,
+    pub origin_meaning: Option<String>,
+    pub etymology_en: Option<String>,
+    pub etymology_zh: Option<String>,
+    pub first_attested_year: Option<i32>,
+    pub historical_forms: Option<serde_json::Value>,
+    pub cognate_words: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_etymology)]
-pub struct NewDictEtymology {
+#[diesel(table_name = dict_word_etymology)]
+pub struct NewDictWordEtymology {
     pub word_id: i64,
-    pub origin: Option<String>,
     pub origin_language: Option<String>,
-    pub historical_forms: Option<String>,
-    pub first_known_use: Option<String>,
-    pub notes: Option<String>,
+    pub origin_word: Option<String>,
+    pub origin_meaning: Option<String>,
+    pub etymology_en: Option<String>,
+    pub etymology_zh: Option<String>,
+    pub first_attested_year: Option<i32>,
+    pub historical_forms: Option<serde_json::Value>,
+    pub cognate_words: Option<serde_json::Value>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_usage_notes)]
-pub struct DictUsageNote {
+#[diesel(table_name = dict_word_usage_notes)]
+pub struct DictWordUsageNote {
     pub id: i64,
     pub word_id: i64,
-    pub note_type: String,
-    pub note_content_en: Option<String>,
-    pub note_content_zh: Option<String>,
+    pub note_type: Option<String>,
+    pub note_en: String,
+    pub note_zh: Option<String>,
+    pub examples_en: Option<serde_json::Value>,
+    pub examples_zh: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_usage_notes)]
-pub struct NewDictUsageNote {
+#[diesel(table_name = dict_word_usage_notes)]
+pub struct NewDictWordUsageNote {
     pub word_id: i64,
-    pub note_type: String,
-    pub note_content_en: Option<String>,
-    pub note_content_zh: Option<String>,
+    pub note_type: Option<String>,
+    pub note_en: String,
+    pub note_zh: Option<String>,
+    pub examples_en: Option<serde_json::Value>,
+    pub examples_zh: Option<serde_json::Value>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -323,8 +407,13 @@ pub struct NewDictUsageNote {
 pub struct DictWordImage {
     pub id: i64,
     pub word_id: i64,
-    pub image_url: String,
-    pub image_description: Option<String>,
+    pub image_url: Option<String>,
+    pub image_path: Option<String>,
+    pub image_type: Option<String>,
+    pub alt_text_en: Option<String>,
+    pub alt_text_zh: Option<String>,
+    pub is_primary: Option<bool>,
+    pub created_by: Option<i64>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -332,73 +421,54 @@ pub struct DictWordImage {
 #[diesel(table_name = dict_word_images)]
 pub struct NewDictWordImage {
     pub word_id: i64,
-    pub image_url: String,
-    pub image_description: Option<String>,
+    pub image_url: Option<String>,
+    pub image_path: Option<String>,
+    pub image_type: Option<String>,
+    pub alt_text_en: Option<String>,
+    pub alt_text_zh: Option<String>,
+    pub is_primary: Option<bool>,
+    pub created_by: Option<i64>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_videos)]
-pub struct DictWordVideo {
+#[derive(Serialize, Debug, Clone)]
+pub struct WordRef {
     pub id: i64,
-    pub word_id: i64,
-    pub video_url: String,
-    pub video_title: Option<String>,
-    pub video_description: Option<String>,
-    pub thumbnail_url: Option<String>,
-    pub duration_seconds: Option<i32>,
-    pub created_at: DateTime<Utc>,
+    pub word: String,
 }
 
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_videos)]
-pub struct NewDictWordVideo {
-    pub word_id: i64,
-    pub video_url: String,
-    pub video_title: Option<String>,
-    pub video_description: Option<String>,
-    pub thumbnail_url: Option<String>,
-    pub duration_seconds: Option<i32>,
+#[derive(Serialize, Debug)]
+pub struct DictWordSynonymView {
+    pub link: DictWordSynonym,
+    pub synonym: WordRef,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_common_errors)]
-pub struct DictCommonError {
-    pub id: i64,
-    pub word_id: i64,
-    pub incorrect_form: String,
-    pub explanation_en: Option<String>,
-    pub explanation_zh: Option<String>,
-    pub error_type: Option<String>,
-    pub created_at: DateTime<Utc>,
+#[derive(Serialize, Debug)]
+pub struct DictWordAntonymView {
+    pub link: DictWordAntonym,
+    pub antonym: WordRef,
 }
 
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_common_errors)]
-pub struct NewDictCommonError {
-    pub word_id: i64,
-    pub incorrect_form: String,
-    pub explanation_en: Option<String>,
-    pub explanation_zh: Option<String>,
-    pub error_type: Option<String>,
+#[derive(Serialize, Debug)]
+pub struct DictWordFamilyView {
+    pub link: DictWordFamilyLink,
+    pub related: WordRef,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
     pub word: DictWord,
     pub definitions: Vec<DictWordDefinition>,
     pub examples: Vec<DictWordExample>,
-    pub synonyms: Vec<DictSynonym>,
-    pub antonyms: Vec<DictAntonym>,
+    pub synonyms: Vec<DictWordSynonymView>,
+    pub antonyms: Vec<DictWordAntonymView>,
     pub forms: Vec<DictWordForm>,
-    pub collocations: Vec<DictCollocation>,
-    pub word_families: Vec<DictWordFamily>,
+    pub collocations: Vec<DictWordCollocation>,
+    pub word_family: Vec<DictWordFamilyView>,
     pub phrases: Vec<DictPhrase>,
-    pub idioms: Vec<DictIdiom>,
-    pub tags: Vec<DictWordTag>,
+    pub idioms: Vec<DictPhrase>,
+    pub categories: Vec<DictWordCategory>,
     pub related_topics: Vec<DictRelatedTopic>,
-    pub etymology: Vec<DictEtymology>,
-    pub usage_notes: Vec<DictUsageNote>,
+    pub etymology: Vec<DictWordEtymology>,
+    pub usage_notes: Vec<DictWordUsageNote>,
     pub images: Vec<DictWordImage>,
-    pub videos: Vec<DictWordVideo>,
-    pub common_errors: Vec<DictCommonError>,
 }
