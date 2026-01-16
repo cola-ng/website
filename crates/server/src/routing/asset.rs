@@ -85,10 +85,10 @@ pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> AppResult<(
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
-    let dialogues: Vec<SceneDialogue> = with_conn(move |conn| {
+    let dialogues: Vec<Dialogue> = with_conn(move |conn| {
         asset_dialogues::table
             .filter(asset_dialogues::scene_id.eq(scene_id))
-            .load::<SceneDialogue>(conn)
+            .load::<Dialogue>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list dialogues"))?;

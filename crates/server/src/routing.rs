@@ -1,6 +1,5 @@
 use std::time::Duration;
 
-use diesel::prelude::*;
 use salvo::cors::{self, AllowHeaders, Cors};
 use salvo::http::Method;
 use salvo::prelude::*;

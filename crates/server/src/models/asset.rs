@@ -42,7 +42,7 @@ pub struct NewScene {
 #[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
 #[diesel(table_name = asset_dialogues)]
 #[diesel(belongs_to(Scene))]
-pub struct SceneDialogue {
+pub struct Dialogue {
     pub id: i64,
     pub scene_id: i64,
     pub title_en: String,
@@ -57,7 +57,7 @@ pub struct SceneDialogue {
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = asset_dialogues)]
-pub struct NewSceneDialogue {
+pub struct NewDialogue {
     pub scene_id: i64,
     pub title_en: String,
     pub title_zh: String,
