@@ -11,11 +11,9 @@
 //! - `READ_ONLY_MODE`: If defined (even as empty) then force all connections to be read-only.
 //! - `DB_TCP_TIMEOUT_MS`: TCP timeout in milliseconds. See the doc comment for more details.
 
-use std::fmt;
 
 use diesel::prelude::*;
 use diesel::r2d2::{self, CustomizeConnection};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy)]
 pub struct ConnectionConfig {

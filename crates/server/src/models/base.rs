@@ -1,13 +1,10 @@
-use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::AppResult;
 use crate::db::schema::*;
 // use crate::db::url_filter::JoinedOption;
 

@@ -1,13 +1,8 @@
-use std::sync::LazyLock;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use salvo::http::StatusError;
-use salvo::oapi::ToSchema;
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+use serde::Serialize;
 
-use crate::AppResult;
 use crate::db::schema::*;
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]

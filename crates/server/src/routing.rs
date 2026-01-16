@@ -1,30 +1,21 @@
-use std::sync::OnceLock;
 use std::time::Duration;
 
-use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use salvo::catcher::Catcher;
-use salvo::compression::{Compression, CompressionLevel};
-use salvo::conn::rustls::{Keycert, RustlsConfig};
 use salvo::cors::{self, AllowHeaders, Cors};
-use salvo::http::{Method, header};
-use salvo::logging::Logger;
+use salvo::http::Method;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
 use crate::config::AppConfig;
-use crate::db::schema::*;
-use crate::db::with_conn;
-use crate::models::*;
-use crate::{AppResult, DepotExt, JsonResult};
+use crate::{AppResult, DepotExt};
 
 mod account;
 mod asset;
 mod auth;
 mod learn;
 
-pub fn router(config: AppConfig) -> Router {
+pub fn router(_config: AppConfig) -> Router {
     Router::with_path("api")
         .hoop(
             Cors::new()
@@ -47,6 +38,7 @@ pub fn router(config: AppConfig) -> Router {
         )
         .push(Router::with_path("health").get(health))
         .push(account::router())
+        .push(auth::router())
         .push(learn::router())
 }
 
@@ -101,8 +93,8 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot, res: &mut Response)
         input.message.trim()
     );
 
-    let user_id = depot.user_id()?;
-    let content = json!({
+    let _user_id = depot.user_id()?;
+    let _content = json!({
         "user_message": input.message,
         "assistant_reply": reply,
         "corrections": corrections,

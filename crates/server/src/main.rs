@@ -13,7 +13,6 @@ pub use global::*;
 pub mod user;
 pub use error::AppError;
 use salvo::prelude::*;
-use serde::Serialize;
 
 use crate::config::AppConfig;
 use crate::db::DbConfig;

@@ -1,18 +1,15 @@
-use std::str::FromStr;
 
-use chrono::{DateTime, TimeDelta, Utc};
+use chrono::{DateTime, Utc};
 use diesel::dsl;
 use diesel::prelude::*;
-use jsonwebtoken::{Algorithm, DecodingKey, Validation};
 use salvo::http::StatusError;
 use serde::Deserialize;
-use serde::de::DeserializeOwned;
 
 // use crate::config::JwtConfig;
 use crate::db::conn;
 use crate::db::schema::*;
 use crate::models::{NewPassword, NewUser, User};
-use crate::{AppError, AppResult, JsonResult, config, diesel_exists};
+use crate::{AppResult, diesel_exists};
 
 #[derive(Debug, Deserialize)]
 pub struct JwtClaims {
@@ -320,7 +317,7 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     // }
 
     // Get total count before pagination
-    let total: i64 = base_users::table.count().get_result(&mut conn()?)?;
+    let _total: i64 = base_users::table.count().get_result(&mut conn()?)?;
 
     // Apply ordering
     let dir_asc = filter.dir.as_ref().map(|d| d == "f").unwrap_or(true);

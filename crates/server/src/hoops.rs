@@ -1,8 +1,6 @@
-use salvo::http::{ParseError, ResBody, mime};
 use salvo::prelude::*;
-use url::Url;
 
-use crate::{AppError, AppResult};
+use crate::AppResult;
 
 mod auth;
 pub use auth::require_auth;

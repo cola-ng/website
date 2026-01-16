@@ -1,20 +1,12 @@
-use std::sync::OnceLock;
-use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use salvo::catcher::Catcher;
-use salvo::compression::{Compression, CompressionLevel};
-use salvo::cors::{self, AllowHeaders, Cors};
-use salvo::http::{Method, header};
-use salvo::logging::Logger;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::config::AppConfig;
 use crate::db::schema::*;
-use crate::db::{conn, with_conn};
+use crate::db::with_conn;
 use crate::hoops::require_auth;
 use crate::models::*;
 use crate::{AppResult, DepotExt, JsonResult, json_ok};
@@ -106,7 +98,7 @@ pub struct ConsumeCodeResponse {
 pub async fn consume_code(
     req: &mut Request,
     _depot: &mut Depot,
-    res: &mut Response,
+    _res: &mut Response,
 ) -> JsonResult<ConsumeCodeResponse> {
     let input: ConsumeCodeRequest = req
         .parse_json()

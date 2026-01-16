@@ -1,18 +1,6 @@
-use std::sync::OnceLock;
-use std::time::Duration;
 
-use chrono::{DateTime, Utc};
-use diesel::prelude::*;
-use salvo::catcher::Catcher;
-use salvo::compression::{Compression, CompressionLevel};
-use salvo::conn::rustls::{Keycert, RustlsConfig};
-use salvo::conn::tcp::DynTcpAcceptors;
-use salvo::cors::{self, AllowHeaders, Cors};
-use salvo::http::{Method, header};
-use salvo::logging::Logger;
+use salvo::http::header;
 use salvo::prelude::*;
-use serde::{Deserialize, Serialize};
-use serde_json::json;
 
 use crate::{AppConfig, AppResult};
 

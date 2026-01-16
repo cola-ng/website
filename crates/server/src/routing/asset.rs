@@ -1,15 +1,15 @@
-use chrono::{NaiveDate, Utc};
+use chrono::Utc;
 use diesel::prelude::*;
 use salvo::http::StatusCode;
 use salvo::prelude::*;
 use serde::Deserialize;
 
 use crate::db::schema::*;
-use crate::db::{schema, with_conn};
+use crate::db::with_conn;
 use crate::models::learn::*;
 use crate::{AppResult, DepotExt};
 
-pub fn router(auth_hoop: impl Handler) -> Router {
+pub fn router(_auth_hoop: impl Handler) -> Router {
     Router::with_path("asset")
         .push(
             Router::with_path("scenes")
@@ -26,14 +26,6 @@ pub fn router(auth_hoop: impl Handler) -> Router {
                 .push(Router::with_path("{id}/sentences").get(get_read_sentences)),
         )
         .push(Router::with_path("key-phrases").get(list_phrases))
-}
-
-// ============================================================================
-// Helper functions
-// ============================================================================
-
-fn bad_request(message: &str) -> StatusError {
-    StatusError::bad_request().brief(message)
 }
 
 // ============================================================================

@@ -5,10 +5,10 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
-use crate::db::{conn, with_conn};
+use crate::db::with_conn;
 use crate::hoops::require_auth;
 use crate::models::*;
-use crate::{AppConfig, AppResult, DepotExt, JsonResult, empty_ok, json_ok};
+use crate::{AppConfig, AppResult, DepotExt, JsonResult, json_ok};
 
 pub fn router() -> Router {
     Router::new()
@@ -45,7 +45,7 @@ pub struct LoginRequest {
 pub async fn login(
     req: &mut Request,
     _depot: &mut Depot,
-    res: &mut Response,
+    _res: &mut Response,
 ) -> JsonResult<AuthResponse> {
     let input: LoginRequest = req
         .parse_json()
@@ -82,7 +82,7 @@ pub async fn login(
 pub async fn register(
     req: &mut Request,
     _depot: &mut Depot,
-    res: &mut Response,
+    _res: &mut Response,
 ) -> JsonResult<AuthResponse> {
     let input: RegisterRequest = req
         .parse_json()
@@ -113,7 +113,7 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        let is_first = base_users::table
+        let _is_first = base_users::table
             .select(diesel::dsl::count_star())
             .first::<i64>(conn)?
             == 0;
@@ -213,7 +213,7 @@ pub async fn update_me(req: &mut Request, depot: &mut Depot, res: &mut Response)
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     let user_id = depot.user_id()?;
-    let now = Utc::now();
+    let _now = Utc::now();
 
     let updated: User = with_conn(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))

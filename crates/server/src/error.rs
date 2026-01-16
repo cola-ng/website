@@ -78,7 +78,7 @@ impl AppError {
 }
 #[async_trait]
 impl Writer for AppError {
-    async fn write(mut self, _req: &mut Request, depot: &mut Depot, res: &mut Response) {
+    async fn write(mut self, _req: &mut Request, _depot: &mut Depot, res: &mut Response) {
         let code = match &self {
             AppError::StatusError(e) => e.code,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -89,12 +89,12 @@ impl Writer for AppError {
             "error happened, user not logged in."
         );
         let data = match self {
-            AppError::Salvo(e) => {
+            AppError::Salvo(_e) => {
                 StatusError::internal_server_error().brief("Unknown error happened in salvo.")
             }
             AppError::FrequentlyRequest => StatusError::bad_request(),
             AppError::Public(msg) => StatusError::internal_server_error().brief(msg),
-            AppError::Internal(msg) => StatusError::internal_server_error(),
+            AppError::Internal(_msg) => StatusError::internal_server_error(),
             AppError::Diesel(e) => {
                 tracing::error!(error = ?e, "diesel db error");
                 if let diesel::result::Error::NotFound = e {
@@ -104,7 +104,7 @@ impl Writer for AppError {
                 }
             }
             AppError::StatusError(e) => e,
-            e => StatusError::internal_server_error().brief("Unknown error happened."),
+            _e => StatusError::internal_server_error().brief("Unknown error happened."),
         };
         res.render(data);
     }
