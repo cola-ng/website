@@ -12,12 +12,12 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{DepotExt, AppResult};
 use crate::config::AppConfig;
 use crate::db::schema::*;
-use crate::db::with_conn;
+use crate::db::{conn, with_conn};
 use crate::hoops::require_auth;
 use crate::models::*;
+use crate::{AppResult, DepotExt};
 
 pub fn router(config: AppConfig) -> Router {
     Router::new()
@@ -51,12 +51,12 @@ const ALLOWED_OAUTH_PROVIDERS: &[&str] = &["google", "github"];
 
 fn validate_oauth_provider(provider: &str) -> AppResult<()> {
     if !ALLOWED_OAUTH_PROVIDERS.contains(&provider.to_lowercase().as_str()) {
-        return Err(StatusError::bad_request().brief(
-            format!(
+        return Err(StatusError::bad_request()
+            .brief(format!(
                 "OAuth provider '{}' is not supported. Allowed providers: google, github",
                 provider
-            ),
-        ).into());
+            ))
+            .into());
     }
     Ok(())
 }
@@ -72,7 +72,9 @@ pub async fn register(req: &mut Request, _depot: &mut Depot, res: &mut Response)
         return Err(StatusError::bad_request().brief("email is required").into());
     }
     if input.password.len() < 8 {
-        return Err(StatusError::bad_request().brief("password must be at least 8 characters").into());
+        return Err(StatusError::bad_request()
+            .brief("password must be at least 8 characters")
+            .into());
     }
 
     let password_hash = crate::auth::hash_password(&input.password)
@@ -140,6 +142,9 @@ pub async fn register(req: &mut Request, _depot: &mut Depot, res: &mut Response)
         hash: password_hash,
         created_at: Utc::now(),
     };
+    diesel::insert_into(base_passwords::table)
+        .values(&new_password)
+        .execute(&mut conn()?)?;
     let config = AppConfig::get();
     let access_token =
         crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
@@ -210,7 +215,9 @@ pub async fn create_code(
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.redirect_uri.trim().is_empty() {
-        return Err(StatusError::bad_request().brief("redirect_uri is required").into());
+        return Err(StatusError::bad_request()
+            .brief("redirect_uri is required")
+            .into());
     }
     if input.state.trim().is_empty() {
         return Err(StatusError::bad_request().brief("state is required").into());
@@ -268,7 +275,9 @@ pub async fn consume_code(
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.code.trim().is_empty() || input.redirect_uri.trim().is_empty() {
-        return Err(StatusError::bad_request().brief("code and redirect_uri are required").into());
+        return Err(StatusError::bad_request()
+            .brief("code and redirect_uri are required")
+            .into());
     }
 
     let config = AppConfig::get();
@@ -299,7 +308,6 @@ pub async fn consume_code(
     res.render(Json(ConsumeCodeResponse { access_token }));
     Ok(())
 }
-
 
 fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
     let raw = req
