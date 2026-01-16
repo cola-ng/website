@@ -1,15 +1,15 @@
 use std::sync::OnceLock;
 use std::time::Duration;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct AppConfig {
     pub bind_addr: String,
-    pub database_url: String,
     pub jwt_secret: String,
     pub jwt_ttl: Duration,
+    pub database: DbConfig,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct DbConfig {
     pub url: String,
     pub pool_size: u32,
@@ -25,21 +25,29 @@ pub static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 impl AppConfig {
     pub fn init() {
         let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:6019".into());
-        let database_url =
-            std::env::var("DATABASE_URL").map_err(|_| "DATABASE_URL is required".to_string())?;
-        let jwt_secret =
-            std::env::var("JWT_SECRET").map_err(|_| "JWT_SECRET is required".to_string())?;
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL is required");
+        let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET is required");
         let jwt_ttl_seconds: u64 = std::env::var("JWT_TTL_SECONDS")
             .ok()
             .and_then(|v| v.parse().ok())
             .unwrap_or(60 * 60 * 24 * 7);
-        APP_CONFIG::set(Self {
-            bind_addr,
-            database_url,
-            jwt_secret,
-            jwt_ttl: Duration::from_secs(jwt_ttl_seconds),
-        })
-        .expect("config should be set once");
+        APP_CONFIG
+            .set(Self {
+                bind_addr,
+                database: DbConfig {
+                    url: database_url.clone(),
+                    pool_size: 15,
+                    min_idle: 5,
+                    connection_timeout: 30000,
+                    helper_threads: 4,
+                    statement_timeout: 5000,
+                    tcp_timeout: 30000,
+                    enforce_tls: false,
+                },
+                jwt_secret,
+                jwt_ttl: Duration::from_secs(jwt_ttl_seconds),
+            })
+            .expect("config should be set once");
     }
     pub fn get() -> &'static AppConfig {
         APP_CONFIG.get().unwrap()

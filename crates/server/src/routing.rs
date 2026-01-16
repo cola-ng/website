@@ -14,7 +14,7 @@ mod asset;
 mod auth;
 mod learn;
 
-pub fn router(_config: AppConfig) -> Router {
+pub fn router() -> Router {
     Router::with_path("api")
         .hoop(
             Cors::new()

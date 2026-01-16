@@ -32,23 +32,13 @@ pub fn empty_ok() -> JsonResult<EmptyObject> {
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
-    let app_config = AppConfig::init().expect("invalid config");
+    AppConfig::init();
+    let app_config = AppConfig::get();
     let bind_addr = app_config.bind_addr.clone();
 
-    let db_config = DbConfig {
-        url: app_config.database_url.clone(),
-        pool_size: 15,
-        min_idle: 5,
-        connection_timeout: 30000,
-        helper_threads: 4,
-        statement_timeout: 5000,
-        tcp_timeout: 30000,
-        enforce_tls: false,
-    };
+    db::init(&app_config.database);
 
-    db::init(&db_config);
-
-    let router = routing::router(app_config);
+    let router = routing::router();
 
     println!("router:::::{:?}", router);
 
