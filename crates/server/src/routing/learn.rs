@@ -41,17 +41,6 @@ pub fn router() -> Router {
         .push(Router::with_path("achievements").get(list_achievements))
 }
 
-fn bad_request(message: &str) -> StatusError {
-    StatusError::bad_request().brief(message)
-}
-
-fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
-    depot
-        .get::<i64>("user_id")
-        .copied()
-        .map_err(|_| StatusError::unauthorized().brief("missing user"))
-}
-
 // ============================================================================
 // Issue Words API (user-specific)
 // ============================================================================
@@ -110,10 +99,12 @@ pub async fn create_issue_word(
     let input: CreateIssueWordRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.word.trim().is_empty() || input.issue_type.trim().is_empty() {
-        return Err(bad_request("word and issue_type are required").into());
+        return Err(StatusError::bad_request()
+            .brief("word and issue_type are required")
+            .into());
     }
 
     let new_word = NewIssueWord {
@@ -204,10 +195,12 @@ pub async fn create_session(
     let input: CreateSessionRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.session_id.trim().is_empty() {
-        return Err(bad_request("session_id is required").into());
+        return Err(StatusError::bad_request()
+            .brief("session_id is required")
+            .into());
     }
 
     let new_session = NewLearningSession {
@@ -241,12 +234,12 @@ pub async fn update_session(
     let user_id = depot.user_id()?;
     let session_id_param: String = req
         .param::<String>("session_id")
-        .ok_or_else(|| bad_request("missing session_id"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("missing session_id"))?;
 
     let input: UpdateSessionRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let ended_at_parsed = input
         .ended_at
@@ -345,7 +338,7 @@ pub async fn create_conversation(
     let input: CreateConversationRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let new_convo = NewConversation {
         user_id,
@@ -429,10 +422,10 @@ pub async fn create_vocabulary(
     let input: CreateVocabularyRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.word.trim().is_empty() {
-        return Err(bad_request("word is required").into());
+        return Err(StatusError::bad_request().brief("word is required").into());
     }
 
     let new_vocab = NewUserVocabulary {
@@ -502,10 +495,10 @@ pub async fn upsert_daily_stat(
     let input: UpsertDailyStatRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let date = NaiveDate::parse_from_str(&input.stat_date, "%Y-%m-%d")
-        .map_err(|_| bad_request("invalid date format, use YYYY-MM-DD"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid date format, use YYYY-MM-DD"))?;
 
     let new_stat = NewDailyStat {
         user_id,

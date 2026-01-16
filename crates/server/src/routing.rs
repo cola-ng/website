@@ -42,42 +42,23 @@ pub struct AuthResponse {
     access_token: String,
 }
 
-fn bad_request(message: &str) -> StatusError {
-    StatusError::bad_request().brief(message)
-}
-
-fn require_json_content_type(req: &Request) -> AppResult<()> {
-    let accept = req
-        .headers()
-        .get(header::ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !accept.contains("application/json") {
-        return Err(StatusError::unsupported_media_type()
-            .brief("Accept header must include application/json")
-            .into());
-    }
-    Ok(())
-}
-
 #[handler]
 pub async fn register(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,
 ) -> JsonResult<AuthResponse> {
-    require_json_content_type(req)?;
     let input: RegisterRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let email = input.email.trim().to_lowercase();
     if email.is_empty() {
-        return Err(bad_request("email is required").into());
+        return Err(StatusError::bad_request().brief("email is required").into());
     }
     if input.password.len() < 8 {
-        return Err(bad_request("password must be at least 8 characters").into());
+        return Err(StatusError::bad_request().brief("password must be at least 8 characters").into());
     }
 
     let password_hash = crate::auth::hash_password(&input.password)
@@ -183,11 +164,10 @@ pub struct UpdateUserProfile {
 }
 #[handler]
 pub async fn update_me(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    require_json_content_type(req)?;
     let input: UpdateUserProfile = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     let user_id = depot.user_id()?;
     let now = Utc::now();
 
@@ -229,13 +209,12 @@ fn simple_corrections(message: &str) -> Vec<String> {
 
 #[handler]
 pub async fn chat_send(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    require_json_content_type(req)?;
     let input: ChatSendRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.message.trim().is_empty() {
-        return Err(bad_request("message is required").into());
+        return Err(StatusError::bad_request().brief("message is required").into());
     }
 
     let corrections = simple_corrections(&input.message);

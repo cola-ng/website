@@ -73,7 +73,7 @@ pub async fn list_scenes(req: &mut Request, res: &mut Response) -> AppResult<()>
 pub async fn get_scene(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let scene_id: i64 = req
         .param::<i64>("id")
-        .ok_or_else(|| bad_request("missing id"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
     let scene: Scene = with_conn(move |conn| asset_scenes::table.filter(asset_scenes::id.eq(scene_id)).first::<Scene>(conn))
         .await
@@ -87,7 +87,7 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> AppResult<()> {
 pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let scene_id: i64 = req
         .param::<i64>("id")
-        .ok_or_else(|| bad_request("missing id"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
     let dialogues: Vec<SceneDialogue> = with_conn(move |conn| {
         asset_dialogues::table
@@ -108,7 +108,7 @@ pub async fn get_dialogue_turns(
 ) -> AppResult<()> {
     let dialogue_id: i64 = req
         .param::<i64>("dialogue_id")
-        .ok_or_else(|| bad_request("missing dialogue_id"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("missing dialogue_id"))?;
 
     let turns: Vec<DialogueTurn> = with_conn(move |conn| {
         asset_dialogue_turns::table
@@ -214,7 +214,7 @@ pub async fn get_read_sentences(
 ) -> AppResult<()> {
     let exercise_id_param: i64 = req
         .param::<i64>("id")
-        .ok_or_else(|| bad_request("missing id"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
     let sentences: Vec<ReadingSentence> = with_conn(move |conn| {
         asset_read_sentences::table
@@ -316,10 +316,10 @@ pub async fn create_issue_word(
     let input: CreateIssueWordRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.word.trim().is_empty() || input.issue_type.trim().is_empty() {
-        return Err(bad_request("word and issue_type are required").into());
+        return Err(StatusError::bad_request().brief("word and issue_type are required").into());
     }
 
     let new_word = NewIssueWord {
@@ -410,10 +410,10 @@ pub async fn create_session(
     let input: CreateSessionRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.session_id.trim().is_empty() {
-        return Err(bad_request("session_id is required").into());
+        return Err(StatusError::bad_request().brief("session_id is required").into());
     }
 
     let new_session = NewLearningSession {
@@ -447,12 +447,12 @@ pub async fn update_session(
     let user_id = depot.user_id()?;
     let session_id_param: String = req
         .param::<String>("session_id")
-        .ok_or_else(|| bad_request("missing session_id"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("missing session_id"))?;
 
     let input: UpdateSessionRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let ended_at_parsed = input
         .ended_at
@@ -551,7 +551,7 @@ pub async fn create_conversation(
     let input: CreateConversationRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let new_convo = NewConversation {
         user_id,

@@ -47,24 +47,6 @@ pub struct AuthResponse {
     access_token: String,
 }
 
-fn bad_request(message: &str) -> StatusError {
-    StatusError::bad_request().brief(message)
-}
-
-fn require_json_content_type(req: &Request) -> AppResult<()> {
-    let accept = req
-        .headers()
-        .get(header::ACCEPT)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("");
-    if !accept.contains("application/json") {
-        return Err(StatusError::unsupported_media_type()
-            .brief("Accept header must include application/json")
-            .into());
-    }
-    Ok(())
-}
-
 const ALLOWED_OAUTH_PROVIDERS: &[&str] = &["google", "github"];
 
 fn validate_oauth_provider(provider: &str) -> AppResult<()> {
@@ -81,18 +63,16 @@ fn validate_oauth_provider(provider: &str) -> AppResult<()> {
 
 #[handler]
 pub async fn register(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    require_json_content_type(req)?;
     let input: RegisterRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
-
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     let email = input.email.trim().to_lowercase();
     if email.is_empty() {
-        return Err(bad_request("email is required").into());
+        return Err(StatusError::bad_request().brief("email is required").into());
     }
     if input.password.len() < 8 {
-        return Err(bad_request("password must be at least 8 characters").into());
+        return Err(StatusError::bad_request().brief("password must be at least 8 characters").into());
     }
 
     let password_hash = crate::auth::hash_password(&input.password)
@@ -174,14 +154,13 @@ pub async fn register(req: &mut Request, _depot: &mut Depot, res: &mut Response)
 
 #[handler]
 pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    require_json_content_type(req)?;
     let input: LoginRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     let email_input = input.email.trim().to_lowercase();
     if email_input.is_empty() {
-        return Err(bad_request("email is required").into());
+        return Err(StatusError::bad_request().brief("email is required").into());
     }
 
     let user: User = with_conn(move |conn| {
@@ -226,16 +205,15 @@ pub async fn create_code(
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
-    require_json_content_type(req)?;
     let input: CodeRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.redirect_uri.trim().is_empty() {
-        return Err(bad_request("redirect_uri is required").into());
+        return Err(StatusError::bad_request().brief("redirect_uri is required").into());
     }
     if input.state.trim().is_empty() {
-        return Err(bad_request("state is required").into());
+        return Err(StatusError::bad_request().brief("state is required").into());
     }
 
     let user_id = depot.user_id()?;
@@ -285,13 +263,12 @@ pub async fn consume_code(
     _depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
-    require_json_content_type(req)?;
     let input: ConsumeCodeRequest = req
         .parse_json()
         .await
-        .map_err(|_| bad_request("invalid json"))?;
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.code.trim().is_empty() || input.redirect_uri.trim().is_empty() {
-        return Err(bad_request("code and redirect_uri are required").into());
+        return Err(StatusError::bad_request().brief("code and redirect_uri are required").into());
     }
 
     let config = AppConfig::get();
