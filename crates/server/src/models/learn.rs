@@ -68,9 +68,8 @@ pub struct NewSceneDialogue {
     pub difficulty_level: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = asset_dialogue_turns)]
-#[diesel(belongs_to(SceneDialogue))]
 pub struct DialogueTurn {
     pub id: i64,
     pub dialogue_id: i64,
@@ -565,7 +564,7 @@ pub struct UpdateUserVocabulary {
     pub next_review_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_suggestions)]
 pub struct Suggestion {
     pub id: i64,

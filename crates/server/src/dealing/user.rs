@@ -159,7 +159,7 @@ pub async fn find_from_openid_token(token: &str) -> AppResult<i64> {
 /// Creates a short-lived login token, which can be used to log in using the
 /// `m.login.token` mechanism.
 pub fn create_login_token(user_id: i64, token: &str) -> AppResult<u64> {
-    let expires_in = crate::config::get().login_token_ttl;
+    let expires_in = crate::AppConfig::get().login_token_ttl;
     let expires_at = Utc::now() + TimeDelta::milliseconds(expires_in as i64);
 
     diesel::insert_into(user_login_tokens::table)

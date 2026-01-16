@@ -104,31 +104,31 @@ pub struct NewPassword {
 //         .collect()
 // });
 // pub static ROLE_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
-// #[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
-// pub struct Role {
-//     pub id: i64,
-//     pub code: Option<String>,
-//     pub name: String,
-//     pub kind: String,
-//     pub owner_id: i64,
-//     pub description: Option<String>,
-//     pub updated_by: Option<i64>,
-//     pub updated_at: DateTime<Utc>,
-//     pub created_by: Option<i64>,
-//     pub created_at: DateTime<Utc>,
-// }
-// #[derive(Insertable, Debug)]
-// #[diesel(table_name = roles)]
-// pub struct NewRole<'a> {
-//     pub code: Option<&'a str>,
-//     pub name: &'a str,
-//     pub kind: Option<&'a str>,
-//     pub owner_id: i64,
-//     pub description: Option<&'a str>,
+#[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
+pub struct Role {
+    pub id: i64,
+    pub code: Option<String>,
+    pub name: String,
+    pub kind: String,
+    pub owner_id: i64,
+    pub description: Option<String>,
+    pub updated_by: Option<i64>,
+    pub updated_at: DateTime<Utc>,
+    pub created_by: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+#[derive(Insertable, Debug)]
+#[diesel(table_name = roles)]
+pub struct NewRole {
+    pub code: Option<String>,
+    pub name: String,
+    pub kind: Option<String>,
+    pub owner_id: i64,
+    pub description: Option<String>,
 
-//     pub updated_by: Option<i64>,
-//     pub created_by: Option<i64>,
-// }
+    pub updated_by: Option<i64>,
+    pub created_by: Option<i64>,
+}
 
 // #[derive(Queryable, Insertable, Serialize, Debug)]
 // pub struct RoleUser {

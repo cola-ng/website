@@ -335,7 +335,14 @@ diesel::table! {
 diesel::table! {
     roles (id) {
         id -> Int8,
+        code -> Text,
         name -> Text,
+        kind -> Text,
+        owner_id -> Int8,
+        description -> Nullable<Text>,
+        updated_by -> Nullable<Int8>,
+        updated_at -> Timestamptz,
+        created_by -> Nullable<Int8>,
         created_at -> Timestamptz,
     }
 }
@@ -380,33 +387,6 @@ diesel::table! {
         created_at -> Timestamptz,
     }
 }
-
-diesel::joinable!(asset_classic_clips -> asset_classic_sources (source_id));
-diesel::joinable!(asset_dialogue_turns -> asset_dialogues (dialogue_id));
-diesel::joinable!(asset_dialogues -> asset_scenes (scene_id));
-diesel::joinable!(asset_read_sentences -> asset_read_exercises (exercise_id));
-diesel::joinable!(auth_codes -> users (user_id));
-diesel::joinable!(learn_achievements -> users (user_id));
-diesel::joinable!(learn_conversation_annotations -> learn_conversations (conversation_id));
-diesel::joinable!(learn_conversation_annotations -> users (user_id));
-diesel::joinable!(learn_conversations -> users (user_id));
-diesel::joinable!(learn_daily_stats -> users (user_id));
-diesel::joinable!(learn_issue_words -> users (user_id));
-diesel::joinable!(learn_read_practices -> asset_read_sentences (sentence_id));
-diesel::joinable!(learn_read_practices -> users (user_id));
-diesel::joinable!(learn_sessions -> asset_classic_clips (classic_clip_id));
-diesel::joinable!(learn_sessions -> asset_dialogues (dialogue_id));
-diesel::joinable!(learn_sessions -> asset_scenes (scene_id));
-diesel::joinable!(learn_sessions -> users (user_id));
-diesel::joinable!(learn_suggestions -> users (user_id));
-diesel::joinable!(learn_vocabularies -> users (user_id));
-diesel::joinable!(learn_word_practices -> learn_issue_words (word_id));
-diesel::joinable!(learn_word_practices -> users (user_id));
-diesel::joinable!(oauth_identities -> users (user_id));
-diesel::joinable!(role_permissions -> roles (role_id));
-diesel::joinable!(user_passwords -> users (user_id));
-diesel::joinable!(user_roles -> roles (role_id));
-diesel::joinable!(user_roles -> users (user_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     asset_classic_clips,

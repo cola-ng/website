@@ -17,7 +17,7 @@ CREATE INDEX IF NOT EXISTS idx_asset_scenes_active ON asset_scenes(is_active, di
 
 CREATE TABLE IF NOT EXISTS asset_dialogues (
     id BIGSERIAL PRIMARY KEY,
-    scene_id BIGINT NOT NULL REFERENCES asset_scenes(id) ON DELETE CASCADE,
+    scene_id BIGINT NOT NULL,
     title_en TEXT NOT NULL,
     title_zh TEXT NOT NULL,
     description_en TEXT,
@@ -32,7 +32,7 @@ CREATE INDEX IF NOT EXISTS idx_asset_dialogues_scene ON asset_dialogues(scene_id
 
 CREATE TABLE IF NOT EXISTS asset_dialogue_turns (
     id BIGSERIAL PRIMARY KEY,
-    dialogue_id BIGINT NOT NULL REFERENCES asset_dialogues(id) ON DELETE CASCADE,
+    dialogue_id BIGINT NOT NULL,
     turn_number INTEGER NOT NULL,
     speaker_role TEXT NOT NULL,
     speaker_name TEXT,
@@ -65,7 +65,7 @@ CREATE INDEX IF NOT EXISTS idx_asset_classic_sources_type ON asset_classic_sourc
 
 CREATE TABLE IF NOT EXISTS asset_classic_clips (
     id BIGSERIAL PRIMARY KEY,
-    source_id BIGINT NOT NULL REFERENCES asset_classic_sources(id) ON DELETE CASCADE,
+    source_id BIGINT NOT NULL,
     clip_title_en TEXT NOT NULL,
     clip_title_zh TEXT NOT NULL,
     start_time_seconds INTEGER,
@@ -103,7 +103,7 @@ CREATE TABLE IF NOT EXISTS asset_read_exercises (
 
 CREATE TABLE IF NOT EXISTS asset_read_sentences (
     id BIGSERIAL PRIMARY KEY,
-    exercise_id BIGINT NOT NULL REFERENCES asset_read_exercises(id) ON DELETE CASCADE,
+    exercise_id BIGINT NOT NULL,
     sentence_order INTEGER NOT NULL,
     content_en TEXT NOT NULL,
     content_zh TEXT NOT NULL,

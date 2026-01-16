@@ -1,4 +1,5 @@
 use std::sync::OnceLock;
+use std::time::Duration;
 
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
@@ -13,15 +14,15 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::auth;
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
-use crate::models::{AuthCode, NewUser, User};
+use crate::models::*;
 
-pub mod account;
-pub mod asset;
-pub mod learn;
+mod account;
+mod asset;
+mod auth;
+mod learn;
 
 #[handler]
 pub async fn health(res: &mut Response) {
@@ -30,13 +31,7 @@ pub async fn health(res: &mut Response) {
 
 #[derive(Deserialize)]
 pub struct RegisterRequest {
-    email: String,
-    password: String,
-    name: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub struct LoginRequest {
+    name: String,
     email: String,
     password: String,
 }
@@ -60,18 +55,6 @@ fn require_json_content_type(req: &Request) -> Result<(), StatusError> {
     if !accept.contains("application/json") {
         return Err(StatusError::unsupported_media_type()
             .brief("Accept header must include application/json"));
-    }
-    Ok(())
-}
-
-const ALLOWED_OAUTH_PROVIDERS: &[&str] = &["google", "github"];
-
-fn validate_oauth_provider(provider: &str) -> Result<(), StatusError> {
-    if !ALLOWED_OAUTH_PROVIDERS.contains(&provider.to_lowercase().as_str()) {
-        return Err(StatusError::bad_request().brief(format!(
-            "OAuth provider '{}' is not supported. Allowed providers: google, github",
-            provider
-        )));
     }
     Ok(())
 }
@@ -106,9 +89,12 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        let is_first = users.select(diesel::dsl::count_star()).first::<i64>(conn)? == 0;
+        let is_first = users::table
+            .select(diesel::dsl::count_star())
+            .first::<i64>(conn)?
+            == 0;
 
-        let user = diesel::insert_into(users)
+        let user = diesel::insert_into(users::table)
             .values(&new_user)
             .get_result::<User>(conn)?;
 
@@ -122,7 +108,7 @@ pub async fn register(
                     name: "admin".to_string(),
                 })
                 .on_conflict_do_nothing()
-                .get_result::<crate::models::Role>(conn)
+                .get_result::<Role>(conn)
                 .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
 
             let _ = diesel::insert_into(rp::role_permissions)
@@ -155,8 +141,9 @@ pub async fn register(
 
     let new_password = NewPassword {
         hash: password_hash,
+        created_at: Utc::now(),
     };
-    let config = config::get()?;
+    let config = AppConfig::get();
     let access_token =
         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -165,80 +152,19 @@ pub async fn register(
         user: user.into(),
         access_token,
     }));
-    Ok(())
-}
-
-#[handler]
-pub async fn login(
-    req: &mut Request,
-    _depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    require_json_content_type(req)?;
-    let input: LoginRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-    let email_input = input.email.trim().to_lowercase();
-    if email_input.is_empty() {
-        return Err(bad_request("email is required"));
-    }
-
-    let password = input.password.clone();
-
-    let user: User = with_conn(move |conn| users.filter(email.eq(email_input)).first::<User>(conn))
-        .await
-        .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
-
-    let ok = auth::verify_password(&password, &user.password_hash)
-        .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
-    if !ok {
-        return Err(StatusError::unauthorized().brief("invalid credentials"));
-    }
-
-    let config = config::get()?;
-    let access_token =
-        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
-
-    res.render(Json(AuthResponse {
-        user: user.into(),
-        access_token,
-    }));
-    Ok(())
-}
-
-#[handler]
-pub async fn auth_required(
-    req: &mut Request,
-    depot: &mut Depot,
-    _res: &mut Response,
-) -> Result<(), StatusError> {
-    let config = config::get()?;
-    let header_value = req
-        .headers()
-        .get(header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .ok_or_else(|| StatusError::unauthorized().brief("missing authorization"))?;
-    let token = header_value
-        .strip_prefix("Bearer ")
-        .ok_or_else(|| StatusError::unauthorized().brief("invalid authorization"))?;
-    let claims = auth::decode_access_token(token, &config.jwt_secret)
-        .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
-    let user_id: i64 = claims
-        .sub
-        .parse()
-        .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
-    depot.insert("user_id", user_id);
     Ok(())
 }
 
 #[handler]
 pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
     let user_id = get_user_id(depot)?;
-    let user: User = with_conn(move |conn| users.filter(id.eq(user_id)).first::<User>(conn))
-        .await
-        .map_err(|_| StatusError::not_found().brief("user not found"))?;
+    let user: User = with_conn(move |conn| {
+        users::table
+            .filter(users::id.eq(user_id))
+            .first::<User>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("user not found"))?;
     res.headers_mut()
         .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
     res.render(Json(User::from(user)));
@@ -260,11 +186,11 @@ pub async fn update_me(
     let now = Utc::now();
 
     let updated: User = with_conn(move |conn| {
-        diesel::update(users.filter(id.eq(user_id)))
+        diesel::update(users::table.filter(users::id.eq(user_id)))
             .set((
-                name.eq(input.name),
-                phone.eq(input.phone),
-                updated_at.eq(now),
+                users::name.eq(input.name),
+                users::phone.eq(input.phone),
+                users::updated_at.eq(now),
             ))
             .get_result::<User>(conn)
     })
@@ -272,123 +198,6 @@ pub async fn update_me(
     .map_err(|_| StatusError::internal_server_error().brief("failed to update profile"))?;
 
     res.render(Json(User::from(updated)));
-    Ok(())
-}
-
-#[derive(Deserialize)]
-pub struct DesktopCodeRequest {
-    redirect_uri: String,
-    state: String,
-}
-
-#[derive(Serialize)]
-pub struct DesktopCodeResponse {
-    code: String,
-    redirect_uri: String,
-    state: String,
-    expires_at: DateTime<Utc>,
-}
-
-#[handler]
-pub async fn create_desktop_code(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    require_json_content_type(req)?;
-    let input: DesktopCodeRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-    if input.redirect_uri.trim().is_empty() {
-        return Err(bad_request("redirect_uri is required"));
-    }
-    if input.state.trim().is_empty() {
-        return Err(bad_request("state is required"));
-    }
-
-    let user_id = get_user_id(depot)?;
-
-    let code = auth::random_code();
-    let code_hash = auth::hash_desktop_code(&code);
-    let expires_at = Utc::now() + chrono::Duration::minutes(5);
-    let record = NewAuthCode {
-        user_id,
-        code_hash: code_hash.clone(),
-        redirect_uri: input.redirect_uri.clone(),
-        state: input.state.clone(),
-        expires_at,
-    };
-
-    let _saved: AuthCode = with_conn(move |conn| {
-        diesel::insert_into(auth_codes)
-            .values(&record)
-            .get_result::<AuthCode>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create desktop code"))?;
-
-    res.render(Json(DesktopCodeResponse {
-        code,
-        redirect_uri: input.redirect_uri,
-        state: input.state,
-        expires_at,
-    }));
-    Ok(())
-}
-
-#[derive(Deserialize)]
-pub struct ConsumeDesktopCodeRequest {
-    code: String,
-    redirect_uri: String,
-}
-
-#[derive(Serialize)]
-pub struct ConsumeDesktopCodeResponse {
-    access_token: String,
-}
-
-#[handler]
-pub async fn consume_code(
-    req: &mut Request,
-    _depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    require_json_content_type(req)?;
-    let input: ConsumeDesktopCodeRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-    if input.code.trim().is_empty() || input.redirect_uri.trim().is_empty() {
-        return Err(bad_request("code and redirect_uri are required"));
-    }
-
-    let config = config::get()?;
-    let code_hash_value = auth::hash_desktop_code(&input.code);
-    let redirect_uri_value = input.redirect_uri.clone();
-    let now = Utc::now();
-
-    let user_id: i64 = with_conn(move |conn| {
-        let item: AuthCode = auth_codes
-            .filter(code_hash.eq(code_hash_value))
-            .filter(redirect_uri.eq(redirect_uri_value))
-            .filter(used_at.is_null())
-            .filter(expires_at.gt(now))
-            .first::<AuthCode>(conn)?;
-
-        diesel::update(auth_codes.filter(id.eq(item.id)))
-            .set(used_at.eq(now))
-            .execute(conn)?;
-        Ok(item.user_id)
-    })
-    .await
-    .map_err(|_| StatusError::unauthorized().brief("invalid or expired code"))?;
-
-    let access_token =
-        auth::issue_access_token(user_id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
-
-    res.render(Json(ConsumeDesktopCodeResponse { access_token }));
     Ok(())
 }
 
@@ -448,18 +257,6 @@ pub async fn chat_send(
         "corrections": corrections,
         "suggestions": suggestions
     });
-    let record = NewLearningRecord {
-        user_id,
-        record_type: "chat_turn".to_string(),
-        content,
-    };
-    let _ = with_conn(move |conn| {
-        diesel::insert_into(learning_records)
-            .values(&record)
-            .execute(conn)?;
-        Ok(())
-    })
-    .await;
 
     res.render(Json(ChatSendResponse {
         reply,
@@ -547,7 +344,7 @@ async fn admin_delete_user(
 ) -> Result<(), StatusError> {
     let user_id = get_path_id(req, "user_id")?;
     with_conn(move |conn| {
-        diesel::delete(users.filter(id.eq(user_id))).execute(conn)?;
+        diesel::delete(users::table.filter(users::id.eq(user_id))).execute(conn)?;
         Ok(())
     })
     .await
@@ -556,97 +353,98 @@ async fn admin_delete_user(
     Ok(())
 }
 
-#[derive(Deserialize)]
-struct OauthLoginRequest {
-    provider: String,
-    provider_user_id: String,
-    email: Option<String>,
-}
+// #[derive(Deserialize)]
+// struct OauthLoginRequest {
+//     provider: String,
+//     provider_user_id: String,
+//     email: Option<String>,
+// }
 
-#[derive(Serialize)]
-#[serde(tag = "status", rename_all = "snake_case")]
-enum OauthLoginResponse {
-    Ok {
-        user: User,
-        access_token: String,
-    },
-    NeedsBind {
-        oauth_identity_id: i64,
-        provider: String,
-        email: Option<String>,
-    },
-}
+// #[derive(Serialize)]
+// #[serde(tag = "status", rename_all = "snake_case")]
+// enum OauthLoginResponse {
+//     Ok {
+//         user: User,
+//         access_token: String,
+//     },
+//     NeedsBind {
+//         oauth_identity_id: i64,
+//         provider: String,
+//         email: Option<String>,
+//     },
+// }
 
-#[handler]
-async fn oauth_login(
-    req: &mut Request,
-    _depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    require_json_content_type(req)?;
-    let input: OauthLoginRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-    if input.provider.trim().is_empty() || input.provider_user_id.trim().is_empty() {
-        return Err(bad_request("provider and provider_user_id are required"));
-    }
-    validate_oauth_provider(&input.provider)?;
+// #[handler]
+// async fn oauth_login(
+//     req: &mut Request,
+//     _depot: &mut Depot,
+//     res: &mut Response,
+// ) -> Result<(), StatusError> {
+//     require_json_content_type(req)?;
+//     let input: OauthLoginRequest = req
+//         .parse_json()
+//         .await
+//         .map_err(|_| bad_request("invalid json"))?;
+//     if input.provider.trim().is_empty() || input.provider_user_id.trim().is_empty() {
+//         return Err(bad_request("provider and provider_user_id are required"));
+//     }
+//     validate_oauth_provider(&input.provider)?;
 
-    let provider = input.provider.trim().to_string();
-    let provider_user_id = input.provider_user_id.trim().to_string();
-    let email = input.email.clone().map(|e| e.trim().to_lowercase());
+//     let provider = input.provider.trim().to_string();
+//     let provider_user_id = input.provider_user_id.trim().to_string();
+//     let email = input.email.clone().map(|e| e.trim().to_lowercase());
 
-    let identity: OauthIdentity = with_conn(move |conn| {
-        use crate::db::schema::oauth_identities::dsl as oi;
-        let existing = oi::oauth_identities
-            .filter(oi::provider.eq(&provider))
-            .filter(oi::provider_user_id.eq(&provider_user_id))
-            .first::<OauthIdentity>(conn)
-            .optional()?;
-        if let Some(i) = existing {
-            if email.is_some() && i.email.is_none() {
-                return diesel::update(oi::oauth_identities.filter(oi::id.eq(i.id)))
-                    .set((oi::email.eq(email), oi::updated_at.eq(Utc::now())))
-                    .get_result::<OauthIdentity>(conn);
-            }
-            return Ok(i);
-        }
-        diesel::insert_into(oi::oauth_identities)
-            .values(&NewOauthIdentity {
-                provider,
-                provider_user_id,
-                email,
-                user_id: None,
-            })
-            .get_result::<OauthIdentity>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to start oauth login"))?;
+//     let identity: OauthIdentity = with_conn(move |conn| {
+//         use crate::db::schema::oauth_identities::dsl as oi;
+//         let existing = oi::oauth_identities
+//             .filter(oi::provider.eq(&provider))
+//             .filter(oi::provider_user_id.eq(&provider_user_id))
+//             .first::<OauthIdentity>(conn)
+//             .optional()?;
+//         if let Some(i) = existing {
+//             if email.is_some() && i.email.is_none() {
+//                 return diesel::update(oi::oauth_identities.filter(oi::id.eq(i.id)))
+//                     .set((oi::email.eq(email), oi::updated_at.eq(Utc::now())))
+//                     .get_result::<OauthIdentity>(conn);
+//             }
+//             return Ok(i);
+//         }
+//         diesel::insert_into(oi::oauth_identities)
+//             .values(&NewOauthIdentity {
+//                 provider,
+//                 provider_user_id,
+//                 email,
+//                 user_id: None,
+//             })
+//             .get_result::<OauthIdentity>(conn)
+//     })
+//     .await
+//     .map_err(|_| StatusError::internal_server_error().brief("failed to start oauth login"))?;
 
-    if let Some(user_id) = identity.user_id {
-        let user: User = with_conn(move |conn| users.filter(id.eq(user_id)).first::<User>(conn))
-            .await
-            .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
+//     if let Some(user_id) = identity.user_id {
+//         let user: User =
+//             with_conn(move |conn| users::table.filter(id.eq(user_id)).first::<User>(conn))
+//                 .await
+//                 .map_err(|_| StatusError::unauthorized().brief("invalid oauth link"))?;
 
-        let config = config::get()?;
-        let access_token =
-            auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
-                .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
-        res.render(Json(OauthLoginResponse::Ok {
-            user: user.into(),
-            access_token,
-        }));
-        return Ok(());
-    }
+//         let config = AppConfig::get();
+//         let access_token =
+//             auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+//                 .map_err(|_| StatusError::internal_server_error().brief("failed to issue
+// token"))?;         res.render(Json(OauthLoginResponse::Ok {
+//             user: user.into(),
+//             access_token,
+//         }));
+//         return Ok(());
+//     }
 
-    res.render(Json(OauthLoginResponse::NeedsBind {
-        oauth_identity_id: identity.id,
-        provider: identity.provider,
-        email: identity.email,
-    }));
-    Ok(())
-}
+//     res.render(Json(OauthLoginResponse::NeedsBind {
+//         oauth_identity_id: identity.id,
+//         provider: identity.provider,
+//         email: identity.email,
+//     }));
+//     Ok(())
+// }
 
 // #[derive(Deserialize)]
 // struct OauthBindRequest {
@@ -699,7 +497,7 @@ async fn oauth_login(
 //     .await
 //     .map_err(|_| StatusError::unauthorized().brief("invalid credentials or oauth identity"))?;
 
-//     let config = config::get()?;
+//     let config = AppConfig::get();
 //     let access_token =
 //         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
 //             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -770,7 +568,7 @@ async fn oauth_login(
 //     .await
 //     .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
-//     let config = config::get()?;
+//     let config = AppConfig::get();
 //     let access_token =
 //         auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
 //             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
@@ -783,8 +581,6 @@ async fn oauth_login(
 // }
 
 pub fn router(config: AppConfig) -> Router {
-    APP_CONFIG.get_or_init(|| config.clone());
-
     let api = Router::with_path("api")
         .push(Router::with_path("health").get(health))
         .push(account::router())

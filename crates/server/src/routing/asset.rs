@@ -8,19 +8,31 @@ use crate::db::schema::*;
 use crate::db::{schema, with_conn};
 use crate::models::learn::*;
 
+pub fn router(auth_hoop: impl Handler) -> Router {
+    Router::with_path("asset")
+        .push(
+            Router::with_path("scenes")
+                .get(list_scenes)
+                .push(Router::with_path("{id}").get(get_scene))
+                .push(Router::with_path("{id}/dialogues").get(get_dialogues)),
+        )
+        .push(Router::with_path("dialogues/{dialogue_id}/turns").get(get_dialogue_turns))
+        .push(Router::with_path("classic-sources").get(list_classic_sources))
+        .push(Router::with_path("classic-clips").get(list_classic_clips))
+        .push(
+            Router::with_path("reading-exercises")
+                .get(list_read_exercises)
+                .push(Router::with_path("{id}/sentences").get(get_read_sentences)),
+        )
+        .push(Router::with_path("key-phrases").get(list_phrases))
+}
+
 // ============================================================================
 // Helper functions
 // ============================================================================
 
 fn bad_request(message: &str) -> StatusError {
     StatusError::bad_request().brief(message)
-}
-
-fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
-    depot
-        .get::<i64>("user_id")
-        .copied()
-        .map_err(|_| StatusError::unauthorized().brief("missing user"))
 }
 
 // ============================================================================
@@ -71,7 +83,7 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), Stat
 }
 
 #[handler]
-pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
     let scene_id: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
@@ -89,7 +101,7 @@ pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Resul
 }
 
 #[handler]
-pub async fn get_asset_dialogue_turns(
+pub async fn get_dialogue_turns(
     req: &mut Request,
     res: &mut Response,
 ) -> Result<(), StatusError> {
@@ -167,7 +179,7 @@ pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> Result
 // ============================================================================
 
 #[handler]
-pub async fn list_asset_read_exercises(
+pub async fn list_read_exercises(
     req: &mut Request,
     res: &mut Response,
 ) -> Result<(), StatusError> {
@@ -195,7 +207,7 @@ pub async fn list_asset_read_exercises(
 }
 
 #[handler]
-pub async fn get_asset_read_sentences(
+pub async fn get_read_sentences(
     req: &mut Request,
     res: &mut Response,
 ) -> Result<(), StatusError> {
@@ -221,19 +233,19 @@ pub async fn get_asset_read_sentences(
 // ============================================================================
 
 #[handler]
-pub async fn list_asset_phrases(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn list_phrases(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
     let category_param = req.query::<String>("category");
     let formality = req.query::<String>("formality");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let phrases: Vec<KeyPhrase> = with_conn(move |conn| {
-        let mut query = asset_phrases.limit(limit).into_boxed();
+        let mut query = asset_phrases::table.limit(limit).into_boxed();
 
         if let Some(cat) = category_param {
-            query = query.filter(category.eq(cat));
+            query = query.filter(asset_phrases::category.eq(cat));
         }
         if let Some(form) = formality {
-            query = query.filter(formality_level.eq(form));
+            query = query.filter(asset_phrases::formality_level.eq(form));
         }
 
         query.load::<KeyPhrase>(conn)
@@ -565,244 +577,4 @@ pub async fn create_conversation(
     res.status_code(StatusCode::CREATED);
     res.render(Json(convo));
     Ok(())
-}
-
-// ============================================================================
-// User Vocabulary API (user-specific)
-// ============================================================================
-
-#[derive(Deserialize)]
-pub struct CreateVocabularyRequest {
-    word: String,
-    word_zh: Option<String>,
-}
-
-#[handler]
-pub async fn list_vocabulary(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
-    let due_only = req.query::<bool>("due_only").unwrap_or(false);
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let vocab: Vec<UserVocabulary> = with_conn(move |conn| {
-        let mut query = learn_vocabularies::table
-            .filter(learn_vocabularies::user_id.eq(user_id))
-            .order(learn_vocabularies::first_seen_at.desc())
-            .limit(limit)
-            .into_boxed();
-
-        if due_only {
-            let now = Utc::now();
-            query = query.filter(next_review_at.is_null().or(next_review_at.le(now)));
-        }
-
-        query.load::<UserVocabulary>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list vocabulary"))?;
-
-    res.render(Json(vocab));
-    Ok(())
-}
-
-#[handler]
-pub async fn create_vocabulary(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
-    let input: CreateVocabularyRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-
-    if input.word.trim().is_empty() {
-        return Err(bad_request("word is required"));
-    }
-
-    let new_vocab = NewUserVocabulary {
-        user_id,
-        word: input.word,
-        word_zh: input.word_zh,
-    };
-
-    let vocab: UserVocabulary = with_conn(move |conn| {
-        diesel::insert_into(learn_vocabularies)
-            .values(&new_vocab)
-            .get_result::<UserVocabulary>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create vocabulary"))?;
-
-    res.status_code(StatusCode::CREATED);
-    res.render(Json(vocab));
-    Ok(())
-}
-
-// ============================================================================
-// Daily Stats API (user-specific)
-// ============================================================================
-
-#[derive(Deserialize)]
-pub struct UpsertDailyStatRequest {
-    stat_date: String,
-    minutes_studied: Option<i32>,
-    words_practiced: Option<i32>,
-    sessions_completed: Option<i32>,
-    errors_corrected: Option<i32>,
-    new_words_learned: Option<i32>,
-    review_words_count: Option<i32>,
-}
-
-#[handler]
-pub async fn list_learn_daily_stats(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
-    let limit = req.query::<i64>("limit").unwrap_or(30).clamp(1, 365);
-
-    let stats: Vec<DailyStat> = with_conn(move |conn| {
-        learn_daily_stats::table
-            .filter(learn_daily_stats::user_id.eq(user_id))
-            .order(stat_date.desc())
-            .limit(limit)
-            .load::<DailyStat>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list daily stats"))?;
-
-    res.render(Json(stats));
-    Ok(())
-}
-
-#[handler]
-pub async fn upsert_daily_stat(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
-    let input: UpsertDailyStatRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| bad_request("invalid json"))?;
-
-    let date = NaiveDate::parse_from_str(&input.stat_date, "%Y-%m-%d")
-        .map_err(|_| bad_request("invalid date format, use YYYY-MM-DD"))?;
-
-    let new_stat = NewDailyStat {
-        user_id,
-        stat_date: date,
-        minutes_studied: input.minutes_studied,
-        words_practiced: input.words_practiced,
-        sessions_completed: input.sessions_completed,
-        errors_corrected: input.errors_corrected,
-        new_words_learned: input.new_words_learned,
-        review_words_count: input.review_words_count,
-    };
-
-    let stat: DailyStat = with_conn(move |conn| {
-        diesel::insert_into(learn_daily_stats)
-            .values(&new_stat)
-            .on_conflict((user_id, stat_date))
-            .do_update()
-            .set(&UpdateDailyStat {
-                minutes_studied: input.minutes_studied,
-                words_practiced: input.words_practiced,
-                sessions_completed: input.sessions_completed,
-                errors_corrected: input.errors_corrected,
-                new_words_learned: input.new_words_learned,
-                review_words_count: input.review_words_count,
-            })
-            .get_result::<DailyStat>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to upsert daily stat"))?;
-
-    res.render(Json(stat));
-    Ok(())
-}
-
-// ============================================================================
-// User Achievements API (user-specific)
-// ============================================================================
-
-#[handler]
-pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
-
-    let achievements: Vec<UserAchievement> = with_conn(move |conn| {
-        learn_achievements::table
-            .filter(learn_achievements::user_id.eq(user_id))
-            .order(learn_achievements::earned_at.desc())
-            .load::<UserAchievement>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list achievements"))?;
-
-    res.render(Json(achievements));
-    Ok(())
-}
-
-// ============================================================================
-// Router
-// ============================================================================
-
-pub fn router(auth_hoop: impl Handler) -> Router {
-    // Shared content routes (no auth required for reading)
-    let shared = Router::new()
-        .push(
-            Router::with_path("scenes")
-                .get(list_scenes)
-                .push(Router::with_path("{id}").get(get_scene))
-                .push(Router::with_path("{id}/dialogues").get(get_asset_dialogues)),
-        )
-        .push(Router::with_path("dialogues/{dialogue_id}/turns").get(get_asset_dialogue_turns))
-        .push(Router::with_path("classic-sources").get(list_classic_sources))
-        .push(Router::with_path("classic-clips").get(list_classic_clips))
-        .push(
-            Router::with_path("reading-exercises")
-                .get(list_asset_read_exercises)
-                .push(Router::with_path("{id}/sentences").get(get_asset_read_sentences)),
-        )
-        .push(Router::with_path("key-phrases").get(list_asset_phrases));
-
-    // User-specific routes (auth required)
-    let user_learning = Router::with_path("learning")
-        .hoop(auth_hoop)
-        .push(
-            Router::with_path("issue-words")
-                .get(list_learn_issue_words)
-                .post(create_issue_word),
-        )
-        .push(
-            Router::with_path("sessions")
-                .get(list_sessions)
-                .post(create_session)
-                .push(Router::with_path("{session_id}").patch(update_session)),
-        )
-        .push(
-            Router::with_path("learn_conversations")
-                .get(list_learn_conversations)
-                .post(create_conversation),
-        )
-        .push(
-            Router::with_path("vocabulary")
-                .get(list_vocabulary)
-                .post(create_vocabulary),
-        )
-        .push(
-            Router::with_path("daily-stats")
-                .get(list_learn_daily_stats)
-                .post(upsert_daily_stat),
-        )
-        .push(Router::with_path("achievements").get(list_achievements));
-
-    Router::new().push(shared).push(user_learning)
 }

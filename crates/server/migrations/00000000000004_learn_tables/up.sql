@@ -5,7 +5,7 @@
 -- Table: learn_issue_words - Words that the user has problems with
 CREATE TABLE IF NOT EXISTS learn_issue_words (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     word TEXT NOT NULL,
     issue_type TEXT NOT NULL CHECK(issue_type IN ('pronunciation', 'usage', 'unfamiliar', 'grammar')),
     description_en TEXT,
@@ -28,11 +28,11 @@ CREATE INDEX IF NOT EXISTS idx_learn_issue_words_review ON learn_issue_words(nex
 CREATE TABLE IF NOT EXISTS learn_sessions (
     id BIGSERIAL PRIMARY KEY,
     session_id TEXT NOT NULL UNIQUE,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     session_type TEXT CHECK(session_type IN ('free_talk', 'scene', 'classic_dialogue', 'reading', 'review', 'assistant')),
-    scene_id BIGINT REFERENCES asset_scenes(id) ON DELETE SET NULL,
-    dialogue_id BIGINT REFERENCES asset_dialogues(id) ON DELETE SET NULL,
-    classic_clip_id BIGINT REFERENCES asset_classic_clips(id) ON DELETE SET NULL,
+    scene_id BIGINT,
+    dialogue_id BIGINT,
+    classic_clip_id BIGINT,
     started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     ended_at TIMESTAMPTZ,
     duration_seconds INTEGER,
@@ -51,7 +51,7 @@ CREATE INDEX IF NOT EXISTS idx_learn_sessions_type ON learn_sessions(session_typ
 -- Table: learn_conversations - Stores all conversation history
 CREATE TABLE IF NOT EXISTS learn_conversations (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     session_id TEXT NOT NULL,
     speaker TEXT NOT NULL CHECK(speaker IN ('user', 'teacher')),
     use_lang TEXT NOT NULL CHECK(use_lang IN ('en', 'zh')),
@@ -71,8 +71,8 @@ CREATE INDEX IF NOT EXISTS idx_learn_conversations_created ON learn_conversation
 -- Table: learn_conversation_annotations - Stores annotations and issues found in learn_conversations
 CREATE TABLE IF NOT EXISTS learn_conversation_annotations (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    conversation_id BIGINT NOT NULL REFERENCES learn_conversations(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
+    conversation_id BIGINT NOT NULL,
     annotation_type TEXT NOT NULL CHECK(
         annotation_type IN ('pronunciation_error', 'grammar_error', 'word_choice',
                            'fluency_issue', 'suggestion', 'correction')
@@ -93,8 +93,8 @@ CREATE INDEX IF NOT EXISTS idx_annotations_user ON learn_conversation_annotation
 -- Table: learn_word_practices - Logs each time a word is practiced
 CREATE TABLE IF NOT EXISTS learn_word_practices (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    word_id BIGINT NOT NULL REFERENCES learn_issue_words(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
+    word_id BIGINT NOT NULL,
     session_id TEXT NOT NULL,
     success_level INTEGER CHECK(success_level BETWEEN 1 AND 5),
     notes TEXT,
@@ -107,8 +107,8 @@ CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_word_practi
 -- Table: learn_read_practices - Log of user's reading practice attempts
 CREATE TABLE IF NOT EXISTS learn_read_practices (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    sentence_id BIGINT NOT NULL REFERENCES asset_read_sentences(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
+    sentence_id BIGINT NOT NULL,
     session_id TEXT NOT NULL,
     user_audio_path TEXT,
     pronunciation_score INTEGER CHECK(pronunciation_score BETWEEN 0 AND 100),
@@ -128,7 +128,7 @@ CREATE INDEX IF NOT EXISTS idx_read_ractices_user_session ON learn_read_practice
 -- Table: learn_achievements - Track user achievements and milestones
 CREATE TABLE IF NOT EXISTS learn_achievements (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     achievement_type TEXT NOT NULL,
     achievement_name TEXT NOT NULL,
     description_en TEXT,
@@ -143,7 +143,7 @@ CREATE INDEX IF NOT EXISTS idx_achievements_user ON learn_achievements(user_id, 
 -- Table: learn_daily_stats - Daily learning statistics
 CREATE TABLE IF NOT EXISTS learn_daily_stats (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     stat_date DATE NOT NULL,
     minutes_studied INTEGER DEFAULT 0,
     words_practiced INTEGER DEFAULT 0,
@@ -159,7 +159,7 @@ CREATE INDEX IF NOT EXISTS idx_learn_daily_stats_user_date ON learn_daily_stats(
 -- Table: learn_vocabularies - Track user's vocabulary mastery
 CREATE TABLE IF NOT EXISTS learn_vocabularies (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     word TEXT NOT NULL,
     word_zh TEXT,
     mastery_level INTEGER DEFAULT 1 CHECK(mastery_level BETWEEN 1 AND 5),
@@ -177,7 +177,7 @@ CREATE INDEX IF NOT EXISTS idx_user_vocab_review ON learn_vocabularies(next_revi
 -- Table: learn_suggestions - Log AI suggestions made during real-time assistance
 CREATE TABLE IF NOT EXISTS learn_suggestions (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     suggestion_type TEXT CHECK(suggestion_type IN ('response', 'correction', 'translation', 'vocabulary')),
     suggested_text TEXT NOT NULL,
     was_accepted BOOLEAN DEFAULT FALSE,

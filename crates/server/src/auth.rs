@@ -8,6 +8,10 @@ use rand::rngs::OsRng;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
+use crate::db::schema::*;
+use crate::db::with_conn;
+use diesel::prelude::*;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccessClaims {
     pub sub: String,
@@ -24,7 +28,17 @@ pub fn hash_password(password: &str) -> Result<String, String> {
         .map(|h| h.to_string())
 }
 
-pub fn verify_password(password: &str, password_hash: &str) -> Result<bool, String> {
+pub async fn verify_password(user_id: i64, password: &str) -> Result<bool, String> {
+    let hash = with_conn(move |conn| {
+        user_passwords::table
+            .filter(user_passwords::user_id.eq(user_id))
+            .order(user_passwords::id.desc())
+            .select(user_passwords::hash)
+            .first::<String>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::unauthorized().brief("user password not found"))?;
+
     let parsed =
         PasswordHash::new(password_hash).map_err(|_| "invalid password hash".to_string())?;
     Ok(Argon2::default()

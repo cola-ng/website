@@ -27,6 +27,7 @@ pub struct DbConfig {
     pub enforce_tls: bool,
 }
 
+pub static CONFIG: OnceLock<AppConfig> = OnceLock::new();
 impl AppConfig {
     pub fn from_env() -> Result<Self, String> {
         let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:6019".into());
@@ -45,9 +46,11 @@ impl AppConfig {
             jwt_ttl: Duration::from_secs(jwt_ttl_seconds),
         })
     }
+    pub fn get() -> &'static AppConfig {
+        CONFIG.get().unwrap()
+    }
 }
 
-pub static CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
 // pub fn init(config_path: impl AsRef<Path>) {
 //     let config_path = config_path.as_ref();
@@ -66,7 +69,3 @@ pub static CONFIG: OnceLock<AppConfig> = OnceLock::new();
 
 //     CONFIG.set(conf).expect("config should be set once");
 // }
-
-pub fn get() -> &'static AppConfig {
-    CONFIG.get().unwrap()
-}

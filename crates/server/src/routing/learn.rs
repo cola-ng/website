@@ -8,9 +8,37 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
 
-// ============================================================================
-// Helper functions
-// ============================================================================
+pub fn router(auth_hoop: impl Handler) -> Router {
+    Router::with_path("learn")
+        .hoop(auth_hoop)
+        .push(
+            Router::with_path("issue-words")
+                .get(list_issue_words)
+                .post(create_issue_word),
+        )
+        .push(
+            Router::with_path("sessions")
+                .get(list_sessions)
+                .post(create_session)
+                .push(Router::with_path("{session_id}").patch(update_session)),
+        )
+        .push(
+            Router::with_path("learn_conversations")
+                .get(list_conversations)
+                .post(create_conversation),
+        )
+        .push(
+            Router::with_path("vocabulary")
+                .get(list_vocabulary)
+                .post(create_vocabulary),
+        )
+        .push(
+            Router::with_path("daily-stats")
+                .get(list_daily_stats)
+                .post(upsert_daily_stat),
+        )
+        .push(Router::with_path("achievements").get(list_achievements))
+}
 
 fn bad_request(message: &str) -> StatusError {
     StatusError::bad_request().brief(message)
@@ -21,228 +49,6 @@ fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
         .get::<i64>("user_id")
         .copied()
         .map_err(|_| StatusError::unauthorized().brief("missing user"))
-}
-
-// ============================================================================
-// Scenes API (shared content)
-// ============================================================================
-
-#[handler]
-pub async fn list_scenes(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let category_param = req.query::<String>("category");
-    let difficulty = req.query::<String>("difficulty");
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let scenes: Vec<Scene> = with_conn(move |conn| {
-        let mut query = scenes
-            .filter(is_active.eq(true))
-            .order(display_order.asc())
-            .limit(limit)
-            .into_boxed();
-
-        if let Some(cat) = category_param {
-            query = query.filter(category.eq(cat));
-        }
-        if let Some(diff) = difficulty {
-            query = query.filter(difficulty_level.eq(diff));
-        }
-
-        query.load::<Scene>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list scenes"))?;
-
-    res.render(Json(scenes));
-    Ok(())
-}
-
-#[handler]
-pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let scene_id: i64 = req
-        .param::<i64>("id")
-        .ok_or_else(|| bad_request("missing id"))?;
-
-    let scene: Scene = with_conn(move |conn| scenes.filter(id.eq(scene_id)).first::<Scene>(conn))
-        .await
-        .map_err(|_| StatusError::not_found().brief("scene not found"))?;
-
-    res.render(Json(scene));
-    Ok(())
-}
-
-#[handler]
-pub async fn get_asset_dialogues(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let scene_id: i64 = req
-        .param::<i64>("id")
-        .ok_or_else(|| bad_request("missing id"))?;
-
-    let dialogues: Vec<SceneDialogue> = with_conn(move |conn| {
-        asset_dialogues::table
-            .filter(asset_dialogues::scene_id.eq(scene_id))
-            .load::<SceneDialogue>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list dialogues"))?;
-
-    res.render(Json(dialogues));
-    Ok(())
-}
-
-#[handler]
-pub async fn get_asset_dialogue_turns(
-    req: &mut Request,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let dialogue_id: i64 = req
-        .param::<i64>("dialogue_id")
-        .ok_or_else(|| bad_request("missing dialogue_id"))?;
-
-    let turns: Vec<DialogueTurn> = with_conn(move |conn| {
-        asset_dialogue_turns::table
-            .filter(asset_dialogue_turns::dialogue_id.eq(dialogue_id))
-            .order(asset_dialogue_turns::turn_number.asc())
-            .load::<DialogueTurn>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list turns"))?;
-
-    res.render(Json(turns));
-    Ok(())
-}
-
-// ============================================================================
-// Classic Dialogues API (shared content)
-// ============================================================================
-
-#[handler]
-pub async fn list_classic_sources(
-    req: &mut Request,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let source_type_param = req.query::<String>("type");
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let sources: Vec<ClassicDialogueSource> = with_conn(move |conn| {
-        let mut query = asset_classic_sources.limit(limit).into_boxed();
-
-        if let Some(st) = source_type_param {
-            query = query.filter(source_type.eq(st));
-        }
-
-        query.load::<ClassicDialogueSource>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list sources"))?;
-
-    res.render(Json(sources));
-    Ok(())
-}
-
-#[handler]
-pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let source_id_param = req.query::<i64>("source_id");
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let clips: Vec<ClassicDialogueClip> = with_conn(move |conn| {
-        let mut query = asset_classic_clips
-            .order(popularity_score.desc())
-            .limit(limit)
-            .into_boxed();
-
-        if let Some(sid) = source_id_param {
-            query = query.filter(source_id.eq(sid));
-        }
-
-        query.load::<ClassicDialogueClip>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list clips"))?;
-
-    res.render(Json(clips));
-    Ok(())
-}
-
-// ============================================================================
-// Reading Exercises API (shared content)
-// ============================================================================
-
-#[handler]
-pub async fn list_asset_read_exercises(
-    req: &mut Request,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let difficulty = req.query::<String>("difficulty");
-    let exercise_type_param = req.query::<String>("type");
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let exercises: Vec<ReadingExercise> = with_conn(move |conn| {
-        let mut query = asset_read_exercises.limit(limit).into_boxed();
-
-        if let Some(diff) = difficulty {
-            query = query.filter(difficulty_level.eq(diff));
-        }
-        if let Some(et) = exercise_type_param {
-            query = query.filter(exercise_type.eq(et));
-        }
-
-        query.load::<ReadingExercise>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list exercises"))?;
-
-    res.render(Json(exercises));
-    Ok(())
-}
-
-#[handler]
-pub async fn get_asset_read_sentences(
-    req: &mut Request,
-    res: &mut Response,
-) -> Result<(), StatusError> {
-    let exercise_id_param: i64 = req
-        .param::<i64>("id")
-        .ok_or_else(|| bad_request("missing id"))?;
-
-    let sentences: Vec<ReadingSentence> = with_conn(move |conn| {
-        asset_read_sentences
-            .filter(exercise_id.eq(exercise_id_param))
-            .order(sentence_order.asc())
-            .load::<ReadingSentence>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list sentences"))?;
-
-    res.render(Json(sentences));
-    Ok(())
-}
-
-// ============================================================================
-// Key Phrases API (shared content)
-// ============================================================================
-
-#[handler]
-pub async fn list_asset_phrases(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
-    let category_param = req.query::<String>("category");
-    let formality = req.query::<String>("formality");
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-
-    let phrases: Vec<KeyPhrase> = with_conn(move |conn| {
-        let mut query = asset_phrases.limit(limit).into_boxed();
-
-        if let Some(cat) = category_param {
-            query = query.filter(category.eq(cat));
-        }
-        if let Some(form) = formality {
-            query = query.filter(formality_level.eq(form));
-        }
-
-        query.load::<KeyPhrase>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list phrases"))?;
-
-    res.render(Json(phrases));
-    Ok(())
 }
 
 // ============================================================================
@@ -259,7 +65,7 @@ pub struct CreateIssueWordRequest {
 }
 
 #[handler]
-pub async fn list_learn_issue_words(
+pub async fn list_issue_words(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
@@ -319,7 +125,7 @@ pub async fn create_issue_word(
     };
 
     let word: IssueWord = with_conn(move |conn| {
-        diesel::insert_into(learn_issue_words)
+        diesel::insert_into(learn_issue_words::table)
             .values(&new_word)
             .get_result::<IssueWord>(conn)
     })
@@ -413,7 +219,7 @@ pub async fn create_session(
     };
 
     let session: LearningSession = with_conn(move |conn| {
-        diesel::insert_into(learn_sessions)
+        diesel::insert_into(learn_sessions::table)
             .values(&new_session)
             .get_result::<LearningSession>(conn)
     })
@@ -497,7 +303,7 @@ pub struct CreateConversationRequest {
 }
 
 #[handler]
-pub async fn list_learn_conversations(
+pub async fn list_conversations(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
@@ -635,7 +441,7 @@ pub async fn create_vocabulary(
     };
 
     let vocab: UserVocabulary = with_conn(move |conn| {
-        diesel::insert_into(learn_vocabularies)
+        diesel::insert_into(learn_vocabularies::table)
             .values(&new_vocab)
             .get_result::<UserVocabulary>(conn)
     })
@@ -663,7 +469,7 @@ pub struct UpsertDailyStatRequest {
 }
 
 #[handler]
-pub async fn list_learn_daily_stats(
+pub async fn list_daily_stats(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
@@ -672,9 +478,9 @@ pub async fn list_learn_daily_stats(
     let limit = req.query::<i64>("limit").unwrap_or(30).clamp(1, 365);
 
     let stats: Vec<DailyStat> = with_conn(move |conn| {
-        learn_daily_stats
-            .filter(user_id.eq(user_id))
-            .order(stat_date.desc())
+        learn_daily_stats::table
+            .filter(learn_daily_stats::user_id.eq(user_id))
+            .order(learn_daily_stats::stat_date.desc())
             .limit(limit)
             .load::<DailyStat>(conn)
     })
@@ -712,9 +518,9 @@ pub async fn upsert_daily_stat(
     };
 
     let stat: DailyStat = with_conn(move |conn| {
-        diesel::insert_into(learn_daily_stats)
+        diesel::insert_into(learn_daily_stats::table)
             .values(&new_stat)
-            .on_conflict((user_id, stat_date))
+            .on_conflict((learn_daily_stats::user_id, learn_daily_stats::stat_date))
             .do_update()
             .set(&UpdateDailyStat {
                 minutes_studied: input.minutes_studied,
@@ -752,61 +558,4 @@ pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> Result<
 
     res.render(Json(achievements));
     Ok(())
-}
-
-// ============================================================================
-// Router
-// ============================================================================
-
-pub fn router(auth_hoop: impl Handler) -> Router {
-    // Shared content routes (no auth required for reading)
-    let shared = Router::new()
-        .push(
-            Router::with_path("scenes")
-                .get(list_scenes)
-                .push(Router::with_path("{id}").get(get_scene))
-                .push(Router::with_path("{id}/dialogues").get(get_asset_dialogues)),
-        )
-        .push(Router::with_path("dialogues/{dialogue_id}/turns").get(get_asset_dialogue_turns))
-        .push(Router::with_path("classic-sources").get(list_classic_sources))
-        .push(Router::with_path("classic-clips").get(list_classic_clips))
-        .push(
-            Router::with_path("reading-exercises")
-                .get(list_asset_read_exercises)
-                .push(Router::with_path("{id}/sentences").get(get_asset_read_sentences)),
-        )
-        .push(Router::with_path("key-phrases").get(list_asset_phrases));
-
-    // User-specific routes (auth required)
-    let user_learning = Router::with_path("learning")
-        .hoop(auth_hoop)
-        .push(
-            Router::with_path("issue-words")
-                .get(list_learn_issue_words)
-                .post(create_issue_word),
-        )
-        .push(
-            Router::with_path("sessions")
-                .get(list_sessions)
-                .post(create_session)
-                .push(Router::with_path("{session_id}").patch(update_session)),
-        )
-        .push(
-            Router::with_path("learn_conversations")
-                .get(list_learn_conversations)
-                .post(create_conversation),
-        )
-        .push(
-            Router::with_path("vocabulary")
-                .get(list_vocabulary)
-                .post(create_vocabulary),
-        )
-        .push(
-            Router::with_path("daily-stats")
-                .get(list_learn_daily_stats)
-                .post(upsert_daily_stat),
-        )
-        .push(Router::with_path("achievements").get(list_achievements));
-
-    Router::new().push(shared).push(user_learning)
 }

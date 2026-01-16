@@ -25,14 +25,14 @@ CREATE TABLE IF NOT EXISTS users (
 CREATE TABLE user_passwords
 (
     id BIGSERIAL PRIMARY KEY,
-    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    user_id BIGINT NOT NULL,
     hash text NOT NULL,
     created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS auth_codes (
   id BIGSERIAL PRIMARY KEY,
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL,
   code_hash text NOT NULL UNIQUE,
   redirect_uri text NOT NULL,
   state text NOT NULL,
@@ -45,22 +45,31 @@ CREATE INDEX IF NOT EXISTS auth_codes_user_id_created_at_idx
   ON auth_codes (user_id, created_at DESC);
 
 
-  CREATE TABLE IF NOT EXISTS roles (
+drop table if exists roles;
+CREATE TABLE IF NOT EXISTS roles (
   id BIGSERIAL PRIMARY KEY,
-  name text NOT NULL UNIQUE,
-  created_at timestamp with time zone NOT NULL DEFAULT now()
+  code text NOT NULL UNIQUE,
+  name text NOT NULL,
+  kind text NOT NULL DEFAULT 'custom'::character varying,
+  owner_id bigint NOT NULL,
+  description text,
+  updated_by bigint,
+  updated_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  created_by bigint,
+  created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
+drop table if exists user_roles;
 CREATE TABLE IF NOT EXISTS user_roles (
-  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  user_id BIGINT NOT NULL,
+  role_id BIGINT NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, role_id)
 );
 
 CREATE TABLE IF NOT EXISTS role_permissions (
   id BIGSERIAL PRIMARY KEY,
-  role_id BIGINT NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+  role_id BIGINT NOT NULL,
   operation text NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE (role_id, operation)
@@ -71,7 +80,7 @@ CREATE TABLE IF NOT EXISTS oauth_identities (
   provider text NOT NULL,
   provider_user_id text NOT NULL,
   email text NULL,
-  user_id BIGINT NULL REFERENCES users(id) ON DELETE SET NULL,
+  user_id BIGINT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE (provider, provider_user_id)
