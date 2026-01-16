@@ -6,7 +6,6 @@ use diesel::prelude::*;
 use salvo::catcher::Catcher;
 use salvo::compression::{Compression, CompressionLevel};
 use salvo::conn::rustls::{Keycert, RustlsConfig};
-use salvo::conn::tcp::DynTcpAcceptors;
 use salvo::cors::{self, AllowHeaders, Cors};
 use salvo::http::{Method, header};
 use salvo::logging::Logger;
@@ -100,8 +99,8 @@ pub async fn register(
 
         if is_first {
             use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::roles::dsl as r;
             use crate::db::schema::role_users::dsl as ur;
+            use crate::db::schema::roles::dsl as r;
 
             let role = diesel::insert_into(r::roles)
                 .values(&NewRole {
@@ -618,4 +617,29 @@ pub fn router(config: AppConfig) -> Router {
         )
         .push(api)
         .push(admin)
+}
+
+#[handler]
+pub async fn auth_required(
+    req: &mut Request,
+    depot: &mut Depot,
+    _res: &mut Response,
+) -> Result<(), StatusError> {
+    let config = AppConfig::get();
+    let header_value = req
+        .headers()
+        .get(header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| StatusError::unauthorized().brief("missing authorization"))?;
+    let token = header_value
+        .strip_prefix("Bearer ")
+        .ok_or_else(|| StatusError::unauthorized().brief("invalid authorization"))?;
+    let claims = dealing::auth::decode_access_token(token, &config.jwt_secret)
+        .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
+    let user_id = claims
+        .sub
+        .parse::<i64>()
+        .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
+    depot.insert("user_id", user_id);
+    Ok(())
 }

@@ -9,9 +9,9 @@ use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
 use crate::config::JwtConfig;
-use crate::db::connect;
+use crate::db::conn;
 use crate::db::schema::*;
-use crate::models::user::{NewPassword, NewUser, User, UserData};
+use crate::models::{NewPassword, NewUser, User, UserData};
 use crate::{AppError, AppResult, JsonValue, config, dealing, diesel_exists, utils};
 
 #[derive(Debug, Deserialize)]
@@ -97,9 +97,8 @@ pub fn is_username_available(name: &str) -> AppResult<bool> {
 pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult<User> {
     let new_user = NewUser {
         name: name.into(),
-        is_admin: false,
-        is_guest: password.is_none(),
-        created_at: Utc::now(),
+        created_by: None,
+        updated_by: None,
     };
     let user = diesel::insert_into(users::table)
         .values(&new_user)
@@ -314,36 +313,19 @@ pub fn remove_display_name(user_id: i64) -> AppResult<()> {
 
 /// Get the avatar_url of a user.
 pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
-    user_profiles::table
-        .filter(user_profiles::user_id.eq(user_id))
-        .select(user_profiles::avatar_url)
+    users::table
+        .filter(users::user_id.eq(user_id))
+        .select(users::avatar)
         .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
 }
 pub fn set_avatar_url(user_id: i64, avatar_url: &str) -> AppResult<()> {
-    diesel::update(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
-        .set(user_profiles::avatar_url.eq(avatar_url))
+    diesel::update(users::table.filter(users::user_id.eq(user_id)))
+        .set(users::avatar.eq(avatar_url))
         .execute(&mut conn()?)?;
     Ok(())
-}
-
-pub fn delete_profile(user_id: i64) -> AppResult<()> {
-    diesel::delete(user_profiles::table.filter(user_profiles::user_id.eq(user_id)))
-        .execute(&mut conn()?)?;
-    Ok(())
-}
-
-/// Get the blurhash of a user.
-pub fn blurhash(user_id: i64) -> AppResult<Option<String>> {
-    user_profiles::table
-        .filter(user_profiles::user_id.eq(user_id))
-        .select(user_profiles::blurhash)
-        .first::<Option<String>>(&mut conn()?)
-        .optional()
-        .map(Option::flatten)
-        .map_err(Into::into)
 }
 
 pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
@@ -356,13 +338,13 @@ pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
     Ok(deactivated_at.is_some())
 }
 
-pub fn all_device_ids(user_id: i64) -> AppResult<Vec<i64>> {
-    user_devices::table
-        .filter(user_devices::user_id.eq(user_id))
-        .select(user_devices::id)
-        .load::<i64>(&mut conn()?)
-        .map_err(Into::into)
-}
+// pub fn all_device_ids(user_id: i64) -> AppResult<Vec<i64>> {
+//     user_devices::table
+//         .filter(user_devices::user_id.eq(user_id))
+//         .select(user_devices::id)
+//         .load::<i64>(&mut conn()?)
+//         .map_err(Into::into)
+// }
 
 pub fn delete_access_tokens(user_id: i64) -> AppResult<()> {
     diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))

@@ -1,4 +1,4 @@
-mod auth;
+pub mod dealing;
 mod config;
 mod db;
 mod error;

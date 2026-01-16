@@ -102,8 +102,10 @@ pub async fn register(
 
     let new_user = NewUser {
         name: input.name.clone(),
+        display_name: None,
         email: Some(email.clone()),
         phone: None,
+        created_by: None,
     };
 
     let user: User = with_conn(move |conn| {
@@ -154,6 +156,7 @@ pub async fn register(
     })?;
 
     let new_password = NewPassword {
+        user_id: user.id,
         hash: password_hash,
         created_at: Utc::now(),
     };
