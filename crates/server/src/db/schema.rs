@@ -141,6 +141,71 @@ diesel::table! {
 }
 
 diesel::table! {
+    base_passwords (id) {
+        id -> Int8,
+        user_id -> Int8,
+        hash -> Text,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    base_role_permissions (id) {
+        id -> Int8,
+        role_id -> Int8,
+        operation -> Text,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    base_role_users (user_id, role_id) {
+        role_id -> Int8,
+        user_id -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    base_roles (id) {
+        id -> Int8,
+        code -> Text,
+        name -> Text,
+        kind -> Text,
+        owner_id -> Int8,
+        description -> Nullable<Text>,
+        updated_by -> Nullable<Int8>,
+        updated_at -> Timestamptz,
+        created_by -> Nullable<Int8>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    base_users (id) {
+        id -> Int8,
+        name -> Text,
+        email -> Nullable<Text>,
+        phone -> Nullable<Text>,
+        avatar -> Nullable<Text>,
+        display_name -> Nullable<Text>,
+        verified_at -> Nullable<Timestamptz>,
+        limited_at -> Nullable<Timestamptz>,
+        limited_by -> Nullable<Int8>,
+        locked_at -> Nullable<Timestamptz>,
+        locked_by -> Nullable<Int8>,
+        disabled_at -> Nullable<Timestamptz>,
+        disabled_by -> Nullable<Int8>,
+        inviter_id -> Nullable<Int8>,
+        profile -> Jsonb,
+        updated_by -> Nullable<Int8>,
+        updated_at -> Timestamptz,
+        created_by -> Nullable<Int8>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_achievements (id) {
         id -> Int8,
         user_id -> Int8,
@@ -323,71 +388,6 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    role_permissions (id) {
-        id -> Int8,
-        role_id -> Int8,
-        operation -> Text,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    role_users (user_id, role_id) {
-        role_id -> Int8,
-        user_id -> Int8,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    roles (id) {
-        id -> Int8,
-        code -> Text,
-        name -> Text,
-        kind -> Text,
-        owner_id -> Int8,
-        description -> Nullable<Text>,
-        updated_by -> Nullable<Int8>,
-        updated_at -> Timestamptz,
-        created_by -> Nullable<Int8>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    user_passwords (id) {
-        id -> Int8,
-        user_id -> Int8,
-        hash -> Text,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    users (id) {
-        id -> Int8,
-        name -> Text,
-        email -> Nullable<Text>,
-        phone -> Nullable<Text>,
-        avatar -> Nullable<Text>,
-        display_name -> Nullable<Text>,
-        verified_at -> Nullable<Timestamptz>,
-        limited_at -> Nullable<Timestamptz>,
-        limited_by -> Nullable<Int8>,
-        locked_at -> Nullable<Timestamptz>,
-        locked_by -> Nullable<Int8>,
-        disabled_at -> Nullable<Timestamptz>,
-        disabled_by -> Nullable<Int8>,
-        inviter_id -> Nullable<Int8>,
-        profile -> Jsonb,
-        updated_by -> Nullable<Int8>,
-        updated_at -> Timestamptz,
-        created_by -> Nullable<Int8>,
-        created_at -> Timestamptz,
-    }
-}
-
 diesel::allow_tables_to_appear_in_same_query!(
     asset_classic_clips,
     asset_classic_sources,
@@ -398,6 +398,11 @@ diesel::allow_tables_to_appear_in_same_query!(
     asset_read_sentences,
     asset_scenes,
     auth_codes,
+    base_passwords,
+    base_role_permissions,
+    base_role_users,
+    base_roles,
+    base_users,
     learn_achievements,
     learn_conversation_annotations,
     learn_conversations,
@@ -410,9 +415,4 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_word_practices,
     oauth_identities,
     oauth_login_sessions,
-    role_permissions,
-    role_users,
-    roles,
-    user_passwords,
-    users,
 );

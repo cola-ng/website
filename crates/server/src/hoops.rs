@@ -1,6 +1,5 @@
-use salvo::http::{ParseError, ResBody};
+use salvo::http::{ParseError, ResBody, mime};
 use salvo::prelude::*;
-use salvo::size_limiter;
 use url::Url;
 
 use crate::{AppError, AppResult};
@@ -18,22 +17,22 @@ pub async fn ensure_accept(req: &mut Request) {
     }
 }
 
-#[handler]
-pub async fn limit_size(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-    ctrl: &mut FlowCtrl,
-) {
-    let mut max_size = 1024 * 1024 * 16;
-    if let Some(ctype) = req.content_type()
-        && ctype.type_() == mime::MULTIPART
-    {
-        max_size = 1024 * 1024 * 1024;
-    }
-    let limiter = size_limiter::max_size(max_size);
-    limiter.handle(req, depot, res, ctrl).await;
-}
+// #[handler]
+// pub async fn limit_size(
+//     req: &mut Request,
+//     depot: &mut Depot,
+//     res: &mut Response,
+//     ctrl: &mut FlowCtrl,
+// ) {
+//     let mut max_size = 1024 * 1024 * 16;
+//     if let Some(ctype) = req.content_type()
+//         && ctype.type_() == mime::MULTIPART
+//     {
+//         max_size = 1024 * 1024 * 1024;
+//     }
+//     let limiter = size_limiter::max_size(max_size);
+//     limiter.handle(req, depot, res, ctrl).await;
+// }
 
 #[handler]
 async fn access_control(

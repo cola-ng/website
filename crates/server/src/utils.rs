@@ -13,8 +13,6 @@ pub mod stream;
 pub mod string;
 pub use stream::*;
 pub mod content_disposition;
-mod mutex_map;
-pub use mutex_map::{MutexMap, MutexMapGuard};
 mod defer;
 pub mod sys;
 
@@ -43,14 +41,14 @@ macro_rules! extract_variant {
 
 pub fn select_config_path() -> &'static str {
     if cfg!(windows) {
-        "dory.toml"
+        "colang.toml"
     } else {
         const CANDIDATE_PATHS: [&str; 3] =
-            ["dory.toml", "/etc/dory/dory.toml", "/var/dory/dory.toml"];
+            ["colang.toml", "/etc/colang/colang.toml", "/var/colang/colang.toml"];
         CANDIDATE_PATHS
             .into_iter()
             .find(|path| std::fs::exists(path).unwrap_or(false))
-            .unwrap_or("dory.toml")
+            .unwrap_or("colang.toml")
     }
 }
 
@@ -142,58 +140,6 @@ pub fn deserialize_from_str<
         }
     }
     deserializer.deserialize_str(Visitor(std::marker::PhantomData))
-}
-
-// Copied from librustdoc:
-// https://github.com/rust-lang/rust/blob/cbaeec14f90b59a91a6b0f17fc046c66fa811892/src/librustdoc/html/escape.rs
-
-/// Wrapper struct which will emit the HTML-escaped version of the contained
-/// string when passed to a format string.
-pub struct HtmlEscape<'a>(pub &'a str);
-
-impl<'a> fmt::Display for HtmlEscape<'a> {
-    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // Because the internet is always right, turns out there's not that many
-        // characters to escape: http://stackoverflow.com/questions/7381974
-        let HtmlEscape(s) = *self;
-        let pile_o_bits = s;
-        let mut last = 0;
-        for (i, ch) in s.char_indices() {
-            let s = match ch {
-                '>' => "&gt;",
-                '<' => "&lt;",
-                '&' => "&amp;",
-                '\'' => "&#39;",
-                '"' => "&quot;",
-                _ => continue,
-            };
-            fmt.write_str(&pile_o_bits[last..i])?;
-            fmt.write_str(s)?;
-            // NOTE: we only expect single byte characters here - which is fine as long as we
-            // only match single byte characters
-            last = i + 1;
-        }
-
-        if last < s.len() {
-            fmt.write_str(&pile_o_bits[last..])?;
-        }
-        Ok(())
-    }
-}
-
-pub fn usize_to_i64(value: usize) -> i64 {
-    if value as u64 <= i64::MAX as u64 {
-        value as i64
-    } else {
-        i64::MAX
-    }
-}
-pub fn u64_to_i64(value: u64) -> i64 {
-    if value <= i64::MAX as u64 {
-        value as i64
-    } else {
-        i64::MAX
-    }
 }
 
 pub fn default_true() -> bool {

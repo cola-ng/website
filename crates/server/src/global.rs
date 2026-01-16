@@ -3,41 +3,28 @@ use std::future::Future;
 use std::net::IpAddr;
 use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, LazyLock, OnceLock, RwLock};
-use std::time::Instant;
 
 use diesel::prelude::*;
-use hickory_resolver::Resolver as HickoryResolver;
-use hickory_resolver::config::*;
-use hickory_resolver::name_server::TokioConnectionProvider;
+use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use serde::Serialize;
-use tokio::sync::{Semaphore, broadcast};
 
-use crate::AppResult;
-use crate::db::connect;
-use crate::db::schema::*;
-use crate::models::user::{NewUser, NewUserDevice};
-use crate::utils::{MutexMap, MutexMapGuard};
-
-pub const DEVICE_ID_LENGTH: usize = 10;
-pub const TOKEN_LENGTH: usize = 32;
-pub const SESSION_ID_LENGTH: usize = 32;
-pub const AUTO_GEN_PASSWORD_LENGTH: usize = 15;
-pub const RANDOM_USER_ID_LENGTH: usize = 10;
-
-pub type TlsNameMap = HashMap<String, (Vec<IpAddr>, u16)>;
-type RateLimitState = (Instant, u32); // Time if last failed try, number of failed tries
-
-pub type LazyRwLock<T> = LazyLock<RwLock<T>>;
-pub static SHUTDOWN: AtomicBool = AtomicBool::new(false);
+use crate::{AppError, AppResult};
 
 #[derive(Serialize, ToSchema, Clone, Copy, Debug)]
 pub struct EmptyObject {}
 
-pub fn shutdown() {
-    SHUTDOWN.store(true, std::sync::atomic::Ordering::Relaxed);
-    // On shutdown
-    info!(target: "shutdown-sync", "received shutdown notification, notifying sync helpers...");
+pub trait DepotExt {
+    fn user_id(&self) -> AppResult<i64>;
+}
+impl DepotExt for salvo::prelude::Depot {
+    fn user_id(&self) -> AppResult<i64> {
+        self.get::<i64>("user_id").copied().map_err(|_| {
+            StatusError::unauthorized()
+                .brief("missing user_id in depot")
+                .into()
+        })
+    }
 }
 
 #[macro_export]

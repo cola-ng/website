@@ -8,86 +8,86 @@ use salvo::http::StatusError;
 use serde::Deserialize;
 use serde::de::DeserializeOwned;
 
-use crate::config::JwtConfig;
+// use crate::config::JwtConfig;
 use crate::db::conn;
 use crate::db::schema::*;
-use crate::models::{NewPassword, NewUser, User, UserData};
-use crate::{AppError, AppResult, JsonValue, config, diesel_exists, utils};
+use crate::models::{NewPassword, NewUser, User};
+use crate::{AppError, AppResult, JsonResult, config, diesel_exists};
 
 #[derive(Debug, Deserialize)]
 pub struct JwtClaims {
     pub sub: String,
 }
 
-pub fn validate_jwt_token(config: &JwtConfig, token: &str) -> AppResult<JwtClaims> {
-    let verifier = init_jwt_verifier(config)?;
-    let validator = init_jwt_validator(config)?;
-    jsonwebtoken::decode::<JwtClaims>(token, &verifier, &validator)
-        .map(|decoded| (decoded.header, decoded.claims))
-        .inspect(|(head, claim)| debug!(?head, ?claim, "jwt token decoded"))
-        .map_err(|e| {
-            StatusError::not_found()
-                .brief(format!("invalid jwt token: {e}"))
-                .into()
-        })
-        .map(|(_, claims)| claims)
-}
+// pub fn validate_jwt_token(config: &JwtConfig, token: &str) -> AppResult<JwtClaims> {
+//     let verifier = init_jwt_verifier(config)?;
+//     let validator = init_jwt_validator(config)?;
+//     jsonwebtoken::decode::<JwtClaims>(token, &verifier, &validator)
+//         .map(|decoded| (decoded.header, decoded.claims))
+//         .inspect(|(head, claim)| debug!(?head, ?claim, "jwt token decoded"))
+//         .map_err(|e| {
+//             StatusError::not_found()
+//                 .brief(format!("invalid jwt token: {e}"))
+//                 .into()
+//         })
+//         .map(|(_, claims)| claims)
+// }
 
-fn init_jwt_verifier(config: &JwtConfig) -> AppResult<DecodingKey> {
-    let secret = &config.secret;
-    let format = config.format.as_str();
+// fn init_jwt_verifier(config: &JwtConfig) -> AppResult<DecodingKey> {
+//     let secret = &config.secret;
+//     let format = config.format.as_str();
 
-    Ok(match format {
-        "HMAC" => DecodingKey::from_secret(secret.as_bytes()),
+//     Ok(match format {
+//         "HMAC" => DecodingKey::from_secret(secret.as_bytes()),
 
-        "HMACB64" => DecodingKey::from_base64_secret(secret.as_str())
-            .map_err(|_e| AppError::public("jwt secret is not valid base64"))?,
+//         "HMACB64" => DecodingKey::from_base64_secret(secret.as_str())
+//             .map_err(|_e| AppError::public("jwt secret is not valid base64"))?,
 
-        "ECDSA" => DecodingKey::from_ec_pem(secret.as_bytes())
-            .map_err(|_e| AppError::public("jwt key is not valid PEM"))?,
+//         "ECDSA" => DecodingKey::from_ec_pem(secret.as_bytes())
+//             .map_err(|_e| AppError::public("jwt key is not valid PEM"))?,
 
-        _ => return Err(AppError::public("jwt secret format is not supported")),
-    })
-}
+//         _ => return Err(AppError::public("jwt secret format is not supported")),
+//     })
+// }
 
-fn init_jwt_validator(config: &JwtConfig) -> AppResult<Validation> {
-    let alg = config.algorithm.as_str();
-    let alg = Algorithm::from_str(alg)
-        .map_err(|_e| AppError::public("jwt algorithm is not recognized or configured"))?;
+// fn init_jwt_validator(config: &JwtConfig) -> AppResult<Validation> {
+//     let alg = config.algorithm.as_str();
+//     let alg = Algorithm::from_str(alg)
+//         .map_err(|_e| AppError::public("jwt algorithm is not recognized or configured"))?;
 
-    let mut validator = Validation::new(alg);
-    let mut required_spec_claims: Vec<_> = ["sub"].into();
+//     let mut validator = Validation::new(alg);
+//     let mut required_spec_claims: Vec<_> = ["sub"].into();
 
-    validator.validate_exp = config.validate_exp;
-    if config.require_exp {
-        required_spec_claims.push("exp");
-    }
+//     validator.validate_exp = config.validate_exp;
+//     if config.require_exp {
+//         required_spec_claims.push("exp");
+//     }
 
-    validator.validate_nbf = config.validate_nbf;
-    if config.require_nbf {
-        required_spec_claims.push("nbf");
-    }
+//     validator.validate_nbf = config.validate_nbf;
+//     if config.require_nbf {
+//         required_spec_claims.push("nbf");
+//     }
 
-    if !config.audience.is_empty() {
-        required_spec_claims.push("aud");
-        validator.set_audience(&config.audience);
-    }
+//     if !config.audience.is_empty() {
+//         required_spec_claims.push("aud");
+//         validator.set_audience(&config.audience);
+//     }
 
-    if !config.issuer.is_empty() {
-        required_spec_claims.push("iss");
-        validator.set_issuer(&config.issuer);
-    }
+//     if !config.issuer.is_empty() {
+//         required_spec_claims.push("iss");
+//         validator.set_issuer(&config.issuer);
+//     }
 
-    if cfg!(debug_assertions) && !config.validate_signature {
-        warn!("jwt signature validation is disabled!");
-        validator.insecure_disable_signature_validation();
-    }
+//     if cfg!(debug_assertions) && !config.validate_signature {
+//         warn!("jwt signature validation is disabled!");
+//         validator.insecure_disable_signature_validation();
+//     }
 
-    validator.set_required_spec_claims(&required_spec_claims);
-    debug!(?validator, "jwt configured");
+//     validator.set_required_spec_claims(&required_spec_claims);
+//     debug!(?validator, "jwt configured");
 
-    Ok(validator)
-}
+//     Ok(validator)
+// }
 
 pub fn is_username_available(name: &str) -> AppResult<bool> {
     let available = !user_exists(name)?;
@@ -104,15 +104,15 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
         created_by: None,
         updated_by: None,
     };
-    let user = diesel::insert_into(users::table)
+    let user = diesel::insert_into(base_users::table)
         .values(&new_user)
-        .on_conflict(users::id)
+        .on_conflict(base_users::id)
         .do_update()
         .set(&new_user)
         .get_result::<User>(&mut conn()?)?;
     if let Some(password) = password {
-        let hash = crate::utils::hash_password(password)?;
-        diesel::insert_into(user_passwords::table)
+        let hash = crate::auth::hash_password(password)?;
+        diesel::insert_into(base_passwords::table)
             .values(NewPassword {
                 user_id: user.id,
                 hash,
@@ -168,12 +168,12 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
 
 /// Check if a user has an account on this homeserver.
 pub fn user_exists(username: &str) -> AppResult<bool> {
-    let query = users::table.filter(users::name.eq(username));
+    let query = base_users::table.filter(base_users::name.eq(username));
     diesel_exists!(query, &mut conn()?).map_err(Into::into)
 }
 
 pub fn get_user(user_id: i64) -> AppResult<User> {
-    users::table
+    base_users::table
         .find(user_id)
         .first::<User>(&mut conn()?)
         .map_err(Into::into)
@@ -181,32 +181,32 @@ pub fn get_user(user_id: i64) -> AppResult<User> {
 
 /// Returns the number of users registered on this server.
 pub fn count() -> AppResult<u64> {
-    let count = user_passwords::table
-        .select(dsl::count(user_passwords::user_id).aggregate_distinct())
+    let count = base_passwords::table
+        .select(dsl::count(base_passwords::user_id).aggregate_distinct())
         .first::<i64>(&mut conn()?)?;
     Ok(count as u64)
 }
 
 /// Returns the display_name of a user on this homeserver.
 pub fn display_name(user_id: i64) -> AppResult<Option<String>> {
-    users::table
-        .filter(users::user_id.eq(user_id))
-        .select(users::display_name)
+    base_users::table
+        .filter(base_users::id.eq(user_id))
+        .select(base_users::display_name)
         .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
 }
 pub fn set_display_name(user_id: i64, display_name: &str) -> AppResult<()> {
-    diesel::update(users::table.filter(users::id.eq(user_id)))
-        .set(users::display_name.eq(display_name))
+    diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
+        .set(base_users::display_name.eq(display_name))
         .execute(&mut conn()?)
         .map(|_| ())
         .map_err(Into::into)
 }
 pub fn remove_display_name(user_id: i64) -> AppResult<()> {
-    diesel::update(users::table.filter(users::id.eq(user_id)))
-        .set(users::display_name.eq::<Option<String>>(None))
+    diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
+        .set(base_users::display_name.eq::<Option<String>>(None))
         .execute(&mut conn()?)
         .map(|_| ())
         .map_err(Into::into)
@@ -214,30 +214,30 @@ pub fn remove_display_name(user_id: i64) -> AppResult<()> {
 
 /// Get the avatar_url of a user.
 pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
-    users::table
-        .filter(users::id.eq(user_id))
-        .select(users::avatar)
+    base_users::table
+        .filter(base_users::id.eq(user_id))
+        .select(base_users::avatar)
         .first::<Option<String>>(&mut conn()?)
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
 }
 pub fn set_avatar_url(user_id: i64, avatar_url: &str) -> AppResult<()> {
-    diesel::update(users::table.filter(users::id.eq(user_id)))
-        .set(users::avatar.eq(avatar_url))
+    diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
+        .set(base_users::avatar.eq(avatar_url))
         .execute(&mut conn()?)?;
     Ok(())
 }
 
-pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
-    let deactivated_at = users::table
-        .filter(users::id.eq(user_id))
-        .select(users::deactivated_at)
-        .first::<Option<DateTime<Utc>>>(&mut conn()?)
-        .optional()?
-        .flatten();
-    Ok(deactivated_at.is_some())
-}
+// pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
+//     let deactivated_at = users::table
+//         .filter(users::id.eq(user_id))
+//         .select(users::deactivated_at)
+//         .first::<Option<DateTime<Utc>>>(&mut conn()?)
+//         .optional()?
+//         .flatten();
+//     Ok(deactivated_at.is_some())
+// }
 
 // pub fn all_device_ids(user_id: i64) -> AppResult<Vec<i64>> {
 //     user_devices::table
@@ -276,17 +276,17 @@ pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
 /// Set locked status for a user
 pub fn set_locked(user_id: i64, locked: bool, locker_id: Option<i64>) -> AppResult<()> {
     if locked {
-        diesel::update(users::table.find(user_id))
+        diesel::update(base_users::table.find(user_id))
             .set((
-                users::locked_at.eq(Some(Utc::now())),
-                users::locked_by.eq(locker_id.map(|u| u.to_owned())),
+                base_users::locked_at.eq(Some(Utc::now())),
+                base_users::locked_by.eq(locker_id.map(|u| u.to_owned())),
             ))
             .execute(&mut conn()?)?;
     } else {
-        diesel::update(users::table.find(user_id))
+        diesel::update(base_users::table.find(user_id))
             .set((
-                users::locked_at.eq::<Option<DateTime<Utc>>>(None),
-                users::locked_by.eq::<Option<i64>>(None),
+                base_users::locked_at.eq::<Option<DateTime<Utc>>>(None),
+                base_users::locked_by.eq::<Option<i64>>(None),
             ))
             .execute(&mut conn()?)?;
     }
@@ -308,52 +308,42 @@ pub struct ListUsersFilter {
 }
 
 pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
-    let mut query = users::table.into_boxed();
+    let mut query = base_users::table.into_boxed();
 
-    // Filter by guests
-    if let Some(guests) = filter.guests {
-        query = query.filter(users::is_guest.eq(guests));
-    }
-
-    // Filter by deactivated
-    if let Some(deactivated) = filter.deactivated {
-        if deactivated {
-            query = query.filter(users::deactivated_at.is_not_null());
-        } else {
-            query = query.filter(users::deactivated_at.is_null());
-        }
-    }
-
-    // Filter by admin
-    if let Some(admins) = filter.admins {
-        query = query.filter(users::is_admin.eq(admins));
-    }
+    // // Filter by deactivated
+    // if let Some(deactivated) = filter.deactivated {
+    //     if deactivated {
+    //         query = query.filter(users::deactivated_at.is_not_null());
+    //     } else {
+    //         query = query.filter(users::deactivated_at.is_null());
+    //     }
+    // }
 
     // Get total count before pagination
-    let total: i64 = users::table.count().get_result(&mut conn()?)?;
+    let total: i64 = base_users::table.count().get_result(&mut conn()?)?;
 
     // Apply ordering
     let dir_asc = filter.dir.as_ref().map(|d| d == "f").unwrap_or(true);
     query = match filter.order_by.as_deref() {
         Some("name") => {
             if dir_asc {
-                query.order(users::name.asc())
+                query.order(base_users::name.asc())
             } else {
-                query.order(users::name.desc())
+                query.order(base_users::name.desc())
             }
         }
         Some("disabled") => {
             if dir_asc {
-                query.order(users::disabled_at.asc())
+                query.order(base_users::disabled_at.asc())
             } else {
-                query.order(users::disabled_at.desc())
+                query.order(base_users::disabled_at.desc())
             }
         }
         _ => {
             if dir_asc {
-                query.order(users::created_at.asc())
+                query.order(base_users::created_at.asc())
             } else {
-                query.order(users::created_at.desc())
+                query.order(base_users::created_at.desc())
             }
         }
     };
@@ -372,17 +362,17 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
 }
 
 pub async fn get_password_hash(user_id: i64) -> AppResult<String> {
-    user_passwords::table
-        .filter(user_passwords::user_id.eq(user_id))
-        .order_by(user_passwords::id.desc())
-        .select(user_passwords::hash)
+    base_passwords::table
+        .filter(base_passwords::user_id.eq(user_id))
+        .order_by(base_passwords::id.desc())
+        .select(base_passwords::hash)
         .first::<String>(&mut conn()?)
         .map_err(Into::into)
 }
 
 pub fn set_password(user_id: i64, password: &str) -> AppResult<()> {
-    if let Ok(hash) = utils::hash_password(password) {
-        diesel::insert_into(user_passwords::table)
+    if let Ok(hash) = crate::auth::hash_password(password) {
+        diesel::insert_into(base_passwords::table)
             .values(NewPassword {
                 user_id: user_id.to_owned(),
                 hash,

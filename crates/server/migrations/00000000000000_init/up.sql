@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS base_users (
   id BIGSERIAL PRIMARY KEY,
   name text NOT NULL UNIQUE,
   email text NULL,
@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS users (
   created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE user_passwords
+CREATE TABLE base_passwords
 (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
@@ -45,8 +45,8 @@ CREATE INDEX IF NOT EXISTS auth_codes_user_id_created_at_idx
   ON auth_codes (user_id, created_at DESC);
 
 
-drop table if exists roles;
-CREATE TABLE IF NOT EXISTS roles (
+drop table if exists base_roles;
+CREATE TABLE IF NOT EXISTS base_roles (
   id BIGSERIAL PRIMARY KEY,
   code text NOT NULL UNIQUE,
   name text NOT NULL,
@@ -59,15 +59,15 @@ CREATE TABLE IF NOT EXISTS roles (
   created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-drop table if exists role_users;
-CREATE TABLE IF NOT EXISTS role_users (
+drop table if exists base_role_users;
+CREATE TABLE IF NOT EXISTS base_role_users (
   role_id BIGINT NOT NULL,
   user_id BIGINT NOT NULL,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   PRIMARY KEY (user_id, role_id)
 );
 
-CREATE TABLE IF NOT EXISTS role_permissions (
+CREATE TABLE IF NOT EXISTS base_role_permissions (
   id BIGSERIAL PRIMARY KEY,
   role_id BIGINT NOT NULL,
   operation text NOT NULL,

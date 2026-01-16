@@ -9,6 +9,8 @@ mod error;
 mod hoops;
 mod models;
 mod routing;
+mod global;
+pub use global::*;
 pub mod user;
 pub use error::AppError;
 use salvo::prelude::*;
@@ -16,9 +18,6 @@ use serde::Serialize;
 
 use crate::config::AppConfig;
 use crate::db::DbConfig;
-
-#[derive(Serialize, ToSchema, Clone, Copy, Debug)]
-pub struct EmptyObject {}
 
 pub type AppResult<T> = Result<T, AppError>;
 pub type DieselResult<T> = Result<T, diesel::result::Error>;

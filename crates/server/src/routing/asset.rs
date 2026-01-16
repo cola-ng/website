@@ -7,6 +7,7 @@ use serde::Deserialize;
 use crate::db::schema::*;
 use crate::db::{schema, with_conn};
 use crate::models::learn::*;
+use crate::{AppResult, DepotExt};
 
 pub fn router(auth_hoop: impl Handler) -> Router {
     Router::with_path("asset")
@@ -40,7 +41,7 @@ fn bad_request(message: &str) -> StatusError {
 // ============================================================================
 
 #[handler]
-pub async fn list_scenes(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn list_scenes(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let category_param = req.query::<String>("category");
     let difficulty = req.query::<String>("difficulty");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
@@ -49,14 +50,14 @@ pub async fn list_scenes(req: &mut Request, res: &mut Response) -> Result<(), St
         let mut query = asset_scenes::table
             .filter(asset_scenes::is_active.eq(true))
             .order(asset_scenes::display_order.asc())
-            .limit(asset_scenes::limit)
+            .limit(limit)
             .into_boxed();
 
         if let Some(cat) = category_param {
-            query = query.filter(category.eq(cat));
+            query = query.filter(asset_scenes::category.eq(cat));
         }
         if let Some(diff) = difficulty {
-            query = query.filter(difficulty_level.eq(diff));
+            query = query.filter(asset_scenes::difficulty_level.eq(diff));
         }
 
         query.load::<Scene>(conn)
@@ -69,12 +70,12 @@ pub async fn list_scenes(req: &mut Request, res: &mut Response) -> Result<(), St
 }
 
 #[handler]
-pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn get_scene(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let scene_id: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
 
-    let scene: Scene = with_conn(move |conn| scenes.filter(id.eq(scene_id)).first::<Scene>(conn))
+    let scene: Scene = with_conn(move |conn| asset_scenes::table.filter(asset_scenes::id.eq(scene_id)).first::<Scene>(conn))
         .await
         .map_err(|_| StatusError::not_found().brief("scene not found"))?;
 
@@ -83,7 +84,7 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> Result<(), Stat
 }
 
 #[handler]
-pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let scene_id: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
@@ -104,7 +105,7 @@ pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> Result<(), 
 pub async fn get_dialogue_turns(
     req: &mut Request,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let dialogue_id: i64 = req
         .param::<i64>("dialogue_id")
         .ok_or_else(|| bad_request("missing dialogue_id"))?;
@@ -130,15 +131,15 @@ pub async fn get_dialogue_turns(
 pub async fn list_classic_sources(
     req: &mut Request,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let source_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let sources: Vec<ClassicDialogueSource> = with_conn(move |conn| {
-        let mut query = asset_classic_sources.limit(limit).into_boxed();
+        let mut query = asset_classic_sources::table.limit(limit).into_boxed();
 
         if let Some(st) = source_type_param {
-            query = query.filter(source_type.eq(st));
+            query = query.filter(asset_classic_sources::source_type.eq(st));
         }
 
         query.load::<ClassicDialogueSource>(conn)
@@ -151,18 +152,18 @@ pub async fn list_classic_sources(
 }
 
 #[handler]
-pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let source_id_param = req.query::<i64>("source_id");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let clips: Vec<ClassicDialogueClip> = with_conn(move |conn| {
-        let mut query = asset_classic_clips
-            .order(popularity_score.desc())
+        let mut query = asset_classic_clips::table
+            .order(asset_classic_clips::popularity_score.desc())
             .limit(limit)
             .into_boxed();
 
         if let Some(sid) = source_id_param {
-            query = query.filter(source_id.eq(sid));
+            query = query.filter(asset_classic_clips::source_id.eq(sid));
         }
 
         query.load::<ClassicDialogueClip>(conn)
@@ -182,19 +183,19 @@ pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> Result
 pub async fn list_read_exercises(
     req: &mut Request,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let difficulty = req.query::<String>("difficulty");
     let exercise_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let exercises: Vec<ReadingExercise> = with_conn(move |conn| {
-        let mut query = asset_read_exercises.limit(limit).into_boxed();
+        let mut query = asset_read_exercises::table.limit(limit).into_boxed();
 
         if let Some(diff) = difficulty {
-            query = query.filter(difficulty_level.eq(diff));
+            query = query.filter(asset_read_exercises::difficulty_level.eq(diff));
         }
         if let Some(et) = exercise_type_param {
-            query = query.filter(exercise_type.eq(et));
+            query = query.filter(asset_read_exercises::exercise_type.eq(et));
         }
 
         query.load::<ReadingExercise>(conn)
@@ -210,15 +211,15 @@ pub async fn list_read_exercises(
 pub async fn get_read_sentences(
     req: &mut Request,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let exercise_id_param: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| bad_request("missing id"))?;
 
     let sentences: Vec<ReadingSentence> = with_conn(move |conn| {
-        asset_read_sentences
-            .filter(exercise_id.eq(exercise_id_param))
-            .order(sentence_order.asc())
+        asset_read_sentences::table
+            .filter(asset_read_sentences::exercise_id.eq(exercise_id_param))
+            .order(asset_read_sentences::sentence_order.asc())
             .load::<ReadingSentence>(conn)
     })
     .await
@@ -233,7 +234,7 @@ pub async fn get_read_sentences(
 // ============================================================================
 
 #[handler]
-pub async fn list_phrases(req: &mut Request, res: &mut Response) -> Result<(), StatusError> {
+pub async fn list_phrases(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let category_param = req.query::<String>("category");
     let formality = req.query::<String>("formality");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
@@ -275,8 +276,8 @@ pub async fn list_learn_issue_words(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -310,15 +311,15 @@ pub async fn create_issue_word(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateIssueWordRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
 
     if input.word.trim().is_empty() || input.issue_type.trim().is_empty() {
-        return Err(bad_request("word and issue_type are required"));
+        return Err(bad_request("word and issue_type are required").into());
     }
 
     let new_word = NewIssueWord {
@@ -331,7 +332,7 @@ pub async fn create_issue_word(
     };
 
     let word: IssueWord = with_conn(move |conn| {
-        diesel::insert_into(learn_issue_words)
+        diesel::insert_into(learn_issue_words::table)
             .values(&new_word)
             .get_result::<IssueWord>(conn)
     })
@@ -374,8 +375,8 @@ pub async fn list_sessions(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let session_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -404,15 +405,15 @@ pub async fn create_session(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateSessionRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
 
     if input.session_id.trim().is_empty() {
-        return Err(bad_request("session_id is required"));
+        return Err(bad_request("session_id is required").into());
     }
 
     let new_session = NewLearningSession {
@@ -425,7 +426,7 @@ pub async fn create_session(
     };
 
     let session: LearningSession = with_conn(move |conn| {
-        diesel::insert_into(learn_sessions)
+        diesel::insert_into(learn_sessions::table)
             .values(&new_session)
             .get_result::<LearningSession>(conn)
     })
@@ -442,8 +443,8 @@ pub async fn update_session(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let session_id_param: String = req
         .param::<String>("session_id")
         .ok_or_else(|| bad_request("missing session_id"))?;
@@ -513,8 +514,8 @@ pub async fn list_learn_conversations(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let session_id_param = req.query::<String>("session_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
@@ -545,8 +546,8 @@ pub async fn create_conversation(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateConversationRequest = req
         .parse_json()
         .await

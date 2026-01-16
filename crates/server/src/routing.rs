@@ -17,6 +17,7 @@ use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::*;
+use crate::{AppResult, DepotExt, JsonResult};
 
 mod account;
 mod asset;
@@ -45,7 +46,7 @@ fn bad_request(message: &str) -> StatusError {
     StatusError::bad_request().brief(message)
 }
 
-fn require_json_content_type(req: &Request) -> Result<(), StatusError> {
+fn require_json_content_type(req: &Request) -> AppResult<()> {
     let accept = req
         .headers()
         .get(header::ACCEPT)
@@ -53,7 +54,8 @@ fn require_json_content_type(req: &Request) -> Result<(), StatusError> {
         .unwrap_or("");
     if !accept.contains("application/json") {
         return Err(StatusError::unsupported_media_type()
-            .brief("Accept header must include application/json"));
+            .brief("Accept header must include application/json")
+            .into());
     }
     Ok(())
 }
@@ -63,7 +65,7 @@ pub async fn register(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> JsonResult<AuthResponse> {
     require_json_content_type(req)?;
     let input: RegisterRequest = req
         .parse_json()
@@ -72,13 +74,13 @@ pub async fn register(
 
     let email = input.email.trim().to_lowercase();
     if email.is_empty() {
-        return Err(bad_request("email is required"));
+        return Err(bad_request("email is required").into());
     }
     if input.password.len() < 8 {
-        return Err(bad_request("password must be at least 8 characters"));
+        return Err(bad_request("password must be at least 8 characters").into());
     }
 
-    let password_hash = auth::hash_password(&input.password)
+    let password_hash = crate::auth::hash_password(&input.password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
     let new_user = NewUser {
@@ -92,12 +94,12 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        let is_first = users::table
+        let is_first = base_users::table
             .select(diesel::dsl::count_star())
             .first::<i64>(conn)?
             == 0;
 
-        let user = diesel::insert_into(users::table)
+        let user = diesel::insert_into(base_users::table)
             .values(&new_user)
             .get_result::<User>(conn)?;
 
@@ -149,53 +151,49 @@ pub async fn register(
     };
     let config = AppConfig::get();
     let access_token =
-        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
-    res.render(Json(AuthResponse {
+    Ok(Json(AuthResponse {
         user: user.into(),
         access_token,
-    }));
-    Ok(())
+    }))
 }
 
 #[handler]
-pub async fn me(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+pub async fn me(depot: &mut Depot, res: &mut Response) -> JsonResult<User> {
+    let user_id = depot.user_id()?;
     let user: User = with_conn(move |conn| {
-        users::table
-            .filter(users::id.eq(user_id))
+        base_users::table
+            .filter(base_users::id.eq(user_id))
             .first::<User>(conn)
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
     res.headers_mut()
         .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
-    res.render(Json(User::from(user)));
-    Ok(())
+    Ok(Json(User::from(user)))
 }
 
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = base_users)]
+pub struct UpdateUserProfile {
+    pub name: Option<String>,
+    pub phone: Option<String>,
+}
 #[handler]
-pub async fn update_me(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn update_me(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     require_json_content_type(req)?;
     let input: UpdateUserProfile = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
-    let user_id = get_user_id(depot)?;
+    let user_id = depot.user_id()?;
     let now = Utc::now();
 
     let updated: User = with_conn(move |conn| {
-        diesel::update(users::table.filter(users::id.eq(user_id)))
-            .set((
-                users::name.eq(input.name),
-                users::phone.eq(input.phone),
-                users::updated_at.eq(now),
-            ))
+        diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
+            .set(&input)
             .get_result::<User>(conn)
     })
     .await
@@ -230,18 +228,14 @@ fn simple_corrections(message: &str) -> Vec<String> {
 }
 
 #[handler]
-pub async fn chat_send(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn chat_send(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     require_json_content_type(req)?;
     let input: ChatSendRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
     if input.message.trim().is_empty() {
-        return Err(bad_request("message is required"));
+        return Err(bad_request("message is required").into());
     }
 
     let corrections = simple_corrections(&input.message);
@@ -254,7 +248,7 @@ pub async fn chat_send(
         input.message.trim()
     );
 
-    let user_id = get_user_id(depot)?;
+    let user_id = depot.user_id()?;
     let content = json!({
         "user_message": input.message,
         "assistant_reply": reply,
@@ -268,66 +262,6 @@ pub async fn chat_send(
         suggestions,
     }));
     Ok(())
-}
-
-fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
-    depot
-        .get::<i64>("user_id")
-        .copied()
-        .map_err(|_| StatusError::unauthorized().brief("missing user"))
-}
-
-#[derive(Clone)]
-struct RequirePermission {
-    operation: &'static str,
-}
-
-#[salvo::async_trait]
-impl Handler for RequirePermission {
-    async fn handle(
-        &self,
-        req: &mut Request,
-        depot: &mut Depot,
-        res: &mut Response,
-        ctrl: &mut FlowCtrl,
-    ) {
-        let user_id = match get_user_id(depot) {
-            Ok(v) => v,
-            Err(e) => {
-                res.render(e);
-                ctrl.skip_rest();
-                return;
-            }
-        };
-        let operation = self.operation;
-        let allowed = with_conn(move |conn| {
-            use diesel::prelude::*;
-
-            use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::role_users::dsl as ur;
-            let exists = diesel::select(diesel::dsl::exists(
-                rp::role_permissions
-                    .inner_join(ur::role_users.on(ur::role_id.eq(rp::role_id)))
-                    .filter(ur::user_id.eq(user_id))
-                    .filter(rp::operation.eq(operation)),
-            ))
-            .get_result::<bool>(conn)?;
-            Ok(exists)
-        })
-        .await
-        .unwrap_or(false);
-
-        if !allowed {
-            res.render(StatusError::forbidden().brief("permission denied"));
-            ctrl.skip_rest();
-            return;
-        }
-        ctrl.call_next(req, depot, res).await;
-    }
-}
-
-fn require_permission(operation: &'static str) -> RequirePermission {
-    RequirePermission { operation }
 }
 
 fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
@@ -345,10 +279,10 @@ async fn admin_delete_user(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let user_id = get_path_id(req, "user_id")?;
     with_conn(move |conn| {
-        diesel::delete(users::table.filter(users::id.eq(user_id))).execute(conn)?;
+        diesel::delete(base_users::table.filter(base_users::id.eq(user_id))).execute(conn)?;
         Ok(())
     })
     .await
@@ -383,7 +317,7 @@ async fn admin_delete_user(
 //     req: &mut Request,
 //     _depot: &mut Depot,
 //     res: &mut Response,
-// ) -> Result<(), StatusError> {
+// ) -> AppResult<()> {
 //     require_json_content_type(req)?;
 //     let input: OauthLoginRequest = req
 //         .parse_json()
@@ -462,7 +396,7 @@ async fn admin_delete_user(
 //     req: &mut Request,
 //     _depot: &mut Depot,
 //     res: &mut Response,
-// ) -> Result<(), StatusError> {
+// ) -> AppResult<()> {
 //     require_json_content_type(req)?;
 //     let input: OauthBindRequest = req
 //         .parse_json()
@@ -525,7 +459,7 @@ async fn admin_delete_user(
 //     req: &mut Request,
 //     _depot: &mut Depot,
 //     res: &mut Response,
-// ) -> Result<(), StatusError> {
+// ) -> AppResult<()> {
 //     require_json_content_type(req)?;
 //     let input: OauthSkipRequest = req
 //         .parse_json()

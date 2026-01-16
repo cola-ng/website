@@ -37,6 +37,7 @@ use crate::db::schema::*;
 // emails.value ilike E'%{{data}}%') or id in (select user_id from phones where phones.value ilike
 // E'%{{data}}%')";
 #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
+#[diesel(table_name = base_users)]
 pub struct User {
     pub id: i64,
 
@@ -68,7 +69,7 @@ pub struct User {
     pub created_at: DateTime<Utc>,
 }
 #[derive(Insertable, AsChangeset, Deserialize, Clone, Debug)]
-#[diesel(table_name = users)]
+#[diesel(table_name = base_users)]
 pub struct NewUser {
     pub name: String,
     pub email: Option<String>,
@@ -81,7 +82,7 @@ pub struct NewUser {
 }
 
 #[derive(Identifiable, Debug, Clone)]
-#[diesel(table_name = user_passwords)]
+#[diesel(table_name = base_passwords)]
 pub struct Password {
     pub id: i64,
     pub user_id: i64,
@@ -89,7 +90,7 @@ pub struct Password {
     pub created_at: DateTime<Utc>,
 }
 #[derive(Insertable, Queryable, Debug, Clone)]
-#[diesel(table_name = user_passwords)]
+#[diesel(table_name = base_passwords)]
 pub struct NewPassword {
     pub user_id: i64,
     pub hash: String,
@@ -104,6 +105,7 @@ pub struct NewPassword {
 // });
 // pub static ROLE_JOINED_OPTIONS: LazyLock<Vec<JoinedOption>> = LazyLock::new(Vec::new);
 #[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
+#[diesel(table_name = base_roles)]
 pub struct Role {
     pub id: i64,
     pub code: Option<String>,
@@ -117,7 +119,7 @@ pub struct Role {
     pub created_at: DateTime<Utc>,
 }
 #[derive(Insertable, Debug)]
-#[diesel(table_name = roles)]
+#[diesel(table_name = base_roles)]
 pub struct NewRole {
     pub code: Option<String>,
     pub name: String,
@@ -130,6 +132,7 @@ pub struct NewRole {
 }
 
 #[derive(Queryable, Insertable, Serialize, Debug)]
+#[diesel(table_name = base_role_users)]
 pub struct RoleUser {
     pub role_id: i64,
     pub user_id: i64,

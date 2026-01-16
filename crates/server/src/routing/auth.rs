@@ -5,8 +5,6 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use salvo::catcher::Catcher;
 use salvo::compression::{Compression, CompressionLevel};
-use salvo::conn::rustls::{Keycert, RustlsConfig};
-use salvo::conn::tcp::DynTcpAcceptors;
 use salvo::cors::{self, AllowHeaders, Cors};
 use salvo::http::{Method, header};
 use salvo::logging::Logger;
@@ -14,53 +12,15 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::auth;
+use crate::{DepotExt, AppResult};
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::hoops::require_auth;
 use crate::models::*;
 
-pub mod account;
-pub mod asset;
-pub mod learn;
-
 pub fn router(config: AppConfig) -> Router {
-    let api = Router::with_path("api")
-        .push(Router::with_path("health").get(health))
-        .push(
-            Router::with_path("chat")
-                .hoop(require_auth)
-                .push(Router::with_path("send").post(chat_send)),
-        );
-
-    let admin = Router::with_path("api/admin")
-        .hoop(require_auth)
-        .hoop(require_permission("users.delete"))
-        .push(Router::with_path("users/{user_id}").delete(admin_delete_user));
-
     Router::new()
-        .hoop(
-            Cors::new()
-                .allow_origin(cors::Any)
-                .allow_methods([
-                    Method::GET,
-                    Method::POST,
-                    Method::PUT,
-                    Method::DELETE,
-                    Method::OPTIONS,
-                ])
-                .allow_headers(AllowHeaders::list([
-                    salvo::http::header::ACCEPT,
-                    salvo::http::header::CONTENT_TYPE,
-                    salvo::http::header::AUTHORIZATION,
-                    salvo::http::header::RANGE,
-                ]))
-                .max_age(Duration::from_secs(86400))
-                .into_handler(),
-        )
-        .push(api)
-        .push(admin)
 }
 
 #[handler]
@@ -91,7 +51,7 @@ fn bad_request(message: &str) -> StatusError {
     StatusError::bad_request().brief(message)
 }
 
-fn require_json_content_type(req: &Request) -> Result<(), StatusError> {
+fn require_json_content_type(req: &Request) -> AppResult<()> {
     let accept = req
         .headers()
         .get(header::ACCEPT)
@@ -99,29 +59,28 @@ fn require_json_content_type(req: &Request) -> Result<(), StatusError> {
         .unwrap_or("");
     if !accept.contains("application/json") {
         return Err(StatusError::unsupported_media_type()
-            .brief("Accept header must include application/json"));
+            .brief("Accept header must include application/json")
+            .into());
     }
     Ok(())
 }
 
 const ALLOWED_OAUTH_PROVIDERS: &[&str] = &["google", "github"];
 
-fn validate_oauth_provider(provider: &str) -> Result<(), StatusError> {
+fn validate_oauth_provider(provider: &str) -> AppResult<()> {
     if !ALLOWED_OAUTH_PROVIDERS.contains(&provider.to_lowercase().as_str()) {
-        return Err(StatusError::bad_request().brief(format!(
-            "OAuth provider '{}' is not supported. Allowed providers: google, github",
-            provider
-        )));
+        return Err(StatusError::bad_request().brief(
+            format!(
+                "OAuth provider '{}' is not supported. Allowed providers: google, github",
+                provider
+            ),
+        ).into());
     }
     Ok(())
 }
 
 #[handler]
-pub async fn register(
-    req: &mut Request,
-    _depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn register(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     require_json_content_type(req)?;
     let input: RegisterRequest = req
         .parse_json()
@@ -130,13 +89,13 @@ pub async fn register(
 
     let email = input.email.trim().to_lowercase();
     if email.is_empty() {
-        return Err(bad_request("email is required"));
+        return Err(bad_request("email is required").into());
     }
     if input.password.len() < 8 {
-        return Err(bad_request("password must be at least 8 characters"));
+        return Err(bad_request("password must be at least 8 characters").into());
     }
 
-    let password_hash = auth::hash_password(&input.password)
+    let password_hash = crate::auth::hash_password(&input.password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
     let new_user = NewUser {
@@ -150,12 +109,12 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        let is_first = users::table
+        let is_first = base_users::table
             .select(diesel::dsl::count_star())
             .first::<i64>(conn)?
             == 0;
 
-        let user = diesel::insert_into(users::table)
+        let user = diesel::insert_into(base_users::table)
             .values(&new_user)
             .get_result::<User>(conn)?;
 
@@ -203,7 +162,7 @@ pub async fn register(
     };
     let config = AppConfig::get();
     let access_token =
-        daling::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(AuthResponse {
@@ -222,22 +181,22 @@ pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) ->
         .map_err(|_| bad_request("invalid json"))?;
     let email_input = input.email.trim().to_lowercase();
     if email_input.is_empty() {
-        return Err(bad_request("email is required"));
+        return Err(bad_request("email is required").into());
     }
 
     let user: User = with_conn(move |conn| {
-        users::table
-            .filter(users::email.eq(email_input))
+        base_users::table
+            .filter(base_users::email.eq(email_input))
             .first::<User>(conn)
     })
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
-    auth::verify_password(&user, &input.password).await?;
+    crate::auth::verify_password(&user, &input.password).await?;
 
     let config = AppConfig::get();
     let access_token =
-        auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(AuthResponse {
@@ -266,23 +225,23 @@ pub async fn create_code(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     require_json_content_type(req)?;
     let input: CodeRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
     if input.redirect_uri.trim().is_empty() {
-        return Err(bad_request("redirect_uri is required"));
+        return Err(bad_request("redirect_uri is required").into());
     }
     if input.state.trim().is_empty() {
-        return Err(bad_request("state is required"));
+        return Err(bad_request("state is required").into());
     }
 
-    let user_id = get_user_id(depot)?;
+    let user_id = depot.user_id()?;
 
-    let code = auth::random_code();
-    let code_hash = auth::hash_code(&code);
+    let code = crate::auth::random_code();
+    let code_hash = crate::auth::hash_code(&code);
     let expires_at = Utc::now() + chrono::Duration::minutes(5);
     let record = NewAuthCode {
         user_id,
@@ -298,7 +257,7 @@ pub async fn create_code(
             .get_result::<AuthCode>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create desktop code"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create code"))?;
 
     res.render(Json(CodeResponse {
         code,
@@ -325,18 +284,18 @@ pub async fn consume_code(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     require_json_content_type(req)?;
     let input: ConsumeCodeRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
     if input.code.trim().is_empty() || input.redirect_uri.trim().is_empty() {
-        return Err(bad_request("code and redirect_uri are required"));
+        return Err(bad_request("code and redirect_uri are required").into());
     }
 
     let config = AppConfig::get();
-    let code_hash_value = auth::hash_desktop_code(&input.code);
+    let code_hash_value = crate::auth::hash_code(&input.code);
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
 
@@ -357,72 +316,13 @@ pub async fn consume_code(
     .map_err(|_| StatusError::unauthorized().brief("invalid or expired code"))?;
 
     let access_token =
-        auth::issue_access_token(user_id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        crate::auth::issue_access_token(user_id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     res.render(Json(ConsumeCodeResponse { access_token }));
     Ok(())
 }
 
-fn get_user_id(depot: &Depot) -> Result<i64, StatusError> {
-    depot
-        .get::<i64>("user_id")
-        .copied()
-        .map_err(|_| StatusError::unauthorized().brief("missing user"))
-}
-
-#[derive(Clone)]
-struct RequirePermission {
-    operation: &'static str,
-}
-
-#[salvo::async_trait]
-impl Handler for RequirePermission {
-    async fn handle(
-        &self,
-        req: &mut Request,
-        depot: &mut Depot,
-        res: &mut Response,
-        ctrl: &mut FlowCtrl,
-    ) {
-        let user_id = match get_user_id(depot) {
-            Ok(v) => v,
-            Err(e) => {
-                res.render(e);
-                ctrl.skip_rest();
-                return;
-            }
-        };
-        let operation = self.operation;
-        let allowed = with_conn(move |conn| {
-            use diesel::prelude::*;
-
-            use crate::db::schema::role_permissions::dsl as rp;
-            use crate::db::schema::role_users::dsl as ur;
-            let exists = diesel::select(diesel::dsl::exists(
-                rp::role_permissions
-                    .inner_join(ur::role_users.on(ur::role_id.eq(rp::role_id)))
-                    .filter(ur::user_id.eq(user_id))
-                    .filter(rp::operation.eq(operation)),
-            ))
-            .get_result::<bool>(conn)?;
-            Ok(exists)
-        })
-        .await
-        .unwrap_or(false);
-
-        if !allowed {
-            res.render(StatusError::forbidden().brief("permission denied"));
-            ctrl.skip_rest();
-            return;
-        }
-        ctrl.call_next(req, depot, res).await;
-    }
-}
-
-fn require_permission(operation: &'static str) -> RequirePermission {
-    RequirePermission { operation }
-}
 
 fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
     let raw = req
@@ -439,10 +339,10 @@ async fn admin_delete_user(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let user_id = get_path_id(req, "user_id")?;
     with_conn(move |conn| {
-        diesel::delete(users::table.filter(users::id.eq(user_id))).execute(conn)?;
+        diesel::delete(base_users::table.filter(base_users::id.eq(user_id))).execute(conn)?;
         Ok(())
     })
     .await
@@ -477,7 +377,7 @@ async fn admin_delete_user(
 //     req: &mut Request,
 //     _depot: &mut Depot,
 //     res: &mut Response,
-// ) -> Result<(), StatusError> {
+// ) -> AppResult<()> {
 //     require_json_content_type(req)?;
 //     let input: OauthLoginRequest = req
 //         .parse_json()
@@ -556,7 +456,7 @@ async fn admin_delete_user(
 //     req: &mut Request,
 //     _depot: &mut Depot,
 //     res: &mut Response,
-// ) -> Result<(), StatusError> {
+// ) -> AppResult<()> {
 //     require_json_content_type(req)?;
 //     let input: OauthBindRequest = req
 //         .parse_json()
@@ -619,7 +519,7 @@ async fn admin_delete_user(
 //     req: &mut Request,
 //     _depot: &mut Depot,
 //     res: &mut Response,
-// ) -> Result<(), StatusError> {
+// ) -> AppResult<()> {
 //     require_json_content_type(req)?;
 //     let input: OauthSkipRequest = req
 //         .parse_json()

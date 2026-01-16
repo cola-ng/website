@@ -14,14 +14,14 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::{AppResult, AuthArgs, AuthedInfo, MatrixError, config};
+use crate::{AppConfig, AppResult};
 
 #[handler]
 pub async fn require_auth(
     req: &mut Request,
     depot: &mut Depot,
     _res: &mut Response,
-) -> Result<(), StatusError> {
+) -> AppResult<()> {
     let config = AppConfig::get();
     let header_value = req
         .headers()
@@ -31,7 +31,7 @@ pub async fn require_auth(
     let token = header_value
         .strip_prefix("Bearer ")
         .ok_or_else(|| StatusError::unauthorized().brief("invalid authorization"))?;
-    let claims = auth::decode_access_token(token, &config.jwt_secret)
+    let claims = crate::auth::decode_access_token(token, &config.jwt_secret)
         .map_err(|_| StatusError::unauthorized().brief("invalid token"))?;
     let user_id = claims
         .sub

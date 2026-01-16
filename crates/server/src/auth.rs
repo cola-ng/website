@@ -93,7 +93,7 @@ pub fn random_code() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-pub fn hash_desktop_code(code: &str) -> String {
+pub fn hash_code(code: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(code.as_bytes());
     hex::encode(hasher.finalize())

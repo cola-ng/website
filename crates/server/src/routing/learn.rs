@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::hoops;
+use crate::{AppResult, DepotExt, hoops};
 
 pub fn router() -> Router {
     Router::with_path("learn")
@@ -70,13 +70,13 @@ pub async fn list_issue_words(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let words: Vec<IssueWord> = with_conn(move |conn| {
-        let mut query = learn_issue_words
+        let mut query = learn_issue_words::table
             .filter(learn_issue_words::user_id.eq(user_id))
             .order(learn_issue_words::created_at.desc())
             .limit(limit)
@@ -105,15 +105,15 @@ pub async fn create_issue_word(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateIssueWordRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
 
     if input.word.trim().is_empty() || input.issue_type.trim().is_empty() {
-        return Err(bad_request("word and issue_type are required"));
+        return Err(bad_request("word and issue_type are required").into());
     }
 
     let new_word = NewIssueWord {
@@ -169,8 +169,8 @@ pub async fn list_sessions(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let session_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -199,15 +199,15 @@ pub async fn create_session(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateSessionRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
 
     if input.session_id.trim().is_empty() {
-        return Err(bad_request("session_id is required"));
+        return Err(bad_request("session_id is required").into());
     }
 
     let new_session = NewLearningSession {
@@ -237,8 +237,8 @@ pub async fn update_session(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let session_id_param: String = req
         .param::<String>("session_id")
         .ok_or_else(|| bad_request("missing session_id"))?;
@@ -308,8 +308,8 @@ pub async fn list_conversations(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let session_id_param = req.query::<String>("session_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
@@ -340,8 +340,8 @@ pub async fn create_conversation(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateConversationRequest = req
         .parse_json()
         .await
@@ -389,8 +389,8 @@ pub async fn list_vocabulary(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -424,15 +424,15 @@ pub async fn create_vocabulary(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: CreateVocabularyRequest = req
         .parse_json()
         .await
         .map_err(|_| bad_request("invalid json"))?;
 
     if input.word.trim().is_empty() {
-        return Err(bad_request("word is required"));
+        return Err(bad_request("word is required").into());
     }
 
     let new_vocab = NewUserVocabulary {
@@ -474,8 +474,8 @@ pub async fn list_daily_stats(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(30).clamp(1, 365);
 
     let stats: Vec<DailyStat> = with_conn(move |conn| {
@@ -497,8 +497,8 @@ pub async fn upsert_daily_stat(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
-) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let input: UpsertDailyStatRequest = req
         .parse_json()
         .await
@@ -545,8 +545,8 @@ pub async fn upsert_daily_stat(
 // ============================================================================
 
 #[handler]
-pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> Result<(), StatusError> {
-    let user_id = get_user_id(depot)?;
+pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+    let user_id = depot.user_id()?;
 
     let achievements: Vec<UserAchievement> = with_conn(move |conn| {
         learn_achievements::table

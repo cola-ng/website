@@ -10,7 +10,7 @@ rust-version = "1.92.0"
 
 
 [workspace.dependencies]
-dory-macros = { version = "0.1.0", path = "crates/macros" }
+colang-macros = { version = "0.1.0", path = "crates/macros" }
 
 argon2 = "0.5.3"
 rust-argon2 = "3.0.0"

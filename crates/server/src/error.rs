@@ -36,7 +36,7 @@ pub enum AppError {
     #[error("diesel: `{0}`")]
     Diesel(#[from] diesel::result::Error),
     #[error("pool: `{0}`")]
-    Pool(#[from] crate::data::PoolError),
+    Pool(#[from] crate::db::PoolError),
     #[error("http: `{0}`")]
     StatusError(#[from] salvo::http::StatusError),
     #[error("http parse: `{0}`")]

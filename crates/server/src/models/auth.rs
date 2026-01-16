@@ -9,12 +9,9 @@ use serde_json::Value;
 
 use crate::AppResult;
 use crate::db::schema::*;
-use crate::models::NewAuthCode;
-// use crate::db::url_filter::JoinedOption;
 
-#[derive(Queryable, Identifiable, Associations, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = auth_codes)]
-#[diesel(belongs_to(User))]
 pub struct AuthCode {
     pub id: i64,
     pub user_id: i64,
