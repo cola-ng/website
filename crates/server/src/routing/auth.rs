@@ -14,10 +14,10 @@ use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::auth;
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
-use crate::auth;
 use crate::hoops::require_auth;
 use crate::models::*;
 
@@ -144,6 +144,8 @@ pub async fn register(
         display_name: None,
         email: Some(email.clone()),
         phone: None,
+        inviter_id: None,
+        updated_by: None,
         created_by: None,
     };
 
@@ -212,11 +214,7 @@ pub async fn register(
 }
 
 #[handler]
-pub async fn login(
-    req: &mut Request,
-    _depot: &mut Depot,
-    res: &mut Response,
-) -> Result<(), StatusError> {
+pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     require_json_content_type(req)?;
     let input: LoginRequest = req
         .parse_json()
@@ -235,11 +233,7 @@ pub async fn login(
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
 
-    let ok = auth::verify_password(user.id, &input.password)
-        .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
-    if !ok {
-        return Err(StatusError::unauthorized().brief("invalid credentials"));
-    }
+    auth::verify_password(&user, &input.password).await?;
 
     let config = AppConfig::get();
     let access_token =

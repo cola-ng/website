@@ -67,7 +67,7 @@ pub struct User {
     pub created_by: Option<i64>,
     pub created_at: DateTime<Utc>,
 }
-#[derive(Insertable, Deserialize, Clone, Debug)]
+#[derive(Insertable, AsChangeset, Deserialize, Clone, Debug)]
 #[diesel(table_name = users)]
 pub struct NewUser {
     pub name: String,
@@ -340,19 +340,19 @@ pub struct RoleUser {
 //     pub created_at: DateTime<Utc>,
 // }
 
-#[derive(Insertable, Serialize, Clone, Debug)]
-#[diesel(table_name = access_tokens)]
-pub struct NewAccessToken<'a> {
-    pub user_id: i64,
-    pub name: Option<&'a str>,
-    pub kind: &'a str,
-    pub value: &'a str,
-    pub device: Option<&'a str>,
-    pub expires_at: DateTime<Utc>,
+// #[derive(Insertable, Serialize, Clone, Debug)]
+// #[diesel(table_name = access_tokens)]
+// pub struct NewAccessToken<'a> {
+//     pub user_id: i64,
+//     pub name: Option<&'a str>,
+//     pub kind: &'a str,
+//     pub value: &'a str,
+//     pub device: Option<&'a str>,
+//     pub expires_at: DateTime<Utc>,
 
-    pub updated_by: Option<i64>,
-    pub created_by: Option<i64>,
-}
+//     pub updated_by: Option<i64>,
+//     pub created_by: Option<i64>,
+// }
 
 // #[derive(Identifiable, Insertable, Queryable, Serialize, Deserialize, ToSchema, Clone, Debug)]
 // pub struct SecurityCode {

@@ -1,11 +1,16 @@
-use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::password_hash::SaltString;
+use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use base64::Engine;
 use chrono::{Duration as ChronoDuration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
-use rand::rngs::OsRng;
 use rand::RngCore;
+use rand::rngs::OsRng;
+use salvo::http::StatusError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+
+use crate::models::*;
+use crate::{AppResult, user};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AccessClaims {
@@ -23,27 +28,27 @@ pub fn hash_password(password: &str) -> Result<String, String> {
         .map(|h| h.to_string())
 }
 
-pub async fn verify_password(password: &str, password_hash: &str) -> AppResult<()> {
-    if user.deactivated_at.is_some() {
+pub async fn verify_password(user: &User, password: &str) -> AppResult<()> {
+    if user.disabled_at.is_some() {
         return Err(StatusError::unauthorized()
             .brief("the user has been deactivated")
             .into());
     }
-    let hash = user::get_password_hash(user.id)
-        .map_err(|_| StatusError::unauthorized().brief("wrong username or password"))?;
-    if hash.is_empty() {
+
+    let password_hash = user::get_password_hash(user.id).await?;
+    if password_hash.is_empty() {
         return Err(StatusError::unauthorized()
             .brief("the user has been deactivated")
             .into());
     }
-    
-    let parsed =
-        PasswordHash::new(password_hash).map_err(|_| StatusError::unauthorized().brief("invalid password hash"))?;
-     let hash_matches = Argon2::default()
+
+    let parsed = PasswordHash::new(&password_hash)
+        .map_err(|_| StatusError::unauthorized().brief("invalid password hash"))?;
+    let hash_matches = Argon2::default()
         .verify_password(password.as_bytes(), &parsed)
         .is_ok();
 
-     if !hash_matches {
+    if !hash_matches {
         Err(StatusError::unauthorized()
             .brief("wrong username or password")
             .into())

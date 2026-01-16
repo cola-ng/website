@@ -90,13 +90,17 @@ fn init_jwt_validator(config: &JwtConfig) -> AppResult<Validation> {
 }
 
 pub fn is_username_available(name: &str) -> AppResult<bool> {
-    let available = !user::user_exists(name)?;
+    let available = !user_exists(name)?;
     Ok(available)
 }
 
 pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult<User> {
     let new_user = NewUser {
         name: name.into(),
+        email: None,
+        phone: None,
+        display_name: None,
+        inviter_id: None,
         created_by: None,
         updated_by: None,
     };
@@ -139,28 +143,28 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
 //     Ok(())
 // }
 
-pub fn make_user_admin(user_id: i64) -> AppResult<()> {
-    let user_id = user_id.to_owned();
-    diesel::update(users::table.filter(users::id.eq(&user_id)))
-        .set(users::is_admin.eq(true))
-        .execute(&mut conn()?)?;
-    Ok(())
-}
+// pub fn make_user_admin(user_id: i64) -> AppResult<()> {
+//     let user_id = user_id.to_owned();
+//     diesel::update(users::table.filter(users::id.eq(&user_id)))
+//         .set(users::is_admin.eq(true))
+//         .execute(&mut conn()?)?;
+//     Ok(())
+// }
 
-pub async fn deactivate_account(user_id: i64) -> AppResult<()> {
-    diesel::update(users::table.find(user_id))
-        .set(users::deactivated_at.eq(Utc::now()))
-        .execute(&mut conn()?)?;
-    Ok(())
-}
+// pub async fn deactivate_account(user_id: i64) -> AppResult<()> {
+//     diesel::update(users::table.find(user_id))
+//         .set(users::deactivated_at.eq(Utc::now()))
+//         .execute(&mut conn()?)?;
+//     Ok(())
+// }
 
-pub fn is_admin(user_id: i64) -> AppResult<bool> {
-    users::table
-        .filter(users::id.eq(user_id))
-        .select(users::is_admin)
-        .first::<bool>(&mut conn()?)
-        .map_err(Into::into)
-}
+// pub fn is_admin(user_id: i64) -> AppResult<bool> {
+//     users::table
+//         .filter(users::id.eq(user_id))
+//         .select(users::is_admin)
+//         .first::<bool>(&mut conn()?)
+//         .map_err(Into::into)
+// }
 
 /// Check if a user has an account on this homeserver.
 pub fn user_exists(username: &str) -> AppResult<bool> {
@@ -261,21 +265,13 @@ pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
 //     Ok(())
 // }
 
-pub fn deactivate(user_id: i64) -> AppResult<()> {
-    diesel::update(users::table.find(user_id))
-        .set((users::deactivated_at.eq(Utc::now()),))
-        .execute(&mut conn()?)?;
+// pub fn deactivate(user_id: i64) -> AppResult<()> {
+//     diesel::update(users::table.find(user_id))
+//         .set((users::deactivated_at.eq(Utc::now()),))
+//         .execute(&mut conn()?)?;
 
-    Ok(())
-}
-
-/// Set admin status for a user
-pub fn set_admin(user_id: i64, is_admin: bool) -> AppResult<()> {
-    diesel::update(users::table.find(user_id))
-        .set(users::is_admin.eq(is_admin))
-        .execute(&mut conn()?)?;
-    Ok(())
-}
+//     Ok(())
+// }
 
 /// Set locked status for a user
 pub fn set_locked(user_id: i64, locked: bool, locker_id: Option<i64>) -> AppResult<()> {
@@ -346,25 +342,11 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
                 query.order(users::name.desc())
             }
         }
-        Some("is_guest") => {
+        Some("disabled") => {
             if dir_asc {
-                query.order(users::is_guest.asc())
+                query.order(users::disabled_at.asc())
             } else {
-                query.order(users::is_guest.desc())
-            }
-        }
-        Some("admin") => {
-            if dir_asc {
-                query.order(users::is_admin.asc())
-            } else {
-                query.order(users::is_admin.desc())
-            }
-        }
-        Some("deactivated") => {
-            if dir_asc {
-                query.order(users::deactivated_at.asc())
-            } else {
-                query.order(users::deactivated_at.desc())
+                query.order(users::disabled_at.desc())
             }
         }
         _ => {
@@ -389,7 +371,7 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     Ok(users)
 }
 
-pub fn get_password_hash(user_id: i64) -> AppResult<String> {
+pub async fn get_password_hash(user_id: i64) -> AppResult<String> {
     user_passwords::table
         .filter(user_passwords::user_id.eq(user_id))
         .order_by(user_passwords::id.desc())

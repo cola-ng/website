@@ -143,6 +143,7 @@ pub async fn register(
     })?;
 
     let new_password = NewPassword {
+        user_id: user.id,
         hash: password_hash,
         created_at: Utc::now(),
     };

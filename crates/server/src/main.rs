@@ -1,3 +1,7 @@
+
+#[macro_use]
+extern crate tracing;
+
 pub mod auth;
 mod config;
 mod db;
