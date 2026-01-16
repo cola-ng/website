@@ -1,10 +1,9 @@
-use argon2::password_hash::SaltString;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
+use argon2::Argon2;
+use argon2::password_hash::rand_core::{OsRng, RngCore};
+use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use base64::Engine;
 use chrono::{Duration as ChronoDuration, Utc};
 use jsonwebtoken::{DecodingKey, EncodingKey, Header, Validation};
-use rand::RngCore;
-use rand::rngs::OsRng;
 use salvo::http::StatusError;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
