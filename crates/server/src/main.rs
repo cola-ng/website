@@ -1,4 +1,3 @@
-
 #[macro_use]
 extern crate tracing;
 
@@ -6,10 +5,10 @@ pub mod auth;
 mod config;
 mod db;
 mod error;
+mod global;
 mod hoops;
 mod models;
 mod routing;
-mod global;
 pub use global::*;
 pub mod user;
 pub use error::AppError;

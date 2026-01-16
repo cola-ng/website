@@ -17,177 +17,16 @@ use crate::db::schema::*;
 use crate::db::{conn, with_conn};
 use crate::hoops::require_auth;
 use crate::models::*;
-use crate::{AppResult, DepotExt};
+use crate::{AppResult, DepotExt, JsonResult, json_ok};
 
-pub fn router(config: AppConfig) -> Router {
-    Router::new()
-}
-
-#[handler]
-pub async fn health(res: &mut Response) {
-    res.render(Json(json!({ "ok": true })));
-}
-
-#[derive(Deserialize)]
-pub struct RegisterRequest {
-    name: String,
-    email: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-pub struct LoginRequest {
-    email: String,
-    password: String,
-}
-
-#[derive(Serialize)]
-pub struct AuthResponse {
-    user: User,
-    access_token: String,
-}
-
-const ALLOWED_OAUTH_PROVIDERS: &[&str] = &["google", "github"];
-
-fn validate_oauth_provider(provider: &str) -> AppResult<()> {
-    if !ALLOWED_OAUTH_PROVIDERS.contains(&provider.to_lowercase().as_str()) {
-        return Err(StatusError::bad_request()
-            .brief(format!(
-                "OAuth provider '{}' is not supported. Allowed providers: google, github",
-                provider
-            ))
-            .into());
-    }
-    Ok(())
-}
-
-#[handler]
-pub async fn register(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    let input: RegisterRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-    let email = input.email.trim().to_lowercase();
-    if email.is_empty() {
-        return Err(StatusError::bad_request().brief("email is required").into());
-    }
-    if input.password.len() < 8 {
-        return Err(StatusError::bad_request()
-            .brief("password must be at least 8 characters")
-            .into());
-    }
-
-    let password_hash = crate::auth::hash_password(&input.password)
-        .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
-
-    let new_user = NewUser {
-        name: input.name.clone(),
-        display_name: None,
-        email: Some(email.clone()),
-        phone: None,
-        inviter_id: None,
-        updated_by: None,
-        created_by: None,
-    };
-
-    let user: User = with_conn(move |conn| {
-        let is_first = base_users::table
-            .select(diesel::dsl::count_star())
-            .first::<i64>(conn)?
-            == 0;
-
-        let user = diesel::insert_into(base_users::table)
-            .values(&new_user)
-            .get_result::<User>(conn)?;
-
-        // if is_first {
-        //     let role = diesel::insert_into(roles::table)
-        //         .values(&NewRole {
-        //             name: "admin".to_string(),
-        //         })
-        //         .on_conflict_do_nothing()
-        //         .get_result::<Role>(conn)
-        //         .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
-
-        //     let _ = diesel::insert_into(rp::role_permissions)
-        //         .values(&NewRolePermission {
-        //             role_id: role.id,
-        //             operation: "users.delete".to_string(),
-        //         })
-        //         .on_conflict_do_nothing()
-        //         .execute(conn);
-
-        //     let _ = diesel::insert_into(role_users)
-        //         .values(&RoleUser {
-        //             user_id: user.id,
-        //             role_id: role.id,
-        //         })
-        //         .on_conflict_do_nothing()
-        //         .execute(conn);
-        // }
-
-        Ok(user)
-    })
-    .await
-    .map_err(|e| {
-        if e.contains("UniqueViolation") || e.contains("unique") {
-            StatusError::conflict().brief("email already registered")
-        } else {
-            StatusError::internal_server_error().brief("failed to create user")
-        }
-    })?;
-
-    let new_password = NewPassword {
-        user_id: user.id,
-        hash: password_hash,
-        created_at: Utc::now(),
-    };
-    diesel::insert_into(base_passwords::table)
-        .values(&new_password)
-        .execute(&mut conn()?)?;
-    let config = AppConfig::get();
-    let access_token =
-        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
-
-    res.render(Json(AuthResponse {
-        user: user.into(),
-        access_token,
-    }));
-    Ok(())
-}
-
-#[handler]
-pub async fn login(req: &mut Request, _depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    let input: LoginRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-    let email_input = input.email.trim().to_lowercase();
-    if email_input.is_empty() {
-        return Err(StatusError::bad_request().brief("email is required").into());
-    }
-
-    let user: User = with_conn(move |conn| {
-        base_users::table
-            .filter(base_users::email.eq(email_input))
-            .first::<User>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
-
-    crate::auth::verify_password(&user, &input.password).await?;
-
-    let config = AppConfig::get();
-    let access_token =
-        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
-
-    res.render(Json(AuthResponse {
-        user: user.into(),
-        access_token,
-    }));
-    Ok(())
+pub fn router() -> Router {
+    Router::with_path("auth")
+        .push(
+            Router::with_path("code")
+                .hoop(require_auth)
+                .post(create_code),
+        )
+        .push(Router::with_path("consume").post(consume_code))
 }
 
 #[derive(Deserialize)]
@@ -258,7 +97,6 @@ pub struct ConsumeCodeRequest {
     code: String,
     redirect_uri: String,
 }
-
 #[derive(Serialize)]
 pub struct ConsumeCodeResponse {
     access_token: String,
@@ -269,7 +107,7 @@ pub async fn consume_code(
     req: &mut Request,
     _depot: &mut Depot,
     res: &mut Response,
-) -> AppResult<()> {
+) -> JsonResult<ConsumeCodeResponse> {
     let input: ConsumeCodeRequest = req
         .parse_json()
         .await
@@ -305,35 +143,7 @@ pub async fn consume_code(
         crate::auth::issue_access_token(user_id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
-    res.render(Json(ConsumeCodeResponse { access_token }));
-    Ok(())
-}
-
-fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
-    let raw = req
-        .params()
-        .get(key)
-        .cloned()
-        .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
-    raw.parse()
-        .map_err(|_| StatusError::bad_request().brief("invalid id"))
-}
-
-#[handler]
-async fn admin_delete_user(
-    req: &mut Request,
-    _depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let user_id = get_path_id(req, "user_id")?;
-    with_conn(move |conn| {
-        diesel::delete(base_users::table.filter(base_users::id.eq(user_id))).execute(conn)?;
-        Ok(())
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to delete user"))?;
-    res.render(Json(json!({ "ok": true })));
-    Ok(())
+    json_ok(ConsumeCodeResponse { access_token })
 }
 
 // #[derive(Deserialize)]

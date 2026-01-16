@@ -75,9 +75,13 @@ pub async fn get_scene(req: &mut Request, res: &mut Response) -> AppResult<()> {
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
-    let scene: Scene = with_conn(move |conn| asset_scenes::table.filter(asset_scenes::id.eq(scene_id)).first::<Scene>(conn))
-        .await
-        .map_err(|_| StatusError::not_found().brief("scene not found"))?;
+    let scene: Scene = with_conn(move |conn| {
+        asset_scenes::table
+            .filter(asset_scenes::id.eq(scene_id))
+            .first::<Scene>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("scene not found"))?;
 
     res.render(Json(scene));
     Ok(())
@@ -102,10 +106,7 @@ pub async fn get_dialogues(req: &mut Request, res: &mut Response) -> AppResult<(
 }
 
 #[handler]
-pub async fn get_dialogue_turns(
-    req: &mut Request,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn get_dialogue_turns(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let dialogue_id: i64 = req
         .param::<i64>("dialogue_id")
         .ok_or_else(|| StatusError::bad_request().brief("missing dialogue_id"))?;
@@ -128,10 +129,7 @@ pub async fn get_dialogue_turns(
 // ============================================================================
 
 #[handler]
-pub async fn list_classic_sources(
-    req: &mut Request,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn list_classic_sources(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let source_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -180,10 +178,7 @@ pub async fn list_classic_clips(req: &mut Request, res: &mut Response) -> AppRes
 // ============================================================================
 
 #[handler]
-pub async fn list_read_exercises(
-    req: &mut Request,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn list_read_exercises(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let difficulty = req.query::<String>("difficulty");
     let exercise_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
@@ -208,10 +203,7 @@ pub async fn list_read_exercises(
 }
 
 #[handler]
-pub async fn get_read_sentences(
-    req: &mut Request,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn get_read_sentences(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let exercise_id_param: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
@@ -319,7 +311,9 @@ pub async fn create_issue_word(
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.word.trim().is_empty() || input.issue_type.trim().is_empty() {
-        return Err(StatusError::bad_request().brief("word and issue_type are required").into());
+        return Err(StatusError::bad_request()
+            .brief("word and issue_type are required")
+            .into());
     }
 
     let new_word = NewIssueWord {
@@ -413,7 +407,9 @@ pub async fn create_session(
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.session_id.trim().is_empty() {
-        return Err(StatusError::bad_request().brief("session_id is required").into());
+        return Err(StatusError::bad_request()
+            .brief("session_id is required")
+            .into());
     }
 
     let new_session = NewLearningSession {

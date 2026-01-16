@@ -51,7 +51,6 @@ impl AppConfig {
     }
 }
 
-
 // pub fn init(config_path: impl AsRef<Path>) {
 //     let config_path = config_path.as_ref();
 //     if !config_path.exists() {
