@@ -53,7 +53,7 @@ struct JsonDictEntry {
 
 /// Word forms extracted from exchange field
 #[derive(Debug, Clone)]
-struct WordForm {
+struct Form {
     form_type: String,
     form: String,
 }
@@ -67,7 +67,7 @@ struct ImportEntry {
     phonetic: String,
     definitions_en: Vec<String>,
     definitions_zh: Vec<String>,
-    word_forms: Vec<WordForm>,
+    word_forms: Vec<Form>,
     examples: Vec<String>,
 }
 
@@ -398,7 +398,7 @@ fn normalize_part_of_speech(pos: &str) -> Option<String> {
 /// Exchange format: ["s:schools", "p:schooled", "d:schooled", "3:schools"]
 /// Prefixes: 0=third person, 1=past, 2=past participle, 3=plural, 4=present participle,
 ///           5=comparative, 6=superlative, s=plural, p=past participle, i=present participle, d=past
-fn parse_exchange_forms(exchange: &[String]) -> Vec<WordForm> {
+fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
     let mut forms = Vec::new();
 
     for item in exchange {
@@ -421,7 +421,7 @@ fn parse_exchange_forms(exchange: &[String]) -> Vec<WordForm> {
                 _ => continue,               // Skip unknown prefixes
             };
 
-            forms.push(WordForm {
+            forms.push(Form {
                 form_type: form_type.to_string(),
                 form: form.to_string(),
             });
@@ -512,17 +512,17 @@ fn insert_definitions(
 fn insert_word_forms(
     conn: &mut PgConnection,
     word_id: i64,
-    forms: &[WordForm],
+    forms: &[Form],
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use colang::db::schema::dict_word_forms;
+    use colang::db::schema::dict_forms;
 
     for word_form in forms {
-        diesel::insert_into(dict_word_forms::table)
+        diesel::insert_into(dict_forms::table)
             .values((
-                dict_word_forms::word_id.eq(word_id),
-                dict_word_forms::form_type.eq(&word_form.form_type),
-                dict_word_forms::form.eq(&word_form.form),
-                dict_word_forms::is_irregular.eq(false),
+                dict_forms::word_id.eq(word_id),
+                dict_forms::form_type.eq(&word_form.form_type),
+                dict_forms::form.eq(&word_form.form),
+                dict_forms::is_irregular.eq(false),
             ))
             .execute(conn)?;
     }

@@ -8,13 +8,13 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<WordDefinition>> {
+pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<Definition>> {
     let word_id = super::get_path_id(req, "id")?;
-    let definitions: Vec<WordDefinition> = with_conn(move |conn| {
+    let definitions: Vec<Definition> = with_conn(move |conn| {
         dict_word_definitions::table
             .filter(dict_word_definitions::word_id.eq(word_id))
             .order(dict_word_definitions::definition_order.asc())
-            .load::<WordDefinition>(conn)
+            .load::<Definition>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch definitions"))?;
@@ -23,8 +23,7 @@ pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<WordDefinitio
 
 #[derive(Deserialize)]
 pub struct CreateDefinitionRequest {
-    pub definition_en: String,
-    pub definition_zh: Option<String>,
+    pub definition: String,
     pub part_of_speech: Option<String>,
     pub definition_order: Option<i32>,
     pub register: Option<String>,
@@ -35,21 +34,21 @@ pub struct CreateDefinitionRequest {
 }
 
 #[handler]
-pub async fn create_definition(req: &mut Request) -> JsonResult<WordDefinition> {
+pub async fn create_definition(req: &mut Request) -> JsonResult<Definition> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateDefinitionRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-    if input.definition_en.trim().is_empty() {
+    if input.definition.trim().is_empty() {
         return Err(StatusError::bad_request()
-            .brief("definition_en is required")
+            .brief("definition is required")
             .into());
     }
 
-    let created: WordDefinition = with_conn(move |conn| {
+    let created: Definition = with_conn(move |conn| {
         diesel::insert_into(dict_word_definitions::table)
-            .values(&NewWordDefinition {
+            .values(&NewDefinition {
                 word_id,
                 definition: input.definition.trim().to_string(),
                 part_of_speech: input.part_of_speech,
@@ -60,7 +59,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<WordDefinition> 
                 usage_notes: input.usage_notes,
                 is_primary: input.is_primary,
             })
-            .get_result::<WordDefinition>(conn)
+            .get_result::<Definition>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create definition"))?;

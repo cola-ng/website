@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_images(req: &mut Request) -> JsonResult<Vec<WordImage>> {
+pub async fn list_images(req: &mut Request) -> JsonResult<Vec<Image>> {
     let word_id = super::get_path_id(req, "id")?;
-    let images: Vec<WordImage> = with_conn(move |conn| {
-        dict_word_images::table
-            .filter(dict_word_images::word_id.eq(word_id))
-            .load::<WordImage>(conn)
+    let images: Vec<Image> = with_conn(move |conn| {
+        dict_images::table
+            .filter(dict_images::word_id.eq(word_id))
+            .load::<Image>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch images"))?;
@@ -31,7 +31,7 @@ pub struct CreateImageRequest {
 }
 
 #[handler]
-pub async fn create_image(req: &mut Request) -> JsonResult<WordImage> {
+pub async fn create_image(req: &mut Request) -> JsonResult<Image> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateImageRequest = req
         .parse_json()
@@ -53,9 +53,9 @@ pub async fn create_image(req: &mut Request) -> JsonResult<WordImage> {
             .into());
     }
 
-    let created: WordImage = with_conn(move |conn| {
-        diesel::insert_into(dict_word_images::table)
-            .values(&NewWordImage {
+    let created: Image = with_conn(move |conn| {
+        diesel::insert_into(dict_images::table)
+            .values(&NewImage {
                 word_id,
                 image_url: input.image_url.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
                 image_path: input.image_path.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
@@ -65,7 +65,7 @@ pub async fn create_image(req: &mut Request) -> JsonResult<WordImage> {
                 is_primary: input.is_primary,
                 created_by: None,
             })
-            .get_result::<WordImage>(conn)
+            .get_result::<Image>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create image"))?;
@@ -77,8 +77,8 @@ pub async fn delete_image(req: &mut Request) -> JsonResult<()> {
     let image_id = super::get_path_id(req, "image_id")?;
     with_conn(move |conn| {
         diesel::delete(
-            dict_word_images::table.filter(
-                dict_word_images::id.eq(image_id)
+            dict_images::table.filter(
+                dict_images::id.eq(image_id)
             )
         )
         .execute(conn)

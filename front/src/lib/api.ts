@@ -49,7 +49,7 @@ export type Word = {
   updated_at: string
 }
 
-export type WordDefinition = {
+export type Definition = {
   id: number
   word_id: number
   definition_en: string
@@ -128,7 +128,7 @@ export type WordRoot = {
 
 export type WordQueryResponse = {
   word: Word
-  definitions: WordDefinition[]
+  definitions: Definition[]
   examples: WordSentence[]
   synonyms: DictSynonym[]
   antonyms: DictAntonym[]

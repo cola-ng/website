@@ -62,8 +62,8 @@ CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(wo
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_dict ON dict_word_dictionaries(dictionary_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_word_dicts_unique ON dict_word_dictionaries(word_id, dictionary_id);
 
--- Table: dict_word_definitions - Word definitions (multiple per word)
-CREATE TABLE IF NOT EXISTS dict_word_definitions (
+-- Table: dict_definitions - Word definitions (multiple per word)
+CREATE TABLE IF NOT EXISTS dict_definitions (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     language TEXT NOT NULL,                         -- 语言
@@ -77,8 +77,8 @@ CREATE TABLE IF NOT EXISTS dict_word_definitions (
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要释义
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-CREATE INDEX IF NOT EXISTS idx_dict_definitions_word ON dict_word_definitions(word_id, definition_order);
-CREATE INDEX IF NOT EXISTS idx_dict_definitions_pos ON dict_word_definitions(part_of_speech);
+CREATE INDEX IF NOT EXISTS idx_dict_definitions_word ON dict_definitions(word_id, definition_order);
+CREATE INDEX IF NOT EXISTS idx_dict_definitions_pos ON dict_definitions(part_of_speech);
 
 CREATE TABLE IF NOT EXISTS dict_translations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
@@ -172,8 +172,8 @@ CREATE TABLE IF NOT EXISTS dict_word_categories (
 CREATE INDEX IF NOT EXISTS idx_dict_word_categories_word ON dict_word_categories(word_id);
 CREATE INDEX IF NOT EXISTS idx_dict_word_categories_id ON dict_word_categories(category_id);
 
--- Table: dict_word_parts - Words that make up a phrase
-CREATE TABLE IF NOT EXISTS dict_word_parts (
+-- Table: dict_parts - Words that make up a phrase
+CREATE TABLE IF NOT EXISTS dict_parts (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     part_id BIGINT NOT NULL,                            -- 组成成分 ID, 其实也是  word id
@@ -182,11 +182,11 @@ CREATE TABLE IF NOT EXISTS dict_word_parts (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_word_parts_range ON dict_word_parts(word_id, part_id);
+CREATE INDEX IF NOT EXISTS idx_dict_parts_range ON dict_parts(word_id, part_id);
 
 
--- Table: dict_word_forms - Word forms (plurals, tenses, comparatives, etc.)
-CREATE TABLE IF NOT EXISTS dict_word_forms (
+-- Table: dict_forms - Word forms (plurals, tenses, comparatives, etc.)
+CREATE TABLE IF NOT EXISTS dict_forms (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     form_type TEXT CHECK(form_type IN ('plural', 'singular', 'past', 'present', 'future', 'present_participle', 'past_participle', 'comparative', 'superlative', 'adverbial', 'nominalization', 'other')), -- 词形类型：复数、过去式、现在分词等
@@ -196,11 +196,11 @@ CREATE TABLE IF NOT EXISTS dict_word_forms (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_forms_word ON dict_word_forms(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_forms_type ON dict_word_forms(form_type);
+CREATE INDEX IF NOT EXISTS idx_dict_forms_word ON dict_forms(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_forms_type ON dict_forms(form_type);
 
--- Table: dict_word_relations - Word relations (synonyms, antonyms, related words, etc.)
-CREATE TABLE IF NOT EXISTS dict_word_relations (
+-- Table: dict_relations - Word relations (synonyms, antonyms, related words, etc.)
+CREATE TABLE IF NOT EXISTS dict_relations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     relation_type TEXT CHECK(relation_type IN ('synonym', 'antonym', 'related', 'broader', 'narrower', 'part_of', 'member_of', 'substance_of', 'instance_of', 'similar')), -- 条目类型：同义词、反义词、相关词、上位词等
@@ -211,12 +211,12 @@ CREATE TABLE IF NOT EXISTS dict_word_relations (
     UNIQUE(word_id, relation_type, related_word_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_thesaurus_word ON dict_word_relations(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_thesaurus_type ON dict_word_relations(relation_type);
+CREATE INDEX IF NOT EXISTS idx_dict_relations_word ON dict_relations(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_relations_type ON dict_relations(relation_type);
 
 
 -- Table: dict_frequency_bands - Frequency band classifications
-CREATE TABLE IF NOT EXISTS dict_word_frequencies (
+CREATE TABLE IF NOT EXISTS dict_frequencies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     corpus_name TEXT NOT NULL,                          -- 语料库名称
@@ -227,8 +227,8 @@ CREATE TABLE IF NOT EXISTS dict_word_frequencies (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
     UNIQUE(word_id, corpus_name, corpus_type)
 );
-CREATE INDEX IF NOT EXISTS idx_dict_frequency_word ON dict_word_frequencies(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_frequency_band ON dict_word_frequencies(band);
+CREATE INDEX IF NOT EXISTS idx_dict_frequencies_word ON dict_frequencies(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_frequencies_band ON dict_frequencies(band);
 
 -- Table: dict_import_batches - Track import batches
 CREATE TABLE IF NOT EXISTS dict_import_batches (
@@ -249,8 +249,8 @@ CREATE TABLE IF NOT EXISTS dict_import_batches (
 CREATE INDEX IF NOT EXISTS idx_dict_import_status ON dict_import_batches(status);
 CREATE INDEX IF NOT EXISTS idx_dict_import_created ON dict_import_batches(created_at DESC);
 
--- Table: dict_word_images - Word images for visual learning
-CREATE TABLE IF NOT EXISTS dict_word_images (
+-- Table: dict_images - Word images for visual learning
+CREATE TABLE IF NOT EXISTS dict_images (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     image_url TEXT,                                     -- 图片 URL
@@ -263,4 +263,4 @@ CREATE TABLE IF NOT EXISTS dict_word_images (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_images_word ON dict_word_images(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_images_word ON dict_images(word_id);

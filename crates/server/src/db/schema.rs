@@ -215,6 +215,23 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_definitions (id) {
+        id -> Int8,
+        word_id -> Int8,
+        language -> Text,
+        definition -> Text,
+        part_of_speech -> Nullable<Text>,
+        definition_order -> Nullable<Int4>,
+        register -> Nullable<Text>,
+        region -> Nullable<Text>,
+        context -> Nullable<Text>,
+        usage_notes -> Nullable<Text>,
+        is_primary -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_dictionaries (id) {
         id -> Int8,
         name -> Text,
@@ -252,6 +269,46 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_forms (id) {
+        id -> Int8,
+        word_id -> Int8,
+        form_type -> Nullable<Text>,
+        form -> Text,
+        is_irregular -> Nullable<Bool>,
+        notes -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_frequencies (id) {
+        id -> Int8,
+        word_id -> Int8,
+        corpus_name -> Text,
+        corpus_type -> Nullable<Text>,
+        band -> Nullable<Text>,
+        rank -> Nullable<Int4>,
+        frequency_per_million -> Nullable<Int4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_images (id) {
+        id -> Int8,
+        word_id -> Int8,
+        image_url -> Nullable<Text>,
+        image_path -> Nullable<Text>,
+        image_type -> Nullable<Text>,
+        alt_text_en -> Nullable<Text>,
+        alt_text_zh -> Nullable<Text>,
+        is_primary -> Nullable<Bool>,
+        created_by -> Nullable<Int8>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_import_batches (id) {
         id -> Int8,
         batch_name -> Text,
@@ -270,6 +327,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_parts (id) {
+        id -> Int8,
+        word_id -> Int8,
+        part_id -> Int8,
+        range_begin -> Int4,
+        range_until -> Nullable<Int4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_pronunciations (id) {
         id -> Int8,
         word_id -> Int8,
@@ -280,6 +348,18 @@ diesel::table! {
         dialect -> Nullable<Text>,
         gender -> Nullable<Text>,
         is_primary -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_relations (id) {
+        id -> Int8,
+        word_id -> Int8,
+        relation_type -> Nullable<Text>,
+        related_word_id -> Int8,
+        semantic_field -> Nullable<Text>,
+        relation_strength -> Nullable<Float4>,
         created_at -> Timestamptz,
     }
 }
@@ -320,23 +400,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    dict_word_definitions (id) {
-        id -> Int8,
-        word_id -> Int8,
-        language -> Text,
-        definition -> Text,
-        part_of_speech -> Nullable<Text>,
-        definition_order -> Nullable<Int4>,
-        register -> Nullable<Text>,
-        region -> Nullable<Text>,
-        context -> Nullable<Text>,
-        usage_notes -> Nullable<Text>,
-        is_primary -> Nullable<Bool>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
     dict_word_dictionaries (id) {
         id -> Int8,
         word_id -> Int8,
@@ -350,69 +413,6 @@ diesel::table! {
         id -> Int8,
         word_id -> Int8,
         etymology_id -> Int8,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_word_forms (id) {
-        id -> Int8,
-        word_id -> Int8,
-        form_type -> Nullable<Text>,
-        form -> Text,
-        is_irregular -> Nullable<Bool>,
-        notes -> Nullable<Text>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_word_frequencies (id) {
-        id -> Int8,
-        word_id -> Int8,
-        corpus_name -> Text,
-        corpus_type -> Nullable<Text>,
-        band -> Nullable<Text>,
-        rank -> Nullable<Int4>,
-        frequency_per_million -> Nullable<Int4>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_word_images (id) {
-        id -> Int8,
-        word_id -> Int8,
-        image_url -> Nullable<Text>,
-        image_path -> Nullable<Text>,
-        image_type -> Nullable<Text>,
-        alt_text_en -> Nullable<Text>,
-        alt_text_zh -> Nullable<Text>,
-        is_primary -> Nullable<Bool>,
-        created_by -> Nullable<Int8>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_word_parts (id) {
-        id -> Int8,
-        word_id -> Int8,
-        part_id -> Int8,
-        range_begin -> Int4,
-        range_until -> Nullable<Int4>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_word_relations (id) {
-        id -> Int8,
-        word_id -> Int8,
-        relation_type -> Nullable<Text>,
-        related_word_id -> Int8,
-        semantic_field -> Nullable<Text>,
-        relation_strength -> Nullable<Float4>,
         created_at -> Timestamptz,
     }
 }
@@ -648,21 +648,21 @@ diesel::allow_tables_to_appear_in_same_query!(
     base_roles,
     base_users,
     dict_categories,
+    dict_definitions,
     dict_dictionaries,
     dict_etymologies,
+    dict_forms,
+    dict_frequencies,
+    dict_images,
     dict_import_batches,
+    dict_parts,
     dict_pronunciations,
+    dict_relations,
     dict_sentences,
     dict_translations,
     dict_word_categories,
-    dict_word_definitions,
     dict_word_dictionaries,
     dict_word_etymologies,
-    dict_word_forms,
-    dict_word_frequencies,
-    dict_word_images,
-    dict_word_parts,
-    dict_word_relations,
     dict_word_sentences,
     dict_words,
     learn_achievements,

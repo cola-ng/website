@@ -60,7 +60,7 @@ pub struct UpdateWord {
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_word_definitions)]
-pub struct WordDefinition {
+pub struct Definition {
     pub id: i64,
     pub word_id: i64,
     pub language: String,
@@ -77,7 +77,7 @@ pub struct WordDefinition {
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = dict_word_definitions)]
-pub struct NewWordDefinition {
+pub struct NewDefinition {
     pub word_id: i64,
     pub language: String,
     pub definition: String,
@@ -163,8 +163,8 @@ pub struct NewPronunciation {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_forms)]
-pub struct WordForm {
+#[diesel(table_name = dict_forms)]
+pub struct Form {
     pub id: i64,
     pub word_id: i64,
     pub form_type: Option<String>,
@@ -175,8 +175,8 @@ pub struct WordForm {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_forms)]
-pub struct NewWordForm {
+#[diesel(table_name = dict_forms)]
+pub struct NewForm {
     pub word_id: i64,
     pub form_type: Option<String>,
     pub form: String,
@@ -219,8 +219,8 @@ pub struct NewWordCategory {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_images)]
-pub struct WordImage {
+#[diesel(table_name = dict_images)]
+pub struct Image {
     pub id: i64,
     pub word_id: i64,
     pub image_url: Option<String>,
@@ -234,8 +234,8 @@ pub struct WordImage {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_images)]
-pub struct NewWordImage {
+#[diesel(table_name = dict_images)]
+pub struct NewImage {
     pub word_id: i64,
     pub image_url: Option<String>,
     pub image_path: Option<String>,
@@ -250,13 +250,13 @@ pub struct NewWordImage {
 #[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
-    pub definitions: Vec<WordDefinition>,
-    pub sentences: Vec<WordSentence>,
+    pub definitions: Vec<Definition>,
+    pub sentences: Vec<Sentence>,
     pub pronunciations: Vec<Pronunciation>,
-    pub relations: Vec<WordRelation>,
-    pub forms: Vec<WordForm>,
+    pub relations: Vec<Relation>,
+    pub forms: Vec<Form>,
     pub categories: Vec<Category>,
-    pub images: Vec<WordImage>,
+    pub images: Vec<Image>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -319,7 +319,7 @@ pub struct UpdateDictionary {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_dictionaries)]
+#[diesel(table_name = dict_word_dictionaries)]
 pub struct WordDictionary {
     pub id: i64,
     pub word_id: i64,
@@ -328,8 +328,8 @@ pub struct WordDictionary {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_dictionaries)]
-pub struct NewWordDictionary {
+#[diesel(table_name = dict_word_dictionaries)]
+pub struct NewWorldDictionary {
     pub word_id: i64,
     pub dictionary_id: i64,
 }
@@ -349,6 +349,15 @@ pub struct Etymology {
     pub created_at: DateTime<Utc>,
 }
 
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_word_etymologies)]
+pub struct WordEtymologyLink {
+    pub id: i64,
+    pub word_id: i64,
+    pub etymology_id: i64,
+    pub created_at: DateTime<Utc>,
+}
+
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = dict_etymologies)]
 pub struct NewEtymology {
@@ -360,15 +369,6 @@ pub struct NewEtymology {
     pub first_attested_year: Option<i32>,
     pub historical_forms: Option<serde_json::Value>,
     pub cognate_words: Option<serde_json::Value>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_etymologies)]
-pub struct WordEtymologyLink {
-    pub id: i64,
-    pub word_id: i64,
-    pub etymology_id: i64,
-    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]

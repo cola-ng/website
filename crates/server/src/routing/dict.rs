@@ -120,7 +120,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         let definitions = dict_word_definitions::table
             .filter(dict_word_definitions::word_id.eq(word_id))
             .order(dict_word_definitions::definition_order.asc())
-            .load::<WordDefinition>(conn)?;
+            .load::<Definition>(conn)?;
 
         let sentences = dict_sentences::table.filter(
             dict_word_sentences::id.eq_any(dict_word_sentences::table
@@ -128,14 +128,14 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .order(dict_word_sentences::priority_order.asc())
             .load::<WordSentence>(conn)?;
 
-        let pronunciations = dict_pronunciations::table``
+        let pronunciations = dict_pronunciations::table
             .filter(dict_pronunciations::word_id.eq(word_id))
             .order(dict_pronunciations::is_primary.desc())
             .load::<Pronunciation>(conn)?;
 
-        let forms = dict_word_forms::table
-            .filter(dict_word_forms::word_id.eq(word_id))
-            .load::<WordForm>(conn)?;
+        let forms = dict_forms::table
+            .filter(dict_forms::word_id.eq(word_id))
+            .load::<Form>(conn)?;
 
         let categories = dict_categories::table
             .filter(
@@ -147,14 +147,14 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             )
             .load::<Category>(conn)?;
 
-        let images = dict_word_images::table
-            .filter(dict_word_images::word_id.eq(word_id))
-            .load::<WordImage>(conn)?;
+        let images = dict_images::table
+            .filter(dict_images::word_id.eq(word_id))
+            .load::<Image>(conn)?;
 
         Ok(WordQueryResponse {
             word: word_record,
             definitions,
-            sentences:,
+            sentences,
             pronunciations,
             relations,
             forms,
