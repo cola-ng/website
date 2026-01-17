@@ -123,14 +123,14 @@ export function DictPage() {
               </div>
             </div>
 
-            {result.definitions.length > 0 && (
+            {(result.definitions?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <Star className="w-6 h-6 text-yellow-500" />
                   Definitions
                 </h3>
                 <div className="space-y-4">
-                  {result.definitions.map((def) => (
+                  {(result.definitions ?? []).map((def) => (
                     <div key={def.id} className="pl-4 border-l-4 border-indigo-500">
                       <div className="flex items-center gap-2 mb-1">
                         {def.part_of_speech && (
@@ -158,14 +158,14 @@ export function DictPage() {
               </div>
             )}
 
-            {result.examples.length > 0 && (
+            {(result.examples?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <ChevronRight className="w-6 h-6 text-indigo-500" />
                   Examples
                 </h3>
                 <div className="space-y-3">
-                  {result.examples.map((example) => (
+                  {(result.examples ?? []).map((example) => (
                     <div key={example.id} className="bg-gray-50 rounded-lg p-4">
                       <p className="text-gray-800">{example.example_en}</p>
                       {example.example_zh && (
@@ -178,11 +178,11 @@ export function DictPage() {
             )}
 
             <div className="grid md:grid-cols-2 gap-6">
-              {result.synonyms.length > 0 && (
+              {(result.synonyms?.length ?? 0) > 0 && (
                 <div className="bg-white rounded-2xl shadow-lg p-6">
                   <h3 className="text-xl font-bold text-gray-900 mb-4">Synonyms</h3>
                   <div className="flex flex-wrap gap-2">
-                    {result.synonyms.map((syn) => (
+                    {(result.synonyms ?? []).map((syn) => (
                       <span
                         key={syn.id}
                         className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
@@ -195,11 +195,11 @@ export function DictPage() {
                 </div>
               )}
 
-              {result.antonyms.length > 0 && (
+              {(result.antonyms?.length ?? 0) > 0 && (
                 <div className="bg-white rounded-2xl shadow-lg p-6">
                   <h3 className="text-xl font-bold text-gray-900 mb-4">Antonyms</h3>
                   <div className="flex flex-wrap gap-2">
-                    {result.antonyms.map((ant) => (
+                    {(result.antonyms ?? []).map((ant) => (
                       <span
                         key={ant.id}
                         className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
@@ -213,11 +213,11 @@ export function DictPage() {
               )}
             </div>
 
-            {result.collocations.length > 0 && (
+            {(result.collocations?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Collocations</h3>
                 <div className="space-y-3">
-                  {result.collocations.map((col) => (
+                  {(result.collocations ?? []).map((col) => (
                     <div key={col.id} className="border-l-4 border-blue-500 pl-4">
                       <p className="text-lg font-medium text-gray-800">
                         <span className="text-indigo-600 font-bold">{result.word.word}</span> {col.collocation}
@@ -234,11 +234,11 @@ export function DictPage() {
               </div>
             )}
 
-            {result.phrases.length > 0 && (
+            {(result.phrases?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Phrases</h3>
                 <div className="space-y-3">
-                  {result.phrases.map((phrase) => (
+                  {(result.phrases ?? []).map((phrase) => (
                     <div key={phrase.id} className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4">
                       <p className="text-lg font-medium text-purple-900">{phrase.phrase}</p>
                       {phrase.meaning_zh && (
@@ -256,14 +256,14 @@ export function DictPage() {
               </div>
             )}
 
-            {result.common_errors.length > 0 && (
+            {(result.common_errors?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <span className="text-2xl">⚠️</span>
                   Common Errors
                 </h3>
                 <div className="space-y-4">
-                  {result.common_errors.map((error) => (
+                  {(result.common_errors ?? []).map((error) => (
                     <div key={error.id} className="border-l-4 border-red-500 pl-4 bg-red-50 rounded-r-lg p-4">
                       <p className="font-medium text-red-900 mb-2">{error.error_type}</p>
                       {error.error_example && (
@@ -285,11 +285,11 @@ export function DictPage() {
               </div>
             )}
 
-            {result.roots.length > 0 && (
+            {(result.roots?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4">Word Roots</h3>
                 <div className="grid md:grid-cols-2 gap-4">
-                  {result.roots.map((root) => (
+                  {(result.roots ?? []).map((root) => (
                     <div key={root.id} className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg p-4 border border-amber-200">
                       <p className="text-lg font-bold text-amber-900">{root.root}</p>
                       {root.meaning && (
