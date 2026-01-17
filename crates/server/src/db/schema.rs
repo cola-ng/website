@@ -404,6 +404,7 @@ diesel::table! {
         id -> Int8,
         word_id -> Int8,
         dictionary_id -> Int8,
+        definition_id -> Nullable<Int8>,
         priority_order -> Nullable<Int4>,
         created_at -> Timestamptz,
     }

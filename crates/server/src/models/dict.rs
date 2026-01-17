@@ -345,6 +345,8 @@ pub struct WordDictionary {
     pub id: i64,
     pub word_id: i64,
     pub dictionary_id: i64,
+    pub definition_id: Option<i64>,
+    pub priority_order: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 

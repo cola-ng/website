@@ -17,20 +17,19 @@
 //   - examples: Array of example sentences
 //   - phonetic: Phonetic transcription (IPA)
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use chrono::Utc;
 use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::Deserialize;
 
 // Default directories
 const DEFAULT_SOURCE_DIR: &str = r"D:\Works\colang\endict1\dict";
-const DEFAULT_AUDIO_DIR: &str = r"D:\Works\colang\data\audios";
+const DEFAULT_AUDIO_DIR: &str = r"D:\Works\colang\data\pronunciations";
 
 // Default batch size for inserts
 const DEFAULT_BATCH_SIZE: usize = 100;
@@ -46,6 +45,7 @@ struct JsonDictEntry {
     #[serde(rename = "pos")]
     part_of_speech: Vec<String>,
     exchange: Vec<String>,
+    #[allow(dead_code)]
     examples: Vec<String>,
     phonetic: String,
 }
@@ -67,7 +67,6 @@ struct ImportEntry {
     definitions_en: Vec<String>,
     definitions_zh: Vec<String>,
     word_forms: Vec<Form>,
-    examples: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -147,7 +146,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\nBuilding audio file cache...");
     let audio_cache = build_audio_cache(&audio_dir);
     println!(
-        "Found {} UK audio files, {} US audio files",
+        "Found {} uk audio files, {} us audio files",
         audio_cache.uk.len(),
         audio_cache.us.len()
     );
@@ -194,11 +193,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-/// Audio file cache for both UK and US pronunciations
+/// Audio file cache for both uk and us pronunciations
 #[derive(Debug, Clone)]
 struct AudioCache {
-    uk: HashMap<String, PathBuf>,
-    us: HashMap<String, PathBuf>,
+    uk: HashMap<String, String>, // word_lower -> relative path like "uk/good.mp3"
+    us: HashMap<String, String>, // word_lower -> relative path like "us/good.mp3"
 }
 
 /// Import statistics
@@ -230,12 +229,12 @@ fn discover_json_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Build a cache of available audio files
+/// Build a cache of available audio files with relative paths
 fn build_audio_cache(audio_dir: &Path) -> AudioCache {
     let mut uk = HashMap::new();
     let mut us = HashMap::new();
 
-    // Scan UK audio files
+    // Scan uk audio files
     let uk_dir = audio_dir.join("uk");
     if let Ok(entries) = fs::read_dir(&uk_dir) {
         for entry in entries.flatten() {
@@ -243,13 +242,15 @@ fn build_audio_cache(audio_dir: &Path) -> AudioCache {
             if path.is_file() {
                 if let Some(stem) = path.file_stem() {
                     let word = stem.to_string_lossy().to_string();
-                    uk.insert(word, path.clone());
+                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let relative_path = format!("uk/{}", file_name);
+                    uk.insert(word, relative_path);
                 }
             }
         }
     }
 
-    // Scan US audio files
+    // Scan us audio files
     let us_dir = audio_dir.join("us");
     if let Ok(entries) = fs::read_dir(&us_dir) {
         for entry in entries.flatten() {
@@ -257,7 +258,9 @@ fn build_audio_cache(audio_dir: &Path) -> AudioCache {
             if path.is_file() {
                 if let Some(stem) = path.file_stem() {
                     let word = stem.to_string_lossy().to_string();
-                    us.insert(word, path.clone());
+                    let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                    let relative_path = format!("us/{}", file_name);
+                    us.insert(word, relative_path);
                 }
             }
         }
@@ -321,21 +324,21 @@ fn import_json_file(
                     .first(conn)
                     .optional()?;
 
-                if let Some(word_id) = existing {
+                if existing.is_some() {
                     // Word exists, skip
                     skipped += 1;
                 } else {
                     // Insert new word
-                    let word_id = insert_word(conn, &entry)?;
+                    let word_id = insert_word(conn, entry)?;
 
                     // Insert definitions
-                    insert_definitions(conn, word_id, &entry)?;
+                    insert_definitions(conn, word_id, entry)?;
 
                     // Insert word forms
                     insert_word_forms(conn, word_id, &entry.word_forms)?;
 
                     // Insert pronunciations
-                    insert_pronunciations(conn, word_id, &entry, audio_cache)?;
+                    insert_pronunciations(conn, word_id, entry, audio_cache)?;
 
                     added += 1;
                 }
@@ -365,8 +368,7 @@ fn process_json_entry(json_entry: JsonDictEntry) -> Option<ImportEntry> {
     let part_of_speech = json_entry
         .part_of_speech
         .first()
-        .map(|p| normalize_part_of_speech(p))
-        .flatten();
+        .and_then(|p| normalize_part_of_speech(p));
 
     // Parse word forms from exchange field
     let word_forms = parse_exchange_forms(&json_entry.exchange);
@@ -379,7 +381,6 @@ fn process_json_entry(json_entry: JsonDictEntry) -> Option<ImportEntry> {
         definitions_en: json_entry.definition,
         definitions_zh: json_entry.translation,
         word_forms,
-        examples: json_entry.examples,
     })
 }
 
@@ -551,20 +552,20 @@ fn insert_pronunciations(
 
     let mut has_primary = false;
 
-    // Check for UK pronunciation
+    // Check for uk pronunciation
     if let Some(uk_audio_path) = audio_cache.uk.get(&entry.word_lower) {
         let ipa = if !entry.phonetic.is_empty() {
             entry.phonetic.clone()
         } else {
-            format!("[UK: {}]", entry.word)
+            format!("[uk: {}]", entry.word)
         };
 
         diesel::insert_into(dict_pronunciations::table)
             .values((
                 dict_pronunciations::word_id.eq(word_id),
                 dict_pronunciations::ipa.eq(ipa),
-                dict_pronunciations::audio_path.eq(uk_audio_path.to_str()),
-                dict_pronunciations::dialect.eq("UK"),
+                dict_pronunciations::audio_path.eq(uk_audio_path),
+                dict_pronunciations::dialect.eq("uk"),
                 dict_pronunciations::is_primary.eq(!has_primary),
             ))
             .execute(conn)?;
@@ -572,20 +573,20 @@ fn insert_pronunciations(
         has_primary = true;
     }
 
-    // Check for US pronunciation
+    // Check for us pronunciation
     if let Some(us_audio_path) = audio_cache.us.get(&entry.word_lower) {
         let ipa = if !entry.phonetic.is_empty() {
             entry.phonetic.clone()
         } else {
-            format!("[US: {}]", entry.word)
+            format!("[us: {}]", entry.word)
         };
 
         diesel::insert_into(dict_pronunciations::table)
             .values((
                 dict_pronunciations::word_id.eq(word_id),
                 dict_pronunciations::ipa.eq(ipa),
-                dict_pronunciations::audio_path.eq(us_audio_path.to_str()),
-                dict_pronunciations::dialect.eq("US"),
+                dict_pronunciations::audio_path.eq(us_audio_path),
+                dict_pronunciations::dialect.eq("us"),
                 dict_pronunciations::is_primary.eq(!has_primary),
             ))
             .execute(conn)?;
@@ -599,7 +600,6 @@ fn insert_pronunciations(
             .values((
                 dict_pronunciations::word_id.eq(word_id),
                 dict_pronunciations::ipa.eq(&entry.phonetic),
-                dict_pronunciations::dialect.eq("other" as &str),
                 dict_pronunciations::is_primary.eq(true),
             ))
             .execute(conn)?;

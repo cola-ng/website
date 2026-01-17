@@ -52,10 +52,12 @@ CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency DESC
 CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty);
 
 -- Table: dict_dictionaries - Many-to-many relationship between words and dictionaries
+drop table if exists dict_word_dictionaries;
 CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
     id BIGSERIAL PRIMARY KEY,                          -- Primary key ID
     word_id BIGINT NOT NULL,                            -- Associated word ID
     dictionary_id BIGINT NOT NULL,                      -- Associated dictionary ID
+    definition_id BIGINT,                      -- Associated definition ID
     priority_order INTEGER,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- Unique constraint to ensure each word-dictionary pair is only added once
 );
@@ -72,7 +74,7 @@ CREATE TABLE IF NOT EXISTS dict_definitions (
     part_of_speech TEXT CHECK(part_of_speech IN ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'article', 'abbreviation', 'phrase', 'idiom')), -- 词性：名词、动词、形容词、副词等
     definition_order INTEGER DEFAULT 1,                 -- 释义顺序
     register TEXT CHECK(register IN ('formal', 'informal', 'slang', 'archaic', 'literary', 'technical', 'colloquial', 'neutral')), -- 语体：正式、非正式、俚语、古语等
-    region TEXT CHECK(region IN ('US', 'UK', 'AU', 'CA', 'NZ', 'IN', 'general')), -- 地区：美式、英式、澳式等
+    region TEXT, -- 地区：美式、英式、澳式等
     context TEXT,                                       -- 使用语境
     usage_notes TEXT,                                   -- 用法说明
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要释义
@@ -99,7 +101,7 @@ CREATE TABLE IF NOT EXISTS dict_pronunciations (
     ipa TEXT NOT NULL,                                 -- 国际音标 (IPA)
     audio_url TEXT,                                     -- 音频文件 URL
     audio_path TEXT,                                    -- 音频文件存储路径
-    dialect TEXT CHECK(dialect IN ('US', 'UK', 'AU', 'CA', 'NZ', 'IN', 'other')), -- 口音：美式、英式、澳式等
+    dialect TEXT, -- 口音：美式、英式、澳式等
     gender TEXT CHECK(gender IN ('male', 'female', 'neutral')), -- 性别：男声、女声、中性
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要发音
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
