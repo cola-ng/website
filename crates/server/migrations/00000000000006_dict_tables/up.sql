@@ -26,7 +26,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_name ON dict_dictionaries(name)
 CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_active ON dict_dictionaries(is_active);
 CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_priority ON dict_dictionaries(priority_order ASC);
 
--- Table: dict_words - Main word table
+-- Table: dict_words - Main word table, 单词表, 也包含了短语
 CREATE TABLE IF NOT EXISTS dict_words (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word TEXT NOT NULL UNIQUE,                          -- 单词（原形式）
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS dict_words (
     difficulty SMALLINT CHECK(difficulty BETWEEN 1 AND 10), -- 难度等级 (1-5)，1 最简单，5 最难
     syllable_count SMALLINT,                   -- 音节数量
     is_lemma BOOLEAN DEFAULT TRUE,                      -- 是否为词元（词根/原形）
-    word_count INTEGER DEFAULT 0,                       -- 单词出现次数统计
+    word_count INTEGER DEFAULT 0,                       -- 单词数量
     is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
     created_by BIGINT,                                  -- 创建者用户 ID
     updated_by BIGINT,                                  -- 更新者用户 ID
@@ -63,13 +63,12 @@ CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(wo
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_dict ON dict_word_dictionaries(dictionary_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_word_dicts_unique ON dict_word_dictionaries(word_id, dictionary_id);
 
-
 -- Table: dict_word_definitions - Word definitions (multiple per word)
 CREATE TABLE IF NOT EXISTS dict_word_definitions (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    definition_en TEXT NOT NULL,                        -- 英文释义
-    definition_zh TEXT,                                 -- 中文释义
+    language TEXT NOT NULL,                         -- 语言
+    definition TEXT NOT NULL,                        -- 释义
     part_of_speech TEXT CHECK(part_of_speech IN ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'article', 'abbreviation', 'phrase', 'idiom')), -- 词性：名词、动词、形容词、副词等
     definition_order INTEGER DEFAULT 1,                 -- 释义顺序
     register TEXT CHECK(register IN ('formal', 'informal', 'slang', 'archaic', 'literary', 'technical', 'colloquial', 'neutral')), -- 语体：正式、非正式、俚语、古语等
@@ -79,22 +78,21 @@ CREATE TABLE IF NOT EXISTS dict_word_definitions (
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要释义
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_word ON dict_word_definitions(word_id, definition_order);
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_pos ON dict_word_definitions(part_of_speech);
 
-CREATE TABLE IF NOT EXISTS dict_word_lemmas (
+CREATE TABLE IF NOT EXISTS dict_translations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    lemma_word_id BIGINT NOT NULL,                    -- 同义词单词 ID
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(word_id, lemma_word_id)
+    origin_entity TEXT NOT NULL, -- 来源实体（单词或释义）
+    origin_id BIGINT NOT NULL,                         -- 关联 ID
+    language TEXT NOT NULL,                         -- 语言
+    translation TEXT NOT NULL,                        -- 释义
+    context TEXT,                                       -- 使用语境
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-CREATE INDEX IF NOT EXISTS idx_dict_word_lemmas_word ON dict_word_lemmas(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_word_lemmas_lemma_word ON dict_word_lemmas(word_id, lemma_word_id);
 
--- Table: dict_word_pronunciations - Word pronunciations
-CREATE TABLE IF NOT EXISTS dict_word_pronunciations (
+-- Table: dict_pronunciations - Word pronunciations
+CREATE TABLE IF NOT EXISTS dict_pronunciations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     definition_id BIGINT,                               -- 关联释义 ID
@@ -106,15 +104,13 @@ CREATE TABLE IF NOT EXISTS dict_word_pronunciations (
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要发音
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-CREATE INDEX IF NOT EXISTS idx_dict_pronunciations_word ON dict_word_pronunciations(word_id, dialect);
+CREATE INDEX IF NOT EXISTS idx_dict_pronunciations_word ON dict_pronunciations(word_id, dialect);
 
--- Table: dict_word_examples - Example sentences
-CREATE TABLE IF NOT EXISTS dict_word_examples (
+-- Table: dict_examples - Example sentences
+CREATE TABLE IF NOT EXISTS dict_examples (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    definition_id BIGINT,                               -- 关联释义 ID
-    sentence_en TEXT NOT NULL,                          -- 英文例句
-    sentence_zh TEXT,                                   -- 中文翻译
+    language TEXT NOT NULL,                         -- 语言
+    sentence TEXT NOT NULL,                          -- 例句
     source TEXT,                                        -- 来源
     author TEXT,                                        -- 作者
     example_order INTEGER DEFAULT 1,                    -- 例句顺序
@@ -123,82 +119,39 @@ CREATE TABLE IF NOT EXISTS dict_word_examples (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_examples_word ON dict_word_examples(word_id, example_order);
-CREATE INDEX IF NOT EXISTS idx_dict_examples_definition ON dict_word_examples(definition_id);
-
--- Table: dict_word_synonyms - Synonym relationships
-CREATE TABLE IF NOT EXISTS dict_word_synonyms (
+CREATE TABLE IF NOT EXISTS dict_word_examples (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    synonym_word_id BIGINT NOT NULL,                    -- 同义词单词 ID
-    similarity_score REAL CHECK(similarity_score BETWEEN 0 AND 1), -- 相似度评分 (0-1)
-    context TEXT,                                       -- 使用语境
-    nuance_notes TEXT,                                  -- 细微差别说明
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(word_id, synonym_word_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dict_synonyms_word ON dict_word_synonyms(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_synonyms_similarity ON dict_word_synonyms(similarity_score DESC);
-
--- Table: dict_word_antonyms - Antonym relationships
-CREATE TABLE IF NOT EXISTS dict_word_antonyms (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    antonym_word_id BIGINT NOT NULL,                    -- 反义词单词 ID
-    antonym_type TEXT CHECK(antonym_type IN ('direct', 'gradable', 'relational', 'complementary')), -- 反义词类型：直接、可分级、关系、互补
-    context TEXT,                                       -- 使用语境
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(word_id, antonym_word_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dict_antonyms_word ON dict_word_antonyms(word_id);
-
--- Table: dict_word_collocations - Word collocations (phrases where words appear together)
-CREATE TABLE IF NOT EXISTS dict_word_collocations (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    collocation_type TEXT CHECK(collocation_type IN ('adjective+noun', 'verb+noun', 'noun+verb', 'verb+adverb', 'adverb+adjective', 'noun+noun', 'preposition+noun', 'other')), -- 搭配类型：形容词+名词、动词+名词等
-    collocated_word_id BIGINT,                          -- 搭配单词 ID
-    phrase TEXT NOT NULL,                               -- 搭配短语（小写）
-    phrase_en TEXT NOT NULL,                            -- 英文搭配短语
-    phrase_zh TEXT,                                     -- 中文翻译
-    frequency INTEGER CHECK(frequency BETWEEN 0 AND 100), -- 频率评分 (0-100)
-    register TEXT CHECK(register IN ('formal', 'informal', 'slang', 'archaic', 'literary', 'technical', 'colloquial', 'neutral')), -- 语体：正式、非正式、俚语等
-    example_en TEXT,                                    -- 英文例句
-    example_zh TEXT,                                    -- 中文翻译
-    is_common BOOLEAN DEFAULT FALSE,                    -- 是否为常用搭配
+    definition_id BIGINT,                               -- 关联释义 ID
+    translation_id BIGINT,                               -- 关联释义 ID
+    example_id BIGINT,                               -- 关联释义 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_collocations_word ON dict_word_collocations(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_collocations_type ON dict_word_collocations(collocation_type);
-CREATE INDEX IF NOT EXISTS idx_dict_collocations_phrase ON dict_word_collocations(phrase_en);
+CREATE Unique INDEX IF NOT EXISTS idx_dict_examples_word ON dict_word_examples(word_id, example_id);
+CREATE INDEX IF NOT EXISTS idx_dict_examples_definition ON dict_word_examples(definition_id);
 
--- Table: dict_word_etymology - Word etymology information
-CREATE TABLE IF NOT EXISTS dict_word_etymology (
+-- Table: dict_etymology - etymology information 语源；词源学
+CREATE TABLE IF NOT EXISTS dict_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
     origin_language TEXT,                               -- 起源语言
     origin_word TEXT,                                   -- 起源单词
     origin_meaning TEXT,                                -- 起源含义
-    etymology_en TEXT,                                  -- 英文词源说明
-    etymology_zh TEXT,                                  -- 中文词源说明
+    language TEXT NOT NULL,                             -- 词源说明语言
+    etymology TEXT NOT NULL,                            -- 词源说明
     first_attested_year INTEGER,                        -- 首次出现的年份
     historical_forms JSONB,                              -- 历史形式 (JSONB)
     cognate_words JSONB,                                -- 同源词 (JSONB)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-CREATE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymology(word_id);
-
+-- 一个单词可能来源于不同的语源
 CREATE TABLE IF NOT EXISTS dict_word_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    etymolog_id TEXT,                               -- 起源语言
+    etymology_id BIGINT NOT NULL,                       -- 关联语源 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-
-CREATE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymology(word_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymologies(word_id, etymology_id);
 
 -- Table: dict_categories - Word categories and classifications
 CREATE TABLE IF NOT EXISTS dict_categories (
@@ -221,69 +174,18 @@ CREATE TABLE IF NOT EXISTS dict_word_categories (
 CREATE INDEX IF NOT EXISTS idx_dict_word_categories_word ON dict_word_categories(word_id);
 CREATE INDEX IF NOT EXISTS idx_dict_word_categories_id ON dict_word_categories(category_id);
 
--- Table: dict_word_usage_notes - Usage notes and warnings
-CREATE TABLE IF NOT EXISTS dict_word_usage_notes (
+-- Table: dict_word_parts - Words that make up a phrase
+CREATE TABLE IF NOT EXISTS dict_word_parts (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    note_type TEXT CHECK(note_type IN ('warning', 'preference', 'avoidance', 'contextual', 'regional', 'formality', 'tone', 'grammar', 'style', 'spelling')), -- 说明类型：警告、偏好、避免、语境等
-    note_en TEXT NOT NULL,                              -- 英文说明
-    note_zh TEXT,                                       -- 中文翻译
-    examples_en JSONB,                                  -- 英文例句列表 (JSONB)
-    examples_zh JSONB,                                  -- 中文例句列表 (JSONB)
+    part_id BIGINT NOT NULL,                            -- 组成成分 ID, 其实也是  word id
+    range_begin INTEGER NOT NULL,                      -- 单词在短语中的起始位置(包括)
+    range_until INTEGER,                      -- 单词在短语中的结束位置(包括)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_usage_notes_word ON dict_word_usage_notes(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_usage_notes_type ON dict_word_usage_notes(note_type);
+CREATE INDEX IF NOT EXISTS idx_dict_word_parts_range ON dict_word_parts(word_id, part_id);
 
--- Table: dict_phrases - Common phrases and idioms
-CREATE TABLE IF NOT EXISTS dict_phrases (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    phrase TEXT NOT NULL UNIQUE,                        -- 短语（原形式）
-    phrase_lower TEXT NOT NULL,                         -- 短语小写形式，用于搜索
-    phrase_type TEXT CHECK(phrase_type IN ('idiom', 'proverb', 'saying', 'slang', 'colloquial', 'formal', 'technical', 'phrase', 'expression')), -- 短语类型：习语、谚语、俗语、俚语等
-    meaning_en TEXT NOT NULL,                           -- 英文含义
-    meaning_zh TEXT,                                    -- 中文含义
-    origin TEXT,                                        -- 来源
-    example_en TEXT,                                    -- 英文例句
-    example_zh TEXT,                                    -- 中文翻译
-    difficulty SMALLINT CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
-    frequency SMALLINT CHECK(frequency BETWEEN 0 AND 100), -- 频率评分 (0-100)
-    is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
-    created_by BIGINT,                                  -- 创建者用户 ID
-    updated_by BIGINT,                                  -- 更新者用户 ID
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 更新时间
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
-);
-
-CREATE INDEX IF NOT EXISTS idx_dict_phrases_phrase ON dict_phrases(phrase);
-CREATE INDEX IF NOT EXISTS idx_dict_phrases_lower ON dict_phrases(phrase_lower);
-CREATE INDEX IF NOT EXISTS idx_dict_phrases_type ON dict_phrases(phrase_type);
-
--- Table: dict_phrase_words - Words that make up a phrase
-CREATE TABLE IF NOT EXISTS dict_phrase_words (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    phrase_id BIGINT NOT NULL,                          -- 关联短语 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    word_position INTEGER NOT NULL,                      -- 单词在短语中的位置
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
-);
-
-CREATE INDEX IF NOT EXISTS idx_dict_phrase_words_phrase ON dict_phrase_words(phrase_id, word_position);
-
--- Table: dict_word_family - Word family relationships
-CREATE TABLE IF NOT EXISTS dict_word_family (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    root_word_id BIGINT NOT NULL,                       -- 词根单词 ID
-    related_word_id BIGINT NOT NULL,                    -- 相关单词 ID
-    relationship_type TEXT CHECK(relationship_type IN ('derivation', 'inflection', 'compound', 'prefix', 'suffix', 'conversion', 'other')), -- 关系类型：派生、屈折、复合等
-    morpheme TEXT,                                      -- 词素（前缀、后缀等）
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(root_word_id, related_word_id)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dict_family_root ON dict_word_family(root_word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_family_related ON dict_word_family(related_word_id);
 
 -- Table: dict_word_forms - Word forms (plurals, tenses, comparatives, etc.)
 CREATE TABLE IF NOT EXISTS dict_word_forms (
@@ -299,39 +201,39 @@ CREATE TABLE IF NOT EXISTS dict_word_forms (
 CREATE INDEX IF NOT EXISTS idx_dict_forms_word ON dict_word_forms(word_id);
 CREATE INDEX IF NOT EXISTS idx_dict_forms_type ON dict_word_forms(form_type);
 
--- Table: dict_word_thesaurus - Thesaurus entries
-CREATE TABLE IF NOT EXISTS dict_word_thesaurus (
+-- Table: dict_word_relations - Word relations (synonyms, antonyms, related words, etc.)
+CREATE TABLE IF NOT EXISTS dict_word_relations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    entry_type TEXT CHECK(entry_type IN ('synonym', 'antonym', 'related', 'broader', 'narrower', 'part_of', 'member_of', 'substance_of', 'instance_of', 'similar')), -- 条目类型：同义词、反义词、相关词、上位词等
+    relation_type TEXT CHECK(relation_type IN ('synonym', 'antonym', 'related', 'broader', 'narrower', 'part_of', 'member_of', 'substance_of', 'instance_of', 'similar')), -- 条目类型：同义词、反义词、相关词、上位词等
     related_word_id BIGINT NOT NULL,                    -- 相关单词 ID
     semantic_field TEXT,                                 -- 语义场
-    relationship_strength REAL CHECK(relationship_strength BETWEEN 0 AND 1), -- 关系强度 (0-1)
+    relation_strength REAL CHECK(relation_strength BETWEEN 0 AND 1), -- 关系强度 (0-1)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(word_id, entry_type, related_word_id)
+    UNIQUE(word_id, relation_type, related_word_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_dict_thesaurus_word ON dict_word_thesaurus(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_thesaurus_type ON dict_word_thesaurus(entry_type);
+CREATE INDEX IF NOT EXISTS idx_dict_thesaurus_word ON dict_word_relations(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_thesaurus_type ON dict_word_relations(relation_type);
+
 
 -- Table: dict_frequency_bands - Frequency band classifications
-CREATE TABLE IF NOT EXISTS dict_frequency_bands (
+CREATE TABLE IF NOT EXISTS dict_word_frequencies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     corpus_name TEXT NOT NULL,                          -- 语料库名称
     corpus_type TEXT CHECK(corpus_type IN ('spoken', 'written', 'academic', 'news', 'fiction', 'internet', 'general')), -- 语料库类型：口语、书面语、学术等
     band TEXT CHECK(band IN ('top_1000', 'top_2000', 'top_3000', 'top_5000', 'top_10000', 'beyond_10000')), -- 频率等级：前1000、前2000等
     rank INTEGER,                                       -- 排名
-    frequency_per_million REAL,                         -- 每百万词出现频率
+    frequency_per_million INTEGER,                         -- 每百万词出现频率
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
     UNIQUE(word_id, corpus_name, corpus_type)
 );
+CREATE INDEX IF NOT EXISTS idx_dict_frequency_word ON dict_word_frequencies(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_frequency_band ON dict_word_frequencies(band);
 
-CREATE INDEX IF NOT EXISTS idx_dict_frequency_word ON dict_frequency_bands(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_frequency_band ON dict_frequency_bands(band);
-
--- Table: dict_import_batch - Track import batches
-CREATE TABLE IF NOT EXISTS dict_import_batch (
+-- Table: dict_import_batches - Track import batches
+CREATE TABLE IF NOT EXISTS dict_import_batches (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     batch_name TEXT NOT NULL,                           -- 批次名称
     source TEXT,                                        -- 来源
@@ -346,9 +248,8 @@ CREATE TABLE IF NOT EXISTS dict_import_batch (
     created_by BIGINT,                                  -- 创建者用户 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-
-CREATE INDEX IF NOT EXISTS idx_dict_import_status ON dict_import_batch(status);
-CREATE INDEX IF NOT EXISTS idx_dict_import_created ON dict_import_batch(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dict_import_status ON dict_import_batches(status);
+CREATE INDEX IF NOT EXISTS idx_dict_import_created ON dict_import_batches(created_at DESC);
 
 -- Table: dict_word_images - Word images for visual learning
 CREATE TABLE IF NOT EXISTS dict_word_images (

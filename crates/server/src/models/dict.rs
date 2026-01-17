@@ -121,6 +121,34 @@ pub struct NewWordExample {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_word_pronunciations)]
+pub struct WordPronunciation {
+    pub id: i64,
+    pub word_id: i64,
+    pub definition_id: Option<i64>,
+    pub ipa: String,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub dialect: Option<String>,
+    pub gender: Option<String>,
+    pub is_primary: Option<bool>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_word_pronunciations)]
+pub struct NewWordPronunciation {
+    pub word_id: i64,
+    pub definition_id: Option<i64>,
+    pub ipa: String,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub dialect: Option<String>,
+    pub gender: Option<String>,
+    pub is_primary: Option<bool>,
+}
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_word_synonyms)]
 pub struct WordSynonym {
     pub id: i64,
@@ -440,6 +468,7 @@ pub struct WordQueryResponse {
     pub word: Word,
     pub definitions: Vec<WordDefinition>,
     pub examples: Vec<WordExample>,
+    pub pronunciations: Vec<WordPronunciation>,
     pub synonyms: Vec<WordSynonymView>,
     pub antonyms: Vec<WordAntonymView>,
     pub forms: Vec<WordForm>,

@@ -18,6 +18,7 @@ mod family;
 mod forms;
 mod images;
 mod phrases;
+mod pronunciations;
 mod synonyms;
 mod usage_notes;
 mod word_dictionaries;
@@ -62,6 +63,15 @@ pub fn router() -> Router {
             Router::with_path("words/{id}/definitions")
                 .get(definitions::list_definitions)
                 .post(definitions::create_definition),
+        )
+        .push(
+            Router::with_path("words/{id}/pronunciations")
+                .get(pronunciations::list_pronunciations)
+                .post(pronunciations::create_pronunciation),
+        )
+        .push(
+            Router::with_path("words/{id}/pronunciations/{pronunciation_id}")
+                .delete(pronunciations::delete_pronunciation),
         )
         .push(
             Router::with_path("words/{id}/examples")
@@ -170,6 +180,11 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .filter(dict_word_examples::word_id.eq(word_id))
             .order(dict_word_examples::example_order.asc())
             .load::<WordExample>(conn)?;
+
+        let pronunciations = dict_word_pronunciations::table
+            .filter(dict_word_pronunciations::word_id.eq(word_id))
+            .order(dict_word_pronunciations::is_primary.desc())
+            .load::<WordPronunciation>(conn)?;
 
         let synonym_rows: Vec<(WordSynonym, Word)> = dict_word_synonyms::table
             .inner_join(
@@ -288,6 +303,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             word: word_record,
             definitions,
             examples,
+            pronunciations,
             synonyms,
             antonyms,
             forms,
