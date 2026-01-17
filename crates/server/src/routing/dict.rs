@@ -18,7 +18,6 @@ mod family;
 mod forms;
 mod images;
 mod phrases;
-mod related_topics;
 mod synonyms;
 mod usage_notes;
 mod word_dictionaries;
@@ -111,11 +110,6 @@ pub fn router() -> Router {
             Router::with_path("words/{id}/tags")
                 .get(categories::list_categories)
                 .post(categories::create_category),
-        )
-        .push(
-            Router::with_path("words/{id}/related-topics")
-                .get(related_topics::list_related_topics)
-                .post(related_topics::create_related_topic),
         )
         .push(
             Router::with_path("words/{id}/etymology")
@@ -266,13 +260,9 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .distinct()
             .load(conn)?;
 
-        let categories = dict_word_categories::table
+        let categorie_ids = dict_word_categories::table
             .filter(dict_word_categories::word_id.eq(word_id))
             .load::<WordCategory>(conn)?;
-
-        let related_topics = dict_related_topics::table
-            .filter(dict_related_topics::word_id.eq(word_id))
-            .load::<DictRelatedTopic>(conn)?;
 
         let etymology = dict_word_etymology::table
             .filter(dict_word_etymology::word_id.eq(word_id))
