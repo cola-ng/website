@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
     word_id BIGINT NOT NULL,                            -- Associated word ID
     dictionary_id BIGINT NOT NULL,                      -- Associated dictionary ID
     definition_id BIGINT,                      -- Associated definition ID
-    priority_order INTEGER,                    -- 例句顺序
+    priority_order INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- Unique constraint to ensure each word-dictionary pair is only added once
 );
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(word_id);
