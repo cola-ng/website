@@ -146,6 +146,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         .query::<String>("word")
         .ok_or_else(|| StatusError::bad_request().brief("missing word query"))?;
     let word_lower_value = word.trim().to_lowercase();
+    println!("word_lower_value: {}", word_lower_value);
     if word_lower_value.is_empty() {
         return Err(StatusError::bad_request()
             .brief("missing word parameter")
@@ -155,10 +156,9 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
     let result: WordQueryResponse = with_conn(move |conn| {
         let word_record = dict_words::table
             .filter(dict_words::word_lower.eq(&word_lower_value))
-            .first::<Word>(conn)
-            .optional()?
-            .ok_or_else(|| diesel::result::Error::NotFound)?;
+            .first::<Word>(conn)?;
 
+        println!("word_record: {:?}", word_record);
         let word_id = word_record.id;
 
         let definitions = dict_word_definitions::table
