@@ -75,48 +75,48 @@ export function DictPage() {
                 <div>
                   <h2 className="text-4xl font-bold text-gray-900 mb-2">{result.word.word}</h2>
                   <div className="flex flex-wrap gap-3 text-gray-600">
-                    {result.word.phonetic_us && (
-                      <span className="flex items-center gap-1">
-                        US: /{result.word.phonetic_us}/
-                        {result.word.audio_us && (
+                    {result.pronunciations?.filter(p => p.dialect === 'UK').map(p => (
+                      <span key={p.id} className="flex items-center gap-1">
+                        UK: /{p.ipa}/
+                        {p.audio_url && (
                           <button
-                            onClick={() => playAudio(result.word.audio_us)}
+                            onClick={() => playAudio(p.audio_url)}
                             className="text-indigo-600 hover:text-indigo-800"
                           >
                             <Volume2 className="w-4 h-4" />
                           </button>
                         )}
                       </span>
-                    )}
-                    {result.word.phonetic_uk && (
-                      <span className="flex items-center gap-1">
-                        UK: /{result.word.phonetic_uk}/
-                        {result.word.audio_uk && (
+                    ))}
+                    {result.pronunciations?.filter(p => p.dialect === 'US').map(p => (
+                      <span key={p.id} className="flex items-center gap-1">
+                        US: /{p.ipa}/
+                        {p.audio_url && (
                           <button
-                            onClick={() => playAudio(result.word.audio_uk)}
+                            onClick={() => playAudio(p.audio_url)}
                             className="text-indigo-600 hover:text-indigo-800"
                           >
                             <Volume2 className="w-4 h-4" />
                           </button>
                         )}
                       </span>
-                    )}
+                    ))}
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   {result.word.difficulty && (
                     <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                      {result.word.difficulty}
+                      Difficulty: {result.word.difficulty}
                     </span>
                   )}
-                  {result.word.core_level && (
-                    <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
-                      {result.word.core_level}
-                    </span>
-                  )}
-                  {result.word.frequency_rank && (
+                  {result.word.frequency && (
                     <span className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm font-medium">
-                      Rank #{result.word.frequency_rank}
+                      Frequency: {result.word.frequency}
+                    </span>
+                  )}
+                  {result.word.word_type && (
+                    <span className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm font-medium">
+                      {result.word.word_type}
                     </span>
                   )}
                 </div>
@@ -138,6 +138,11 @@ export function DictPage() {
                             {def.part_of_speech}
                           </span>
                         )}
+                        {def.language && (
+                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                            {def.language === 'en' ? 'English' : def.language === 'zh' ? '中文' : def.language}
+                          </span>
+                        )}
                         {def.register && (
                           <span className="text-xs text-gray-500">{def.register}</span>
                         )}
@@ -145,10 +150,7 @@ export function DictPage() {
                           <span className="text-xs text-gray-500">{def.region}</span>
                         )}
                       </div>
-                      <p className="text-lg text-gray-800">{def.definition_en}</p>
-                      {def.definition_zh && (
-                        <p className="text-gray-600">{def.definition_zh}</p>
-                      )}
+                      <p className="text-lg text-gray-800">{def.definition}</p>
                       {def.usage_notes && (
                         <p className="text-sm text-gray-500 mt-1 italic">{def.usage_notes}</p>
                       )}
@@ -158,18 +160,18 @@ export function DictPage() {
               </div>
             )}
 
-            {(result.examples?.length ?? 0) > 0 && (
+            {(result.sentences?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <ChevronRight className="w-6 h-6 text-indigo-500" />
                   Sentences
                 </h3>
                 <div className="space-y-3">
-                  {(result.examples ?? []).map((example) => (
-                    <div key={example.id} className="bg-gray-50 rounded-lg p-4">
-                      <p className="text-gray-800">{example.example_en}</p>
-                      {example.example_zh && (
-                        <p className="text-gray-600 mt-1">{example.example_zh}</p>
+                  {(result.sentences ?? []).map((sentence) => (
+                    <div key={sentence.id} className="bg-gray-50 rounded-lg p-4">
+                      <p className="text-gray-800">{sentence.sentence}</p>
+                      {sentence.source && (
+                        <p className="text-gray-500 text-sm mt-1">— {sentence.source}</p>
                       )}
                     </div>
                   ))}
@@ -177,56 +179,31 @@ export function DictPage() {
               </div>
             )}
 
-            <div className="grid md:grid-cols-2 gap-6">
-              {(result.synonyms?.length ?? 0) > 0 && (
-                <div className="bg-white rounded-2xl shadow-lg p-6">
-                  <h3 className="text-xl font-bold text-gray-900 mb-4">Synonyms</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {(result.synonyms ?? []).map((syn) => (
-                      <span
-                        key={syn.id}
-                        className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
-                        onClick={() => setQuery(syn.synonym)}
-                      >
-                        {syn.synonym}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {(result.antonyms?.length ?? 0) > 0 && (
-                <div className="bg-white rounded-2xl shadow-lg p-6">
-                  <h3 className="text-xl font-bold text-gray-900 mb-4">Antonyms</h3>
-                  <div className="flex flex-wrap gap-2">
-                    {(result.antonyms ?? []).map((ant) => (
-                      <span
-                        key={ant.id}
-                        className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
-                        onClick={() => setQuery(ant.antonym)}
-                      >
-                        {ant.antonym}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {(result.collocations?.length ?? 0) > 0 && (
+            {(result.forms?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Collocations</h3>
+                <h3 className="text-2xl font-bold text-gray-900 mb-4">Word Forms</h3>
+                <div className="flex flex-wrap gap-3">
+                  {(result.forms ?? []).map((form) => (
+                    <span
+                      key={form.id}
+                      className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-sm"
+                    >
+                      <span className="font-medium">{form.form_type}:</span> {form.form}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {(result.etymologies?.length ?? 0) > 0 && (
+              <div className="bg-white rounded-2xl shadow-lg p-8">
+                <h3 className="text-2xl font-bold text-gray-900 mb-4">Etymology</h3>
                 <div className="space-y-3">
-                  {(result.collocations ?? []).map((col) => (
-                    <div key={col.id} className="border-l-4 border-blue-500 pl-4">
-                      <p className="text-lg font-medium text-gray-800">
-                        <span className="text-indigo-600 font-bold">{result.word.word}</span> {col.collocation}
-                      </p>
-                      {col.example_en && (
-                        <p className="text-gray-600 mt-1">{col.example_en}</p>
-                      )}
-                      {col.example_zh && (
-                        <p className="text-gray-500">{col.example_zh}</p>
+                  {(result.etymologies ?? []).map((etym) => (
+                    <div key={etym.id} className="bg-amber-50 rounded-lg p-4 border border-amber-200">
+                      <p className="text-gray-800">{etym.etymology}</p>
+                      {etym.origin_language && (
+                        <p className="text-sm text-gray-500 mt-1">Origin: {etym.origin_language}</p>
                       )}
                     </div>
                   ))}
@@ -234,71 +211,17 @@ export function DictPage() {
               </div>
             )}
 
-            {(result.phrases?.length ?? 0) > 0 && (
+            {(result.categories?.length ?? 0) > 0 && (
               <div className="bg-white rounded-2xl shadow-lg p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Phrases</h3>
-                <div className="space-y-3">
-                  {(result.phrases ?? []).map((phrase) => (
-                    <div key={phrase.id} className="bg-gradient-to-r from-purple-50 to-pink-50 rounded-lg p-4">
-                      <p className="text-lg font-medium text-purple-900">{phrase.phrase}</p>
-                      {phrase.meaning_zh && (
-                        <p className="text-gray-700 mt-1">{phrase.meaning_zh}</p>
-                      )}
-                      {phrase.example_en && (
-                        <p className="text-gray-600 mt-2">{phrase.example_en}</p>
-                      )}
-                      {phrase.example_zh && (
-                        <p className="text-gray-500">{phrase.example_zh}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(result.common_errors?.length ?? 0) > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-                  <span className="text-2xl">⚠️</span>
-                  Common Errors
-                </h3>
-                <div className="space-y-4">
-                  {(result.common_errors ?? []).map((error) => (
-                    <div key={error.id} className="border-l-4 border-red-500 pl-4 bg-red-50 rounded-r-lg p-4">
-                      <p className="font-medium text-red-900 mb-2">{error.error_type}</p>
-                      {error.error_sentence && (
-                        <p className="text-red-700">
-                          <span className="font-semibold">Wrong:</span> {error.error_sentence}
-                        </p>
-                      )}
-                      {error.correct_sentence && (
-                        <p className="text-green-700 mt-1">
-                          <span className="font-semibold">Correct:</span> {error.correct_sentence}
-                        </p>
-                      )}
-                      {error.explanation && (
-                        <p className="text-gray-600 mt-2 italic">{error.explanation}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {(result.roots?.length ?? 0) > 0 && (
-              <div className="bg-white rounded-2xl shadow-lg p-8">
-                <h3 className="text-2xl font-bold text-gray-900 mb-4">Word Roots</h3>
-                <div className="grid md:grid-cols-2 gap-4">
-                  {(result.roots ?? []).map((root) => (
-                    <div key={root.id} className="bg-gradient-to-r from-amber-50 to-yellow-50 rounded-lg p-4 border border-amber-200">
-                      <p className="text-lg font-bold text-amber-900">{root.root}</p>
-                      {root.meaning && (
-                        <p className="text-gray-700">{root.meaning}</p>
-                      )}
-                      {root.language && (
-                        <p className="text-sm text-gray-500 mt-1">Origin: {root.language}</p>
-                      )}
-                    </div>
+                <h3 className="text-2xl font-bold text-gray-900 mb-4">Categories</h3>
+                <div className="flex flex-wrap gap-2">
+                  {(result.categories ?? []).map((cat) => (
+                    <span
+                      key={cat.id}
+                      className="px-3 py-1 bg-purple-100 text-purple-800 rounded-full text-sm"
+                    >
+                      {cat.name}
+                    </span>
                   ))}
                 </div>
               </div>

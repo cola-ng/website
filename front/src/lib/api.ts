@@ -38,104 +38,124 @@ export type LearningRecord = {
 export type Word = {
   id: number
   word: string
-  phonetic_us: string | null
-  phonetic_uk: string | null
-  audio_us: string | null
-  audio_uk: string | null
-  difficulty: string | null
-  frequency_rank: number | null
-  core_level: string | null
-  created_at: string
+  word_lower: string
+  word_type: string | null
+  language: string | null
+  frequency: number | null
+  difficulty: number | null
+  syllable_count: number | null
+  is_lemma: boolean | null
+  word_count: number | null
+  is_active: boolean | null
+  created_by: number | null
+  updated_by: number | null
   updated_at: string
+  created_at: string
 }
 
 export type Definition = {
   id: number
   word_id: number
-  definition_en: string
-  definition_zh: string | null
+  language: string
+  definition: string
   part_of_speech: string | null
-  definition_order: number
+  definition_order: number | null
   register: string | null
   region: string | null
   context: string | null
   usage_notes: string | null
-  is_primary: boolean
+  is_primary: boolean | null
   created_at: string
 }
 
-export type WordSentence = {
+export type Sentence = {
   id: number
-  word_id: number
-  example_en: string
-  example_zh: string | null
-  priority_order: number
+  language: string
+  sentence: string
+  source: string | null
+  author: string | null
+  priority_order: number | null
+  difficulty: number | null
+  is_common: boolean | null
   created_at: string
 }
 
-export type DictSynonym = {
+export type Pronunciation = {
   id: number
   word_id: number
-  synonym: string
+  definition_id: number | null
+  ipa: string
+  audio_url: string | null
+  audio_path: string | null
+  dialect: string | null
+  gender: string | null
+  is_primary: boolean | null
   created_at: string
 }
 
-export type DictAntonym = {
+export type Relation = {
   id: number
   word_id: number
-  antonym: string
+  relation_type: string | null
+  related_word_id: number
+  semantic_field: string | null
+  relation_strength: number | null
   created_at: string
 }
 
-export type WordCollocation = {
+export type Etymology = {
   id: number
-  word_id: number
-  collocation: string
-  collocation_type: string | null
-  example_en: string | null
-  example_zh: string | null
+  origin_language: string | null
+  origin_word: string | null
+  origin_meaning: string | null
+  language: string
+  etymology: string
+  first_attested_year: number | null
+  historical_forms: unknown | null
+  cognate_words: unknown | null
   created_at: string
 }
 
-export type WordPhrase = {
+export type Form = {
   id: number
   word_id: number
-  phrase: string
-  meaning_zh: string | null
-  example_en: string | null
-  example_zh: string | null
+  form_type: string | null
+  form: string
+  is_irregular: boolean | null
+  notes: string | null
   created_at: string
 }
 
-export type DictCommonError = {
+export type Category = {
   id: number
-  word_id: number
-  error_type: string
-  error_sentence: string | null
-  correct_sentence: string | null
-  explanation: string | null
+  name: string
+  parent_id: number | null
   created_at: string
 }
 
-export type WordRoot = {
+export type Image = {
   id: number
   word_id: number
-  root: string
-  meaning: string | null
-  language: string | null
+  image_url: string | null
+  image_path: string | null
+  image_type: string | null
+  alt_text_en: string | null
+  alt_text_zh: string | null
+  is_primary: boolean | null
+  created_by: number | null
   created_at: string
 }
 
 export type WordQueryResponse = {
   word: Word
   definitions: Definition[]
-  examples: WordSentence[]
-  synonyms: DictSynonym[]
-  antonyms: DictAntonym[]
-  collocations: WordCollocation[]
-  phrases: WordPhrase[]
-  common_errors: DictCommonError[]
-  roots: WordRoot[]
+  sentences: Sentence[]
+  pronunciations: Pronunciation[]
+  relations: Relation[]
+  etymologies: Etymology[]
+  forms: Form[]
+  categories: Category[]
+  images: Image[]
 }
 
 async function requestJson<T>(
