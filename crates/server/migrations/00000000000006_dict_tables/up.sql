@@ -97,6 +97,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_word_lemmas_lemma_word ON dict_word_lemmas(w
 CREATE TABLE IF NOT EXISTS dict_word_pronunciations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
+    definition_id BIGINT,                               -- 关联释义 ID
     ipa TEXT NOT NULL,                                 -- 国际音标 (IPA)
     audio_url TEXT,                                     -- 音频文件 URL
     audio_path TEXT,                                    -- 音频文件存储路径

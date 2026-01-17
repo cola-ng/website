@@ -455,6 +455,7 @@ diesel::table! {
     dict_word_pronunciations (id) {
         id -> Int8,
         word_id -> Int8,
+        definition_id -> Nullable<Int8>,
         ipa -> Text,
         audio_url -> Nullable<Text>,
         audio_path -> Nullable<Text>,
