@@ -331,8 +331,8 @@ diesel::table! {
         id -> Int8,
         word_id -> Int8,
         part_id -> Int8,
-        range_begin -> Int4,
-        range_until -> Nullable<Int4>,
+        range_begin -> Int2,
+        range_until -> Nullable<Int2>,
         created_at -> Timestamptz,
     }
 }
@@ -359,7 +359,7 @@ diesel::table! {
         relation_type -> Nullable<Text>,
         related_word_id -> Int8,
         semantic_field -> Nullable<Text>,
-        relation_strength -> Nullable<Float4>,
+        relation_strength -> Nullable<Int2>,
         created_at -> Timestamptz,
     }
 }
@@ -404,6 +404,7 @@ diesel::table! {
         id -> Int8,
         word_id -> Int8,
         dictionary_id -> Int8,
+        priority_order -> Nullable<Int4>,
         created_at -> Timestamptz,
     }
 }
@@ -413,6 +414,7 @@ diesel::table! {
         id -> Int8,
         word_id -> Int8,
         etymology_id -> Int8,
+        priority_order -> Nullable<Int4>,
         created_at -> Timestamptz,
     }
 }
