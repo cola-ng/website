@@ -1,92 +1,102 @@
 // Dictionary Data Import Tool
 //
-// This script imports dictionary data from various sources into the database.
-// It parses multiple dictionary formats and populates the dict_ tables.
+// This script imports dictionary data from JSON format into the database.
+// It parses JSON files from endict1 and populates the dict_ tables.
 //
 // Usage:
-//   cargo run --bin import_dict_data [--dict-dir PATH] [--batch-size N]
+//   cargo run --bin import_dict_data [--source-dir PATH] [--audio-dir PATH] [--batch-size N]
 //
-// Dictionary Sources:
-// - 英汉词根辞典(李平武+蒋真,7291条)汇总.txt - Tab-separated format
-// - Youdict优词英语词根词源词典(18677条).txt - Space-separated format
-// - Etym Word Origins Dictionary词源词典46104条.txt - Multi-line format
-// - 英语词根词源记忆词典(31503条).txt - Etymology format
-// - 简明英汉字典增强版(3407926条).txt - Large dictionary
-// - Various other specialized dictionaries
+// Data Source Format:
+// Each line in dict/*.json files contains a JSON object with:
+//   - word: The word/phrase
+//   - sw: Search word (lowercase without spaces)
+//   - definition: Array of English definitions
+//   - translation: Array of Chinese translations
+//   - pos: Part of speech
+//   - exchange: Array of word forms (e.g., "s:schools", "p:schooled")
+//   - examples: Array of example sentences
+//   - phonetic: Phonetic transcription (IPA)
 
 use std::collections::{HashMap, HashSet};
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use chrono::Utc;
 use diesel::prelude::*;
-use diesel::PgConnection;
-use regex::Regex;use diesel::r2d2::Pool;
+use serde::Deserialize;
 
 use colang::db::pool::DieselPool;
-use colang::models::dict::{
-    NewWord, NewWordDefinition, NewWordEtymology, NewWordExample,
-};
 
-// Default dictionary directory
-const DEFAULT_DICT_DIR: &str = r"D:\Works\colang\dicts";
+// Default directories
+const DEFAULT_SOURCE_DIR: &str = r"D:\Works\colang\endict1\dict";
+const DEFAULT_AUDIO_DIR: &str = r"D:\Works\colang\data\audios";
 
 // Default batch size for inserts
 const DEFAULT_BATCH_SIZE: usize = 100;
 
-/// Dictionary entry parsed from source files
+/// JSON entry structure from source files
+#[derive(Debug, Deserialize, Clone)]
+struct JsonDictEntry {
+    word: String,
+    #[serde(rename = "sw")]
+    search_word: String,
+    definition: Vec<String>,
+    translation: Vec<String>,
+    #[serde(rename = "pos")]
+    part_of_speech: Vec<String>,
+    exchange: Vec<String>,
+    examples: Vec<String>,
+    phonetic: String,
+}
+
+/// Word forms extracted from exchange field
 #[derive(Debug, Clone)]
-struct DictEntry {
+struct WordForm {
+    form_type: String,
+    form: String,
+}
+
+/// Dictionary entry ready for import
+#[derive(Debug, Clone)]
+struct ImportEntry {
     word: String,
     word_lower: String,
-    definition_en: Option<String>,
-    definition_zh: Option<String>,
-    etymology_en: Option<String>,
-    etymology_zh: Option<String>,
-    origin_language: Option<String>,
-    origin_word: Option<String>,
-    origin_meaning: Option<String>,
-    example_en: Option<String>,
-    example_zh: Option<String>,
     part_of_speech: Option<String>,
-    source: String,
-}
-
-/// Dictionary file format
-#[derive(Debug, Clone, Copy)]
-enum DictFormat {
-    TabSeparated,   // word\tetymology/definition
-    SpaceSeparated, // word [spaces] word [spaces] definition
-    MultiLine,      // word followed by multi-line etymology
-    Simple,         // Simple word:definition format
-}
-
-/// Dictionary file metadata
-#[derive(Debug, Clone)]
-struct DictFile {
-    path: PathBuf,
-    format: DictFormat,
-    name: String,
+    phonetic: String,
+    definitions_en: Vec<String>,
+    definitions_zh: Vec<String>,
+    word_forms: Vec<WordForm>,
+    examples: Vec<String>,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
     // Parse command line arguments
     let args: Vec<String> = std::env::args().collect();
-    let mut dict_dir = PathBuf::from(DEFAULT_DICT_DIR);
+    let mut source_dir = PathBuf::from(DEFAULT_SOURCE_DIR);
+    let mut audio_dir = PathBuf::from(DEFAULT_AUDIO_DIR);
     let mut batch_size = DEFAULT_BATCH_SIZE;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--dict-dir" => {
+            "--source-dir" => {
                 if i + 1 < args.len() {
-                    dict_dir = PathBuf::from(&args[i + 1]);
+                    source_dir = PathBuf::from(&args[i + 1]);
                     i += 2;
                 } else {
-                    eprintln!("Error: --dict-dir requires a path argument");
+                    eprintln!("Error: --source-dir requires a path argument");
+                    std::process::exit(1);
+                }
+            }
+            "--audio-dir" => {
+                if i + 1 < args.len() {
+                    audio_dir = PathBuf::from(&args[i + 1]);
+                    i += 2;
+                } else {
+                    eprintln!("Error: --audio-dir requires a path argument");
                     std::process::exit(1);
                 }
             }
@@ -114,48 +124,50 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===============================================");
     println!("Dictionary Data Import Tool");
     println!("===============================================");
-    println!("Dictionary directory: {}", dict_dir.display());
+    println!("Source directory: {}", source_dir.display());
+    println!("Audio directory: {}", audio_dir.display());
     println!("Batch size: {}", batch_size);
     println!();
 
     // Initialize database connection
     println!("Initializing database connection...");
+    let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = DieselPool::new(
-        &std::env::var("DATABASE_URL").expect("DATABASE_URL must be set"),
+        &database_url,
         &Default::default(),
         diesel::r2d2::Pool::builder(),
     )?;
     let mut conn = pool.get()?;
 
-    // Discover dictionary files
-    println!("\nScanning for dictionary files...");
-    let dict_files = discover_dict_files(&dict_dir);
-    println!("Found {} dictionary files:", dict_files.len());
-    for file in &dict_files {
-        println!("  - {} ({:?})", file.name, file.format);
-    }
+    // Discover JSON files
+    println!("\nScanning for JSON files...");
+    let json_files = discover_json_files(&source_dir);
+    println!("Found {} JSON files", json_files.len());
 
-    // Import dictionaries
+    // Build audio file cache
+    println!("\nBuilding audio file cache...");
+    let audio_cache = build_audio_cache(&audio_dir);
+    println!("Found {} UK audio files, {} US audio files",
+        audio_cache.uk.len(), audio_cache.us.len());
+
+    // Process all JSON files
     let mut total_entries = 0;
     let mut total_words = 0;
+    let mut total_skipped = 0;
     let start_time = Instant::now();
 
-    for dict_file in &dict_files {
-        println!("\n===============================================");
-        println!("Processing: {}", dict_file.name);
-        println!("===============================================");
+    for json_file in &json_files {
+        println!("\nProcessing: {}", json_file.file_name().unwrap_or_default().to_string_lossy());
 
-        match import_dictionary(&mut conn, dict_file, batch_size) {
+        match import_json_file(&mut conn, json_file, &audio_cache, batch_size) {
             Ok(stats) => {
-                println!("Import completed:");
-                println!("  - Entries processed: {}", stats.entries);
-                println!("  - Words added: {}", stats.words_added);
-                println!("  - Words skipped: {}", stats.words_skipped);
+                println!("  Entries: {}, Added: {}, Skipped: {}", stats.entries, stats.added, stats.skipped);
                 total_entries += stats.entries;
-                total_words += stats.words_added;
+                total_words += stats.added;
+                total_skipped += stats.skipped;
             }
             Err(e) => {
-                eprintln!("Error importing {}: {}", dict_file.name, e);
+                eprintln!("  Error: {}", e);
             }
         }
     }
@@ -167,110 +179,130 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===============================================");
     println!("Total entries processed: {}", total_entries);
     println!("Total words added: {}", total_words);
+    println!("Total words skipped: {}", total_skipped);
     println!("Total time: {:.2}s", elapsed.as_secs_f64());
     println!();
 
     Ok(())
 }
 
+/// Audio file cache for both UK and US pronunciations
+#[derive(Debug, Clone)]
+struct AudioCache {
+    uk: HashMap<String, PathBuf>,
+    us: HashMap<String, PathBuf>,
+}
+
 /// Import statistics
 #[derive(Debug)]
 struct ImportStats {
     entries: usize,
-    words_added: usize,
-    words_skipped: usize,
+    added: usize,
+    skipped: usize,
 }
 
-/// Discover dictionary files in the specified directory
-fn discover_dict_files(dir: &Path) -> Vec<DictFile> {
+/// Discover all JSON files in the source directory
+fn discover_json_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
-    if let Ok(entries) = std::fs::read_dir(dir) {
+    if let Ok(entries) = fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_file() {
-                let name = path
-                    .file_name()
-                    .and_then(|n| n.to_str())
-                    .unwrap_or("")
-                    .to_string();
-
-                // Determine format based on filename
-                let format = if name.contains("英汉词根辞典") || name.contains("汇总") {
-                    DictFormat::TabSeparated
-                } else if name.contains("Youdict") || name.contains("优词") {
-                    DictFormat::SpaceSeparated
-                } else if name.contains("Etym") || name.contains("词源词典") {
-                    DictFormat::MultiLine
-                } else if name.contains("简明英汉字典") || name.contains("增强版") {
-                    DictFormat::Simple
-                } else {
-                    // Try to detect format from content
-                    detect_format_from_content(&path)
-                };
-
-                files.push(DictFile {
-                    path,
-                    format,
-                    name,
-                });
+                if let Some(ext) = path.extension() {
+                    if ext == "json" {
+                        files.push(path);
+                    }
+                }
             }
         }
     }
 
+    files.sort();
     files
 }
 
-/// Detect dictionary format from file content
-fn detect_format_from_content(path: &Path) -> DictFormat {
-    if let Ok(file) = File::open(path) {
-        let reader = BufReader::new(file);
-        for line in reader.lines().take(20).flatten() {
-            if line.contains('\t') {
-                return DictFormat::TabSeparated;
+/// Build a cache of available audio files
+fn build_audio_cache(audio_dir: &Path) -> AudioCache {
+    let mut uk = HashMap::new();
+    let mut us = HashMap::new();
+
+    // Scan UK audio files
+    let uk_dir = audio_dir.join("uk");
+    if let Ok(entries) = fs::read_dir(&uk_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(stem) = path.file_stem() {
+                    let word = stem.to_string_lossy().to_string();
+                    uk.insert(word, path.clone());
+                }
             }
         }
     }
-    DictFormat::Simple
-}
 
-/// Import a single dictionary file
-fn import_dictionary(
-    conn: &mut PgConnection,
-    dict_file: &DictFile,
-    batch_size: usize,
-) -> Result<ImportStats, Box<dyn std::error::Error>> {
-    use colang::db::schema::dict_words;
-
-    let file = File::open(&dict_file.path)?;
-    let reader = BufReader::new(file);
-
-    let mut entries = Vec::new();
-    let mut stats = ImportStats {
-        entries: 0,
-        words_added: 0,
-        words_skipped: 0,
-    };
-
-    // Parse entries based on format
-    match dict_file.format {
-        DictFormat::TabSeparated => {
-            entries = parse_tab_separated(reader, &dict_file.name)?;
-        }
-        DictFormat::SpaceSeparated => {
-            entries = parse_space_separated(reader, &dict_file.name)?;
-        }
-        DictFormat::MultiLine => {
-            entries = parse_multiline(reader, &dict_file.name)?;
-        }
-        DictFormat::Simple => {
-            entries = parse_simple(reader, &dict_file.name)?;
+    // Scan US audio files
+    let us_dir = audio_dir.join("us");
+    if let Ok(entries) = fs::read_dir(&us_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(stem) = path.file_stem() {
+                    let word = stem.to_string_lossy().to_string();
+                    us.insert(word, path.clone());
+                }
+            }
         }
     }
 
-    stats.entries = entries.len();
+    AudioCache { uk, us }
+}
+
+/// Import a single JSON file
+fn import_json_file(
+    conn: &mut PgConnection,
+    json_file: &Path,
+    audio_cache: &AudioCache,
+    batch_size: usize,
+) -> Result<ImportStats, Box<dyn std::error::Error>> {
+    use colang::db::schema::*;
+
+    let file = File::open(json_file)?;
+    let reader = BufReader::new(file);
+
+    let mut entries = Vec::new();
+    let mut line_number = 0;
+
+    // Parse JSON lines
+    for line in reader.lines() {
+        line_number += 1;
+        let line = line?;
+
+        // Skip empty lines
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+
+        // Parse JSON
+        match serde_json::from_str::<JsonDictEntry>(line) {
+            Ok(json_entry) => {
+                if let Some(import_entry) = process_json_entry(json_entry) {
+                    entries.push(import_entry);
+                }
+            }
+            Err(e) => {
+                eprintln!("  Warning: Failed to parse line {}: {}", line_number, e);
+            }
+        }
+    }
+
+    let total_entries = entries.len();
 
     // Process in batches
+    let mut added = 0;
+    let mut skipped = 0;
+
     for chunk in entries.chunks(batch_size) {
         conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
             for entry in chunk {
@@ -282,419 +314,288 @@ fn import_dictionary(
                     .optional()?;
 
                 if let Some(word_id) = existing {
-                    // Word exists, update etymology if missing
-                    if let Some(etymology_zh) = &entry.etymology_zh {
-                        use colang::db::schema::dict_word_etymology;
-
-                        let has_etymology: Option<i64> = dict_word_etymology::table
-                            .select(dict_word_etymology::id)
-                            .filter(dict_word_etymology::word_id.eq(word_id))
-                            .first(conn)
-                            .optional()?;
-
-                        if has_etymology.is_none() {
-                            let new_etymology = NewWordEtymology {
-                                word_id,
-                                origin_language: entry.origin_language.clone(),
-                                origin_word: entry.origin_word.clone(),
-                                origin_meaning: entry.origin_meaning.clone(),
-                                etymology_en: entry.etymology_en.clone(),
-                                etymology_zh: Some(etymology_zh.clone()),
-                                first_attested_year: None,
-                                historical_forms: None,
-                                cognate_words: None,
-                            };
-
-                            diesel::insert_into(dict_word_etymology::table)
-                                .values(&new_etymology)
-                                .execute(conn)?;
-                        }
-                    }
-                    stats.words_skipped += 1;
+                    // Word exists, skip
+                    skipped += 1;
                 } else {
                     // Insert new word
-                    let new_word = NewWord {
-                        word: entry.word.clone(),
-                        word_lower: entry.word_lower.clone(),
-                        word_type: entry.part_of_speech.clone(),
-                        language: None,
-                        frequency: None,
-                        difficulty: None,
-                        syllable_count: None,
-                        is_lemma: Some(true),
-                        word_count: Some(1),
-                        is_active: Some(true),
-                        created_by: None,
-                        updated_by: None,
-                    };
+                    let word_id = insert_word(conn, &entry)?;
 
-                    let word_id: i64 = diesel::insert_into(dict_words::table)
-                        .values(&new_word)
-                        .returning(dict_words::id)
-                        .get_result(conn)?;
+                    // Insert definitions
+                    insert_definitions(conn, word_id, &entry)?;
 
-                    // Insert definition if available
-                    if let Some(definition_en) = &entry.definition_en {
-                        let new_definition = NewWordDefinition {
-                            word_id,
-                            definition_en: definition_en.clone(),
-                            definition_zh: entry.definition_zh.clone(),
-                            part_of_speech: entry.part_of_speech.clone(),
-                            definition_order: Some(1),
-                            register: None,
-                            region: None,
-                            context: None,
-                            usage_notes: None,
-                            is_primary: Some(true),
-                        };
+                    // Insert word forms
+                    insert_word_forms(conn, word_id, &entry.word_forms)?;
 
-                        diesel::insert_into(colang::db::schema::dict_word_definitions::table)
-                            .values(&new_definition)
-                            .execute(conn)?;
-                    }
+                    // Insert pronunciations
+                    insert_pronunciations(conn, word_id, &entry, audio_cache)?;
 
-                    // Insert etymology if available
-                    if let Some(etymology_zh) = &entry.etymology_zh {
-                        let new_etymology = NewWordEtymology {
-                            word_id,
-                            origin_language: entry.origin_language.clone(),
-                            origin_word: entry.origin_word.clone(),
-                            origin_meaning: entry.origin_meaning.clone(),
-                            etymology_en: entry.etymology_en.clone(),
-                            etymology_zh: Some(etymology_zh.clone()),
-                            first_attested_year: None,
-                            historical_forms: None,
-                            cognate_words: None,
-                        };
-
-                        diesel::insert_into(colang::db::schema::dict_word_etymology::table)
-                            .values(&new_etymology)
-                            .execute(conn)?;
-                    }
-
-                    // Insert example if available
-                    if let Some(example_en) = &entry.example_en {
-                        let new_example = NewWordExample {
-                            word_id,
-                            definition_id: None,
-                            sentence_en: example_en.clone(),
-                            sentence_zh: entry.example_zh.clone(),
-                            source: Some(entry.source.clone()),
-                            author: None,
-                            example_order: Some(1),
-                            difficulty: None,
-                            is_common: Some(true),
-                        };
-
-                        diesel::insert_into(colang::db::schema::dict_word_examples::table)
-                            .values(&new_example)
-                            .execute(conn)?;
-                    }
-
-                    stats.words_added += 1;
+                    added += 1;
                 }
             }
             Ok(())
         })?;
     }
 
-    Ok(stats)
+    Ok(ImportStats {
+        entries: total_entries,
+        added,
+        skipped,
+    })
 }
 
-/// Parse tab-separated dictionary format
-fn parse_tab_separated(
-    reader: BufReader<File>,
-    source: &str,
-) -> Result<Vec<DictEntry>, Box<dyn std::error::Error>> {
-    let mut entries = Vec::new();
-    let mut skip_count = 0;
+/// Process a JSON entry into an import entry
+fn process_json_entry(json_entry: JsonDictEntry) -> Option<ImportEntry> {
+    let word = json_entry.word.trim();
+    let word_lower = json_entry.search_word.trim();
 
-    for line in reader.lines() {
-        let line = line?;
-        let line = line.trim();
-
-        // Skip empty lines and headers
-        if line.is_empty() || line.starts_with('#') || line.contains("词根辞典") {
-            continue;
-        }
-
-        let parts: Vec<&str> = line.splitn(2, '\t').collect();
-        if parts.len() < 2 {
-            skip_count += 1;
-            continue;
-        }
-
-        let word = parts[0].trim();
-        let etymology_info = parts[1].trim();
-
-        if word.is_empty() || word.len() > 100 {
-            skip_count += 1;
-            continue;
-        }
-
-        // Extract definition from etymology info
-        let (definition_zh, origin_language, origin_word, origin_meaning) =
-            extract_etymology_info(etymology_info);
-
-        entries.push(DictEntry {
-            word: word.to_string(),
-            word_lower: word.to_lowercase(),
-            definition_en: None,
-            definition_zh: extract_chinese_definition(etymology_info),
-            etymology_en: None,
-            etymology_zh: Some(etymology_info.to_string()),
-            origin_language,
-            origin_word,
-            origin_meaning,
-            example_en: None,
-            example_zh: None,
-            part_of_speech: extract_part_of_speech(etymology_info),
-            source: source.to_string(),
-        });
+    // Skip invalid words
+    if word.is_empty() || word.len() > 200 {
+        return None;
     }
 
-    if skip_count > 0 {
-        println!("  Skipped {} invalid lines", skip_count);
-    }
+    // Extract part of speech (use first one if multiple)
+    let part_of_speech = json_entry.part_of_speech
+        .first()
+        .map(|p| normalize_part_of_speech(p))
+        .flatten();
 
-    Ok(entries)
+    // Parse word forms from exchange field
+    let word_forms = parse_exchange_forms(&json_entry.exchange);
+
+    Some(ImportEntry {
+        word: word.to_string(),
+        word_lower: word_lower.to_string(),
+        part_of_speech,
+        phonetic: json_entry.phonetic,
+        definitions_en: json_entry.definition,
+        definitions_zh: json_entry.translation,
+        word_forms,
+        examples: json_entry.examples,
+    })
 }
 
-/// Parse space-separated dictionary format
-fn parse_space_separated(
-    reader: BufReader<File>,
-    source: &str,
-) -> Result<Vec<DictEntry>, Box<dyn std::error::Error>> {
-    let mut entries = Vec::new();
-    let re = Regex::new(r"^(\S+)\s+(\S+)\s+(.+)$").unwrap();
+/// Normalize part of speech to database values
+fn normalize_part_of_speech(pos: &str) -> Option<String> {
+    let pos_lower = pos.to_lowercase();
+    match pos_lower.as_str() {
+        "n." | "n" | "noun" => Some("noun".to_string()),
+        "v." | "v" | "verb" => Some("verb".to_string()),
+        "adj." | "adj" | "a." | "a" | "adjective" => Some("adjective".to_string()),
+        "adv." | "adv" | "adverb" => Some("adverb".to_string()),
+        "pron." | "pron" | "pronoun" => Some("pronoun".to_string()),
+        "prep." | "prep" | "preposition" => Some("preposition".to_string()),
+        "conj." | "conj" | "conjunction" => Some("conjunction".to_string()),
+        "int." | "interjection" => Some("interjection".to_string()),
+        "art." | "article" => Some("article".to_string()),
+        "abbr." | "abbreviation" => Some("abbreviation".to_string()),
+        "phrase" => Some("phrase".to_string()),
+        "idiom" => Some("idiom".to_string()),
+        _ => None,
+    }
+}
 
-    for line in reader.lines() {
-        let line = line?;
-        let line = line.trim();
+/// Parse exchange field to extract word forms
+/// Exchange format: ["s:schools", "p:schooled", "d:schooled", "3:schools"]
+/// Prefixes: 0=third person, 1=past, 2=past participle, 3=plural, 4=present participle,
+///           5=comparative, 6=superlative, s=plural, p=past participle, i=present participle, d=past
+fn parse_exchange_forms(exchange: &[String]) -> Vec<WordForm> {
+    let mut forms = Vec::new();
 
-        // Skip empty lines and headers
-        if line.is_empty() || line.starts_with('#') || line.contains("词根词源") {
-            continue;
-        }
+    for item in exchange {
+        if let Some(colon_pos) = item.find(':') {
+            let prefix = &item[..colon_pos];
+            let form = &item[colon_pos + 1..];
 
-        if let Some(caps) = re.captures(line) {
-            let word1 = caps.get(1).map(|m| m.as_str()).unwrap_or("");
-            let word2 = caps.get(2).map(|m| m.as_str()).unwrap_or("");
-            let definition = caps.get(3).map(|m| m.as_str()).unwrap_or("");
-
-            // Use the first word if they match, otherwise skip
-            if word1 != word2 && !word1.is_empty() && !word2.is_empty() {
-                // Different words, might be a variant - use first one
-            }
-
-            let word = if word1.is_empty() { word2 } else { word1 };
-
-            if word.is_empty() || word.len() > 100 {
+            if form.is_empty() {
                 continue;
             }
 
-            entries.push(DictEntry {
-                word: word.to_string(),
-                word_lower: word.to_lowercase(),
-                definition_en: None,
-                definition_zh: Some(definition.to_string()),
-                etymology_en: None,
-                etymology_zh: None,
-                origin_language: None,
-                origin_word: None,
-                origin_meaning: None,
-                example_en: extract_example_from_definition(definition),
-                example_zh: None,
-                part_of_speech: None,
-                source: source.to_string(),
+            let form_type = match prefix {
+                "0" => "present",           // Third person singular
+                "1" | "d" => "past",         // Past tense
+                "2" | "p" => "past_participle", // Past participle
+                "3" | "s" => "plural",       // Plural
+                "4" | "i" => "present_participle", // Present participle
+                "5" => "comparative",        // Comparative
+                "6" => "superlative",        // Superlative
+                _ => continue,               // Skip unknown prefixes
+            };
+
+            forms.push(WordForm {
+                form_type: form_type.to_string(),
+                form: form.to_string(),
             });
         }
     }
 
-    Ok(entries)
+    forms
 }
 
-/// Parse multi-line dictionary format
-fn parse_multiline(
-    reader: BufReader<File>,
-    source: &str,
-) -> Result<Vec<DictEntry>, Box<dyn std::error::Error>> {
-    let mut entries = Vec::new();
-    let lines: Vec<String> = reader.lines().filter_map(|l| l.ok()).collect();
+/// Insert a word into the database
+fn insert_word(
+    conn: &mut PgConnection,
+    entry: &ImportEntry,
+) -> Result<i64, Box<dyn std::error::Error>> {
+    use colang::db::schema::dict_words;
 
-    let mut i = 0;
-    while i < lines.len() {
-        let line = lines[i].trim();
-
-        // Skip empty lines and headers
-        if line.is_empty() || line.starts_with('#') || line.contains("词源") {
-            i += 1;
-            continue;
-        }
-
-        // Check if this line is a word entry (starts with a word followed by optional pronunciation)
-        if line.len() < 100 && !line.contains(' ') {
-            let word = line.to_string();
-            let mut etymology_en = String::new();
-            let mut etymology_zh = String::new();
-
-            // Collect subsequent lines as etymology
-            i += 1;
-            while i < lines.len() {
-                let next_line = lines[i].trim();
-                if next_line.is_empty() || next_line.len() < 100 {
-                    break;
-                }
-                etymology_en.push_str(next_line);
-                etymology_en.push('\n');
-                i += 1;
-            }
-
-            if !word.is_empty() {
-                entries.push(DictEntry {
-                    word: word.clone(),
-                    word_lower: word.to_lowercase(),
-                    definition_en: None,
-                    definition_zh: None,
-                    etymology_en: Some(etymology_en.trim().to_string()),
-                    etymology_zh: None,
-                    origin_language: Some("English".to_string()),
-                    origin_word: None,
-                    origin_meaning: None,
-                    example_en: None,
-                    example_zh: None,
-                    part_of_speech: None,
-                    source: source.to_string(),
-                });
-            }
-        } else {
-            i += 1;
-        }
-    }
-
-    Ok(entries)
-}
-
-/// Parse simple dictionary format
-fn parse_simple(
-    reader: BufReader<File>,
-    source: &str,
-) -> Result<Vec<DictEntry>, Box<dyn std::error::Error>> {
-    let mut entries = Vec::new();
-
-    for line in reader.lines() {
-        let line = line?;
-        let line = line.trim();
-
-        // Skip empty lines and headers
-        if line.is_empty() || line.starts_with('#') || line.starts_with('\t') {
-            continue;
-        }
-
-        // Try to parse: word pronunciation definition
-        if let Some(pos) = line.find(' ') {
-            let word = &line[..pos];
-            let rest = &line[pos..].trim();
-
-            if !word.is_empty() && word.len() < 100 {
-                // Extract pronunciation and definition
-                let (pronunciation, definition) = if let Some(end_pos) = rest.find(']') {
-                    let pron = &rest[..=end_pos];
-                    let def = &rest[end_pos + 1..].trim();
-                    (Some(pron.to_string()), Some(def.to_string()))
-                } else {
-                    (None, Some(rest.to_string()))
-                };
-
-                entries.push(DictEntry {
-                    word: word.to_string(),
-                    word_lower: word.to_lowercase(),
-                    definition_en: None,
-                    definition_zh: definition,
-                    etymology_en: None,
-                    etymology_zh: None,
-                    origin_language: None,
-                    origin_word: None,
-                    origin_meaning: None,
-                    example_en: None,
-                    example_zh: None,
-                    part_of_speech: None,
-                    source: source.to_string(),
-                });
-            }
-        }
-    }
-
-    Ok(entries)
-}
-
-/// Extract Chinese definition from etymology info
-fn extract_chinese_definition(info: &str) -> Option<String> {
-    // Look for Chinese characters in the definition
-    let re = Regex::new(r"[\u4e00-\u9fff]+.*").unwrap();
-    re.find(info).map(|m| m.as_str().to_string())
-}
-
-/// Extract etymology information
-fn extract_etymology_info(info: &str) -> (Option<String>, Option<String>, Option<String>, Option<String>) {
-    // Extract origin language (e.g., "L." for Latin, "Gk." for Greek)
-    let origin_language = if info.contains("(L ") || info.contains("L.") {
-        Some("Latin".to_string())
-    } else if info.contains("(Gk ") || info.contains("Gk.") {
-        Some("Greek".to_string())
-    } else if info.contains("(OE ") || info.contains("OE") {
-        Some("Old English".to_string())
-    } else if info.contains("(F ") || info.contains("F.") {
-        Some("French".to_string())
+    // Determine word type based on whether it contains spaces
+    let word_type = if entry.word.contains(' ') {
+        Some("phrase".to_string())
     } else {
-        None
+        entry.part_of_speech.clone()
     };
 
-    // Try to extract origin word and meaning
-    // Format: [词根]: bas, bass (L bassus)=low 低的
-    const ETYMOLOGY_MARKER: &str = "【词根】:";
-    let origin_info = if let Some(start) = info.find(ETYMOLOGY_MARKER) {
-        let rest = &info[start + ETYMOLOGY_MARKER.len()..];
-        if let Some(end) = rest.find('=') {
-            Some(rest[..end].trim().to_string())
+    let word_id: i64 = diesel::insert_into(dict_words::table)
+        .values((
+            dict_words::word.eq(&entry.word),
+            dict_words::word_lower.eq(&entry.word_lower),
+            dict_words::word_type.eq(word_type),
+            dict_words::language.eq("en"),
+            dict_words::is_lemma.eq(true),
+            dict_words::word_count.eq(1),
+            dict_words::is_active.eq(true),
+        ))
+        .returning(dict_words::id)
+        .get_result(conn)?;
+
+    Ok(word_id)
+}
+
+/// Insert definitions for a word
+fn insert_definitions(
+    conn: &mut PgConnection,
+    word_id: i64,
+    entry: &ImportEntry,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use colang::db::schema::dict_word_definitions;
+
+    let mut definition_order = 1;
+
+    // Insert English definitions
+    for definition in &entry.definitions_en {
+        if !definition.is_empty() {
+            diesel::insert_into(dict_word_definitions::table)
+                .values((
+                    dict_word_definitions::word_id.eq(word_id),
+                    dict_word_definitions::language.eq("en"),
+                    dict_word_definitions::definition.eq(definition),
+                    dict_word_definitions::part_of_speech.eq(entry.part_of_speech.clone()),
+                    dict_word_definitions::definition_order.eq(definition_order),
+                    dict_word_definitions::is_primary.eq(definition_order == 1),
+                ))
+                .execute(conn)?;
+            definition_order += 1;
+        }
+    }
+
+    // Insert Chinese translations
+    for translation in &entry.definitions_zh {
+        if !translation.is_empty() {
+            diesel::insert_into(dict_word_definitions::table)
+                .values((
+                    dict_word_definitions::word_id.eq(word_id),
+                    dict_word_definitions::language.eq("zh"),
+                    dict_word_definitions::definition.eq(translation),
+                    dict_word_definitions::part_of_speech.eq(entry.part_of_speech.clone()),
+                    dict_word_definitions::definition_order.eq(definition_order),
+                    dict_word_definitions::is_primary.eq(false),
+                ))
+                .execute(conn)?;
+            definition_order += 1;
+        }
+    }
+
+    Ok(())
+}
+
+/// Insert word forms
+fn insert_word_forms(
+    conn: &mut PgConnection,
+    word_id: i64,
+    forms: &[WordForm],
+) -> Result<(), Box<dyn std::error::Error>> {
+    use colang::db::schema::dict_word_forms;
+
+    for word_form in forms {
+        diesel::insert_into(dict_word_forms::table)
+            .values((
+                dict_word_forms::word_id.eq(word_id),
+                dict_word_forms::form_type.eq(&word_form.form_type),
+                dict_word_forms::form.eq(&word_form.form),
+                dict_word_forms::is_irregular.eq(false),
+            ))
+            .execute(conn)?;
+    }
+
+    Ok(())
+}
+
+/// Insert pronunciations for a word
+fn insert_pronunciations(
+    conn: &mut PgConnection,
+    word_id: i64,
+    entry: &ImportEntry,
+    audio_cache: &AudioCache,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use colang::db::schema::dict_pronunciations;
+
+    let mut has_primary = false;
+
+    // Check for UK pronunciation
+    if let Some(uk_audio_path) = audio_cache.uk.get(&entry.word_lower) {
+        let ipa = if !entry.phonetic.is_empty() {
+            entry.phonetic.clone()
         } else {
-            None
-        }
-    } else {
-        None
-    };
+            format!("[UK: {}]", entry.word)
+        };
 
-    (None, origin_language, origin_info, None)
-}
+        diesel::insert_into(dict_pronunciations::table)
+            .values((
+                dict_pronunciations::word_id.eq(word_id),
+                dict_pronunciations::ipa.eq(ipa),
+                dict_pronunciations::audio_path.eq(uk_audio_path.to_str()),
+                dict_pronunciations::dialect.eq("UK"),
+                dict_pronunciations::is_primary.eq(!has_primary),
+            ))
+            .execute(conn)?;
 
-/// Extract part of speech from etymology info
-fn extract_part_of_speech(info: &str) -> Option<String> {
-    if info.contains(" v.") || info.contains(" v ") {
-        Some("verb".to_string())
-    } else if info.contains(" n.") || info.contains(" n ") {
-        Some("noun".to_string())
-    } else if info.contains(" a.") || info.contains(" adj ") {
-        Some("adjective".to_string())
-    } else if info.contains(" adv.") || info.contains(" adv ") {
-        Some("adverb".to_string())
-    } else {
-        None
+        has_primary = true;
     }
-}
 
-/// Extract example sentence from definition
-fn extract_example_from_definition(definition: &str) -> Option<String> {
-    // Look for example sentences in the definition
-    // Format: ...／Example sentence. 翻译
-    const EXAMPLE_MARKER: &str = "／";
-    if let Some(pos) = definition.find(EXAMPLE_MARKER) {
-        let example_part = &definition[pos + EXAMPLE_MARKER.len()..];
-        if let Some(end) = example_part.find('。') {
-            let char_count = example_part[..end].chars().count() + 1;
-            return Some(example_part.chars().take(char_count).collect::<String>().trim().to_string());
-        }
+    // Check for US pronunciation
+    if let Some(us_audio_path) = audio_cache.us.get(&entry.word_lower) {
+        let ipa = if !entry.phonetic.is_empty() {
+            entry.phonetic.clone()
+        } else {
+            format!("[US: {}]", entry.word)
+        };
+
+        diesel::insert_into(dict_pronunciations::table)
+            .values((
+                dict_pronunciations::word_id.eq(word_id),
+                dict_pronunciations::ipa.eq(ipa),
+                dict_pronunciations::audio_path.eq(us_audio_path.to_str()),
+                dict_pronunciations::dialect.eq("US"),
+                dict_pronunciations::is_primary.eq(!has_primary),
+            ))
+            .execute(conn)?;
+
+        has_primary = true;
     }
-    None
+
+    // If no audio file but has phonetic, still add a pronunciation entry
+    if !has_primary && !entry.phonetic.is_empty() {
+        diesel::insert_into(dict_pronunciations::table)
+            .values((
+                dict_pronunciations::word_id.eq(word_id),
+                dict_pronunciations::ipa.eq(&entry.phonetic),
+                dict_pronunciations::dialect.eq("general" as &str),
+                dict_pronunciations::is_primary.eq(true),
+            ))
+            .execute(conn)?;
+    }
+
+    Ok(())
 }
 
 /// Print usage information
@@ -705,10 +606,13 @@ fn print_usage() {
     println!("  cargo run --bin import_dict_data [OPTIONS]");
     println!();
     println!("Options:");
-    println!("  --dict-dir <PATH>   Dictionary directory (default: {})", DEFAULT_DICT_DIR);
-    println!("  --batch-size <N>    Batch size for inserts (default: {})", DEFAULT_BATCH_SIZE);
-    println!("  --help              Show this help message");
+    println!("  --source-dir <PATH>  Source directory with JSON files");
+    println!("                      (default: {})", DEFAULT_SOURCE_DIR);
+    println!("  --audio-dir <PATH>   Audio directory with uk/us subdirs");
+    println!("                      (default: {})", DEFAULT_AUDIO_DIR);
+    println!("  --batch-size <N>     Batch size for inserts (default: {})", DEFAULT_BATCH_SIZE);
+    println!("  --help               Show this help message");
     println!();
     println!("Environment:");
-    println!("  DATABASE_URL        PostgreSQL connection URL");
+    println!("  DATABASE_URL         PostgreSQL connection URL");
 }

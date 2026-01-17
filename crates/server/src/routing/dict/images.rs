@@ -72,3 +72,19 @@ pub async fn create_image(req: &mut Request) -> JsonResult<WordImage> {
     json_ok(created)
 }
 
+#[handler]
+pub async fn delete_image(req: &mut Request) -> JsonResult<()> {
+    let image_id = super::get_path_id(req, "image_id")?;
+    with_conn(move |conn| {
+        diesel::delete(
+            dict_word_images::table.filter(
+                dict_word_images::id.eq(image_id)
+            )
+        )
+        .execute(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete image"))?;
+    json_ok(())
+}
+

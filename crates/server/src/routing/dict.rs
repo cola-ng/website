@@ -138,6 +138,10 @@ pub fn router() -> Router {
                 .get(images::list_images)
                 .post(images::create_image),
         )
+        .push(
+            Router::with_path("words/{id}/images/{image_id}")
+                .delete(images::delete_image),
+        )
 }
 
 pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
@@ -228,55 +232,6 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .filter(dict_word_collocations::word_id.eq(word_id))
             .load::<WordCollocation>(conn)?;
 
-        let family_out: Vec<(WordFamilyLink, Word)> = dict_word_family::table
-            .inner_join(dict_words::table.on(dict_word_family::related_word_id.eq(dict_words::id)))
-            .filter(dict_word_family::root_word_id.eq(word_id))
-            .load(conn)?;
-        let family_in: Vec<(WordFamilyLink, Word)> = dict_word_family::table
-            .inner_join(dict_words::table.on(dict_word_family::root_word_id.eq(dict_words::id)))
-            .filter(dict_word_family::related_word_id.eq(word_id))
-            .load(conn)?;
-
-        let mut word_family: Vec<WordFamilyView> = Vec::new();
-        word_family.extend(family_out.into_iter().map(|(link, w)| WordFamilyView {
-            link,
-            related: WordRef {
-                id: w.id,
-                word: w.word,
-            },
-        }));
-        word_family.extend(family_in.into_iter().map(|(link, w)| WordFamilyView {
-            link,
-            related: WordRef {
-                id: w.id,
-                word: w.word,
-            },
-        }));
-
-        let phrases: Vec<Phrase> = dict_phrases::table
-            .inner_join(
-                dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)),
-            )
-            .filter(dict_phrase_words::word_id.eq(word_id))
-            .filter(
-                dict_phrases::phrase_type
-                    .is_null()
-                    .or(dict_phrases::phrase_type.ne(Some("idiom"))),
-            )
-            .select(dict_phrases::all_columns)
-            .distinct()
-            .load(conn)?;
-
-        let idioms: Vec<Phrase> = dict_phrases::table
-            .inner_join(
-                dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)),
-            )
-            .filter(dict_phrase_words::word_id.eq(word_id))
-            .filter(dict_phrases::phrase_type.eq(Some("idiom")))
-            .select(dict_phrases::all_columns)
-            .distinct()
-            .load(conn)?;
-
         let categories = dict_categories::table
             .filter(
                 dict_categories::id.eq_any(
@@ -286,14 +241,6 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
                 ),
             )
             .load::<Category>(conn)?;
-
-        let etymology = dict_word_etymology::table
-            .filter(dict_word_etymology::word_id.eq(word_id))
-            .load::<WordEtymology>(conn)?;
-
-        let usage_notes = dict_word_usage_notes::table
-            .filter(dict_word_usage_notes::word_id.eq(word_id))
-            .load::<WordUsageNote>(conn)?;
 
         let images = dict_word_images::table
             .filter(dict_word_images::word_id.eq(word_id))
@@ -308,12 +255,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             antonyms,
             forms,
             collocations,
-            word_family,
-            phrases,
-            idioms,
             categories,
-            etymology,
-            usage_notes,
             images,
         })
     })

@@ -63,8 +63,8 @@ pub struct UpdateWord {
 pub struct WordDefinition {
     pub id: i64,
     pub word_id: i64,
-    pub definition_en: String,
-    pub definition_zh: Option<String>,
+    pub language: String,
+    pub definition: String,
     pub part_of_speech: Option<String>,
     pub definition_order: Option<i32>,
     pub register: Option<String>,
@@ -79,8 +79,8 @@ pub struct WordDefinition {
 #[diesel(table_name = dict_word_definitions)]
 pub struct NewWordDefinition {
     pub word_id: i64,
-    pub definition_en: String,
-    pub definition_zh: Option<String>,
+    pub language: String,
+    pub definition: String,
     pub part_of_speech: Option<String>,
     pub definition_order: Option<i32>,
     pub register: Option<String>,
@@ -246,82 +246,7 @@ pub struct NewWordCollocation {
     pub is_common: Option<bool>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_family)]
-pub struct WordFamilyLink {
-    pub id: i64,
-    pub root_word_id: i64,
-    pub related_word_id: i64,
-    pub relationship_type: Option<String>,
-    pub morpheme: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
 
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_family)]
-pub struct NewWordFamilyLink {
-    pub root_word_id: i64,
-    pub related_word_id: i64,
-    pub relationship_type: Option<String>,
-    pub morpheme: Option<String>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_phrases)]
-pub struct Phrase {
-    pub id: i64,
-    pub phrase: String,
-    pub phrase_lower: String,
-    pub phrase_type: Option<String>,
-    pub meaning_en: String,
-    pub meaning_zh: Option<String>,
-    pub origin: Option<String>,
-    pub example_en: Option<String>,
-    pub example_zh: Option<String>,
-    pub difficulty: Option<i16>,
-    pub frequency: Option<i16>,
-    pub is_active: Option<bool>,
-    pub created_by: Option<i64>,
-    pub updated_by: Option<i64>,
-    pub updated_at: DateTime<Utc>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_phrases)]
-pub struct NewPhrase {
-    pub phrase: String,
-    pub phrase_lower: String,
-    pub phrase_type: Option<String>,
-    pub meaning_en: String,
-    pub meaning_zh: Option<String>,
-    pub origin: Option<String>,
-    pub example_en: Option<String>,
-    pub example_zh: Option<String>,
-    pub difficulty: Option<i16>,
-    pub frequency: Option<i16>,
-    pub is_active: Option<bool>,
-    pub created_by: Option<i64>,
-    pub updated_by: Option<i64>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_phrase_words)]
-pub struct PhraseWord {
-    pub id: i64,
-    pub phrase_id: i64,
-    pub word_id: i64,
-    pub word_position: i32,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_phrase_words)]
-pub struct NewPhraseWord {
-    pub phrase_id: i64,
-    pub word_id: i64,
-    pub word_position: i32,
-}
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_categories)]
@@ -357,59 +282,7 @@ pub struct NewWordCategory {
     pub confidence: Option<i16>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_etymology)]
-pub struct WordEtymology {
-    pub id: i64,
-    pub word_id: i64,
-    pub origin_language: Option<String>,
-    pub origin_word: Option<String>,
-    pub origin_meaning: Option<String>,
-    pub etymology_en: Option<String>,
-    pub etymology_zh: Option<String>,
-    pub first_attested_year: Option<i32>,
-    pub historical_forms: Option<serde_json::Value>,
-    pub cognate_words: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
-}
 
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_etymology)]
-pub struct NewWordEtymology {
-    pub word_id: i64,
-    pub origin_language: Option<String>,
-    pub origin_word: Option<String>,
-    pub origin_meaning: Option<String>,
-    pub etymology_en: Option<String>,
-    pub etymology_zh: Option<String>,
-    pub first_attested_year: Option<i32>,
-    pub historical_forms: Option<serde_json::Value>,
-    pub cognate_words: Option<serde_json::Value>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_usage_notes)]
-pub struct WordUsageNote {
-    pub id: i64,
-    pub word_id: i64,
-    pub note_type: Option<String>,
-    pub note_en: String,
-    pub note_zh: Option<String>,
-    pub examples_en: Option<serde_json::Value>,
-    pub examples_zh: Option<serde_json::Value>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_usage_notes)]
-pub struct NewWordUsageNote {
-    pub word_id: i64,
-    pub note_type: Option<String>,
-    pub note_en: String,
-    pub note_zh: Option<String>,
-    pub examples_en: Option<serde_json::Value>,
-    pub examples_zh: Option<serde_json::Value>,
-}
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_word_images)]
@@ -458,12 +331,6 @@ pub struct WordAntonymView {
 }
 
 #[derive(Serialize, Debug)]
-pub struct WordFamilyView {
-    pub link: WordFamilyLink,
-    pub related: WordRef,
-}
-
-#[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
     pub definitions: Vec<WordDefinition>,
@@ -473,12 +340,7 @@ pub struct WordQueryResponse {
     pub antonyms: Vec<WordAntonymView>,
     pub forms: Vec<WordForm>,
     pub collocations: Vec<WordCollocation>,
-    pub word_family: Vec<WordFamilyView>,
-    pub phrases: Vec<Phrase>,
-    pub idioms: Vec<Phrase>,
     pub categories: Vec<Category>,
-    pub etymology: Vec<WordEtymology>,
-    pub usage_notes: Vec<WordUsageNote>,
     pub images: Vec<WordImage>,
 }
 
