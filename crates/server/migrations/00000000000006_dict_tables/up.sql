@@ -364,17 +364,3 @@ CREATE TABLE IF NOT EXISTS dict_word_images (
 );
 
 CREATE INDEX IF NOT EXISTS idx_dict_images_word ON dict_word_images(word_id);
-
--- Table: dict_related_topics - Topics and themes related to words
-CREATE TABLE IF NOT EXISTS dict_related_topics (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    topic_name TEXT NOT NULL,                           -- 主题名称
-    topic_category TEXT,                                -- 主题分类
-    relevance_score REAL CHECK(relevance_score BETWEEN 0 AND 1), -- 相关性评分 (0-1)
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(word_id, topic_name)
-);
-
-CREATE INDEX IF NOT EXISTS idx_dict_topics_word ON dict_related_topics(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_topics_name ON dict_related_topics(topic_name);

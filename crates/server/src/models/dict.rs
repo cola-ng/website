@@ -330,26 +330,6 @@ pub struct NewWordCategory {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_related_topics)]
-pub struct DictRelatedTopic {
-    pub id: i64,
-    pub word_id: i64,
-    pub topic_name: String,
-    pub topic_category: Option<String>,
-    pub relevance_score: Option<f32>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_related_topics)]
-pub struct NewDictRelatedTopic {
-    pub word_id: i64,
-    pub topic_name: String,
-    pub topic_category: Option<String>,
-    pub relevance_score: Option<f32>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_word_etymology)]
 pub struct WordEtymology {
     pub id: i64,
