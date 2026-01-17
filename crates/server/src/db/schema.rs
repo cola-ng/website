@@ -337,6 +337,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_word_etymologies (id) {
+        id -> Int8,
+        word_id -> Int8,
+        etymolog_id -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_word_etymology (id) {
         id -> Int8,
         word_id -> Int8,
@@ -407,6 +416,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_word_lemmas (id) {
+        id -> Int8,
+        word_id -> Int8,
+        lemma_word_id -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_word_pronunciations (id) {
         id -> Int8,
         word_id -> Int8,
@@ -466,11 +484,6 @@ diesel::table! {
         difficulty_level -> Nullable<Int4>,
         syllable_count -> Nullable<Int4>,
         is_lemma -> Nullable<Bool>,
-        lemma_id -> Nullable<Int8>,
-        audio_url -> Nullable<Text>,
-        audio_path -> Nullable<Text>,
-        phonetic_transcription -> Nullable<Text>,
-        ipa_text -> Nullable<Text>,
         word_count -> Nullable<Int4>,
         is_active -> Nullable<Bool>,
         created_by -> Nullable<Int8>,
@@ -576,7 +589,7 @@ diesel::table! {
         ai_feedback_en -> Nullable<Text>,
         ai_feedback_zh -> Nullable<Text>,
         waveform_data -> Nullable<Jsonb>,
-        attempted_at -> Timestamptz,
+        created_at -> Timestamptz,
     }
 }
 
@@ -636,7 +649,8 @@ diesel::table! {
         session_id -> Text,
         success_level -> Nullable<Int4>,
         notes -> Nullable<Text>,
-        practiced_at -> Timestamptz,
+        updated_at -> Timestamptz,
+        created_at -> Timestamptz,
     }
 }
 
@@ -687,11 +701,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_word_categories,
     dict_word_collocations,
     dict_word_definitions,
+    dict_word_etymologies,
     dict_word_etymology,
     dict_word_examples,
     dict_word_family,
     dict_word_forms,
     dict_word_images,
+    dict_word_lemmas,
     dict_word_pronunciations,
     dict_word_synonyms,
     dict_word_thesaurus,

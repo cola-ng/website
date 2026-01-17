@@ -12,11 +12,6 @@ CREATE TABLE IF NOT EXISTS dict_words (
     difficulty_level INTEGER CHECK(difficulty_level BETWEEN 1 AND 5), -- 难度等级 (1-5)，1 最简单，5 最难
     syllable_count INTEGER DEFAULT 1,                   -- 音节数量
     is_lemma BOOLEAN DEFAULT TRUE,                      -- 是否为词元（词根/原形）
-    lemma_id BIGINT,                                    -- 关联的词元 ID
-    audio_url TEXT,                                     -- 音频文件 URL
-    audio_path TEXT,                                    -- 音频文件存储路径
-    phonetic_transcription TEXT,                        -- 音标（任意格式）
-    ipa_text TEXT,                                      -- 国际音标 (IPA)
     word_count INTEGER DEFAULT 0,                       -- 单词出现次数统计
     is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
     created_by BIGINT,                                  -- 创建者用户 ID
@@ -30,7 +25,6 @@ CREATE INDEX IF NOT EXISTS idx_dict_words_word_lower ON dict_words(word_lower);
 CREATE INDEX IF NOT EXISTS idx_dict_words_word_type ON dict_words(word_type);
 CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency_score DESC);
 CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty_level);
-CREATE INDEX IF NOT EXISTS idx_dict_words_lemma ON dict_words(lemma_id);
 
 -- Table: dict_word_definitions - Word definitions (multiple per word)
 CREATE TABLE IF NOT EXISTS dict_word_definitions (
@@ -51,6 +45,16 @@ CREATE TABLE IF NOT EXISTS dict_word_definitions (
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_word ON dict_word_definitions(word_id, definition_order);
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_pos ON dict_word_definitions(part_of_speech);
 
+CREATE TABLE IF NOT EXISTS dict_word_lemmas (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    word_id BIGINT NOT NULL,                            -- 关联单词 ID
+    lemma_word_id BIGINT NOT NULL,                    -- 同义词单词 ID
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
+    UNIQUE(word_id, lemma_word_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dict_word_lemmas_word ON dict_word_lemmas(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_word_lemmas_lemma_word ON dict_word_lemmas(word_id, lemma_word_id);
+
 -- Table: dict_word_pronunciations - Word pronunciations
 CREATE TABLE IF NOT EXISTS dict_word_pronunciations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
@@ -62,7 +66,6 @@ CREATE TABLE IF NOT EXISTS dict_word_pronunciations (
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要发音
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-
 CREATE INDEX IF NOT EXISTS idx_dict_pronunciations_word ON dict_word_pronunciations(word_id, dialect);
 
 -- Table: dict_word_examples - Example sentences
@@ -144,6 +147,15 @@ CREATE TABLE IF NOT EXISTS dict_word_etymology (
     first_attested_year INTEGER,                        -- 首次出现的年份
     historical_forms JSONB,                              -- 历史形式 (JSONB)
     cognate_words JSONB,                                -- 同源词 (JSONB)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
+);
+CREATE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymology(word_id);
+
+
+CREATE TABLE IF NOT EXISTS dict_word_etymologies (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    word_id BIGINT NOT NULL,                            -- 关联单词 ID
+    etymolog_id TEXT,                               -- 起源语言
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 

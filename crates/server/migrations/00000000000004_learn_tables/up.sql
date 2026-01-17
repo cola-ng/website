@@ -98,10 +98,10 @@ CREATE TABLE IF NOT EXISTS learn_word_practices (
     session_id TEXT NOT NULL,
     success_level INTEGER CHECK(success_level BETWEEN 1 AND 5),
     notes TEXT,
-    practiced_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE INDEX IF NOT EXISTS idx_learn_practices_word ON learn_word_practices(word_id, practiced_at);
+CREATE INDEX IF NOT EXISTS idx_learn_practices_word ON learn_word_practices(word_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_word_practices(user_id, session_id);
 
 -- Table: learn_read_practices - Log of user's reading practice attempts
@@ -119,11 +119,11 @@ CREATE TABLE IF NOT EXISTS learn_read_practices (
     ai_feedback_en TEXT,
     ai_feedback_zh TEXT,
     waveform_data JSONB,
-    attempted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_read_ractices_sentence ON learn_read_practices(sentence_id, attempted_at);
-CREATE INDEX IF NOT EXISTS idx_read_ractices_user_session ON learn_read_practices(user_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_read_practices_sentence ON learn_read_practices(sentence_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_read_practices_user_session ON learn_read_practices(user_id, session_id);
 
 -- Table: learn_achievements - Track user achievements and milestones
 CREATE TABLE IF NOT EXISTS learn_achievements (
