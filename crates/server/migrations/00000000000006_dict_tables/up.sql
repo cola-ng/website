@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS dict_dictionaries (
     total_entries BIGINT DEFAULT 0,                     -- 总词条数
     is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
     is_official BOOLEAN DEFAULT FALSE,                  -- 是否为官方字典
-    priority_order INTEGER DEFAULT 100,                 -- 优先级（越小越优先）
+    priority_order INTEGER,                 -- 优先级（越小越优先）
     created_by BIGINT,                                  -- 创建者用户 ID
     updated_by BIGINT,                                  -- 更新者用户 ID
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 更新时间
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS dict_words (
     difficulty SMALLINT CHECK(difficulty BETWEEN 1 AND 10), -- 难度等级 (1-5)，1 最简单，5 最难
     syllable_count SMALLINT,                   -- 音节数量
     is_lemma BOOLEAN DEFAULT TRUE,                      -- 是否为词元（词根/原形）
-    word_count INTEGER DEFAULT 0,                       -- 单词数量
+    word_count INTEGER,                       -- 单词数量
     is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
     created_by BIGINT,                                  -- 创建者用户 ID
     updated_by BIGINT,                                  -- 更新者用户 ID
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
     id BIGSERIAL PRIMARY KEY,                          -- Primary key ID
     word_id BIGINT NOT NULL,                            -- Associated word ID
     dictionary_id BIGINT NOT NULL,                      -- Associated dictionary ID
-    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
+    priority_order INTEGER,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- Unique constraint to ensure each word-dictionary pair is only added once
 );
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(word_id);
@@ -123,7 +123,7 @@ CREATE TABLE IF NOT EXISTS dict_word_sentences (
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     definition_id BIGINT,                               -- 关联释义 ID
     sentence_id BIGINT NOT NULL,                               -- 关联释义 ID
-    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
+    priority_order INTEGER,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
@@ -148,7 +148,7 @@ CREATE TABLE IF NOT EXISTS dict_word_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     etymology_id BIGINT NOT NULL,                       -- 关联语源 ID
-    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
+    priority_order INTEGER,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymologies(word_id, etymology_id);

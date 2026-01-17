@@ -89,26 +89,6 @@ pub struct NewDefinition {
     pub usage_notes: Option<String>,
     pub is_primary: Option<bool>,
 }
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_sentences)]
-pub struct WordSentence {
-    pub id: i64,
-    pub word_id: i64,
-    pub definition_id: Option<i64>,
-    pub sentence_id: i64,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_sentences)]
-pub struct NewWordSentence {
-    pub word_id: i64,
-    pub definition_id: Option<i64>,
-    pub sentence_id: i64,
-    pub priority_order: Option<i32>,
-}
-
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_sentences)]
 pub struct Sentence {
@@ -117,7 +97,6 @@ pub struct Sentence {
     pub sentence: String,
     pub source: Option<String>,
     pub author: Option<String>,
-    pub priority_order: Option<i32>,
     pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
     pub created_at: DateTime<Utc>,
@@ -132,6 +111,26 @@ pub struct NewSentence {
     pub author: Option<String>,
     pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
+}
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_word_sentences)]
+pub struct WordSentence {
+    pub id: i64,
+    pub word_id: i64,
+    pub definition_id: Option<i64>,
+    pub sentence_id: i64,
+    pub priority_order: Option<i32>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_word_sentences)]
+pub struct NewWordSentence {
+    pub word_id: i64,
+    pub definition_id: Option<i64>,
+    pub sentence_id: i64,
+    pub priority_order: Option<i32>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -246,6 +245,27 @@ pub struct NewImage {
     pub created_by: Option<i64>,
 }
 
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_relations)]
+pub struct Relation {
+    pub id: i64,
+    pub word_id: i64,
+    pub relation_type: Option<String>,
+    pub related_word_id: i64,
+    pub semantic_field: Option<String>,
+    pub relation_strength: Option<f32>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_relations)]
+pub struct NewRelation {
+    pub word_id: i64,
+    pub relation_type: Option<String>,
+    pub related_word_id: i64,
+    pub semantic_field: Option<String>,
+    pub relation_strength: Option<f32>,
+}
 
 #[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
@@ -378,4 +398,3 @@ pub struct NewWordEtymology {
     pub word_id: i64,
     pub etymology_id: i64,
 }
-

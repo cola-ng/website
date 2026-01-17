@@ -23,6 +23,7 @@ pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<Definition>> 
 
 #[derive(Deserialize)]
 pub struct CreateDefinitionRequest {
+    pub language: String,
     pub definition: String,
     pub part_of_speech: Option<String>,
     pub definition_order: Option<i32>,
@@ -50,6 +51,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<Definition> {
         diesel::insert_into(dict_definitions::table)
             .values(&NewDefinition {
                 word_id,
+                language: input.language,
                 definition: input.definition.trim().to_string(),
                 part_of_speech: input.part_of_speech,
                 definition_order: input.definition_order,

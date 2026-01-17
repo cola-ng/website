@@ -1,4 +1,5 @@
 use diesel::prelude::*;
+use itertools::Itertools;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -72,8 +73,8 @@ pub fn router() -> Router {
         )
         .push(
             Router::with_path("words/{id}/etymology")
-                .get(relation::list_etymology)
-                .post(relation::create_etymology),
+                .get(etymology::list_etymology)
+                .post(etymology::create_etymology),
         )
         .push(
             Router::with_path("words/{id}/images")
@@ -164,9 +165,22 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .filter(dict_images::word_id.eq(word_id))
             .load::<Image>(conn)?;
 
-        let etymologies = dict_etymologies::table
-            .filter(dict_etymologies::word_id.eq(word_id))
-            .load::<Etymology>(conn)?;
+        let relations = dict_relations::table
+            .filter(dict_relations::word_id.eq(word_id))
+            .load::<Relation>(conn)?;
+
+        let etymology_ids = dict_word_etymologies::table
+            .filter(dict_word_etymologies::word_id.eq(word_id))
+            .select(dict_word_etymologies::etymology_id)
+            .load::<i64>(conn)?;
+
+        let etymologies = if etymology_ids.is_empty() {
+            Vec::new()
+        } else {
+            dict_etymologies::table
+                .filter(dict_etymologies::id.eq_any(&etymology_ids))
+                .load::<Etymology>(conn)?
+        };
 
         Ok(WordQueryResponse {
             word: word_record,

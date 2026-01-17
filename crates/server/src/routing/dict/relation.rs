@@ -22,10 +22,10 @@ pub async fn list_relation(req: &mut Request) -> JsonResult<Vec<Relation>> {
 
 #[derive(Deserialize)]
 pub struct CreateRelationRequest {
-    pub relation_type: String,
+    pub relation_type: Option<String>,
     pub related_word_id: i64,
     pub semantic_field: Option<String>,
-    pub relation_strength: Option<i16>,
+    pub relation_strength: Option<f32>,
 }
 #[handler]
 pub async fn create_relation(req: &mut Request) -> JsonResult<Relation> {

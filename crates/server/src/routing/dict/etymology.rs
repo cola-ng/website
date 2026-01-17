@@ -11,9 +11,18 @@ use crate::{JsonResult, json_ok};
 pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<Etymology>> {
     let word_id = super::get_path_id(req, "id")?;
     let etymology: Vec<Etymology> = with_conn(move |conn| {
-        dict_etymologies::table
-            .filter(dict_etymologies::word_id.eq(word_id))
-            .load::<Etymology>(conn)
+        let etymology_ids = dict_word_etymologies::table
+            .filter(dict_word_etymologies::word_id.eq(word_id))
+            .select(dict_word_etymologies::etymology_id)
+            .load::<i64>(conn)?;
+
+        if etymology_ids.is_empty() {
+            Ok(Vec::new())
+        } else {
+            dict_etymologies::table
+                .filter(dict_etymologies::id.eq_any(&etymology_ids))
+                .load::<Etymology>(conn)
+        }
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch etymology"))?;
@@ -41,19 +50,28 @@ pub async fn create_etymology(req: &mut Request) -> JsonResult<Etymology> {
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let created: Etymology = with_conn(move |conn| {
-        diesel::insert_into(dict_etymologies::table)
+        let etymology = diesel::insert_into(dict_etymologies::table)
             .values(&NewEtymology {
-                word_id,
                 origin_language: input.origin_language,
                 origin_word: input.origin_word,
                 origin_meaning: input.origin_meaning,
-                etymology_en: input.etymology_en,
-                etymology_zh: input.etymology_zh,
+                language: input.etymology_en.clone().unwrap_or_default(),
+                etymology: input.etymology_zh.clone().unwrap_or_default(),
                 first_attested_year: input.first_attested_year,
                 historical_forms: input.historical_forms,
                 cognate_words: input.cognate_words,
             })
-            .get_result::<Etymology>(conn)
+            .get_result::<Etymology>(conn)?;
+
+        // Link the etymology to the word
+        diesel::insert_into(dict_word_etymologies::table)
+            .values(&NewWordEtymology {
+                word_id,
+                etymology_id: etymology.id,
+            })
+            .execute(conn)?;
+
+        Ok(etymology)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create etymology"))?;
