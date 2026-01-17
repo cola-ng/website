@@ -8,16 +8,16 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_relation(req: &mut Request) -> JsonResult<Vec<WordRelation>> {
+pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<WordRelation>> {
     let word_id = super::get_path_id(req, "id")?;
-    let relation: Vec<WordRelation> = with_conn(move |conn| {
-        dict_word_relations::table
-            .filter(dict_word_relations::word_id.eq(word_id))
+    let etymology: Vec<WordRelation> = with_conn(move |conn| {
+        dict_word_etymology::table
+            .filter(dict_word_etymology::word_id.eq(word_id))
             .load::<WordRelation>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to fetch relation"))?;
-    json_ok(relation)
+    .map_err(|_| StatusError::internal_server_error().brief("failed to fetch etymology"))?;
+    json_ok(etymology)
 }
 
 #[derive(Deserialize)]
@@ -25,15 +25,15 @@ pub struct CreateRelationRequest {
     pub origin_language: Option<String>,
     pub origin_word: Option<String>,
     pub origin_meaning: Option<String>,
-    pub relation_en: Option<String>,
-    pub relation_zh: Option<String>,
+    pub etymology_en: Option<String>,
+    pub etymology_zh: Option<String>,
     pub first_attested_year: Option<i32>,
     pub historical_forms: Option<serde_json::Value>,
     pub cognate_words: Option<serde_json::Value>,
 }
 
 #[handler]
-pub async fn create_relation(req: &mut Request) -> JsonResult<WordRelation> {
+pub async fn create_etymology(req: &mut Request) -> JsonResult<WordRelation> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateRelationRequest = req
         .parse_json()
@@ -41,14 +41,14 @@ pub async fn create_relation(req: &mut Request) -> JsonResult<WordRelation> {
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     let created: WordRelation = with_conn(move |conn| {
-        diesel::insert_into(dict_word_relations::table)
+        diesel::insert_into(dict_word_etymology::table)
             .values(&NewWordRelation {
                 word_id,
                 origin_language: input.origin_language,
                 origin_word: input.origin_word,
                 origin_meaning: input.origin_meaning,
-                relation_en: input.relation_en,
-                relation_zh: input.relation_zh,
+                etymology_en: input.etymology_en,
+                etymology_zh: input.etymology_zh,
                 first_attested_year: input.first_attested_year,
                 historical_forms: input.historical_forms,
                 cognate_words: input.cognate_words,
@@ -56,7 +56,7 @@ pub async fn create_relation(req: &mut Request) -> JsonResult<WordRelation> {
             .get_result::<WordRelation>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create relation"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create etymology"))?;
 
     json_ok(created)
 }

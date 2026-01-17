@@ -162,7 +162,7 @@ export function DictPage() {
               <div className="bg-white rounded-2xl shadow-lg p-8">
                 <h3 className="text-2xl font-bold text-gray-900 mb-4 flex items-center gap-2">
                   <ChevronRight className="w-6 h-6 text-indigo-500" />
-                  Examples
+                  Sentences
                 </h3>
                 <div className="space-y-3">
                   {(result.examples ?? []).map((example) => (
@@ -266,14 +266,14 @@ export function DictPage() {
                   {(result.common_errors ?? []).map((error) => (
                     <div key={error.id} className="border-l-4 border-red-500 pl-4 bg-red-50 rounded-r-lg p-4">
                       <p className="font-medium text-red-900 mb-2">{error.error_type}</p>
-                      {error.error_example && (
+                      {error.error_sentence && (
                         <p className="text-red-700">
-                          <span className="font-semibold">Wrong:</span> {error.error_example}
+                          <span className="font-semibold">Wrong:</span> {error.error_sentence}
                         </p>
                       )}
-                      {error.correct_example && (
+                      {error.correct_sentence && (
                         <p className="text-green-700 mt-1">
-                          <span className="font-semibold">Correct:</span> {error.correct_example}
+                          <span className="font-semibold">Correct:</span> {error.correct_sentence}
                         </p>
                       )}
                       {error.explanation && (

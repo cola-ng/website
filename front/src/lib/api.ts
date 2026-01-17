@@ -64,12 +64,12 @@ export type WordDefinition = {
   created_at: string
 }
 
-export type WordExample = {
+export type WordSentence = {
   id: number
   word_id: number
   example_en: string
   example_zh: string | null
-  example_order: number
+  priority_order: number
   created_at: string
 }
 
@@ -111,8 +111,8 @@ export type DictCommonError = {
   id: number
   word_id: number
   error_type: string
-  error_example: string | null
-  correct_example: string | null
+  error_sentence: string | null
+  correct_sentence: string | null
   explanation: string | null
   created_at: string
 }
@@ -129,7 +129,7 @@ export type WordRoot = {
 export type WordQueryResponse = {
   word: Word
   definitions: WordDefinition[]
-  examples: WordExample[]
+  examples: WordSentence[]
   synonyms: DictSynonym[]
   antonyms: DictAntonym[]
   collocations: WordCollocation[]

@@ -8,13 +8,13 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_examples(req: &mut Request) -> JsonResult<Vec<WordExample>> {
+pub async fn list_sentences(req: &mut Request) -> JsonResult<Vec<WordSentence>> {
     let word_id = super::get_path_id(req, "id")?;
-    let examples: Vec<WordExample> = with_conn(move |conn| {
-        dict_word_examples::table
-            .filter(dict_word_examples::word_id.eq(word_id))
-            .order(dict_word_examples::example_order.asc())
-            .load::<WordExample>(conn)
+    let examples: Vec<WordSentence> = with_conn(move |conn| {
+        dict_word_sentences::table
+            .filter(dict_word_sentences::word_id.eq(word_id))
+            .order(dict_word_sentences::priority_order.asc())
+            .load::<WordSentence>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch examples"))?;
@@ -22,21 +22,21 @@ pub async fn list_examples(req: &mut Request) -> JsonResult<Vec<WordExample>> {
 }
 
 #[derive(Deserialize)]
-pub struct CreateExampleRequest {
+pub struct CreateSentenceRequest {
     pub definition_id: Option<i64>,
     pub sentence_en: String,
     pub sentence_zh: Option<String>,
     pub source: Option<String>,
     pub author: Option<String>,
-    pub example_order: Option<i32>,
+    pub priority_order: Option<i32>,
     pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
 }
 
 #[handler]
-pub async fn create_example(req: &mut Request) -> JsonResult<WordExample> {
+pub async fn create_sentence(req: &mut Request) -> JsonResult<WordSentence> {
     let word_id = super::get_path_id(req, "id")?;
-    let input: CreateExampleRequest = req
+    let input: CreateSentenceRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
@@ -45,23 +45,28 @@ pub async fn create_example(req: &mut Request) -> JsonResult<WordExample> {
             .brief("sentence_en is required")
             .into());
     }
-    let created: WordExample = with_conn(move |conn| {
-        diesel::insert_into(dict_word_examples::table)
-            .values(&NewWordExample {
-                word_id,
-                definition_id: input.definition_id,
-                sentence_en: input.sentence_en.trim().to_string(),
-                sentence_zh: input.sentence_zh,
+    let created: Sentence = with_conn(move |conn| {
+        let created = diesel::insert_into(dict_word_sentences::table)
+            .values(&NewSentence {
+                language: input.language.trim().to_string(),
+                sentence: input.sentence,
                 source: input.source,
                 author: input.author,
-                example_order: input.example_order,
+                priority_order: input.priority_order,
                 difficulty: input.difficulty,
                 is_common: input.is_common,
             })
-            .get_result::<WordExample>(conn)
+            .get_result::<Sentence>(conn);
+        diesel::insert_into(dict_word_sentences::table)
+            .values(&NewWordSentence {
+                word_id,
+                definition_id: input.definition_id,
+                sentence_id: created.id,
+            })
+            .get_result::<WordSentence>(conn)?;
+        created
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create example"))?;
     json_ok(created)
 }
-

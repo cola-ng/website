@@ -51,8 +51,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<WordDefinition> 
         diesel::insert_into(dict_word_definitions::table)
             .values(&NewWordDefinition {
                 word_id,
-                definition_en: input.definition_en.trim().to_string(),
-                definition_zh: input.definition_zh,
+                definition: input.definition.trim().to_string(),
                 part_of_speech: input.part_of_speech,
                 definition_order: input.definition_order,
                 register: input.register,

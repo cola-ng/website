@@ -51,14 +51,13 @@ CREATE INDEX IF NOT EXISTS idx_dict_words_word_type ON dict_words(word_type);
 CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency DESC);
 CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty);
 
--- Table: dict_word_dictionaries - Many-to-many relationship between words and dictionaries
+-- Table: dict_dictionaries - Many-to-many relationship between words and dictionaries
 CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
     id BIGSERIAL PRIMARY KEY,                          -- Primary key ID
     word_id BIGINT NOT NULL,                            -- Associated word ID
     dictionary_id BIGINT NOT NULL,                      -- Associated dictionary ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- Unique constraint to ensure each word-dictionary pair is only added once
 );
-
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(word_id);
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_dict ON dict_word_dictionaries(dictionary_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_word_dicts_unique ON dict_word_dictionaries(word_id, dictionary_id);
@@ -106,29 +105,29 @@ CREATE TABLE IF NOT EXISTS dict_pronunciations (
 );
 CREATE INDEX IF NOT EXISTS idx_dict_pronunciations_word ON dict_pronunciations(word_id, dialect);
 
--- Table: dict_examples - Example sentences
-CREATE TABLE IF NOT EXISTS dict_examples (
+-- Table: dict_sentences - Example sentences
+CREATE TABLE IF NOT EXISTS dict_sentences (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     language TEXT NOT NULL,                         -- 语言
     sentence TEXT NOT NULL,                          -- 例句
     source TEXT,                                        -- 来源
     author TEXT,                                        -- 作者
-    example_order INTEGER DEFAULT 1,                    -- 例句顺序
+    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
     difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
     is_common BOOLEAN DEFAULT FALSE,                    -- 是否为常用例句
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE TABLE IF NOT EXISTS dict_word_examples (
+CREATE TABLE IF NOT EXISTS dict_word_sentences (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     definition_id BIGINT,                               -- 关联释义 ID
-    example_id BIGINT NOT NULL,                               -- 关联释义 ID
+    sentence_id BIGINT NOT NULL,                               -- 关联释义 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
-CREATE Unique INDEX IF NOT EXISTS idx_dict_examples_word ON dict_word_examples(word_id, example_id);
-CREATE INDEX IF NOT EXISTS idx_dict_examples_definition ON dict_word_examples(definition_id);
+CREATE Unique INDEX IF NOT EXISTS idx_dict_sentences_word ON dict_word_sentences(word_id, sentence_id);
+CREATE INDEX IF NOT EXISTS idx_dict_sentences_definition ON dict_word_sentences(definition_id);
 
 -- Table: dict_etymology - etymology information 语源；词源学
 CREATE TABLE IF NOT EXISTS dict_etymologies (

@@ -252,20 +252,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    dict_examples (id) {
-        id -> Int8,
-        language -> Text,
-        sentence -> Text,
-        source -> Nullable<Text>,
-        author -> Nullable<Text>,
-        example_order -> Nullable<Int4>,
-        difficulty -> Nullable<Int4>,
-        is_common -> Nullable<Bool>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
     dict_import_batches (id) {
         id -> Int8,
         batch_name -> Text,
@@ -294,6 +280,20 @@ diesel::table! {
         dialect -> Nullable<Text>,
         gender -> Nullable<Text>,
         is_primary -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_sentences (id) {
+        id -> Int8,
+        language -> Text,
+        sentence -> Text,
+        source -> Nullable<Text>,
+        author -> Nullable<Text>,
+        priority_order -> Nullable<Int4>,
+        difficulty -> Nullable<Int4>,
+        is_common -> Nullable<Bool>,
         created_at -> Timestamptz,
     }
 }
@@ -351,17 +351,6 @@ diesel::table! {
         id -> Int8,
         word_id -> Int8,
         etymology_id -> Int8,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_word_examples (id) {
-        id -> Int8,
-        word_id -> Int8,
-        definition_id -> Nullable<Int8>,
-        translation_id -> Nullable<Int8>,
-        example_id -> Nullable<Int8>,
         created_at -> Timestamptz,
     }
 }
@@ -425,6 +414,16 @@ diesel::table! {
         related_word_id -> Int8,
         semantic_field -> Nullable<Text>,
         relation_strength -> Nullable<Float4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_sentences (id) {
+        id -> Int8,
+        word_id -> Int8,
+        definition_id -> Nullable<Int8>,
+        sentence_id -> Int8,
         created_at -> Timestamptz,
     }
 }
@@ -651,20 +650,20 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_categories,
     dict_dictionaries,
     dict_etymologies,
-    dict_examples,
     dict_import_batches,
     dict_pronunciations,
+    dict_sentences,
     dict_translations,
     dict_word_categories,
     dict_word_definitions,
     dict_word_dictionaries,
     dict_word_etymologies,
-    dict_word_examples,
     dict_word_forms,
     dict_word_frequencies,
     dict_word_images,
     dict_word_parts,
     dict_word_relations,
+    dict_word_sentences,
     dict_words,
     learn_achievements,
     learn_conversation_annotations,

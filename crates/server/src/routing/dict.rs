@@ -7,15 +7,14 @@ use crate::db::with_conn;
 use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
-mod categories;
-mod definitions;
-mod dictionaries;
+mod category;
+mod definition;
+mod dictionary;
 mod relation;
-mod examples;
-mod family;
-mod forms;
-mod images;
-mod pronunciations;
+mod sentence;
+mod form;
+mod image;
+mod pronunciation;
 mod words;
 
 pub fn router() -> Router {
@@ -23,71 +22,53 @@ pub fn router() -> Router {
         .push(Router::with_path("lookup").get(lookup))
         .push(
             Router::with_path("dictionaries")
-                .get(dictionaries::list_dictionaries)
-                .post(dictionaries::create_dictionary),
+                .get(dictionary::list_dictionaries)
+                .post(dictionary::create_dictionary),
         )
         .push(
             Router::with_path("dictionaries/{id}")
-                .get(dictionaries::get_dictionary)
-                .put(dictionaries::update_dictionary)
-                .delete(dictionaries::delete_dictionary),
+                .get(dictionary::get_dictionary)
+                .put(dictionary::update_dictionary)
+                .delete(dictionary::delete_dictionary),
         )
         .push(Router::with_path("words").get(words::list_words))
         .push(Router::with_path("words").post(words::create_word))
         .push(Router::with_path("words/{id}").put(words::update_word))
         .push(Router::with_path("words/{id}").delete(words::delete_word))
         .push(
-            Router::with_path("words/{id}/dictionaries")
-                .get(word_dictionaries::list_word_dictionaries)
-                .post(word_dictionaries::create_word_dictionary),
-        )
-        .push(
-            Router::with_path("words/{word_id}/dictionaries/{dictionary_id}")
-                .delete(word_dictionaries::delete_word_dictionary),
-        )
-        .push(
             Router::with_path("words/{id}/definitions")
-                .get(definitions::list_definitions)
-                .post(definitions::create_definition),
+                .get(definition::list_definitions)
+                .post(definition::create_definition),
         )
         .push(
             Router::with_path("words/{id}/pronunciations")
-                .get(pronunciations::list_pronunciations)
-                .post(pronunciations::create_pronunciation),
+                .get(pronunciation::list_pronunciations)
+                .post(pronunciation::create_pronunciation),
         )
         .push(
             Router::with_path("words/{id}/pronunciations/{pronunciation_id}")
-                .delete(pronunciations::delete_pronunciation),
+                .delete(pronunciation::delete_pronunciation),
         )
         .push(
             Router::with_path("words/{id}/examples")
-                .get(examples::list_examples)
-                .post(examples::create_example),
+                .get(sentence::list_sentences)
+                .post(sentence::create_sentence),
         )
         .push(
             Router::with_path("words/{id}/forms")
-                .get(forms::list_forms)
-                .post(forms::create_form),
+                .get(form::list_forms)
+                .post(form::create_form),
         )
-        .push(
-            Router::with_path("words/{id}/word-families")
-                .get(family::list_word_family)
-                .post(family::create_word_family),
-        )
-        .push(
-            Router::with_path("words/{id}/idioms")
-                .get(phrases::list_idioms)
-                .post(phrases::create_idiom),
-        )
+
         .push(
             Router::with_path("words/{id}/categories")
-                .get(categories::list_categories)
-                .post(categories::create_category),
+                .get(category::list_categories)
+                .post(category::create_category),
         )
         .push(
             Router::with_path("words/{id}/tags")
-                .get(categories::list_categories)
-                .post(categories::create_category),
+                .get(category::list_categories)
+                .post(category::create_category),
         )
         .push(
             Router::with_path("words/{id}/etymology")
@@ -96,12 +77,12 @@ pub fn router() -> Router {
         )
         .push(
             Router::with_path("words/{id}/images")
-                .get(images::list_images)
-                .post(images::create_image),
+                .get(image::list_images)
+                .post(image::create_image),
         )
         .push(
             Router::with_path("words/{id}/images/{image_id}")
-                .delete(images::delete_image),
+                .delete(image::delete_image),
         )
 }
 
@@ -141,10 +122,10 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .order(dict_word_definitions::definition_order.asc())
             .load::<WordDefinition>(conn)?;
 
-        let examples = dict_word_examples::table
-            .filter(dict_word_examples::word_id.eq(word_id))
-            .order(dict_word_examples::example_order.asc())
-            .load::<WordExample>(conn)?;
+        let examples = dict_word_sentences::table
+            .filter(dict_word_sentences::word_id.eq(word_id))
+            .order(dict_word_sentences::priority_order.asc())
+            .load::<WordSentence>(conn)?;
 
         let pronunciations = dict_pronunciations::table
             .filter(dict_pronunciations::word_id.eq(word_id))

@@ -91,45 +91,45 @@ pub struct NewWordDefinition {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_examples)]
-pub struct WordExample {
+#[diesel(table_name = dict_word_sentences)]
+pub struct WordSentence {
     pub id: i64,
     pub word_id: i64,
     pub definition_id: Option<i64>,
-    pub example_id: i64,
+    pub sentence_id: i64,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_examples)]
-pub struct NewWordExample {
+#[diesel(table_name = dict_word_sentences)]
+pub struct NewWordSentence {
     pub word_id: i64,
     pub definition_id: Option<i64>,
-    pub example_id: i64,
+    pub sentence_id: i64,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_examples)]
-pub struct Example {
+#[diesel(table_name = dict_sentences)]
+pub struct Sentence {
     pub id: i64,
     pub language: String,
     pub sentence: String,
     pub source: Option<String>,
     pub author: Option<String>,
-    pub example_order: Option<i32>,
+    pub priority_order: Option<i32>,
     pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_examples)]
-pub struct NewExample {
+#[diesel(table_name = dict_sentences)]
+pub struct NewSentence {
     pub language: String,
     pub sentence: String,
     pub source: Option<String>,
     pub author: Option<String>,
-    pub example_order: Option<i32>,
+    pub priority_order: Option<i32>,
     pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
 }
@@ -246,29 +246,12 @@ pub struct NewWordImage {
     pub created_by: Option<i64>,
 }
 
-#[derive(Serialize, Debug, Clone)]
-pub struct WordRef {
-    pub id: i64,
-    pub word: String,
-}
-
-#[derive(Serialize, Debug)]
-pub struct WordRelation {
-    pub link: WordSynonym,
-    pub synonym: WordRef,
-}
-
-#[derive(Serialize, Debug)]
-pub struct WordAntonymView {
-    pub link: WordAntonym,
-    pub antonym: WordRef,
-}
 
 #[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
     pub definitions: Vec<WordDefinition>,
-    pub examples: Vec<WordExample>,
+    pub examples: Vec<WordSentence>,
     pub pronunciations: Vec<Pronunciation>,
     pub relations: Vec<WordRelation>,
     pub forms: Vec<WordForm>,
@@ -336,7 +319,7 @@ pub struct UpdateDictionary {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_dictionaries)]
+#[diesel(table_name = dict_dictionaries)]
 pub struct WordDictionary {
     pub id: i64,
     pub word_id: i64,
@@ -345,8 +328,52 @@ pub struct WordDictionary {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_dictionaries)]
+#[diesel(table_name = dict_dictionaries)]
 pub struct NewWordDictionary {
     pub word_id: i64,
     pub dictionary_id: i64,
+}
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_etymologies)]
+pub struct Etymology {
+    pub id: i64,
+    pub origin_language: Option<String>,
+    pub origin_word: Option<String>,
+    pub origin_meaning: Option<String>,
+    pub language: String,
+    pub etymology: String,
+    pub first_attested_year: Option<i32>,
+    pub historical_forms: Option<serde_json::Value>,
+    pub cognate_words: Option<serde_json::Value>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_etymologies)]
+pub struct NewEtymology {
+    pub origin_language: Option<String>,
+    pub origin_word: Option<String>,
+    pub origin_meaning: Option<String>,
+    pub language: String,
+    pub etymology: String,
+    pub first_attested_year: Option<i32>,
+    pub historical_forms: Option<serde_json::Value>,
+    pub cognate_words: Option<serde_json::Value>,
+}
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_word_etymologies)]
+pub struct WordEtymologyLink {
+    pub id: i64,
+    pub word_id: i64,
+    pub etymology_id: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_word_etymologies)]
+pub struct NewWordEtymologyLink {
+    pub word_id: i64,
+    pub etymology_id: i64,
 }
