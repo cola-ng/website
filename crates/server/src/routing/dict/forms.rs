@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_forms(req: &mut Request) -> JsonResult<Vec<DictWordForm>> {
+pub async fn list_forms(req: &mut Request) -> JsonResult<Vec<WordForm>> {
     let word_id = super::get_path_id(req, "id")?;
-    let forms: Vec<DictWordForm> = with_conn(move |conn| {
+    let forms: Vec<WordForm> = with_conn(move |conn| {
         dict_word_forms::table
             .filter(dict_word_forms::word_id.eq(word_id))
-            .load::<DictWordForm>(conn)
+            .load::<WordForm>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch forms"))?;
@@ -29,7 +29,7 @@ pub struct CreateFormRequest {
 }
 
 #[handler]
-pub async fn create_form(req: &mut Request) -> JsonResult<DictWordForm> {
+pub async fn create_form(req: &mut Request) -> JsonResult<WordForm> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateFormRequest = req
         .parse_json()
@@ -38,16 +38,16 @@ pub async fn create_form(req: &mut Request) -> JsonResult<DictWordForm> {
     if input.form.trim().is_empty() {
         return Err(StatusError::bad_request().brief("form is required").into());
     }
-    let created: DictWordForm = with_conn(move |conn| {
+    let created: WordForm = with_conn(move |conn| {
         diesel::insert_into(dict_word_forms::table)
-            .values(&NewDictWordForm {
+            .values(&NewWordForm {
                 word_id,
                 form_type: input.form_type,
                 form: input.form.trim().to_string(),
                 is_irregular: input.is_irregular,
                 notes: input.notes,
             })
-            .get_result::<DictWordForm>(conn)
+            .get_result::<WordForm>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create form"))?;

@@ -8,13 +8,13 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_examples(req: &mut Request) -> JsonResult<Vec<DictWordExample>> {
+pub async fn list_examples(req: &mut Request) -> JsonResult<Vec<WordExample>> {
     let word_id = super::get_path_id(req, "id")?;
-    let examples: Vec<DictWordExample> = with_conn(move |conn| {
+    let examples: Vec<WordExample> = with_conn(move |conn| {
         dict_word_examples::table
             .filter(dict_word_examples::word_id.eq(word_id))
             .order(dict_word_examples::example_order.asc())
-            .load::<DictWordExample>(conn)
+            .load::<WordExample>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch examples"))?;
@@ -34,7 +34,7 @@ pub struct CreateExampleRequest {
 }
 
 #[handler]
-pub async fn create_example(req: &mut Request) -> JsonResult<DictWordExample> {
+pub async fn create_example(req: &mut Request) -> JsonResult<WordExample> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateExampleRequest = req
         .parse_json()
@@ -45,9 +45,9 @@ pub async fn create_example(req: &mut Request) -> JsonResult<DictWordExample> {
             .brief("sentence_en is required")
             .into());
     }
-    let created: DictWordExample = with_conn(move |conn| {
+    let created: WordExample = with_conn(move |conn| {
         diesel::insert_into(dict_word_examples::table)
-            .values(&NewDictWordExample {
+            .values(&NewWordExample {
                 word_id,
                 definition_id: input.definition_id,
                 sentence_en: input.sentence_en.trim().to_string(),
@@ -58,7 +58,7 @@ pub async fn create_example(req: &mut Request) -> JsonResult<DictWordExample> {
                 difficulty_level: input.difficulty_level,
                 is_common: input.is_common,
             })
-            .get_result::<DictWordExample>(conn)
+            .get_result::<WordExample>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create example"))?;

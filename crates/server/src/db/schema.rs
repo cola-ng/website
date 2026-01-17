@@ -206,6 +206,15 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_categories (id) {
+        id -> Int8,
+        name -> Text,
+        parent_id -> Nullable<Int8>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_dictionaries (id) {
         id -> Int8,
         name -> Text,
@@ -279,8 +288,8 @@ diesel::table! {
         origin -> Nullable<Text>,
         example_en -> Nullable<Text>,
         example_zh -> Nullable<Text>,
-        difficulty_level -> Nullable<Int4>,
-        frequency_score -> Nullable<Int4>,
+        difficulty -> Nullable<Int2>,
+        frequency -> Nullable<Int2>,
         is_active -> Nullable<Bool>,
         created_by -> Nullable<Int8>,
         updated_by -> Nullable<Int8>,
@@ -315,10 +324,8 @@ diesel::table! {
     dict_word_categories (id) {
         id -> Int8,
         word_id -> Int8,
-        category_type -> Nullable<Text>,
-        category_name -> Text,
-        category_value -> Text,
-        confidence_score -> Nullable<Float4>,
+        category_id -> Int8,
+        confidence -> Int2,
         created_at -> Timestamptz,
     }
 }
@@ -332,7 +339,7 @@ diesel::table! {
         phrase -> Text,
         phrase_en -> Text,
         phrase_zh -> Nullable<Text>,
-        frequency_score -> Nullable<Int4>,
+        frequency -> Nullable<Int4>,
         register -> Nullable<Text>,
         example_en -> Nullable<Text>,
         example_zh -> Nullable<Text>,
@@ -402,7 +409,7 @@ diesel::table! {
         source -> Nullable<Text>,
         author -> Nullable<Text>,
         example_order -> Nullable<Int4>,
-        difficulty_level -> Nullable<Int4>,
+        difficulty -> Nullable<Int4>,
         is_common -> Nullable<Bool>,
         created_at -> Timestamptz,
     }
@@ -463,6 +470,7 @@ diesel::table! {
         audio_url -> Nullable<Text>,
         audio_path -> Nullable<Text>,
         dialect -> Nullable<Text>,
+        gender -> Nullable<Text>,
         is_primary -> Nullable<Bool>,
         created_at -> Timestamptz,
     }
@@ -512,9 +520,9 @@ diesel::table! {
         word_lower -> Text,
         word_type -> Nullable<Text>,
         language -> Nullable<Text>,
-        frequency_score -> Nullable<Int4>,
-        difficulty_level -> Nullable<Int4>,
-        syllable_count -> Nullable<Int4>,
+        frequency -> Nullable<Int2>,
+        difficulty -> Nullable<Int2>,
+        syllable_count -> Nullable<Int2>,
         is_lemma -> Nullable<Bool>,
         word_count -> Nullable<Int4>,
         is_active -> Nullable<Bool>,
@@ -724,6 +732,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     base_role_users,
     base_roles,
     base_users,
+    dict_categories,
     dict_dictionaries,
     dict_frequency_bands,
     dict_import_batch,

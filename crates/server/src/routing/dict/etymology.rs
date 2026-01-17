@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<DictWordEtymology>> {
+pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<WordEtymology>> {
     let word_id = super::get_path_id(req, "id")?;
-    let etymology: Vec<DictWordEtymology> = with_conn(move |conn| {
+    let etymology: Vec<WordEtymology> = with_conn(move |conn| {
         dict_word_etymology::table
             .filter(dict_word_etymology::word_id.eq(word_id))
-            .load::<DictWordEtymology>(conn)
+            .load::<WordEtymology>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch etymology"))?;
@@ -33,16 +33,16 @@ pub struct CreateEtymologyRequest {
 }
 
 #[handler]
-pub async fn create_etymology(req: &mut Request) -> JsonResult<DictWordEtymology> {
+pub async fn create_etymology(req: &mut Request) -> JsonResult<WordEtymology> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateEtymologyRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let created: DictWordEtymology = with_conn(move |conn| {
+    let created: WordEtymology = with_conn(move |conn| {
         diesel::insert_into(dict_word_etymology::table)
-            .values(&NewDictWordEtymology {
+            .values(&NewWordEtymology {
                 word_id,
                 origin_language: input.origin_language,
                 origin_word: input.origin_word,
@@ -53,7 +53,7 @@ pub async fn create_etymology(req: &mut Request) -> JsonResult<DictWordEtymology
                 historical_forms: input.historical_forms,
                 cognate_words: input.cognate_words,
             })
-            .get_result::<DictWordEtymology>(conn)
+            .get_result::<WordEtymology>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create etymology"))?;

@@ -8,9 +8,9 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_word_family(req: &mut Request) -> JsonResult<Vec<DictWordFamilyView>> {
+pub async fn list_word_family(req: &mut Request) -> JsonResult<Vec<WordFamilyView>> {
     let word_id = super::get_path_id(req, "id")?;
-    let rows_out: Vec<(DictWordFamilyLink, DictWord)> = with_conn(move |conn| {
+    let rows_out: Vec<(WordFamilyLink, Word)> = with_conn(move |conn| {
         dict_word_family::table
             .inner_join(dict_words::table.on(dict_word_family::related_word_id.eq(dict_words::id)))
             .filter(dict_word_family::root_word_id.eq(word_id))
@@ -22,7 +22,7 @@ pub async fn list_word_family(req: &mut Request) -> JsonResult<Vec<DictWordFamil
     json_ok(
         rows_out
             .into_iter()
-            .map(|(link, w)| DictWordFamilyView {
+            .map(|(link, w)| WordFamilyView {
                 link,
                 related: WordRef { id: w.id, word: w.word },
             })
@@ -38,22 +38,22 @@ pub struct CreateWordFamilyRequest {
 }
 
 #[handler]
-pub async fn create_word_family(req: &mut Request) -> JsonResult<DictWordFamilyLink> {
+pub async fn create_word_family(req: &mut Request) -> JsonResult<WordFamilyLink> {
     let root_word_id = super::get_path_id(req, "id")?;
     let input: CreateWordFamilyRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let created: DictWordFamilyLink = with_conn(move |conn| {
+    let created: WordFamilyLink = with_conn(move |conn| {
         diesel::insert_into(dict_word_family::table)
-            .values(&NewDictWordFamilyLink {
+            .values(&NewWordFamilyLink {
                 root_word_id,
                 related_word_id: input.related_word_id,
                 relationship_type: input.relationship_type,
                 morpheme: input.morpheme,
             })
-            .get_result::<DictWordFamilyLink>(conn)
+            .get_result::<WordFamilyLink>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create word family"))?;

@@ -8,7 +8,7 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_words(req: &mut Request) -> JsonResult<Vec<DictWord>> {
+pub async fn list_words(req: &mut Request) -> JsonResult<Vec<Word>> {
     let search_term = req
         .query::<String>("search")
         .map(|v| v.trim().to_string())
@@ -18,7 +18,7 @@ pub async fn list_words(req: &mut Request) -> JsonResult<Vec<DictWord>> {
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
     let offset = req.query::<i64>("offset").unwrap_or(0).max(0);
 
-    let words: Vec<DictWord> = with_conn(move |conn| {
+    let words: Vec<Word> = with_conn(move |conn| {
         let mut query = dict_words::table
             .order(dict_words::word.asc())
             .limit(limit)
@@ -37,7 +37,7 @@ pub async fn list_words(req: &mut Request) -> JsonResult<Vec<DictWord>> {
             query = query.filter(dict_words::difficulty_level.le(max_d));
         }
 
-        query.load::<DictWord>(conn)
+        query.load::<Word>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch words"))?;
@@ -59,7 +59,7 @@ pub struct CreateWordRequest {
 }
 
 #[handler]
-pub async fn create_word(req: &mut Request) -> JsonResult<DictWord> {
+pub async fn create_word(req: &mut Request) -> JsonResult<Word> {
     let input: CreateWordRequest = req
         .parse_json()
         .await
@@ -71,9 +71,9 @@ pub async fn create_word(req: &mut Request) -> JsonResult<DictWord> {
     }
     let word_lower = word.to_lowercase();
 
-    let created_word: DictWord = with_conn(move |conn| {
+    let created_word: Word = with_conn(move |conn| {
         diesel::insert_into(dict_words::table)
-            .values(&NewDictWord {
+            .values(&NewWord {
                 word,
                 word_lower,
                 word_type: input.word_type,
@@ -87,7 +87,7 @@ pub async fn create_word(req: &mut Request) -> JsonResult<DictWord> {
                 created_by: None,
                 updated_by: None,
             })
-            .get_result::<DictWord>(conn)
+            .get_result::<Word>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create word"))?;
@@ -96,9 +96,9 @@ pub async fn create_word(req: &mut Request) -> JsonResult<DictWord> {
 }
 
 #[handler]
-pub async fn update_word(req: &mut Request) -> JsonResult<DictWord> {
+pub async fn update_word(req: &mut Request) -> JsonResult<Word> {
     let id = super::get_path_id(req, "id")?;
-    let input: UpdateDictWord = req
+    let input: UpdateWord = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
@@ -113,10 +113,10 @@ pub async fn update_word(req: &mut Request) -> JsonResult<DictWord> {
         changes.word_lower = Some(trimmed.to_lowercase());
     }
 
-    let updated: DictWord = with_conn(move |conn| {
+    let updated: Word = with_conn(move |conn| {
         diesel::update(dict_words::table.filter(dict_words::id.eq(id)))
             .set(changes)
-            .get_result::<DictWord>(conn)
+            .get_result::<Word>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update word"))?;

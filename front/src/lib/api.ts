@@ -35,7 +35,7 @@ export type LearningRecord = {
   created_at: string
 }
 
-export type DictWord = {
+export type Word = {
   id: number
   word: string
   phonetic_us: string | null
@@ -49,7 +49,7 @@ export type DictWord = {
   updated_at: string
 }
 
-export type DictWordDefinition = {
+export type WordDefinition = {
   id: number
   word_id: number
   definition_en: string
@@ -64,7 +64,7 @@ export type DictWordDefinition = {
   created_at: string
 }
 
-export type DictWordExample = {
+export type WordExample = {
   id: number
   word_id: number
   example_en: string
@@ -87,7 +87,7 @@ export type DictAntonym = {
   created_at: string
 }
 
-export type DictWordCollocation = {
+export type WordCollocation = {
   id: number
   word_id: number
   collocation: string
@@ -97,7 +97,7 @@ export type DictWordCollocation = {
   created_at: string
 }
 
-export type DictWordPhrase = {
+export type WordPhrase = {
   id: number
   word_id: number
   phrase: string
@@ -117,7 +117,7 @@ export type DictCommonError = {
   created_at: string
 }
 
-export type DictWordRoot = {
+export type WordRoot = {
   id: number
   word_id: number
   root: string
@@ -127,15 +127,15 @@ export type DictWordRoot = {
 }
 
 export type WordQueryResponse = {
-  word: DictWord
-  definitions: DictWordDefinition[]
-  examples: DictWordExample[]
+  word: Word
+  definitions: WordDefinition[]
+  examples: WordExample[]
   synonyms: DictSynonym[]
   antonyms: DictAntonym[]
-  collocations: DictWordCollocation[]
-  phrases: DictWordPhrase[]
+  collocations: WordCollocation[]
+  phrases: WordPhrase[]
   common_errors: DictCommonError[]
-  roots: DictWordRoot[]
+  roots: WordRoot[]
 }
 
 async function requestJson<T>(

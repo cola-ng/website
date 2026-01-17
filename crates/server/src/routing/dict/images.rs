@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_images(req: &mut Request) -> JsonResult<Vec<DictWordImage>> {
+pub async fn list_images(req: &mut Request) -> JsonResult<Vec<WordImage>> {
     let word_id = super::get_path_id(req, "id")?;
-    let images: Vec<DictWordImage> = with_conn(move |conn| {
+    let images: Vec<WordImage> = with_conn(move |conn| {
         dict_word_images::table
             .filter(dict_word_images::word_id.eq(word_id))
-            .load::<DictWordImage>(conn)
+            .load::<WordImage>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch images"))?;
@@ -31,7 +31,7 @@ pub struct CreateImageRequest {
 }
 
 #[handler]
-pub async fn create_image(req: &mut Request) -> JsonResult<DictWordImage> {
+pub async fn create_image(req: &mut Request) -> JsonResult<WordImage> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateImageRequest = req
         .parse_json()
@@ -53,9 +53,9 @@ pub async fn create_image(req: &mut Request) -> JsonResult<DictWordImage> {
             .into());
     }
 
-    let created: DictWordImage = with_conn(move |conn| {
+    let created: WordImage = with_conn(move |conn| {
         diesel::insert_into(dict_word_images::table)
-            .values(&NewDictWordImage {
+            .values(&NewWordImage {
                 word_id,
                 image_url: input.image_url.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
                 image_path: input.image_path.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
@@ -65,7 +65,7 @@ pub async fn create_image(req: &mut Request) -> JsonResult<DictWordImage> {
                 is_primary: input.is_primary,
                 created_by: None,
             })
-            .get_result::<DictWordImage>(conn)
+            .get_result::<WordImage>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create image"))?;

@@ -11,6 +11,7 @@ mod antonyms;
 mod categories;
 mod collocations;
 mod definitions;
+mod dictionaries;
 mod etymology;
 mod examples;
 mod family;
@@ -20,15 +21,42 @@ mod phrases;
 mod related_topics;
 mod synonyms;
 mod usage_notes;
+mod word_dictionaries;
 mod words;
 
 pub fn router() -> Router {
     Router::with_path("dict")
         .push(Router::with_path("lookup").get(lookup))
+        .push(
+            Router::with_path("dictionaries")
+                .get(dictionaries::list_dictionaries)
+                .post(dictionaries::create_dictionary),
+        )
+        .push(
+            Router::with_path("dictionaries/{id}")
+                .get(dictionaries::get_dictionary)
+                .put(dictionaries::update_dictionary)
+                .delete(dictionaries::delete_dictionary),
+        )
         .push(Router::with_path("words").get(words::list_words))
         .push(Router::with_path("words").post(words::create_word))
         .push(Router::with_path("words/{id}").put(words::update_word))
         .push(Router::with_path("words/{id}").delete(words::delete_word))
+        .push(
+            Router::with_path("words/{id}/dictionaries")
+                .get(word_dictionaries::list_word_dictionaries)
+                .post(word_dictionaries::create_word_dictionary),
+        )
+        .push(
+            Router::with_path("words/{word_id}/dictionaries/{dictionary_id}")
+                .delete(word_dictionaries::delete_word_dictionary),
+        )
+        .push(
+            Router::with_path("word-dictionaries/{id}").delete(word_dictionaries::delete_word_dictionary_by_id),
+        )
+        .push(
+            Router::with_path("dictionaries/{id}/words").get(word_dictionaries::list_dictionary_words),
+        )
         .push(
             Router::with_path("words/{id}/definitions")
                 .get(definitions::list_definitions)
@@ -131,7 +159,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
     let result: WordQueryResponse = with_conn(move |conn| {
         let word_record = dict_words::table
             .filter(dict_words::word_lower.eq(&word_lower_value))
-            .first::<DictWord>(conn)
+            .first::<Word>(conn)
             .optional()?
             .ok_or_else(|| diesel::result::Error::NotFound)?;
 
@@ -140,14 +168,14 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         let definitions = dict_word_definitions::table
             .filter(dict_word_definitions::word_id.eq(word_id))
             .order(dict_word_definitions::definition_order.asc())
-            .load::<DictWordDefinition>(conn)?;
+            .load::<WordDefinition>(conn)?;
 
         let examples = dict_word_examples::table
             .filter(dict_word_examples::word_id.eq(word_id))
             .order(dict_word_examples::example_order.asc())
-            .load::<DictWordExample>(conn)?;
+            .load::<WordExample>(conn)?;
 
-        let synonym_rows: Vec<(DictWordSynonym, DictWord)> = dict_word_synonyms::table
+        let synonym_rows: Vec<(WordSynonym, Word)> = dict_word_synonyms::table
             .inner_join(
                 dict_words::table.on(dict_word_synonyms::synonym_word_id.eq(dict_words::id)),
             )
@@ -155,7 +183,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .load(conn)?;
         let synonyms = synonym_rows
             .into_iter()
-            .map(|(link, w)| DictWordSynonymView {
+            .map(|(link, w)| WordSynonymView {
                 link,
                 synonym: WordRef {
                     id: w.id,
@@ -164,7 +192,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             })
             .collect();
 
-        let antonym_rows: Vec<(DictWordAntonym, DictWord)> = dict_word_antonyms::table
+        let antonym_rows: Vec<(WordAntonym, Word)> = dict_word_antonyms::table
             .inner_join(
                 dict_words::table.on(dict_word_antonyms::antonym_word_id.eq(dict_words::id)),
             )
@@ -172,7 +200,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .load(conn)?;
         let antonyms = antonym_rows
             .into_iter()
-            .map(|(link, w)| DictWordAntonymView {
+            .map(|(link, w)| WordAntonymView {
                 link,
                 antonym: WordRef {
                     id: w.id,
@@ -183,30 +211,30 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
 
         let forms = dict_word_forms::table
             .filter(dict_word_forms::word_id.eq(word_id))
-            .load::<DictWordForm>(conn)?;
+            .load::<WordForm>(conn)?;
 
         let collocations = dict_word_collocations::table
             .filter(dict_word_collocations::word_id.eq(word_id))
-            .load::<DictWordCollocation>(conn)?;
+            .load::<WordCollocation>(conn)?;
 
-        let family_out: Vec<(DictWordFamilyLink, DictWord)> = dict_word_family::table
+        let family_out: Vec<(WordFamilyLink, Word)> = dict_word_family::table
             .inner_join(dict_words::table.on(dict_word_family::related_word_id.eq(dict_words::id)))
             .filter(dict_word_family::root_word_id.eq(word_id))
             .load(conn)?;
-        let family_in: Vec<(DictWordFamilyLink, DictWord)> = dict_word_family::table
+        let family_in: Vec<(WordFamilyLink, Word)> = dict_word_family::table
             .inner_join(dict_words::table.on(dict_word_family::root_word_id.eq(dict_words::id)))
             .filter(dict_word_family::related_word_id.eq(word_id))
             .load(conn)?;
 
-        let mut word_family: Vec<DictWordFamilyView> = Vec::new();
-        word_family.extend(family_out.into_iter().map(|(link, w)| DictWordFamilyView {
+        let mut word_family: Vec<WordFamilyView> = Vec::new();
+        word_family.extend(family_out.into_iter().map(|(link, w)| WordFamilyView {
             link,
             related: WordRef {
                 id: w.id,
                 word: w.word,
             },
         }));
-        word_family.extend(family_in.into_iter().map(|(link, w)| DictWordFamilyView {
+        word_family.extend(family_in.into_iter().map(|(link, w)| WordFamilyView {
             link,
             related: WordRef {
                 id: w.id,
@@ -214,7 +242,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             },
         }));
 
-        let phrases: Vec<DictPhrase> = dict_phrases::table
+        let phrases: Vec<Phrase> = dict_phrases::table
             .inner_join(
                 dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)),
             )
@@ -228,7 +256,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .distinct()
             .load(conn)?;
 
-        let idioms: Vec<DictPhrase> = dict_phrases::table
+        let idioms: Vec<Phrase> = dict_phrases::table
             .inner_join(
                 dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)),
             )
@@ -240,7 +268,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
 
         let categories = dict_word_categories::table
             .filter(dict_word_categories::word_id.eq(word_id))
-            .load::<DictWordCategory>(conn)?;
+            .load::<WordCategory>(conn)?;
 
         let related_topics = dict_related_topics::table
             .filter(dict_related_topics::word_id.eq(word_id))
@@ -248,15 +276,15 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
 
         let etymology = dict_word_etymology::table
             .filter(dict_word_etymology::word_id.eq(word_id))
-            .load::<DictWordEtymology>(conn)?;
+            .load::<WordEtymology>(conn)?;
 
         let usage_notes = dict_word_usage_notes::table
             .filter(dict_word_usage_notes::word_id.eq(word_id))
-            .load::<DictWordUsageNote>(conn)?;
+            .load::<WordUsageNote>(conn)?;
 
         let images = dict_word_images::table
             .filter(dict_word_images::word_id.eq(word_id))
-            .load::<DictWordImage>(conn)?;
+            .load::<WordImage>(conn)?;
 
         Ok(WordQueryResponse {
             word: word_record,

@@ -8,13 +8,13 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<DictWordDefinition>> {
+pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<WordDefinition>> {
     let word_id = super::get_path_id(req, "id")?;
-    let definitions: Vec<DictWordDefinition> = with_conn(move |conn| {
+    let definitions: Vec<WordDefinition> = with_conn(move |conn| {
         dict_word_definitions::table
             .filter(dict_word_definitions::word_id.eq(word_id))
             .order(dict_word_definitions::definition_order.asc())
-            .load::<DictWordDefinition>(conn)
+            .load::<WordDefinition>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch definitions"))?;
@@ -35,7 +35,7 @@ pub struct CreateDefinitionRequest {
 }
 
 #[handler]
-pub async fn create_definition(req: &mut Request) -> JsonResult<DictWordDefinition> {
+pub async fn create_definition(req: &mut Request) -> JsonResult<WordDefinition> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateDefinitionRequest = req
         .parse_json()
@@ -47,9 +47,9 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<DictWordDefiniti
             .into());
     }
 
-    let created: DictWordDefinition = with_conn(move |conn| {
+    let created: WordDefinition = with_conn(move |conn| {
         diesel::insert_into(dict_word_definitions::table)
-            .values(&NewDictWordDefinition {
+            .values(&NewWordDefinition {
                 word_id,
                 definition_en: input.definition_en.trim().to_string(),
                 definition_zh: input.definition_zh,
@@ -61,7 +61,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<DictWordDefiniti
                 usage_notes: input.usage_notes,
                 is_primary: input.is_primary,
             })
-            .get_result::<DictWordDefinition>(conn)
+            .get_result::<WordDefinition>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create definition"))?;

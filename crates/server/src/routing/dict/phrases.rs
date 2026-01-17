@@ -8,9 +8,9 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_phrases(req: &mut Request) -> JsonResult<Vec<DictPhrase>> {
+pub async fn list_phrases(req: &mut Request) -> JsonResult<Vec<Phrase>> {
     let word_id = super::get_path_id(req, "id")?;
-    let phrases: Vec<DictPhrase> = with_conn(move |conn| {
+    let phrases: Vec<Phrase> = with_conn(move |conn| {
         dict_phrases::table
             .inner_join(dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)))
             .filter(dict_phrase_words::word_id.eq(word_id))
@@ -29,9 +29,9 @@ pub async fn list_phrases(req: &mut Request) -> JsonResult<Vec<DictPhrase>> {
 }
 
 #[handler]
-pub async fn list_idioms(req: &mut Request) -> JsonResult<Vec<DictPhrase>> {
+pub async fn list_idioms(req: &mut Request) -> JsonResult<Vec<Phrase>> {
     let word_id = super::get_path_id(req, "id")?;
-    let idioms: Vec<DictPhrase> = with_conn(move |conn| {
+    let idioms: Vec<Phrase> = with_conn(move |conn| {
         dict_phrases::table
             .inner_join(dict_phrase_words::table.on(dict_phrase_words::phrase_id.eq(dict_phrases::id)))
             .filter(dict_phrase_words::word_id.eq(word_id))
@@ -64,7 +64,7 @@ async fn create_phrase_impl(
     word_id: i64,
     force_type: Option<&'static str>,
     input: CreatePhraseRequest,
-) -> Result<DictPhrase, StatusError> {
+) -> Result<Phrase, StatusError> {
     if input.phrase.trim().is_empty() || input.meaning_en.trim().is_empty() {
         return Err(StatusError::bad_request().brief("phrase and meaning_en are required"));
     }
@@ -76,9 +76,9 @@ async fn create_phrase_impl(
     let word_position = input.word_position.unwrap_or(1);
 
     with_conn(move |conn| {
-        conn.transaction::<DictPhrase, diesel::result::Error, _>(|conn| {
-            let created: DictPhrase = diesel::insert_into(dict_phrases::table)
-                .values(&NewDictPhrase {
+        conn.transaction::<Phrase, diesel::result::Error, _>(|conn| {
+            let created: Phrase = diesel::insert_into(dict_phrases::table)
+                .values(&NewPhrase {
                     phrase,
                     phrase_lower,
                     phrase_type,
@@ -95,8 +95,8 @@ async fn create_phrase_impl(
                 })
                 .get_result(conn)?;
 
-            let _link: DictPhraseWord = diesel::insert_into(dict_phrase_words::table)
-                .values(&NewDictPhraseWord {
+            let _link: PhraseWord = diesel::insert_into(dict_phrase_words::table)
+                .values(&NewPhraseWord {
                     phrase_id: created.id,
                     word_id,
                     word_position,
@@ -111,7 +111,7 @@ async fn create_phrase_impl(
 }
 
 #[handler]
-pub async fn create_phrase(req: &mut Request) -> JsonResult<DictPhrase> {
+pub async fn create_phrase(req: &mut Request) -> JsonResult<Phrase> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreatePhraseRequest = req
         .parse_json()
@@ -122,7 +122,7 @@ pub async fn create_phrase(req: &mut Request) -> JsonResult<DictPhrase> {
 }
 
 #[handler]
-pub async fn create_idiom(req: &mut Request) -> JsonResult<DictPhrase> {
+pub async fn create_idiom(req: &mut Request) -> JsonResult<Phrase> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreatePhraseRequest = req
         .parse_json()

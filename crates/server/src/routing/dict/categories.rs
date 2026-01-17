@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_categories(req: &mut Request) -> JsonResult<Vec<DictWordCategory>> {
+pub async fn list_categories(req: &mut Request) -> JsonResult<Vec<WordCategory>> {
     let word_id = super::get_path_id(req, "id")?;
-    let categories: Vec<DictWordCategory> = with_conn(move |conn| {
+    let categories: Vec<WordCategory> = with_conn(move |conn| {
         dict_word_categories::table
             .filter(dict_word_categories::word_id.eq(word_id))
-            .load::<DictWordCategory>(conn)
+            .load::<WordCategory>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch categories"))?;
@@ -29,7 +29,7 @@ pub struct CreateCategoryRequest {
 }
 
 #[handler]
-pub async fn create_category(req: &mut Request) -> JsonResult<DictWordCategory> {
+pub async fn create_category(req: &mut Request) -> JsonResult<WordCategory> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateCategoryRequest = req
         .parse_json()
@@ -40,16 +40,16 @@ pub async fn create_category(req: &mut Request) -> JsonResult<DictWordCategory> 
             .brief("category_name and category_value are required")
             .into());
     }
-    let created: DictWordCategory = with_conn(move |conn| {
+    let created: WordCategory = with_conn(move |conn| {
         diesel::insert_into(dict_word_categories::table)
-            .values(&NewDictWordCategory {
+            .values(&NewWordCategory {
                 word_id,
                 category_type: input.category_type,
                 category_name: input.category_name.trim().to_string(),
                 category_value: input.category_value.trim().to_string(),
                 confidence_score: input.confidence_score,
             })
-            .get_result::<DictWordCategory>(conn)
+            .get_result::<WordCategory>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create category"))?;

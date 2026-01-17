@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_usage_notes(req: &mut Request) -> JsonResult<Vec<DictWordUsageNote>> {
+pub async fn list_usage_notes(req: &mut Request) -> JsonResult<Vec<WordUsageNote>> {
     let word_id = super::get_path_id(req, "id")?;
-    let usage_notes: Vec<DictWordUsageNote> = with_conn(move |conn| {
+    let usage_notes: Vec<WordUsageNote> = with_conn(move |conn| {
         dict_word_usage_notes::table
             .filter(dict_word_usage_notes::word_id.eq(word_id))
-            .load::<DictWordUsageNote>(conn)
+            .load::<WordUsageNote>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch usage notes"))?;
@@ -30,7 +30,7 @@ pub struct CreateUsageNoteRequest {
 }
 
 #[handler]
-pub async fn create_usage_note(req: &mut Request) -> JsonResult<DictWordUsageNote> {
+pub async fn create_usage_note(req: &mut Request) -> JsonResult<WordUsageNote> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateUsageNoteRequest = req
         .parse_json()
@@ -39,9 +39,9 @@ pub async fn create_usage_note(req: &mut Request) -> JsonResult<DictWordUsageNot
     if input.note_en.trim().is_empty() {
         return Err(StatusError::bad_request().brief("note_en is required").into());
     }
-    let created: DictWordUsageNote = with_conn(move |conn| {
+    let created: WordUsageNote = with_conn(move |conn| {
         diesel::insert_into(dict_word_usage_notes::table)
-            .values(&NewDictWordUsageNote {
+            .values(&NewWordUsageNote {
                 word_id,
                 note_type: input.note_type,
                 note_en: input.note_en.trim().to_string(),
@@ -49,7 +49,7 @@ pub async fn create_usage_note(req: &mut Request) -> JsonResult<DictWordUsageNot
                 examples_en: input.examples_en,
                 examples_zh: input.examples_zh,
             })
-            .get_result::<DictWordUsageNote>(conn)
+            .get_result::<WordUsageNote>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create usage note"))?;

@@ -33,9 +33,9 @@ CREATE TABLE IF NOT EXISTS dict_words (
     word_lower TEXT NOT NULL,                           -- 单词小写形式，用于搜索
     word_type TEXT CHECK(word_type IN ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'article', 'abbreviation', 'phrase', 'idiom')), -- 词性：名词、动词、形容词、副词等
     language TEXT DEFAULT 'en',                         -- 语言（默认英文）
-    frequency_score INTEGER CHECK(frequency_score BETWEEN 0 AND 100), -- 频率评分 (0-100)，越高表示越常用
-    difficulty_level INTEGER CHECK(difficulty_level BETWEEN 1 AND 5), -- 难度等级 (1-5)，1 最简单，5 最难
-    syllable_count INTEGER DEFAULT 1,                   -- 音节数量
+    frequency SMALLINT CHECK(frequency BETWEEN 0 AND 100), -- 频率评分 (0-100)，越高表示越常用
+    difficulty SMALLINT CHECK(difficulty BETWEEN 1 AND 10), -- 难度等级 (1-5)，1 最简单，5 最难
+    syllable_count SMALLINT,                   -- 音节数量
     is_lemma BOOLEAN DEFAULT TRUE,                      -- 是否为词元（词根/原形）
     word_count INTEGER DEFAULT 0,                       -- 单词出现次数统计
     is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
@@ -48,8 +48,8 @@ CREATE TABLE IF NOT EXISTS dict_words (
 CREATE INDEX IF NOT EXISTS idx_dict_words_word ON dict_words(word);
 CREATE INDEX IF NOT EXISTS idx_dict_words_word_lower ON dict_words(word_lower);
 CREATE INDEX IF NOT EXISTS idx_dict_words_word_type ON dict_words(word_type);
-CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency_score DESC);
-CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty_level);
+CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency DESC);
+CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty);
 
 -- Table: dict_word_dictionaries - Many-to-many relationship between words and dictionaries
 CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
@@ -101,6 +101,7 @@ CREATE TABLE IF NOT EXISTS dict_word_pronunciations (
     audio_url TEXT,                                     -- 音频文件 URL
     audio_path TEXT,                                    -- 音频文件存储路径
     dialect TEXT CHECK(dialect IN ('US', 'UK', 'AU', 'CA', 'NZ', 'IN', 'other')), -- 口音：美式、英式、澳式等
+    gender TEXT CHECK(gender IN ('male', 'female', 'neutral')), -- 性别：男声、女声、中性
     is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要发音
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
@@ -116,7 +117,7 @@ CREATE TABLE IF NOT EXISTS dict_word_examples (
     source TEXT,                                        -- 来源
     author TEXT,                                        -- 作者
     example_order INTEGER DEFAULT 1,                    -- 例句顺序
-    difficulty_level INTEGER CHECK(difficulty_level BETWEEN 1 AND 5), -- 难度等级 (1-5)
+    difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
     is_common BOOLEAN DEFAULT FALSE,                    -- 是否为常用例句
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
@@ -161,7 +162,7 @@ CREATE TABLE IF NOT EXISTS dict_word_collocations (
     phrase TEXT NOT NULL,                               -- 搭配短语（小写）
     phrase_en TEXT NOT NULL,                            -- 英文搭配短语
     phrase_zh TEXT,                                     -- 中文翻译
-    frequency_score INTEGER CHECK(frequency_score BETWEEN 0 AND 100), -- 频率评分 (0-100)
+    frequency INTEGER CHECK(frequency BETWEEN 0 AND 100), -- 频率评分 (0-100)
     register TEXT CHECK(register IN ('formal', 'informal', 'slang', 'archaic', 'literary', 'technical', 'colloquial', 'neutral')), -- 语体：正式、非正式、俚语等
     example_en TEXT,                                    -- 英文例句
     example_zh TEXT,                                    -- 中文翻译
@@ -198,21 +199,26 @@ CREATE TABLE IF NOT EXISTS dict_word_etymologies (
 
 CREATE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymology(word_id);
 
+-- Table: dict_categories - Word categories and classifications
+CREATE TABLE IF NOT EXISTS dict_categories (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    name TEXT NOT NULL,                               -- 分类名称
+    parent_id BIGINT,                                  -- 父分类 ID
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_dict_categories_name ON dict_categories(name);
+
 -- Table: dict_word_categories - Word categories and classifications
 CREATE TABLE IF NOT EXISTS dict_word_categories (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    category_type TEXT CHECK(category_type IN ('subject', 'topic', 'field', 'usage', 'level', 'frequency_band', 'semantic_field', 'thematic', 'academic_level')), -- 分类类型：学科、主题、领域、用法等
-    category_name TEXT NOT NULL,                        -- 分类名称
-    category_value TEXT NOT NULL,                        -- 分类值
-    confidence_score REAL CHECK(confidence_score BETWEEN 0 AND 1), -- 置信度 (0-1)
+    category_id BIGINT NOT NULL,                        -- 分类 ID
+    confidence SMALLINT NOT NULL DEFAULT 50 CHECK(confidence BETWEEN 0 AND 100), -- 置信度 (0-100)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(word_id, category_type, category_value)
+    UNIQUE(word_id, category_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_dict_categories_word ON dict_word_categories(word_id);
-CREATE INDEX IF NOT EXISTS idx_dict_categories_type ON dict_word_categories(category_type);
-CREATE INDEX IF NOT EXISTS idx_dict_categories_value ON dict_word_categories(category_value);
+CREATE INDEX IF NOT EXISTS idx_dict_word_categories_word ON dict_word_categories(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_word_categories_id ON dict_word_categories(category_id);
 
 -- Table: dict_word_usage_notes - Usage notes and warnings
 CREATE TABLE IF NOT EXISTS dict_word_usage_notes (
@@ -240,8 +246,8 @@ CREATE TABLE IF NOT EXISTS dict_phrases (
     origin TEXT,                                        -- 来源
     example_en TEXT,                                    -- 英文例句
     example_zh TEXT,                                    -- 中文翻译
-    difficulty_level INTEGER CHECK(difficulty_level BETWEEN 1 AND 5), -- 难度等级 (1-5)
-    frequency_score INTEGER CHECK(frequency_score BETWEEN 0 AND 100), -- 频率评分 (0-100)
+    difficulty SMALLINT CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
+    frequency SMALLINT CHECK(frequency BETWEEN 0 AND 100), -- 频率评分 (0-100)
     is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
     created_by BIGINT,                                  -- 创建者用户 ID
     updated_by BIGINT,                                  -- 更新者用户 ID

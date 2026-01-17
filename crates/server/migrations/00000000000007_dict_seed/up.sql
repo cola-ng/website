@@ -36,7 +36,7 @@ ON CONFLICT DO NOTHING;
 -- Sample root words with etymology information
 -- Format from: 英汉词根辞典(李平武+蒋真,7291条)汇总.txt
 
-INSERT INTO dict_words (word, word_lower, word_type, difficulty_level, is_lemma, created_at) VALUES
+INSERT INTO dict_words (word, word_lower, word_type, difficulty, is_lemma, created_at) VALUES
 ('abase', 'abase', 'verb', 3, true, now()),
 ('abate', 'abate', 'verb', 3, true, now()),
 ('abbreviate', 'abbreviate', 'verb', 3, true, now()),

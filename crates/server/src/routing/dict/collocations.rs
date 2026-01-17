@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_collocations(req: &mut Request) -> JsonResult<Vec<DictWordCollocation>> {
+pub async fn list_collocations(req: &mut Request) -> JsonResult<Vec<WordCollocation>> {
     let word_id = super::get_path_id(req, "id")?;
-    let collocations: Vec<DictWordCollocation> = with_conn(move |conn| {
+    let collocations: Vec<WordCollocation> = with_conn(move |conn| {
         dict_word_collocations::table
             .filter(dict_word_collocations::word_id.eq(word_id))
-            .load::<DictWordCollocation>(conn)
+            .load::<WordCollocation>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch collocations"))?;
@@ -35,7 +35,7 @@ pub struct CreateCollocationRequest {
 }
 
 #[handler]
-pub async fn create_collocation(req: &mut Request) -> JsonResult<DictWordCollocation> {
+pub async fn create_collocation(req: &mut Request) -> JsonResult<WordCollocation> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateCollocationRequest = req
         .parse_json()
@@ -48,9 +48,9 @@ pub async fn create_collocation(req: &mut Request) -> JsonResult<DictWordColloca
             .into());
     }
 
-    let created: DictWordCollocation = with_conn(move |conn| {
+    let created: WordCollocation = with_conn(move |conn| {
         diesel::insert_into(dict_word_collocations::table)
-            .values(&NewDictWordCollocation {
+            .values(&NewWordCollocation {
                 word_id,
                 collocation_type: input.collocation_type,
                 collocated_word_id: input.collocated_word_id,
@@ -63,7 +63,7 @@ pub async fn create_collocation(req: &mut Request) -> JsonResult<DictWordColloca
                 example_zh: input.example_zh,
                 is_common: input.is_common,
             })
-            .get_result::<DictWordCollocation>(conn)
+            .get_result::<WordCollocation>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create collocation"))?;

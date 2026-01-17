@@ -27,7 +27,7 @@ use regex::Regex;use diesel::r2d2::Pool;
 
 use colang::db::pool::DieselPool;
 use colang::models::dict::{
-    NewDictWord, NewDictWordDefinition, NewDictWordEtymology, NewDictWordExample,
+    NewWord, NewWordDefinition, NewWordEtymology, NewWordExample,
 };
 
 // Default dictionary directory
@@ -293,7 +293,7 @@ fn import_dictionary(
                             .optional()?;
 
                         if has_etymology.is_none() {
-                            let new_etymology = NewDictWordEtymology {
+                            let new_etymology = NewWordEtymology {
                                 word_id,
                                 origin_language: entry.origin_language.clone(),
                                 origin_word: entry.origin_word.clone(),
@@ -313,7 +313,7 @@ fn import_dictionary(
                     stats.words_skipped += 1;
                 } else {
                     // Insert new word
-                    let new_word = NewDictWord {
+                    let new_word = NewWord {
                         word: entry.word.clone(),
                         word_lower: entry.word_lower.clone(),
                         word_type: entry.part_of_speech.clone(),
@@ -335,7 +335,7 @@ fn import_dictionary(
 
                     // Insert definition if available
                     if let Some(definition_en) = &entry.definition_en {
-                        let new_definition = NewDictWordDefinition {
+                        let new_definition = NewWordDefinition {
                             word_id,
                             definition_en: definition_en.clone(),
                             definition_zh: entry.definition_zh.clone(),
@@ -355,7 +355,7 @@ fn import_dictionary(
 
                     // Insert etymology if available
                     if let Some(etymology_zh) = &entry.etymology_zh {
-                        let new_etymology = NewDictWordEtymology {
+                        let new_etymology = NewWordEtymology {
                             word_id,
                             origin_language: entry.origin_language.clone(),
                             origin_word: entry.origin_word.clone(),
@@ -374,7 +374,7 @@ fn import_dictionary(
 
                     // Insert example if available
                     if let Some(example_en) = &entry.example_en {
-                        let new_example = NewDictWordExample {
+                        let new_example = NewWordExample {
                             word_id,
                             definition_id: None,
                             sentence_en: example_en.clone(),

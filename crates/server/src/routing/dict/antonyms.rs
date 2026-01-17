@@ -8,9 +8,9 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_antonyms(req: &mut Request) -> JsonResult<Vec<DictWordAntonymView>> {
+pub async fn list_antonyms(req: &mut Request) -> JsonResult<Vec<WordAntonymView>> {
     let word_id = super::get_path_id(req, "id")?;
-    let rows: Vec<(DictWordAntonym, DictWord)> = with_conn(move |conn| {
+    let rows: Vec<(WordAntonym, Word)> = with_conn(move |conn| {
         dict_word_antonyms::table
             .inner_join(dict_words::table.on(dict_word_antonyms::antonym_word_id.eq(dict_words::id)))
             .filter(dict_word_antonyms::word_id.eq(word_id))
@@ -21,7 +21,7 @@ pub async fn list_antonyms(req: &mut Request) -> JsonResult<Vec<DictWordAntonymV
 
     json_ok(
         rows.into_iter()
-            .map(|(link, w)| DictWordAntonymView {
+            .map(|(link, w)| WordAntonymView {
                 link,
                 antonym: WordRef { id: w.id, word: w.word },
             })
@@ -37,22 +37,22 @@ pub struct CreateAntonymRequest {
 }
 
 #[handler]
-pub async fn create_antonym(req: &mut Request) -> JsonResult<DictWordAntonym> {
+pub async fn create_antonym(req: &mut Request) -> JsonResult<WordAntonym> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateAntonymRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let created: DictWordAntonym = with_conn(move |conn| {
+    let created: WordAntonym = with_conn(move |conn| {
         diesel::insert_into(dict_word_antonyms::table)
-            .values(&NewDictWordAntonym {
+            .values(&NewWordAntonym {
                 word_id,
                 antonym_word_id: input.antonym_word_id,
                 antonym_type: input.antonym_type,
                 context: input.context,
             })
-            .get_result::<DictWordAntonym>(conn)
+            .get_result::<WordAntonym>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create antonym"))?;
