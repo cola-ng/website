@@ -22,16 +22,11 @@ pub async fn list_relation(req: &mut Request) -> JsonResult<Vec<Relation>> {
 
 #[derive(Deserialize)]
 pub struct CreateRelationRequest {
-    pub origin_language: Option<String>,
-    pub origin_word: Option<String>,
-    pub origin_meaning: Option<String>,
-    pub relation_en: Option<String>,
-    pub relation_zh: Option<String>,
-    pub first_attested_year: Option<i32>,
-    pub historical_forms: Option<serde_json::Value>,
-    pub cognate_words: Option<serde_json::Value>,
+    pub relation_type: String,
+    pub related_word_id: i64,
+    pub semantic_field: Option<String>,
+    pub relation_strength: Option<i16>,
 }
-
 #[handler]
 pub async fn create_relation(req: &mut Request) -> JsonResult<Relation> {
     let word_id = super::get_path_id(req, "id")?;
@@ -44,14 +39,10 @@ pub async fn create_relation(req: &mut Request) -> JsonResult<Relation> {
         diesel::insert_into(dict_relations::table)
             .values(&NewRelation {
                 word_id,
-                origin_language: input.origin_language,
-                origin_word: input.origin_word,
-                origin_meaning: input.origin_meaning,
-                relation_en: input.relation_en,
-                relation_zh: input.relation_zh,
-                first_attested_year: input.first_attested_year,
-                historical_forms: input.historical_forms,
-                cognate_words: input.cognate_words,
+                relation_type: input.relation_type,
+                related_word_id: input.related_word_id,
+                semantic_field: input.semantic_field,
+                relation_strength: input.relation_strength,
             })
             .get_result::<Relation>(conn)
     })

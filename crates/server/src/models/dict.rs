@@ -246,6 +246,7 @@ pub struct NewImage {
     pub created_by: Option<i64>,
 }
 
+
 #[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
@@ -378,45 +379,3 @@ pub struct NewWordEtymology {
     pub etymology_id: i64,
 }
 
-// Word relation models
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_relations)]
-pub struct Relation {
-    pub id: i64,
-    pub word_id: i64,
-    pub relation_type: String,
-    pub related_word_id: String,
-    pub semantic_field: Option<String>,
-    pub relation_strength: Option<String>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_relations)]
-pub struct NewRelation {
-    pub word_id: i64,
-    pub relation_type: String,
-    pub related_word_id: String,
-    pub semantic_field: Option<String>,
-    pub relation_strength: Option<String>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_parts)]
-pub struct Part {
-    pub id: i64,
-    pub word_id: i64,
-    pub part_id: i64,
-    pub range_begin: Option<i16>,
-    pub range_until: Option<bool>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_parts)]
-pub struct NewPart {
-    pub word_id: i64,
-    pub part_id: i64,
-    pub range_begin: Option<i16>,
-    pub range_until: Option<bool>,
-}
