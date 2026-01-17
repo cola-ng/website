@@ -599,7 +599,7 @@ fn insert_pronunciations(
             .values((
                 dict_pronunciations::word_id.eq(word_id),
                 dict_pronunciations::ipa.eq(&entry.phonetic),
-                dict_pronunciations::dialect.eq("general" as &str),
+                dict_pronunciations::dialect.eq("other" as &str),
                 dict_pronunciations::is_primary.eq(true),
             ))
             .execute(conn)?;
