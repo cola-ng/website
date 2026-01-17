@@ -2,12 +2,37 @@
 -- DICTIONARY TABLES (English Dictionary - Server-side)
 -- ============================================================================
 
+-- Table: dict_dictionaries - Dictionary metadata
+CREATE TABLE IF NOT EXISTS dict_dictionaries (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    name TEXT NOT NULL UNIQUE,               -- 字典名称
+    description_en TEXT,                                -- 英文描述
+    description_zh TEXT,                                -- 中文描述
+    version TEXT,                                       -- 版本号
+    publisher TEXT,                                     -- 出版者
+    license_type TEXT CHECK(license_type IN ('public_domain', 'creative_commons', 'proprietary', 'educational', 'commercial')), -- 许可证类型
+    license_url TEXT,                                   -- 许可证链接
+    source_url TEXT,                                    -- 来源链接
+    total_entries BIGINT DEFAULT 0,                     -- 总词条数
+    is_active BOOLEAN DEFAULT TRUE,                     -- 是否激活（可用状态）
+    is_official BOOLEAN DEFAULT FALSE,                  -- 是否为官方字典
+    priority_order INTEGER DEFAULT 100,                 -- 优先级（越小越优先）
+    created_by BIGINT,                                  -- 创建者用户 ID
+    updated_by BIGINT,                                  -- 更新者用户 ID
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 更新时间
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
+);
+CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_name ON dict_dictionaries(name);
+CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_active ON dict_dictionaries(is_active);
+CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_priority ON dict_dictionaries(priority_order ASC);
+
 -- Table: dict_words - Main word table
 CREATE TABLE IF NOT EXISTS dict_words (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word TEXT NOT NULL UNIQUE,                          -- 单词（原形式）
     word_lower TEXT NOT NULL,                           -- 单词小写形式，用于搜索
     word_type TEXT CHECK(word_type IN ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'article', 'abbreviation', 'phrase', 'idiom')), -- 词性：名词、动词、形容词、副词等
+    language TEXT DEFAULT 'en',                         -- 语言（默认英文）
     frequency_score INTEGER CHECK(frequency_score BETWEEN 0 AND 100), -- 频率评分 (0-100)，越高表示越常用
     difficulty_level INTEGER CHECK(difficulty_level BETWEEN 1 AND 5), -- 难度等级 (1-5)，1 最简单，5 最难
     syllable_count INTEGER DEFAULT 1,                   -- 音节数量
@@ -25,6 +50,19 @@ CREATE INDEX IF NOT EXISTS idx_dict_words_word_lower ON dict_words(word_lower);
 CREATE INDEX IF NOT EXISTS idx_dict_words_word_type ON dict_words(word_type);
 CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency_score DESC);
 CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty_level);
+
+-- Table: dict_word_dictionaries - Many-to-many relationship between words and dictionaries
+CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
+    id BIGSERIAL PRIMARY KEY,                          -- Primary key ID
+    word_id BIGINT NOT NULL,                            -- Associated word ID
+    dictionary_id BIGINT NOT NULL,                      -- Associated dictionary ID
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- Unique constraint to ensure each word-dictionary pair is only added once
+);
+
+CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(word_id);
+CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_dict ON dict_word_dictionaries(dictionary_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_word_dicts_unique ON dict_word_dictionaries(word_id, dictionary_id);
+
 
 -- Table: dict_word_definitions - Word definitions (multiple per word)
 CREATE TABLE IF NOT EXISTS dict_word_definitions (
@@ -150,7 +188,6 @@ CREATE TABLE IF NOT EXISTS dict_word_etymology (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 CREATE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymology(word_id);
-
 
 CREATE TABLE IF NOT EXISTS dict_word_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID

@@ -166,6 +166,7 @@ pub struct NewConversationAnnotation {
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = learn_word_practices)]
 #[diesel(belongs_to(IssueWord, foreign_key = word_id))]
+#[diesel(check_for_backend(Pg))]
 pub struct WordPracticeLog {
     pub id: i64,
     pub user_id: i64,
@@ -173,7 +174,8 @@ pub struct WordPracticeLog {
     pub session_id: String,
     pub success_level: Option<i32>,
     pub notes: Option<String>,
-    pub practiced_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
@@ -202,7 +204,7 @@ pub struct ReadingPracticeAttempt {
     pub ai_feedback_en: Option<String>,
     pub ai_feedback_zh: Option<String>,
     pub waveform_data: Option<Value>,
-    pub attempted_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]

@@ -206,6 +206,28 @@ diesel::table! {
 }
 
 diesel::table! {
+    dict_dictionaries (id) {
+        id -> Int8,
+        name -> Text,
+        description_en -> Nullable<Text>,
+        description_zh -> Nullable<Text>,
+        version -> Nullable<Text>,
+        publisher -> Nullable<Text>,
+        license_type -> Nullable<Text>,
+        license_url -> Nullable<Text>,
+        source_url -> Nullable<Text>,
+        total_entries -> Nullable<Int8>,
+        is_active -> Nullable<Bool>,
+        is_official -> Nullable<Bool>,
+        priority_order -> Nullable<Int4>,
+        created_by -> Nullable<Int8>,
+        updated_by -> Nullable<Int8>,
+        updated_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     dict_frequency_bands (id) {
         id -> Int8,
         word_id -> Int8,
@@ -332,6 +354,15 @@ diesel::table! {
         context -> Nullable<Text>,
         usage_notes -> Nullable<Text>,
         is_primary -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_word_dictionaries (id) {
+        id -> Int8,
+        word_id -> Int8,
+        dictionary_id -> Int8,
         created_at -> Timestamptz,
     }
 }
@@ -480,6 +511,7 @@ diesel::table! {
         word -> Text,
         word_lower -> Text,
         word_type -> Nullable<Text>,
+        language -> Nullable<Text>,
         frequency_score -> Nullable<Int4>,
         difficulty_level -> Nullable<Int4>,
         syllable_count -> Nullable<Int4>,
@@ -692,6 +724,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     base_role_users,
     base_roles,
     base_users,
+    dict_dictionaries,
     dict_frequency_bands,
     dict_import_batch,
     dict_phrase_words,
@@ -701,6 +734,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_word_categories,
     dict_word_collocations,
     dict_word_definitions,
+    dict_word_dictionaries,
     dict_word_etymologies,
     dict_word_etymology,
     dict_word_examples,

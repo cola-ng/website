@@ -699,7 +699,7 @@ pub async fn list_word_practices(
     let practices: Vec<WordPracticeLog> = with_conn(move |conn| {
         let mut query = learn_word_practices::table
             .filter(learn_word_practices::user_id.eq(user_id))
-            .order(learn_word_practices::practiced_at.desc())
+            .order(learn_word_practices::updated_at.desc())
             .limit(limit)
             .into_boxed();
 
@@ -785,7 +785,7 @@ pub async fn list_read_practices(
     let practices: Vec<ReadingPracticeAttempt> = with_conn(move |conn| {
         let mut query = learn_read_practices::table
             .filter(learn_read_practices::user_id.eq(user_id))
-            .order(learn_read_practices::attempted_at.desc())
+            .order(learn_read_practices::created_at.desc())
             .limit(limit)
             .into_boxed();
 
