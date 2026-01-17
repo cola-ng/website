@@ -28,8 +28,10 @@ async fn main() {
 
     let router = routing::router();
 
-    println!("router:::::{:?}", router);
+    println!("bind_addr: {:?}", bind_addr);
+    println!("router:::::\n{:?}", router);
 
     let acceptor = TcpListener::new(bind_addr).bind().await;
+    println!("acceptor: {:?}", acceptor);
     Server::new(acceptor).serve(router).await;
 }

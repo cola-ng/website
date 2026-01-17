@@ -21,7 +21,7 @@ pub fn router() -> Router {
             Cors::new()
                 .allow_origin(cors::Any)
                 .allow_methods([
-                    Method::GET,
+                    Method::GET, 
                     Method::POST,
                     Method::PUT,
                     Method::DELETE,
@@ -36,7 +36,7 @@ pub fn router() -> Router {
                 .max_age(Duration::from_secs(86400))
                 .into_handler(),
         )
-        .push(Router::with_path("health").get(health))
+        .get(health)
         .push(account::router())
         .push(auth::router())
         .push(asset::router())

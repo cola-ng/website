@@ -39,7 +39,7 @@ impl Default for DbConfig {
 pub static APP_CONFIG: OnceLock<AppConfig> = OnceLock::new();
 impl AppConfig {
     pub fn init() {
-        let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:6019".into());
+        let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8119".into());
         let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL is required");
         let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET is required");
         let jwt_ttl_seconds: u64 = std::env::var("JWT_TTL_SECONDS")

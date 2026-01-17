@@ -16,6 +16,6 @@ WORKDIR /app
 
 COPY --from=builder /usr/src/app/target/release/colang /usr/local/bin/
 
-EXPOSE 6019
+EXPOSE 8119
 
 CMD ["colang"]
