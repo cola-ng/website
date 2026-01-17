@@ -291,7 +291,6 @@ diesel::table! {
         sentence -> Text,
         source -> Nullable<Text>,
         author -> Nullable<Text>,
-        priority_order -> Nullable<Int4>,
         difficulty -> Nullable<Int4>,
         is_common -> Nullable<Bool>,
         created_at -> Timestamptz,
@@ -424,6 +423,7 @@ diesel::table! {
         word_id -> Int8,
         definition_id -> Nullable<Int8>,
         sentence_id -> Int8,
+        priority_order -> Nullable<Int4>,
         created_at -> Timestamptz,
     }
 }

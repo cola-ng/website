@@ -106,6 +106,7 @@ pub struct NewWordSentence {
     pub word_id: i64,
     pub definition_id: Option<i64>,
     pub sentence_id: i64,
+    pub priority_order: Option<i32>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -129,7 +130,6 @@ pub struct NewSentence {
     pub sentence: String,
     pub source: Option<String>,
     pub author: Option<String>,
-    pub priority_order: Option<i32>,
     pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
 }
@@ -251,7 +251,7 @@ pub struct NewWordImage {
 pub struct WordQueryResponse {
     pub word: Word,
     pub definitions: Vec<WordDefinition>,
-    pub examples: Vec<WordSentence>,
+    pub sentences: Vec<WordSentence>,
     pub pronunciations: Vec<Pronunciation>,
     pub relations: Vec<WordRelation>,
     pub forms: Vec<WordForm>,

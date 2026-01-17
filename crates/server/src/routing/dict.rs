@@ -122,26 +122,16 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .order(dict_word_definitions::definition_order.asc())
             .load::<WordDefinition>(conn)?;
 
-        let examples = dict_word_sentences::table
-            .filter(dict_word_sentences::word_id.eq(word_id))
+        let sentences = dict_sentences::table.filter(
+            dict_word_sentences::id.eq_any(dict_word_sentences::table
+            .filter(dict_word_sentences::word_id.eq(word_id)).select(dict_word_sentences::sentence_id)))
             .order(dict_word_sentences::priority_order.asc())
             .load::<WordSentence>(conn)?;
 
-        let pronunciations = dict_pronunciations::table
+        let pronunciations = dict_pronunciations::table``
             .filter(dict_pronunciations::word_id.eq(word_id))
             .order(dict_pronunciations::is_primary.desc())
             .load::<Pronunciation>(conn)?;
-
-        let synonyms = synonym_rows
-            .into_iter()
-            .map(|(link, w)| WordRelation {
-                link,
-                synonym: WordRef {
-                    id: w.id,
-                    word: w.word,
-                },
-            })
-            .collect();
 
         let forms = dict_word_forms::table
             .filter(dict_word_forms::word_id.eq(word_id))
@@ -164,7 +154,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         Ok(WordQueryResponse {
             word: word_record,
             definitions,
-            examples,
+            sentences:,
             pronunciations,
             relations,
             forms,

@@ -34,7 +34,7 @@ pub struct CreateSentenceRequest {
 }
 
 #[handler]
-pub async fn create_sentence(req: &mut Request) -> JsonResult<WordSentence> {
+pub async fn create_sentence(req: &mut Request) -> JsonResult<Sentence> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateSentenceRequest = req
         .parse_json()
@@ -56,7 +56,7 @@ pub async fn create_sentence(req: &mut Request) -> JsonResult<WordSentence> {
                 difficulty: input.difficulty,
                 is_common: input.is_common,
             })
-            .get_result::<Sentence>(conn);
+            .get_result::<Sentence>(conn)?;
         diesel::insert_into(dict_word_sentences::table)
             .values(&NewWordSentence {
                 word_id,

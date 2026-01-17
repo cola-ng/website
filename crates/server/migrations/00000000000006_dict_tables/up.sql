@@ -112,7 +112,6 @@ CREATE TABLE IF NOT EXISTS dict_sentences (
     sentence TEXT NOT NULL,                          -- 例句
     source TEXT,                                        -- 来源
     author TEXT,                                        -- 作者
-    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
     difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
     is_common BOOLEAN DEFAULT FALSE,                    -- 是否为常用例句
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
@@ -123,6 +122,7 @@ CREATE TABLE IF NOT EXISTS dict_word_sentences (
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     definition_id BIGINT,                               -- 关联释义 ID
     sentence_id BIGINT NOT NULL,                               -- 关联释义 ID
+    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
