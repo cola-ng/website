@@ -22,14 +22,11 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<Vec<WordCategory>>
 
 #[derive(Deserialize)]
 pub struct CreateCategoryRequest {
-    pub category_type: Option<String>,
-    pub category_name: String,
-    pub category_value: String,
-    pub confidence_score: Option<f32>,
+    pub name: String,
+    pub parent_id: Option<i64>,
 }
-
 #[handler]
-pub async fn create_category(req: &mut Request) -> JsonResult<WordCategory> {
+pub async fn create_category(req: &mut Request) -> JsonResult<Category> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreateCategoryRequest = req
         .parse_json()
@@ -42,17 +39,13 @@ pub async fn create_category(req: &mut Request) -> JsonResult<WordCategory> {
     }
     let created: WordCategory = with_conn(move |conn| {
         diesel::insert_into(dict_word_categories::table)
-            .values(&NewWordCategory {
-                word_id,
-                category_type: input.category_type,
-                category_name: input.category_name.trim().to_string(),
-                category_value: input.category_value.trim().to_string(),
-                confidence_score: input.confidence_score,
+            .values(&NewCategory {
+                name: input.name.trim().to_string(),
+                parent_id: input.parent_id(),
             })
-            .get_result::<WordCategory>(conn)
+            .get_result::<Category>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create category"))?;
     json_ok(created)
 }
-

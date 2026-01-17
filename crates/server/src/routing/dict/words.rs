@@ -30,11 +30,11 @@ pub async fn list_words(req: &mut Request) -> JsonResult<Vec<Word>> {
         }
 
         if let Some(min_d) = min_diff {
-            query = query.filter(dict_words::difficulty_level.ge(min_d));
+            query = query.filter(dict_words::difficulty.ge(min_d));
         }
 
         if let Some(max_d) = max_diff {
-            query = query.filter(dict_words::difficulty_level.le(max_d));
+            query = query.filter(dict_words::difficulty.le(max_d));
         }
 
         query.load::<Word>(conn)
@@ -50,9 +50,9 @@ pub struct CreateWordRequest {
     pub word: String,
     pub word_type: Option<String>,
     pub language: Option<String>,
-    pub frequency_score: Option<i32>,
-    pub difficulty_level: Option<i32>,
-    pub syllable_count: Option<i32>,
+    pub frequency: Option<i16>,
+    pub difficulty: Option<i16>,
+    pub syllable_count: Option<i16>,
     pub is_lemma: Option<bool>,
     pub word_count: Option<i32>,
     pub is_active: Option<bool>,
@@ -78,8 +78,8 @@ pub async fn create_word(req: &mut Request) -> JsonResult<Word> {
                 word_lower,
                 word_type: input.word_type,
                 language: input.language,
-                frequency_score: input.frequency_score,
-                difficulty_level: input.difficulty_level,
+                frequency: input.frequency,
+                difficulty: input.difficulty,
                 syllable_count: input.syllable_count,
                 is_lemma: input.is_lemma,
                 word_count: input.word_count,
