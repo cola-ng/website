@@ -273,6 +273,7 @@ pub struct WordQueryResponse {
     pub definitions: Vec<Definition>,
     pub sentences: Vec<Sentence>,
     pub pronunciations: Vec<Pronunciation>,
+    pub dictionaries: Vec<Dictionary>,
     pub relations: Vec<Relation>,
     pub etymologies: Vec<Etymology>,
     pub forms: Vec<Form>,

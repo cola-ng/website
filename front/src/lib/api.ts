@@ -146,6 +146,35 @@ export type Image = {
   created_at: string
 }
 
+export type Dictionary = {
+  id: number
+  name: string
+  description_en: string | null
+  description_zh: string | null
+  version: string | null
+  publisher: string | null
+  license_type: string | null
+  license_url: string | null
+  source_url: string | null
+  total_entries: number | null
+  is_active: boolean | null
+  is_official: boolean | null
+  priority_order: number | null
+  created_by: number | null
+  updated_by: number | null
+  updated_at: string
+  created_at: string
+}
+
+export type WordDictionary = {
+  id: number
+  word_id: number
+  dictionary_id: number
+  definition_id: number | null
+  priority_order: number | null
+  created_at: string
+}
+
 export type WordQueryResponse = {
   word: Word
   definitions: Definition[]
@@ -156,6 +185,7 @@ export type WordQueryResponse = {
   forms: Form[]
   categories: Category[]
   images: Image[]
+  dictionaries: (WordDictionary & { dictionary: Dictionary })[]
 }
 
 async function requestJson<T>(

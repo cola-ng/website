@@ -182,11 +182,22 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
                 .load::<Etymology>(conn)?
         };
 
+        let dictionaries = dict_dictionaries::table
+            .filter(
+                dict_dictionaries::id.eq_any(
+                    dict_word_dictionaries::table
+                        .filter(dict_word_dictionaries::word_id.eq(word_id))
+                        .select(dict_word_dictionaries::dictionary_id),
+                ),
+            )
+            .load::<Dictionary>(conn)?;
+
         Ok(WordQueryResponse {
             word: word_record,
             definitions,
             sentences,
             pronunciations,
+            dictionaries,
             relations,
             etymologies,
             forms,
