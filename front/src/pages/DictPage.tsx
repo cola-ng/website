@@ -104,9 +104,9 @@ export function DictPage() {
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
-                  {result.word.difficulty_level && (
+                  {result.word.difficulty && (
                     <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                      {result.word.difficulty_level}
+                      {result.word.difficulty}
                     </span>
                   )}
                   {result.word.core_level && (

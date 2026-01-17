@@ -318,8 +318,8 @@ fn import_dictionary(
                         word_lower: entry.word_lower.clone(),
                         word_type: entry.part_of_speech.clone(),
                         language: None,
-                        frequency_score: None,
-                        difficulty_level: None,
+                        frequency: None,
+                        difficulty: None,
                         syllable_count: None,
                         is_lemma: Some(true),
                         word_count: Some(1),
@@ -382,7 +382,7 @@ fn import_dictionary(
                             source: Some(entry.source.clone()),
                             author: None,
                             example_order: Some(1),
-                            difficulty_level: None,
+                            difficulty: None,
                             is_common: Some(true),
                         };
 

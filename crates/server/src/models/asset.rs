@@ -18,7 +18,7 @@ pub struct Scene {
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub icon_emoji: Option<String>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
     pub category: Option<String>,
     pub display_order: Option<i32>,
     pub is_active: Option<bool>,
@@ -33,7 +33,7 @@ pub struct NewScene {
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub icon_emoji: Option<String>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
     pub category: Option<String>,
     pub display_order: Option<i32>,
     pub is_active: Option<bool>,
@@ -51,7 +51,7 @@ pub struct Dialogue {
     pub description_zh: Option<String>,
     pub total_turns: Option<i32>,
     pub estimated_duration_seconds: Option<i32>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -65,7 +65,7 @@ pub struct NewDialogue {
     pub description_zh: Option<String>,
     pub total_turns: Option<i32>,
     pub estimated_duration_seconds: Option<i32>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -110,7 +110,7 @@ pub struct ClassicDialogueSource {
     pub description_zh: Option<String>,
     pub thumbnail_url: Option<String>,
     pub imdb_id: Option<String>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -124,7 +124,7 @@ pub struct NewClassicDialogueSource {
     pub description_zh: Option<String>,
     pub thumbnail_url: Option<String>,
     pub imdb_id: Option<String>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
@@ -177,7 +177,7 @@ pub struct ReadingExercise {
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
     pub exercise_type: Option<String>,
     pub created_at: DateTime<Utc>,
 }
@@ -189,7 +189,7 @@ pub struct NewReadingExercise {
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
-    pub difficulty_level: Option<String>,
+    pub difficulty: Option<String>,
     pub exercise_type: Option<String>,
 }
 
@@ -233,7 +233,7 @@ pub struct KeyPhrase {
     pub example_sentence_zh: Option<String>,
     pub category: Option<String>,
     pub formality_level: Option<String>,
-    pub frequency_score: Option<i32>,
+    pub frequency: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 

@@ -42,7 +42,7 @@ export type Word = {
   phonetic_uk: string | null
   audio_us: string | null
   audio_uk: string | null
-  difficulty_level: string | null
+  difficulty: string | null
   frequency_rank: number | null
   core_level: string | null
   created_at: string

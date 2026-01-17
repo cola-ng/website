@@ -32,16 +32,16 @@ pub async fn create_category(req: &mut Request) -> JsonResult<Category> {
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-    if input.category_name.trim().is_empty() || input.category_value.trim().is_empty() {
+    if input.name.trim().is_empty() {
         return Err(StatusError::bad_request()
             .brief("category_name and category_value are required")
             .into());
     }
-    let created: WordCategory = with_conn(move |conn| {
-        diesel::insert_into(dict_word_categories::table)
+    let created = with_conn(move |conn| {
+        diesel::insert_into(dict_categories::table)
             .values(&NewCategory {
                 name: input.name.trim().to_string(),
-                parent_id: input.parent_id(),
+                parent_id: input.parent_id,
             })
             .get_result::<Category>(conn)
     })

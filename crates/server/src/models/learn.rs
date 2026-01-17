@@ -22,7 +22,7 @@ pub struct IssueWord {
     pub pick_count: i32,
     pub next_review_at: Option<DateTime<Utc>>,
     pub review_interval_days: Option<i32>,
-    pub difficulty_level: Option<i32>,
+    pub difficulty: Option<i32>,
     pub context: Option<String>,
     pub audio_timestamp: Option<i32>,
     pub created_at: DateTime<Utc>,
@@ -46,7 +46,7 @@ pub struct UpdateIssueWord {
     pub description_zh: Option<String>,
     pub next_review_at: Option<DateTime<Utc>>,
     pub review_interval_days: Option<i32>,
-    pub difficulty_level: Option<i32>,
+    pub difficulty: Option<i32>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]

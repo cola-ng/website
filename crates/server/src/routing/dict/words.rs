@@ -13,8 +13,8 @@ pub async fn list_words(req: &mut Request) -> JsonResult<Vec<Word>> {
         .query::<String>("search")
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
-    let min_diff = req.query::<i32>("min_difficulty");
-    let max_diff = req.query::<i32>("max_difficulty");
+    let min_diff = req.query::<i16>("min_difficulty");
+    let max_diff = req.query::<i16>("max_difficulty");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
     let offset = req.query::<i64>("offset").unwrap_or(0).max(0);
 

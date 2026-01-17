@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS asset_scenes (
     description_en TEXT,
     description_zh TEXT,
     icon_emoji TEXT,
-    difficulty_level TEXT CHECK(difficulty_level IN ('beginner', 'intermediate', 'advanced')) DEFAULT 'intermediate',
+    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')) DEFAULT 'intermediate',
     category TEXT,
     display_order INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS asset_dialogues (
     description_zh TEXT,
     total_turns INTEGER DEFAULT 0,
     estimated_duration_seconds INTEGER,
-    difficulty_level TEXT CHECK(difficulty_level IN ('beginner', 'intermediate', 'advanced')),
+    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS asset_classic_sources (
     description_zh TEXT,
     thumbnail_url TEXT,
     imdb_id TEXT,
-    difficulty_level TEXT CHECK(difficulty_level IN ('beginner', 'intermediate', 'advanced')),
+    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(source_type, title)
 );
@@ -96,7 +96,7 @@ CREATE TABLE IF NOT EXISTS asset_read_exercises (
     title_zh TEXT NOT NULL,
     description_en TEXT,
     description_zh TEXT,
-    difficulty_level TEXT CHECK(difficulty_level IN ('beginner', 'intermediate', 'advanced')),
+    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')),
     exercise_type TEXT CHECK(exercise_type IN ('sentence', 'paragraph', 'dialogue', 'tongue_twister')) DEFAULT 'sentence',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -130,7 +130,7 @@ CREATE TABLE IF NOT EXISTS asset_phrases (
     example_sentence_zh TEXT,
     category TEXT,
     formality_level TEXT CHECK(formality_level IN ('casual', 'neutral', 'formal')),
-    frequency_score INTEGER DEFAULT 0,
+    frequency INTEGER DEFAULT 0,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(phrase_en)
 );

@@ -51,10 +51,12 @@ pub fn router() -> Router {
                 .delete(word_dictionaries::delete_word_dictionary),
         )
         .push(
-            Router::with_path("word-dictionaries/{id}").delete(word_dictionaries::delete_word_dictionary_by_id),
+            Router::with_path("word-dictionaries/{id}")
+                .delete(word_dictionaries::delete_word_dictionary_by_id),
         )
         .push(
-            Router::with_path("dictionaries/{id}/words").get(word_dictionaries::list_dictionary_words),
+            Router::with_path("dictionaries/{id}/words")
+                .get(word_dictionaries::list_dictionary_words),
         )
         .push(
             Router::with_path("words/{id}/definitions")
@@ -260,9 +262,15 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .distinct()
             .load(conn)?;
 
-        let categorie_ids = dict_word_categories::table
-            .filter(dict_word_categories::word_id.eq(word_id))
-            .load::<WordCategory>(conn)?;
+        let categories = dict_categories::table
+            .filter(
+                dict_categories::id.eq_any(
+                    dict_word_categories::table
+                        .filter(dict_word_categories::word_id.eq(word_id))
+                        .select(dict_word_categories::category_id),
+                ),
+            )
+            .load::<Category>(conn)?;
 
         let etymology = dict_word_etymology::table
             .filter(dict_word_etymology::word_id.eq(word_id))

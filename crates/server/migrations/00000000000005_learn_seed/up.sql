@@ -5,7 +5,7 @@
 -- SCENARIOS
 -- ============================================================================
 
-INSERT INTO asset_scenes (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty_level, category, display_order, is_active) VALUES
+INSERT INTO asset_scenes (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, category, display_order, is_active) VALUES
 ('Airport Check-in', '机场值机', 'Practice learn_conversations at airport check-in counters', '练习机场值机柜台对话', '✈️', 'beginner', 'travel', 1, true),
 ('Hotel Reservation', '酒店预订', 'Learn to book rooms and handle hotel situations', '学习预订房间和处理酒店情况', '🏨', 'beginner', 'travel', 2, true),
 ('Restaurant Ordering', '餐厅点餐', 'Order food and interact with restaurant staff', '点餐和与餐厅员工互动', '🍽️', 'beginner', 'daily', 3, true),
@@ -22,19 +22,19 @@ INSERT INTO asset_scenes (name_en, name_zh, description_en, description_zh, icon
 -- ============================================================================
 
 -- Airport Check-in dialogues
-INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty_level) VALUES
+INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
 ((SELECT id FROM asset_scenes WHERE name_en = 'Airport Check-in'), 'Basic Check-in', '基础值机', 'A simple check-in conversation', '简单的值机对话', 8, 120, 'beginner'),
 ((SELECT id FROM asset_scenes WHERE name_en = 'Airport Check-in'), 'Overweight Luggage', '行李超重', 'Handling overweight baggage situation', '处理行李超重的情况', 10, 180, 'intermediate'),
 ((SELECT id FROM asset_scenes WHERE name_en = 'Airport Check-in'), 'Seat Upgrade Request', '升舱请求', 'Requesting a seat upgrade', '请求升舱', 8, 150, 'intermediate');
 
 -- Hotel Reservation dialogues
-INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty_level) VALUES
+INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
 ((SELECT id FROM asset_scenes WHERE name_en = 'Hotel Reservation'), 'Making a Reservation', '预订房间', 'Booking a hotel room', '预订酒店房间', 8, 120, 'beginner'),
 ((SELECT id FROM asset_scenes WHERE name_en = 'Hotel Reservation'), 'Checking In', '办理入住', 'Hotel check-in process', '酒店入住流程', 6, 90, 'beginner'),
 ((SELECT id FROM asset_scenes WHERE name_en = 'Hotel Reservation'), 'Room Complaint', '房间投诉', 'Handling issues with the room', '处理房间问题', 10, 180, 'intermediate');
 
 -- Restaurant dialogues
-INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty_level) VALUES
+INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
 ((SELECT id FROM asset_scenes WHERE name_en = 'Restaurant Ordering'), 'Ordering a Meal', '点餐', 'Basic restaurant ordering', '基础餐厅点餐', 8, 120, 'beginner'),
 ((SELECT id FROM asset_scenes WHERE name_en = 'Restaurant Ordering'), 'Special Dietary Needs', '特殊饮食需求', 'Explaining allergies and preferences', '解释过敏和偏好', 10, 150, 'intermediate'),
 ((SELECT id FROM asset_scenes WHERE name_en = 'Restaurant Ordering'), 'Paying the Bill', '结账', 'Asking for the check and paying', '要账单和付款', 6, 90, 'beginner');
@@ -69,7 +69,7 @@ INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, speake
 -- CLASSIC DIALOGUE SOURCES
 -- ============================================================================
 
-INSERT INTO asset_classic_sources (source_type, title, year, description_en, description_zh, thumbnail_url, imdb_id, difficulty_level) VALUES
+INSERT INTO asset_classic_sources (source_type, title, year, description_en, description_zh, thumbnail_url, imdb_id, difficulty) VALUES
 ('movie', 'The Shawshank Redemption', 1994, 'A powerful drama about hope and perseverance', '一部关于希望和坚持的强大剧情片', NULL, 'tt0111161', 'intermediate'),
 ('movie', 'Forrest Gump', 1994, 'Life lessons through the eyes of a simple man', '通过一个单纯男人的视角讲述人生', NULL, 'tt0109830', 'beginner'),
 ('movie', 'The Social Network', 2010, 'The story of Facebook creation', 'Facebook创建的故事', NULL, 'tt1285016', 'advanced'),
@@ -133,7 +133,7 @@ Michael: 我忍不住。',
 -- READING EXERCISES
 -- ============================================================================
 
-INSERT INTO asset_read_exercises (title_en, title_zh, description_en, description_zh, difficulty_level, exercise_type) VALUES
+INSERT INTO asset_read_exercises (title_en, title_zh, description_en, description_zh, difficulty, exercise_type) VALUES
 ('Daily Greetings', '日常问候', 'Practice common greeting phrases', '练习常见问候短语', 'beginner', 'sentence'),
 ('Business Introductions', '商务介绍', 'Professional introduction phrases', '专业介绍短语', 'intermediate', 'sentence'),
 ('Travel Conversations', '旅行对话', 'Useful phrases for traveling', '旅行中有用的短语', 'beginner', 'dialogue'),
@@ -172,7 +172,7 @@ INSERT INTO asset_read_sentences (exercise_id, sentence_order, content_en, conte
 -- KEY PHRASES
 -- ============================================================================
 
-INSERT INTO asset_phrases (phrase_en, phrase_zh, phonetic_transcription, usage_context, example_sentence_en, example_sentence_zh, category, formality_level, frequency_score) VALUES
+INSERT INTO asset_phrases (phrase_en, phrase_zh, phonetic_transcription, usage_context, example_sentence_en, example_sentence_zh, category, formality_level, frequency) VALUES
 ('How are you doing?', '你好吗？', '/haʊ ɑːr juː ˈduːɪŋ/', 'Casual greeting', 'Hey John, how are you doing?', '嘿John，你好吗？', 'greeting', 'casual', 95),
 ('Nice to meet you', '很高兴认识你', '/naɪs tuː miːt juː/', 'First meeting', 'Nice to meet you. I am Sarah.', '很高兴认识你。我是Sarah。', 'greeting', 'neutral', 98),
 ('Could you please...', '你能...吗？', '/kʊd juː pliːz/', 'Polite request', 'Could you please pass me the salt?', '你能把盐递给我吗？', 'request', 'formal', 90),

@@ -32,7 +32,7 @@ diesel::table! {
         description_zh -> Nullable<Text>,
         thumbnail_url -> Nullable<Text>,
         imdb_id -> Nullable<Text>,
-        difficulty_level -> Nullable<Text>,
+        difficulty -> Nullable<Text>,
         created_at -> Timestamptz,
     }
 }
@@ -63,7 +63,7 @@ diesel::table! {
         description_zh -> Nullable<Text>,
         total_turns -> Nullable<Int4>,
         estimated_duration_seconds -> Nullable<Int4>,
-        difficulty_level -> Nullable<Text>,
+        difficulty -> Nullable<Text>,
         created_at -> Timestamptz,
     }
 }
@@ -79,7 +79,7 @@ diesel::table! {
         example_sentence_zh -> Nullable<Text>,
         category -> Nullable<Text>,
         formality_level -> Nullable<Text>,
-        frequency_score -> Nullable<Int4>,
+        frequency -> Nullable<Int4>,
         created_at -> Timestamptz,
     }
 }
@@ -91,7 +91,7 @@ diesel::table! {
         title_zh -> Text,
         description_en -> Nullable<Text>,
         description_zh -> Nullable<Text>,
-        difficulty_level -> Nullable<Text>,
+        difficulty -> Nullable<Text>,
         exercise_type -> Nullable<Text>,
         created_at -> Timestamptz,
     }
@@ -119,7 +119,7 @@ diesel::table! {
         description_en -> Nullable<Text>,
         description_zh -> Nullable<Text>,
         icon_emoji -> Nullable<Text>,
-        difficulty_level -> Nullable<Text>,
+        difficulty -> Nullable<Text>,
         category -> Nullable<Text>,
         display_order -> Nullable<Int4>,
         is_active -> Nullable<Bool>,
@@ -596,7 +596,7 @@ diesel::table! {
         pick_count -> Int4,
         next_review_at -> Nullable<Timestamptz>,
         review_interval_days -> Nullable<Int4>,
-        difficulty_level -> Nullable<Int4>,
+        difficulty -> Nullable<Int4>,
         context -> Nullable<Text>,
         audio_timestamp -> Nullable<Int4>,
         created_at -> Timestamptz,

@@ -50,7 +50,7 @@ pub async fn list_scenes(req: &mut Request, res: &mut Response) -> AppResult<()>
             query = query.filter(asset_scenes::category.eq(cat));
         }
         if let Some(diff) = difficulty {
-            query = query.filter(asset_scenes::difficulty_level.eq(diff));
+            query = query.filter(asset_scenes::difficulty.eq(diff));
         }
 
         query.load::<Scene>(conn)
@@ -180,7 +180,7 @@ pub async fn list_read_exercises(req: &mut Request, res: &mut Response) -> AppRe
         let mut query = asset_read_exercises::table.limit(limit).into_boxed();
 
         if let Some(diff) = difficulty {
-            query = query.filter(asset_read_exercises::difficulty_level.eq(diff));
+            query = query.filter(asset_read_exercises::difficulty.eq(diff));
         }
         if let Some(et) = exercise_type_param {
             query = query.filter(asset_read_exercises::exercise_type.eq(et));

@@ -101,7 +101,7 @@ pub struct WordExample {
     pub source: Option<String>,
     pub author: Option<String>,
     pub example_order: Option<i32>,
-    pub difficulty_level: Option<i32>,
+    pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
     pub created_at: DateTime<Utc>,
 }
@@ -116,7 +116,7 @@ pub struct NewWordExample {
     pub source: Option<String>,
     pub author: Option<String>,
     pub example_order: Option<i32>,
-    pub difficulty_level: Option<i32>,
+    pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
 }
 
@@ -194,7 +194,7 @@ pub struct WordCollocation {
     pub phrase: String,
     pub phrase_en: String,
     pub phrase_zh: Option<String>,
-    pub frequency_score: Option<i32>,
+    pub frequency: Option<i32>,
     pub register: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
@@ -211,7 +211,7 @@ pub struct NewWordCollocation {
     pub phrase: String,
     pub phrase_en: String,
     pub phrase_zh: Option<String>,
-    pub frequency_score: Option<i32>,
+    pub frequency: Option<i32>,
     pub register: Option<String>,
     pub example_en: Option<String>,
     pub example_zh: Option<String>,
@@ -317,7 +317,7 @@ pub struct WordCategory {
     pub id: i64,
     pub word_id: i64,
     pub category_id: i64,
-    pub confidence: i64,
+    pub confidence: i16,
     pub created_at: DateTime<Utc>,
 }
 

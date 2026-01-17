@@ -14,7 +14,7 @@ CREATE TABLE IF NOT EXISTS learn_issue_words (
     pick_count INTEGER NOT NULL DEFAULT 0,
     next_review_at TIMESTAMPTZ,
     review_interval_days INTEGER DEFAULT 1,
-    difficulty_level INTEGER DEFAULT 1 CHECK(difficulty_level BETWEEN 1 AND 5),
+    difficulty INTEGER DEFAULT 1 CHECK(difficulty BETWEEN 1 AND 5),
     context TEXT,
     audio_timestamp INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

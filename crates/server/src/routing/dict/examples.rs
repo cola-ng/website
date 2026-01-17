@@ -29,7 +29,7 @@ pub struct CreateExampleRequest {
     pub source: Option<String>,
     pub author: Option<String>,
     pub example_order: Option<i32>,
-    pub difficulty_level: Option<i32>,
+    pub difficulty: Option<i32>,
     pub is_common: Option<bool>,
 }
 
@@ -55,7 +55,7 @@ pub async fn create_example(req: &mut Request) -> JsonResult<WordExample> {
                 source: input.source,
                 author: input.author,
                 example_order: input.example_order,
-                difficulty_level: input.difficulty_level,
+                difficulty: input.difficulty,
                 is_common: input.is_common,
             })
             .get_result::<WordExample>(conn)
