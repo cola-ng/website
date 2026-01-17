@@ -123,8 +123,7 @@ CREATE TABLE IF NOT EXISTS dict_word_examples (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     definition_id BIGINT,                               -- 关联释义 ID
-    translation_id BIGINT,                               -- 关联释义 ID
-    example_id BIGINT,                               -- 关联释义 ID
+    example_id BIGINT NOT NULL,                               -- 关联释义 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 

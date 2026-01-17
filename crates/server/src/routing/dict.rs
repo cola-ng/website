@@ -7,21 +7,15 @@ use crate::db::with_conn;
 use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
-mod antonyms;
 mod categories;
-mod collocations;
 mod definitions;
 mod dictionaries;
-mod etymology;
+mod relation;
 mod examples;
 mod family;
 mod forms;
 mod images;
-mod phrases;
 mod pronunciations;
-mod synonyms;
-mod usage_notes;
-mod word_dictionaries;
 mod words;
 
 pub fn router() -> Router {
@@ -52,14 +46,6 @@ pub fn router() -> Router {
                 .delete(word_dictionaries::delete_word_dictionary),
         )
         .push(
-            Router::with_path("word-dictionaries/{id}")
-                .delete(word_dictionaries::delete_word_dictionary_by_id),
-        )
-        .push(
-            Router::with_path("dictionaries/{id}/words")
-                .get(word_dictionaries::list_dictionary_words),
-        )
-        .push(
             Router::with_path("words/{id}/definitions")
                 .get(definitions::list_definitions)
                 .post(definitions::create_definition),
@@ -79,34 +65,14 @@ pub fn router() -> Router {
                 .post(examples::create_example),
         )
         .push(
-            Router::with_path("words/{id}/synonyms")
-                .get(synonyms::list_synonyms)
-                .post(synonyms::create_synonym),
-        )
-        .push(
-            Router::with_path("words/{id}/antonyms")
-                .get(antonyms::list_antonyms)
-                .post(antonyms::create_antonym),
-        )
-        .push(
             Router::with_path("words/{id}/forms")
                 .get(forms::list_forms)
                 .post(forms::create_form),
         )
         .push(
-            Router::with_path("words/{id}/collocations")
-                .get(collocations::list_collocations)
-                .post(collocations::create_collocation),
-        )
-        .push(
             Router::with_path("words/{id}/word-families")
                 .get(family::list_word_family)
                 .post(family::create_word_family),
-        )
-        .push(
-            Router::with_path("words/{id}/phrases")
-                .get(phrases::list_phrases)
-                .post(phrases::create_phrase),
         )
         .push(
             Router::with_path("words/{id}/idioms")
@@ -125,13 +91,8 @@ pub fn router() -> Router {
         )
         .push(
             Router::with_path("words/{id}/etymology")
-                .get(etymology::list_etymology)
-                .post(etymology::create_etymology),
-        )
-        .push(
-            Router::with_path("words/{id}/usage-notes")
-                .get(usage_notes::list_usage_notes)
-                .post(usage_notes::create_usage_note),
+                .get(relation::list_etymology)
+                .post(relation::create_etymology),
         )
         .push(
             Router::with_path("words/{id}/images")
@@ -185,39 +146,16 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .order(dict_word_examples::example_order.asc())
             .load::<WordExample>(conn)?;
 
-        let pronunciations = dict_word_pronunciations::table
-            .filter(dict_word_pronunciations::word_id.eq(word_id))
-            .order(dict_word_pronunciations::is_primary.desc())
-            .load::<WordPronunciation>(conn)?;
+        let pronunciations = dict_pronunciations::table
+            .filter(dict_pronunciations::word_id.eq(word_id))
+            .order(dict_pronunciations::is_primary.desc())
+            .load::<Pronunciation>(conn)?;
 
-        let synonym_rows: Vec<(WordSynonym, Word)> = dict_word_synonyms::table
-            .inner_join(
-                dict_words::table.on(dict_word_synonyms::synonym_word_id.eq(dict_words::id)),
-            )
-            .filter(dict_word_synonyms::word_id.eq(word_id))
-            .load(conn)?;
         let synonyms = synonym_rows
             .into_iter()
-            .map(|(link, w)| WordSynonymView {
+            .map(|(link, w)| WordRelation {
                 link,
                 synonym: WordRef {
-                    id: w.id,
-                    word: w.word,
-                },
-            })
-            .collect();
-
-        let antonym_rows: Vec<(WordAntonym, Word)> = dict_word_antonyms::table
-            .inner_join(
-                dict_words::table.on(dict_word_antonyms::antonym_word_id.eq(dict_words::id)),
-            )
-            .filter(dict_word_antonyms::word_id.eq(word_id))
-            .load(conn)?;
-        let antonyms = antonym_rows
-            .into_iter()
-            .map(|(link, w)| WordAntonymView {
-                link,
-                antonym: WordRef {
                     id: w.id,
                     word: w.word,
                 },
@@ -227,10 +165,6 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         let forms = dict_word_forms::table
             .filter(dict_word_forms::word_id.eq(word_id))
             .load::<WordForm>(conn)?;
-
-        let collocations = dict_word_collocations::table
-            .filter(dict_word_collocations::word_id.eq(word_id))
-            .load::<WordCollocation>(conn)?;
 
         let categories = dict_categories::table
             .filter(
@@ -251,10 +185,8 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             definitions,
             examples,
             pronunciations,
-            synonyms,
-            antonyms,
+            relations,
             forms,
-            collocations,
             categories,
             images,
         })

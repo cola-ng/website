@@ -8,13 +8,13 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_pronunciations(req: &mut Request) -> JsonResult<Vec<WordPronunciation>> {
+pub async fn list_pronunciations(req: &mut Request) -> JsonResult<Vec<Pronunciation>> {
     let word_id = super::get_path_id(req, "id")?;
-    let pronunciations: Vec<WordPronunciation> = with_conn(move |conn| {
-        dict_word_pronunciations::table
-            .filter(dict_word_pronunciations::word_id.eq(word_id))
-            .order(dict_word_pronunciations::is_primary.desc())
-            .load::<WordPronunciation>(conn)
+    let pronunciations: Vec<Pronunciation> = with_conn(move |conn| {
+        dict_pronunciations::table
+            .filter(dict_pronunciations::word_id.eq(word_id))
+            .order(dict_pronunciations::is_primary.desc())
+            .load::<Pronunciation>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch pronunciations"))?;
@@ -33,7 +33,7 @@ pub struct CreatePronunciationRequest {
 }
 
 #[handler]
-pub async fn create_pronunciation(req: &mut Request) -> JsonResult<WordPronunciation> {
+pub async fn create_pronunciation(req: &mut Request) -> JsonResult<Pronunciation> {
     let word_id = super::get_path_id(req, "id")?;
     let input: CreatePronunciationRequest = req
         .parse_json()
@@ -44,9 +44,9 @@ pub async fn create_pronunciation(req: &mut Request) -> JsonResult<WordPronuncia
             .brief("ipa is required")
             .into());
     }
-    let created: WordPronunciation = with_conn(move |conn| {
-        diesel::insert_into(dict_word_pronunciations::table)
-            .values(&NewWordPronunciation {
+    let created: Pronunciation = with_conn(move |conn| {
+        diesel::insert_into(dict_pronunciations::table)
+            .values(&NewPronunciation {
                 word_id,
                 definition_id: input.definition_id,
                 ipa: input.ipa.trim().to_string(),
@@ -56,7 +56,7 @@ pub async fn create_pronunciation(req: &mut Request) -> JsonResult<WordPronuncia
                 gender: input.gender,
                 is_primary: input.is_primary,
             })
-            .get_result::<WordPronunciation>(conn)
+            .get_result::<Pronunciation>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create pronunciation"))?;
@@ -68,8 +68,8 @@ pub async fn delete_pronunciation(req: &mut Request) -> JsonResult<()> {
     let pronunciation_id = super::get_path_id(req, "pronunciation_id")?;
     with_conn(move |conn| {
         diesel::delete(
-            dict_word_pronunciations::table.filter(
-                dict_word_pronunciations::id.eq(pronunciation_id)
+            dict_pronunciations::table.filter(
+                dict_pronunciations::id.eq(pronunciation_id)
             )
         )
         .execute(conn)
