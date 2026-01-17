@@ -23,9 +23,9 @@ pub async fn list_sentences(req: &mut Request) -> JsonResult<Vec<WordSentence>> 
 
 #[derive(Deserialize)]
 pub struct CreateSentenceRequest {
+    pub language: String,
     pub definition_id: Option<i64>,
-    pub sentence_en: String,
-    pub sentence_zh: Option<String>,
+    pub sentence: String,
     pub source: Option<String>,
     pub author: Option<String>,
     pub priority_order: Option<i32>,
@@ -40,19 +40,18 @@ pub async fn create_sentence(req: &mut Request) -> JsonResult<Sentence> {
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-    if input.sentence_en.trim().is_empty() {
+    if input.sentence.trim().is_empty() {
         return Err(StatusError::bad_request()
-            .brief("sentence_en is required")
+            .brief("sentence is required")
             .into());
     }
-    let created: Sentence = with_conn(move |conn| {
-        let created = diesel::insert_into(dict_word_sentences::table)
+    let created = with_conn(move |conn| {
+        let created = diesel::insert_into(dict_sentences::table)
             .values(&NewSentence {
                 language: input.language.trim().to_string(),
                 sentence: input.sentence,
                 source: input.source,
                 author: input.author,
-                priority_order: input.priority_order,
                 difficulty: input.difficulty,
                 is_common: input.is_common,
             })
@@ -62,9 +61,10 @@ pub async fn create_sentence(req: &mut Request) -> JsonResult<Sentence> {
                 word_id,
                 definition_id: input.definition_id,
                 sentence_id: created.id,
+                priority_order: input.priority_order,
             })
             .get_result::<WordSentence>(conn)?;
-        created
+        Ok(created)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create example"))?;

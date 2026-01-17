@@ -57,8 +57,14 @@ pub async fn create_image(req: &mut Request) -> JsonResult<Image> {
         diesel::insert_into(dict_images::table)
             .values(&NewImage {
                 word_id,
-                image_url: input.image_url.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
-                image_path: input.image_path.map(|v| v.trim().to_string()).filter(|v| !v.is_empty()),
+                image_url: input
+                    .image_url
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty()),
+                image_path: input
+                    .image_path
+                    .map(|v| v.trim().to_string())
+                    .filter(|v| !v.is_empty()),
                 image_type: input.image_type,
                 alt_text_en: input.alt_text_en,
                 alt_text_zh: input.alt_text_zh,
@@ -76,15 +82,9 @@ pub async fn create_image(req: &mut Request) -> JsonResult<Image> {
 pub async fn delete_image(req: &mut Request) -> JsonResult<()> {
     let image_id = super::get_path_id(req, "image_id")?;
     with_conn(move |conn| {
-        diesel::delete(
-            dict_images::table.filter(
-                dict_images::id.eq(image_id)
-            )
-        )
-        .execute(conn)
+        diesel::delete(dict_images::table.filter(dict_images::id.eq(image_id))).execute(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete image"))?;
     json_ok(())
 }
-

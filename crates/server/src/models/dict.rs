@@ -59,7 +59,7 @@ pub struct UpdateWord {
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = dict_word_definitions)]
+#[diesel(table_name = dict_definitions)]
 pub struct Definition {
     pub id: i64,
     pub word_id: i64,
@@ -76,7 +76,7 @@ pub struct Definition {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_word_definitions)]
+#[diesel(table_name = dict_definitions)]
 pub struct NewDefinition {
     pub word_id: i64,
     pub language: String,
@@ -246,7 +246,6 @@ pub struct NewImage {
     pub created_by: Option<i64>,
 }
 
-
 #[derive(Serialize, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
@@ -254,6 +253,7 @@ pub struct WordQueryResponse {
     pub sentences: Vec<Sentence>,
     pub pronunciations: Vec<Pronunciation>,
     pub relations: Vec<Relation>,
+    pub etymologies: Vec<Etymology>,
     pub forms: Vec<Form>,
     pub categories: Vec<Category>,
     pub images: Vec<Image>,
@@ -351,7 +351,7 @@ pub struct Etymology {
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_word_etymologies)]
-pub struct WordEtymologyLink {
+pub struct WordEtymology {
     pub id: i64,
     pub word_id: i64,
     pub etymology_id: i64,
@@ -373,7 +373,50 @@ pub struct NewEtymology {
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = dict_word_etymologies)]
-pub struct NewWordEtymologyLink {
+pub struct NewWordEtymology {
     pub word_id: i64,
     pub etymology_id: i64,
+}
+
+// Word relation models
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_relations)]
+pub struct Relation {
+    pub id: i64,
+    pub word_id: i64,
+    pub relation_type: String,
+    pub related_word_id: String,
+    pub semantic_field: Option<String>,
+    pub relation_strength: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_relations)]
+pub struct NewRelation {
+    pub word_id: i64,
+    pub relation_type: String,
+    pub related_word_id: String,
+    pub semantic_field: Option<String>,
+    pub relation_strength: Option<String>,
+}
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_parts)]
+pub struct Part {
+    pub id: i64,
+    pub word_id: i64,
+    pub part_id: i64,
+    pub range_begin: Option<i16>,
+    pub range_until: Option<bool>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_parts)]
+pub struct NewPart {
+    pub word_id: i64,
+    pub part_id: i64,
+    pub range_begin: Option<i16>,
+    pub range_until: Option<bool>,
 }

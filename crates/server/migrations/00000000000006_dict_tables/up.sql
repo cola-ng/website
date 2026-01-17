@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS dict_word_dictionaries (
     id BIGSERIAL PRIMARY KEY,                          -- Primary key ID
     word_id BIGINT NOT NULL,                            -- Associated word ID
     dictionary_id BIGINT NOT NULL,                      -- Associated dictionary ID
+    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- Unique constraint to ensure each word-dictionary pair is only added once
 );
 CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_word ON dict_word_dictionaries(word_id);
@@ -147,6 +148,7 @@ CREATE TABLE IF NOT EXISTS dict_word_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     etymology_id BIGINT NOT NULL,                       -- 关联语源 ID
+    priority_order INTEGER DEFAULT 1,                    -- 例句顺序
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymologies(word_id, etymology_id);
@@ -177,8 +179,8 @@ CREATE TABLE IF NOT EXISTS dict_parts (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
     part_id BIGINT NOT NULL,                            -- 组成成分 ID, 其实也是  word id
-    range_begin INTEGER NOT NULL,                      -- 单词在短语中的起始位置(包括)
-    range_until INTEGER,                      -- 单词在短语中的结束位置(包括)
+    range_begin SMALLINT NOT NULL,                      -- 单词在短语中的起始位置(包括)
+    range_until SMALLINT,                      -- 单词在短语中的结束位置(包括)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
@@ -206,7 +208,7 @@ CREATE TABLE IF NOT EXISTS dict_relations (
     relation_type TEXT CHECK(relation_type IN ('synonym', 'antonym', 'related', 'broader', 'narrower', 'part_of', 'member_of', 'substance_of', 'instance_of', 'similar')), -- 条目类型：同义词、反义词、相关词、上位词等
     related_word_id BIGINT NOT NULL,                    -- 相关单词 ID
     semantic_field TEXT,                                 -- 语义场
-    relation_strength REAL CHECK(relation_strength BETWEEN 0 AND 1), -- 关系强度 (0-1)
+    relation_strength SMALLINT DEFAULT 50 CHECK(relation_strength BETWEEN 0 AND 100), -- 关系强度 (0-100)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
     UNIQUE(word_id, relation_type, related_word_id)
 );

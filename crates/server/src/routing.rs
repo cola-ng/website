@@ -21,7 +21,7 @@ pub fn router() -> Router {
             Cors::new()
                 .allow_origin(cors::Any)
                 .allow_methods([
-                    Method::GET, 
+                    Method::GET,
                     Method::POST,
                     Method::PUT,
                     Method::DELETE,

@@ -145,11 +145,10 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
 pub async fn get_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
     let id = super::get_path_id(req, "id")?;
 
-    let dictionary: Dictionary = with_conn(move |conn| {
-        dict_dictionaries::table.find(id).first::<Dictionary>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::not_found().brief("dictionary not found"))?;
+    let dictionary: Dictionary =
+        with_conn(move |conn| dict_dictionaries::table.find(id).first::<Dictionary>(conn))
+            .await
+            .map_err(|_| StatusError::not_found().brief("dictionary not found"))?;
 
     json_ok(dictionary)
 }
@@ -158,11 +157,9 @@ pub async fn get_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
 pub async fn delete_dictionary(req: &mut Request) -> JsonResult<serde_json::Value> {
     let id = super::get_path_id(req, "id")?;
 
-    with_conn(move |conn| {
-        diesel::delete(dict_dictionaries::table.find(id)).execute(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to delete dictionary"))?;
+    with_conn(move |conn| diesel::delete(dict_dictionaries::table.find(id)).execute(conn))
+        .await
+        .map_err(|_| StatusError::internal_server_error().brief("failed to delete dictionary"))?;
 
     json_ok(serde_json::json!({ "message": "dictionary deleted" }))
 }

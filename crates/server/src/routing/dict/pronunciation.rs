@@ -40,9 +40,7 @@ pub async fn create_pronunciation(req: &mut Request) -> JsonResult<Pronunciation
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
     if input.ipa.trim().is_empty() {
-        return Err(StatusError::bad_request()
-            .brief("ipa is required")
-            .into());
+        return Err(StatusError::bad_request().brief("ipa is required").into());
     }
     let created: Pronunciation = with_conn(move |conn| {
         diesel::insert_into(dict_pronunciations::table)
@@ -68,9 +66,7 @@ pub async fn delete_pronunciation(req: &mut Request) -> JsonResult<()> {
     let pronunciation_id = super::get_path_id(req, "pronunciation_id")?;
     with_conn(move |conn| {
         diesel::delete(
-            dict_pronunciations::table.filter(
-                dict_pronunciations::id.eq(pronunciation_id)
-            )
+            dict_pronunciations::table.filter(dict_pronunciations::id.eq(pronunciation_id)),
         )
         .execute(conn)
     })

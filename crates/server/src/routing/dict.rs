@@ -10,11 +10,12 @@ use crate::{JsonResult, json_ok};
 mod category;
 mod definition;
 mod dictionary;
-mod relation;
-mod sentence;
+mod etymology;
 mod form;
 mod image;
 mod pronunciation;
+mod relation;
+mod sentence;
 mod words;
 
 pub fn router() -> Router {
@@ -59,7 +60,6 @@ pub fn router() -> Router {
                 .get(form::list_forms)
                 .post(form::create_form),
         )
-
         .push(
             Router::with_path("words/{id}/categories")
                 .get(category::list_categories)
@@ -80,10 +80,7 @@ pub fn router() -> Router {
                 .get(image::list_images)
                 .post(image::create_image),
         )
-        .push(
-            Router::with_path("words/{id}/images/{image_id}")
-                .delete(image::delete_image),
-        )
+        .push(Router::with_path("words/{id}/images/{image_id}").delete(image::delete_image))
 }
 
 pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
@@ -117,16 +114,32 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         println!("word_record: {:?}", word_record);
         let word_id = word_record.id;
 
-        let definitions = dict_word_definitions::table
-            .filter(dict_word_definitions::word_id.eq(word_id))
-            .order(dict_word_definitions::definition_order.asc())
+        let definitions = dict_definitions::table
+            .filter(dict_definitions::word_id.eq(word_id))
+            .order(dict_definitions::definition_order.asc())
             .load::<Definition>(conn)?;
 
-        let sentences = dict_sentences::table.filter(
-            dict_word_sentences::id.eq_any(dict_word_sentences::table
-            .filter(dict_word_sentences::word_id.eq(word_id)).select(dict_word_sentences::sentence_id)))
-            .order(dict_word_sentences::priority_order.asc())
-            .load::<WordSentence>(conn)?;
+        let sentence_ids = dict_word_sentences::table
+            .filter(dict_word_sentences::word_id.eq(word_id))
+            .select(dict_word_sentences::sentence_id)
+            .order(dict_word_sentences::priority_order.desc())
+            .load::<i64>(conn)?;
+
+        let sentences = if sentence_ids.is_empty() {
+            Vec::new()
+        } else {
+            dict_sentences::table
+                .filter(dict_sentences::id.eq_any(&sentence_ids))
+                .load::<Sentence>(conn)?
+                .into_iter()
+                .sorted_by_key(|s| {
+                    sentence_ids
+                        .iter()
+                        .position(|&id| id == s.id)
+                        .unwrap_or(usize::MAX)
+                })
+                .collect::<Vec<_>>()
+        };
 
         let pronunciations = dict_pronunciations::table
             .filter(dict_pronunciations::word_id.eq(word_id))
@@ -151,12 +164,17 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .filter(dict_images::word_id.eq(word_id))
             .load::<Image>(conn)?;
 
+        let etymologies = dict_etymologies::table
+            .filter(dict_etymologies::word_id.eq(word_id))
+            .load::<Etymology>(conn)?;
+
         Ok(WordQueryResponse {
             word: word_record,
             definitions,
             sentences,
             pronunciations,
             relations,
+            etymologies,
             forms,
             categories,
             images,

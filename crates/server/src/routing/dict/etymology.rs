@@ -8,12 +8,12 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<Relation>> {
+pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<Etymology>> {
     let word_id = super::get_path_id(req, "id")?;
-    let etymology: Vec<Relation> = with_conn(move |conn| {
-        dict_word_etymology::table
-            .filter(dict_word_etymology::word_id.eq(word_id))
-            .load::<Relation>(conn)
+    let etymology: Vec<Etymology> = with_conn(move |conn| {
+        dict_etymologies::table
+            .filter(dict_etymologies::word_id.eq(word_id))
+            .load::<Etymology>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch etymology"))?;
@@ -21,7 +21,7 @@ pub async fn list_etymology(req: &mut Request) -> JsonResult<Vec<Relation>> {
 }
 
 #[derive(Deserialize)]
-pub struct CreateRelationRequest {
+pub struct CreateEtymologyRequest {
     pub origin_language: Option<String>,
     pub origin_word: Option<String>,
     pub origin_meaning: Option<String>,
@@ -33,16 +33,16 @@ pub struct CreateRelationRequest {
 }
 
 #[handler]
-pub async fn create_etymology(req: &mut Request) -> JsonResult<Relation> {
+pub async fn create_etymology(req: &mut Request) -> JsonResult<Etymology> {
     let word_id = super::get_path_id(req, "id")?;
-    let input: CreateRelationRequest = req
+    let input: CreateEtymologyRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let created: Relation = with_conn(move |conn| {
-        diesel::insert_into(dict_word_etymology::table)
-            .values(&NewRelation {
+    let created: Etymology = with_conn(move |conn| {
+        diesel::insert_into(dict_etymologies::table)
+            .values(&NewEtymology {
                 word_id,
                 origin_language: input.origin_language,
                 origin_word: input.origin_word,
@@ -53,11 +53,10 @@ pub async fn create_etymology(req: &mut Request) -> JsonResult<Relation> {
                 historical_forms: input.historical_forms,
                 cognate_words: input.cognate_words,
             })
-            .get_result::<Relation>(conn)
+            .get_result::<Etymology>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create etymology"))?;
 
     json_ok(created)
 }
-

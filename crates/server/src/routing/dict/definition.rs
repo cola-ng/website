@@ -11,9 +11,9 @@ use crate::{JsonResult, json_ok};
 pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<Definition>> {
     let word_id = super::get_path_id(req, "id")?;
     let definitions: Vec<Definition> = with_conn(move |conn| {
-        dict_word_definitions::table
-            .filter(dict_word_definitions::word_id.eq(word_id))
-            .order(dict_word_definitions::definition_order.asc())
+        dict_definitions::table
+            .filter(dict_definitions::word_id.eq(word_id))
+            .order(dict_definitions::definition_order.asc())
             .load::<Definition>(conn)
     })
     .await
@@ -47,7 +47,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<Definition> {
     }
 
     let created: Definition = with_conn(move |conn| {
-        diesel::insert_into(dict_word_definitions::table)
+        diesel::insert_into(dict_definitions::table)
             .values(&NewDefinition {
                 word_id,
                 definition: input.definition.trim().to_string(),
@@ -65,4 +65,3 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<Definition> {
     .map_err(|_| StatusError::internal_server_error().brief("failed to create definition"))?;
     json_ok(created)
 }
-

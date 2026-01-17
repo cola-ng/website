@@ -24,10 +24,9 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use chrono::Utc;
+use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::Deserialize;
-
-use colang::db::pool::DieselPool;
 
 // Default directories
 const DEFAULT_SOURCE_DIR: &str = r"D:\Works\colang\endict1\dict";
@@ -147,8 +146,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Build audio file cache
     println!("\nBuilding audio file cache...");
     let audio_cache = build_audio_cache(&audio_dir);
-    println!("Found {} UK audio files, {} US audio files",
-        audio_cache.uk.len(), audio_cache.us.len());
+    println!(
+        "Found {} UK audio files, {} US audio files",
+        audio_cache.uk.len(),
+        audio_cache.us.len()
+    );
 
     // Process all JSON files
     let mut total_entries = 0;
@@ -157,11 +159,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
 
     for json_file in &json_files {
-        println!("\nProcessing: {}", json_file.file_name().unwrap_or_default().to_string_lossy());
+        println!(
+            "\nProcessing: {}",
+            json_file.file_name().unwrap_or_default().to_string_lossy()
+        );
 
         match import_json_file(&mut conn, json_file, &audio_cache, batch_size) {
             Ok(stats) => {
-                println!("  Entries: {}, Added: {}, Skipped: {}", stats.entries, stats.added, stats.skipped);
+                println!(
+                    "  Entries: {}, Added: {}, Skipped: {}",
+                    stats.entries, stats.added, stats.skipped
+                );
                 total_entries += stats.entries;
                 total_words += stats.added;
                 total_skipped += stats.skipped;
@@ -354,7 +362,8 @@ fn process_json_entry(json_entry: JsonDictEntry) -> Option<ImportEntry> {
     }
 
     // Extract part of speech (use first one if multiple)
-    let part_of_speech = json_entry.part_of_speech
+    let part_of_speech = json_entry
+        .part_of_speech
         .first()
         .map(|p| normalize_part_of_speech(p))
         .flatten();
@@ -397,7 +406,8 @@ fn normalize_part_of_speech(pos: &str) -> Option<String> {
 /// Parse exchange field to extract word forms
 /// Exchange format: ["s:schools", "p:schooled", "d:schooled", "3:schools"]
 /// Prefixes: 0=third person, 1=past, 2=past participle, 3=plural, 4=present participle,
-///           5=comparative, 6=superlative, s=plural, p=past participle, i=present participle, d=past
+///           5=comparative, 6=superlative, s=plural, p=past participle, i=present participle,
+/// d=past
 fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
     let mut forms = Vec::new();
 
@@ -411,14 +421,14 @@ fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
             }
 
             let form_type = match prefix {
-                "0" => "present",           // Third person singular
-                "1" | "d" => "past",         // Past tense
-                "2" | "p" => "past_participle", // Past participle
-                "3" | "s" => "plural",       // Plural
+                "0" => "present",                  // Third person singular
+                "1" | "d" => "past",               // Past tense
+                "2" | "p" => "past_participle",    // Past participle
+                "3" | "s" => "plural",             // Plural
                 "4" | "i" => "present_participle", // Present participle
-                "5" => "comparative",        // Comparative
-                "6" => "superlative",        // Superlative
-                _ => continue,               // Skip unknown prefixes
+                "5" => "comparative",              // Comparative
+                "6" => "superlative",              // Superlative
+                _ => continue,                     // Skip unknown prefixes
             };
 
             forms.push(Form {
@@ -467,21 +477,21 @@ fn insert_definitions(
     word_id: i64,
     entry: &ImportEntry,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use colang::db::schema::dict_word_definitions;
+    use colang::db::schema::dict_definitions;
 
     let mut definition_order = 1;
 
     // Insert English definitions
     for definition in &entry.definitions_en {
         if !definition.is_empty() {
-            diesel::insert_into(dict_word_definitions::table)
+            diesel::insert_into(dict_definitions::table)
                 .values((
-                    dict_word_definitions::word_id.eq(word_id),
-                    dict_word_definitions::language.eq("en"),
-                    dict_word_definitions::definition.eq(definition),
-                    dict_word_definitions::part_of_speech.eq(entry.part_of_speech.clone()),
-                    dict_word_definitions::definition_order.eq(definition_order),
-                    dict_word_definitions::is_primary.eq(definition_order == 1),
+                    dict_definitions::word_id.eq(word_id),
+                    dict_definitions::language.eq("en"),
+                    dict_definitions::definition.eq(definition),
+                    dict_definitions::part_of_speech.eq(entry.part_of_speech.clone()),
+                    dict_definitions::definition_order.eq(definition_order),
+                    dict_definitions::is_primary.eq(definition_order == 1),
                 ))
                 .execute(conn)?;
             definition_order += 1;
@@ -491,14 +501,14 @@ fn insert_definitions(
     // Insert Chinese translations
     for translation in &entry.definitions_zh {
         if !translation.is_empty() {
-            diesel::insert_into(dict_word_definitions::table)
+            diesel::insert_into(dict_definitions::table)
                 .values((
-                    dict_word_definitions::word_id.eq(word_id),
-                    dict_word_definitions::language.eq("zh"),
-                    dict_word_definitions::definition.eq(translation),
-                    dict_word_definitions::part_of_speech.eq(entry.part_of_speech.clone()),
-                    dict_word_definitions::definition_order.eq(definition_order),
-                    dict_word_definitions::is_primary.eq(false),
+                    dict_definitions::word_id.eq(word_id),
+                    dict_definitions::language.eq("zh"),
+                    dict_definitions::definition.eq(translation),
+                    dict_definitions::part_of_speech.eq(entry.part_of_speech.clone()),
+                    dict_definitions::definition_order.eq(definition_order),
+                    dict_definitions::is_primary.eq(false),
                 ))
                 .execute(conn)?;
             definition_order += 1;
@@ -610,7 +620,10 @@ fn print_usage() {
     println!("                      (default: {})", DEFAULT_SOURCE_DIR);
     println!("  --audio-dir <PATH>   Audio directory with uk/us subdirs");
     println!("                      (default: {})", DEFAULT_AUDIO_DIR);
-    println!("  --batch-size <N>     Batch size for inserts (default: {})", DEFAULT_BATCH_SIZE);
+    println!(
+        "  --batch-size <N>     Batch size for inserts (default: {})",
+        DEFAULT_BATCH_SIZE
+    );
     println!("  --help               Show this help message");
     println!();
     println!("Environment:");

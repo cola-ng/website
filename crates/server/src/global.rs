@@ -1,7 +1,7 @@
 use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
-use serde::Serialize;
 use salvo::prelude::*;
+use serde::Serialize;
 
 use crate::AppError;
 
