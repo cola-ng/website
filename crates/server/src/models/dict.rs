@@ -447,8 +447,7 @@ pub struct WordQueryResponse {
     pub word_family: Vec<WordFamilyView>,
     pub phrases: Vec<Phrase>,
     pub idioms: Vec<Phrase>,
-    pub categories: Vec<WordCategory>,
-    pub related_topics: Vec<DictRelatedTopic>,
+    pub categories: Vec<Category>,
     pub etymology: Vec<WordEtymology>,
     pub usage_notes: Vec<WordUsageNote>,
     pub images: Vec<WordImage>,
@@ -456,7 +455,7 @@ pub struct WordQueryResponse {
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = dict_dictionaries)]
-pub struct DictDictionary {
+pub struct Dictionary {
     pub id: i64,
     pub name: String,
     pub description_en: Option<String>,
@@ -478,7 +477,7 @@ pub struct DictDictionary {
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = dict_dictionaries)]
-pub struct NewDictDictionary {
+pub struct NewDictionary {
     pub name: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
@@ -497,7 +496,7 @@ pub struct NewDictDictionary {
 
 #[derive(AsChangeset, Deserialize)]
 #[diesel(table_name = dict_dictionaries)]
-pub struct UpdateDictDictionary {
+pub struct UpdateDictionary {
     pub name: Option<String>,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,

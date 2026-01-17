@@ -299,17 +299,6 @@ diesel::table! {
 }
 
 diesel::table! {
-    dict_related_topics (id) {
-        id -> Int8,
-        word_id -> Int8,
-        topic_name -> Text,
-        topic_category -> Nullable<Text>,
-        relevance_score -> Nullable<Float4>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
     dict_word_antonyms (id) {
         id -> Int8,
         word_id -> Int8,
@@ -738,7 +727,6 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_import_batch,
     dict_phrase_words,
     dict_phrases,
-    dict_related_topics,
     dict_word_antonyms,
     dict_word_categories,
     dict_word_collocations,

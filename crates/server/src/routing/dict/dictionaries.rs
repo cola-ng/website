@@ -8,13 +8,13 @@ use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
 #[handler]
-pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<DictDictionary>> {
+pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<Dictionary>> {
     let is_active = req.query::<bool>("is_active");
     let is_official = req.query::<bool>("is_official");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
     let offset = req.query::<i64>("offset").unwrap_or(0).max(0);
 
-    let dictionaries: Vec<DictDictionary> = with_conn(move |conn| {
+    let dictionaries: Vec<Dictionary> = with_conn(move |conn| {
         let mut query = dict_dictionaries::table
             .order(dict_dictionaries::priority_order.asc())
             .then_order_by(dict_dictionaries::name.asc())
@@ -30,7 +30,7 @@ pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<DictDictiona
             query = query.filter(dict_dictionaries::is_official.eq(official));
         }
 
-        query.load::<DictDictionary>(conn)
+        query.load::<Dictionary>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch dictionaries"))?;
@@ -55,7 +55,7 @@ pub struct CreateDictionaryRequest {
 }
 
 #[handler]
-pub async fn create_dictionary(req: &mut Request) -> JsonResult<DictDictionary> {
+pub async fn create_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
     let input: CreateDictionaryRequest = req
         .parse_json()
         .await
@@ -66,9 +66,9 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<DictDictionary> 
         return Err(StatusError::bad_request().brief("name is required").into());
     }
 
-    let created: DictDictionary = with_conn(move |conn| {
+    let created: Dictionary = with_conn(move |conn| {
         diesel::insert_into(dict_dictionaries::table)
-            .values(&NewDictDictionary {
+            .values(&NewDictionary {
                 name,
                 description_en: input.description_en,
                 description_zh: input.description_zh,
@@ -84,7 +84,7 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<DictDictionary> 
                 created_by: None,
                 updated_by: None,
             })
-            .get_result::<DictDictionary>(conn)
+            .get_result::<Dictionary>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create dictionary"))?;
@@ -109,16 +109,16 @@ pub struct UpdateDictionaryRequest {
 }
 
 #[handler]
-pub async fn update_dictionary(req: &mut Request) -> JsonResult<DictDictionary> {
+pub async fn update_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
     let id = super::get_path_id(req, "id")?;
     let input: UpdateDictionaryRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let updated: DictDictionary = with_conn(move |conn| {
+    let updated: Dictionary = with_conn(move |conn| {
         diesel::update(dict_dictionaries::table.find(id))
-            .set(&UpdateDictDictionary {
+            .set(&UpdateDictionary {
                 name: input.name.map(|n| n.trim().to_string()),
                 description_en: input.description_en,
                 description_zh: input.description_zh,
@@ -133,7 +133,7 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<DictDictionary> 
                 priority_order: input.priority_order,
                 updated_by: None,
             })
-            .get_result::<DictDictionary>(conn)
+            .get_result::<Dictionary>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update dictionary"))?;
@@ -142,11 +142,11 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<DictDictionary> 
 }
 
 #[handler]
-pub async fn get_dictionary(req: &mut Request) -> JsonResult<DictDictionary> {
+pub async fn get_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
     let id = super::get_path_id(req, "id")?;
 
-    let dictionary: DictDictionary = with_conn(move |conn| {
-        dict_dictionaries::table.find(id).first::<DictDictionary>(conn)
+    let dictionary: Dictionary = with_conn(move |conn| {
+        dict_dictionaries::table.find(id).first::<Dictionary>(conn)
     })
     .await
     .map_err(|_| StatusError::not_found().brief("dictionary not found"))?;

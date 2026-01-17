@@ -11,14 +11,14 @@ use crate::{JsonResult, json_ok};
 pub struct WordDictionaryView {
     pub link: WordDictionary,
     pub word: WordRef,
-    pub dictionary: DictDictionary,
+    pub dictionary: Dictionary,
 }
 
 #[handler]
 pub async fn list_word_dictionaries(req: &mut Request) -> JsonResult<Vec<WordDictionaryView>> {
     let word_id = super::get_path_id(req, "word_id")?;
 
-    let results: Vec<(WordDictionary, Word, DictDictionary)> = with_conn(move |conn| {
+    let results: Vec<(WordDictionary, Word, Dictionary)> = with_conn(move |conn| {
         dict_word_dictionaries::table
             .inner_join(dict_words::table.on(dict_word_dictionaries::word_id.eq(dict_words::id)))
             .inner_join(
@@ -51,7 +51,7 @@ pub async fn list_word_dictionaries(req: &mut Request) -> JsonResult<Vec<WordDic
 pub async fn list_dictionary_words(req: &mut Request) -> JsonResult<Vec<WordDictionaryView>> {
     let dictionary_id = super::get_path_id(req, "dictionary_id")?;
 
-    let results: Vec<(WordDictionary, Word, DictDictionary)> = with_conn(move |conn| {
+    let results: Vec<(WordDictionary, Word, Dictionary)> = with_conn(move |conn| {
         dict_word_dictionaries::table
             .inner_join(dict_words::table.on(dict_word_dictionaries::word_id.eq(dict_words::id)))
             .inner_join(
@@ -104,7 +104,7 @@ pub async fn create_word_dictionary(req: &mut Request) -> JsonResult<WordDiction
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create word dictionary association"))?;
 
-    let results: Vec<(WordDictionary, Word, DictDictionary)> =
+    let results: Vec<(WordDictionary, Word, Dictionary)> =
         with_conn(move |conn| {
             dict_word_dictionaries::table
                 .inner_join(dict_words::table.on(dict_word_dictionaries::word_id.eq(dict_words::id)))

@@ -298,7 +298,6 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             phrases,
             idioms,
             categories,
-            related_topics,
             etymology,
             usage_notes,
             images,
