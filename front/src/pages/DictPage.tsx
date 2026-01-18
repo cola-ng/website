@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Search, Volume2, Star, Sun } from 'lucide-react'
+import { Search, Volume2, Star } from 'lucide-react'
 import { lookup, type WordQueryResponse } from '../lib/api'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
+import { Header } from '../components/Header'
 
 export function DictPage() {
   const [query, setQuery] = useState('')
@@ -35,28 +36,28 @@ export function DictPage() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
-      <div className="container mx-auto px-4 py-6 max-w-5xl">
-        <div className="text-center mb-6">
-          <h1 className="text-3xl font-bold text-indigo-900 mb-1 flex items-center justify-center gap-2">
-            <Sun className="w-8 h-8 text-amber-500" />
-            开朗英语
+      <Header showDictLink={false} />
+      <div className="container mx-auto px-4 py-4 max-w-5xl">
+        <div className="text-center mb-4">
+          <h1 className="text-2xl font-bold text-indigo-900 mb-1">
+            词典查询
           </h1>
           <p className="text-gray-600 text-sm">查询单词，探索英语世界</p>
         </div>
 
-        <form onSubmit={handleSearch} className="mb-6">
+        <form onSubmit={handleSearch} className="mb-4">
           <div className="flex gap-2 max-w-xl mx-auto">
             <input
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="输入单词..."
-              className="flex-1 px-4 py-3 rounded-lg border-2 border-indigo-200 focus:border-indigo-500 focus:outline-none text-base shadow-sm transition-all"
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
             />
             <button
               type="submit"
               disabled={loading}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg shadow-md transition-all flex items-center gap-2 disabled:opacity-50 text-sm"
+              className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 flex items-center gap-2 transition-colors"
             >
               <Search className="w-4 h-4" />
               {loading ? '查询中...' : '查询'}

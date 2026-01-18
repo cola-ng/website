@@ -2,23 +2,25 @@ import { ChatPanel } from '../widgets/ChatPanel'
 import { ProfilePanel } from '../widgets/ProfilePanel'
 import { RecordsPanel } from '../widgets/RecordsPanel'
 import { AuthCard } from '../widgets/AuthCard'
+import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useAuth } from '../lib/auth'
 import { Link } from 'react-router-dom'
 
 export function HomePage() {
-  const { token, user, clear } = useAuth()
+  const { token } = useAuth()
 
   if (!token) {
     return (
-      <div className="min-h-screen bg-background">
-        <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center p-6">
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+        <Header />
+        <div className="mx-auto flex min-h-[calc(100vh-60px)] max-w-6xl items-center justify-center p-4">
           <div className="w-full max-w-md">
             <AuthCard />
-            <div className="mt-4 flex justify-center">
-              <Button asChild variant="outline">
-                <Link to="/dict">Dictionary</Link>
+            <div className="mt-3 flex justify-center">
+              <Button asChild variant="outline" size="sm">
+                <Link to="/dict">词典</Link>
               </Button>
             </div>
           </div>
@@ -28,45 +30,15 @@ export function HomePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary" />
-            <div>
-              <div className="text-sm font-semibold leading-tight">
-                CoLang English Coach
-              </div>
-              <div className="text-xs text-muted-foreground leading-tight">
-                Practice speaking without pressure
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <div className="text-sm font-medium leading-tight">
-                {user?.name || user?.email}
-              </div>
-              <div className="text-xs text-muted-foreground leading-tight">
-                Logged in
-              </div>
-            </div>
-            <Button asChild variant="outline">
-              <Link to="/dict">Dictionary</Link>
-            </Button>
-            <Button variant="outline" onClick={clear}>
-              Log out
-            </Button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <Header />
 
-      <main className="mx-auto max-w-6xl p-6">
+      <main className="mx-auto max-w-6xl p-4">
         <Tabs defaultValue="chat">
-          <TabsList>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
-            <TabsTrigger value="records">Records</TabsTrigger>
-            <TabsTrigger value="profile">Profile</TabsTrigger>
+          <TabsList className="mb-3">
+            <TabsTrigger value="chat">对话</TabsTrigger>
+            <TabsTrigger value="records">记录</TabsTrigger>
+            <TabsTrigger value="profile">个人资料</TabsTrigger>
           </TabsList>
           <TabsContent value="chat">
             <ChatPanel />

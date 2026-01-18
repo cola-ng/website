@@ -2,6 +2,7 @@ import * as React from 'react'
 import { Navigate, Link } from 'react-router-dom'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { me } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -16,9 +17,9 @@ function formatDate(value?: string | null) {
 
 function InfoRow({ label, value }: { label: string; value?: React.ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 rounded-lg border bg-card/30 px-3 py-2">
+    <div className="flex flex-col gap-0.5 rounded-lg border bg-card/30 px-2 py-1.5">
       <div className="text-xs text-muted-foreground">{label}</div>
-      <div className="text-sm font-medium break-all">{value ?? '-'}</div>
+      <div className="text-xs font-medium break-all">{value ?? '-'}</div>
     </div>
   )
 }
@@ -58,46 +59,26 @@ export function MePage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary" />
-            <div>
-              <div className="text-sm font-semibold leading-tight">Personal profile</div>
-              <div className="text-xs text-muted-foreground leading-tight">
-                View and update your account information
-              </div>
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" asChild>
-              <Link to="/">Home</Link>
-            </Button>
-            <Button variant="outline" onClick={clear}>
-              Log out
-            </Button>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <Header />
 
-      <main className="mx-auto max-w-6xl space-y-6 p-6">
+      <main className="mx-auto max-w-6xl space-y-4 p-4">
         <Card>
-          <CardHeader>
-            <CardTitle>Account details</CardTitle>
-            <CardDescription>Basic information linked to your account.</CardDescription>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">账户详情</CardTitle>
+            <CardDescription className="text-sm">与您账户关联的基本信息</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid gap-3 md:grid-cols-2">
-              <InfoRow label="User ID" value={user?.id} />
-              <InfoRow label="Email" value={user?.email} />
-              <InfoRow label="Name" value={user?.name || '-'} />
-              <InfoRow label="Phone" value={user?.phone || '-'} />
-              <InfoRow label="Created at" value={formatDate(user?.created_at)} />
-              <InfoRow label="Updated at" value={formatDate(user?.updated_at)} />
+          <CardContent className="space-y-3">
+            <div className="grid gap-2 md:grid-cols-2">
+              <InfoRow label="用户 ID" value={user?.id} />
+              <InfoRow label="邮箱" value={user?.email} />
+              <InfoRow label="姓名" value={user?.name || '-'} />
+              <InfoRow label="电话" value={user?.phone || '-'} />
+              <InfoRow label="创建时间" value={formatDate(user?.created_at)} />
+              <InfoRow label="更新时间" value={formatDate(user?.updated_at)} />
             </div>
-            {loading ? <div className="text-sm text-muted-foreground">Loading…</div> : null}
-            {error ? <div className="text-sm text-destructive">{error}</div> : null}
+            {loading ? <div className="text-xs text-muted-foreground">加载中...</div> : null}
+            {error ? <div className="text-xs text-destructive">{error}</div> : null}
           </CardContent>
         </Card>
 

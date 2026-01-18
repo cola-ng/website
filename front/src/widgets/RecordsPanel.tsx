@@ -43,34 +43,34 @@ export function RecordsPanel() {
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between space-y-0">
-        <div className="space-y-1">
-          <CardTitle>Learning Records</CardTitle>
-          <CardDescription>
-            Chat turns, errors, and future review plans will appear here.
+      <CardHeader className="flex-row items-center justify-between space-y-0 pb-3">
+        <div className="space-y-0.5">
+          <CardTitle className="text-base">学习记录</CardTitle>
+          <CardDescription className="text-xs">
+            对话轮次、错误和未来的复习计划将显示在这里。
           </CardDescription>
         </div>
-        <Button variant="outline" onClick={load} disabled={loading}>
-          {loading ? 'Refreshing…' : 'Refresh'}
+        <Button variant="outline" onClick={load} disabled={loading} size="sm">
+          {loading ? '刷新中...' : '刷新'}
         </Button>
       </CardHeader>
       <CardContent>
-        {error ? <div className="text-sm text-destructive">{error}</div> : null}
-        <div className="mt-4 space-y-3">
+        {error ? <div className="text-xs text-destructive">{error}</div> : null}
+        <div className="mt-3 space-y-2">
           {records.length === 0 ? (
-            <div className="text-sm text-muted-foreground">
-              No records yet. Send a chat message to create one.
+            <div className="text-xs text-muted-foreground">
+              暂无记录。发送聊天消息以创建记录。
             </div>
           ) : (
             records.map((r) => (
-              <div key={r.id} className="rounded-md border p-3">
+              <div key={r.id} className="rounded-md border p-2">
                 <div className="flex items-center justify-between">
-                  <div className="text-sm font-medium">{r.record_type}</div>
+                  <div className="text-xs font-medium">{r.record_type}</div>
                   <div className="text-xs text-muted-foreground">
                     {new Date(r.created_at).toLocaleString()}
                   </div>
                 </div>
-                <pre className="mt-2 overflow-auto rounded-md bg-muted p-2 text-xs">
+                <pre className="mt-1 overflow-auto rounded-md bg-muted p-1.5 text-xs">
                   {JSON.stringify(r.content, null, 2)}
                 </pre>
               </div>

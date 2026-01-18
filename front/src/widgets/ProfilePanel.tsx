@@ -41,38 +41,40 @@ export function ProfilePanel() {
 
   return (
     <Card>
-      <CardHeader>
-        <CardTitle>Profile</CardTitle>
-        <CardDescription>Manage your learning identity.</CardDescription>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">个人资料</CardTitle>
+        <CardDescription className="text-xs">管理您的学习身份</CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="profile-name">Name</Label>
+      <CardContent className="space-y-3">
+        <div className="grid gap-3 md:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-name" className="text-xs">姓名</Label>
             <Input
               id="profile-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
               autoComplete="name"
+              className="h-8 text-sm"
             />
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="profile-phone">Phone</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-phone" className="text-xs">电话</Label>
             <Input
               id="profile-phone"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
               autoComplete="tel"
+              className="h-8 text-sm"
             />
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
-          <Button onClick={save} disabled={loading}>
-            {loading ? 'Saving…' : 'Save'}
+        <div className="flex items-center gap-2">
+          <Button onClick={save} disabled={loading} size="sm">
+            {loading ? '保存中...' : '保存'}
           </Button>
-          {saved ? <div className="text-sm text-muted-foreground">Saved.</div> : null}
-          {error ? <div className="text-sm text-destructive">{error}</div> : null}
+          {saved ? <div className="text-xs text-muted-foreground">已保存</div> : null}
+          {error ? <div className="text-xs text-destructive">{error}</div> : null}
         </div>
       </CardContent>
     </Card>

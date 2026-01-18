@@ -1,33 +1,24 @@
 import { Link } from 'react-router-dom'
 
+import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 
 export function PrivacyPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <header className="border-b">
-        <div className="mx-auto flex max-w-4xl items-center justify-between px-6 py-4">
-          <div>
-            <div className="text-sm font-semibold">Privacy Policy</div>
-            <div className="text-xs text-muted-foreground">Last updated: Jan 15, 2026</div>
-          </div>
-          <Button variant="outline" asChild>
-            <Link to="/">Back</Link>
-          </Button>
-        </div>
-      </header>
-      <main className="mx-auto max-w-4xl p-6">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+      <Header />
+      <main className="mx-auto max-w-4xl p-4">
         <Card>
-          <CardHeader>
-            <CardTitle>Privacy</CardTitle>
-            <CardDescription>We respect your privacy and keep things minimal.</CardDescription>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-lg">隐私政策</CardTitle>
+            <CardDescription className="text-sm">我们尊重您的隐私，保持极简原则</CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4 text-sm text-muted-foreground">
-            <p>We only collect the data needed to provide the service and improve your learning experience.</p>
-            <p>Your account details and learning records are stored securely and never sold.</p>
-            <p>You can request deletion of your account data at any time by contacting support.</p>
-            <p>This policy may change as the product evolves. We will notify you of material updates.</p>
+          <CardContent className="space-y-3 text-xs text-muted-foreground">
+            <p>我们只收集提供服务所需的数据，以改善您的学习体验。</p>
+            <p>您的账户详情和学习记录安全存储，绝不会出售。</p>
+            <p>您可以随时联系支持部门请求删除您的账户数据。</p>
+            <p>本政策可能会随着产品的发展而变化。对于重大更新，我们会通知您。</p>
           </CardContent>
         </Card>
       </main>
