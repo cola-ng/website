@@ -117,7 +117,30 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
     let result: WordQueryResponse = with_conn(move |conn| {
         let word_record = dict_words::table
             .filter(dict_words::word_lower.eq(&word_lower_value))
-            .first::<Word>(conn)?;
+            .first::<Word>(conn)
+            .optional()?;
+
+        let word_record = if let Some(word_record) = word_record {
+            word_record
+        } else {
+            let word_normalized = word_lower_value
+                .chars()
+                .filter_map(|c| {
+                    if c != '-' && c != '_' && c != ' ' {
+                        if c == '&' {
+                            Some("and".to_owned())
+                        } else {
+                            Some(c.into())
+                        }
+                    } else {
+                        None
+                    }
+                })
+                .collect::<String>();
+            dict_words::table
+                .filter(dict_words::word_lower.eq(&word_normalized))
+                .first::<Word>(conn)?
+        };
 
         println!("word_record: {:?}", word_record);
         let word_id = word_record.id;
