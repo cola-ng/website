@@ -6,8 +6,8 @@ rust-version.workspace = true
 default-run = "colang"
 
 [[bin]]
-name = "import_dict_data"
-path = "src/bin/import_dict_data.rs"
+name = "import_dict"
+path = "src/bin/import_dict.rs"
 
 [dependencies]
 argon2 = { workspace = true }

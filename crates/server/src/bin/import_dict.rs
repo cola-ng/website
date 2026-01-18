@@ -1,22 +1,3 @@
-// Dictionary Data Import Tool
-//
-// This script imports dictionary data from JSON format into the database.
-// It parses JSON files from endict1 and populates the dict_ tables.
-//
-// Usage:
-//   cargo run --bin import_dict_data [--source-dir PATH] [--audio-dir PATH] [--batch-size N]
-//
-// Data Source Format:
-// Each line in dict/*.json files contains a JSON object with:
-//   - word: The word/phrase
-//   - sw: Search word (lowercase without spaces)
-//   - definition: Array of English definitions
-//   - translation: Array of Chinese translations
-//   - pos: Part of speech
-//   - exchange: Array of word forms (e.g., "s:schools", "p:schooled")
-//   - examples: Array of example sentences
-//   - phonetic: Phonetic transcription (IPA)
-
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader};
@@ -27,14 +8,11 @@ use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::Deserialize;
 
-// Default directories
-const DEFAULT_SOURCE_DIR: &str = r"D:\Works\colang\endict1\dict";
+const DEFAULT_DICT_DIR: &str = r"D:\Works\colang\endict1\dict";
+const DEFAULT_VOCAB_DIR: &str = r"D:\Works\colang\endict1\vocabulary";
 const DEFAULT_AUDIO_DIR: &str = r"D:\Works\colang\data\pronunciations";
-
-// Default batch size for inserts
 const DEFAULT_BATCH_SIZE: usize = 100;
 
-/// JSON entry structure from source files
 #[derive(Debug, Deserialize, Clone)]
 struct JsonDictEntry {
     word: String,
@@ -45,19 +23,16 @@ struct JsonDictEntry {
     #[serde(rename = "pos")]
     part_of_speech: Vec<String>,
     exchange: Vec<String>,
-    #[allow(dead_code)]
     examples: Vec<String>,
     phonetic: String,
 }
 
-/// Word forms extracted from exchange field
 #[derive(Debug, Clone)]
 struct Form {
     form_type: String,
     form: String,
 }
 
-/// Dictionary entry ready for import
 #[derive(Debug, Clone)]
 struct ImportEntry {
     word: String,
@@ -67,25 +42,57 @@ struct ImportEntry {
     definitions_en: Vec<String>,
     definitions_zh: Vec<String>,
     word_forms: Vec<Form>,
+    examples: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AudioCache {
+    uk: HashMap<String, String>,
+    us: HashMap<String, String>,
+}
+
+#[derive(Debug)]
+struct ImportStats {
+    entries: usize,
+    added: usize,
+    skipped: usize,
+}
+
+#[derive(Debug)]
+struct VocabImportStats {
+    words: usize,
+    associations: usize,
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    // Parse command line arguments
+
     let args: Vec<String> = std::env::args().collect();
-    let mut source_dir = PathBuf::from(DEFAULT_SOURCE_DIR);
+    let mut dict_dir = PathBuf::from(DEFAULT_DICT_DIR);
+    let mut vocab_dir = PathBuf::from(DEFAULT_VOCAB_DIR);
     let mut audio_dir = PathBuf::from(DEFAULT_AUDIO_DIR);
     let mut batch_size = DEFAULT_BATCH_SIZE;
+    let mut import_dict_data = true;
+    let mut import_vocab = true;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--source-dir" => {
+            "--dict-dir" => {
                 if i + 1 < args.len() {
-                    source_dir = PathBuf::from(&args[i + 1]);
+                    dict_dir = PathBuf::from(&args[i + 1]);
                     i += 2;
                 } else {
-                    eprintln!("Error: --source-dir requires a path argument");
+                    eprintln!("Error: --dict-dir requires a path argument");
+                    std::process::exit(1);
+                }
+            }
+            "--vocab-dir" => {
+                if i + 1 < args.len() {
+                    vocab_dir = PathBuf::from(&args[i + 1]);
+                    i += 2;
+                } else {
+                    eprintln!("Error: --vocab-dir requires a path argument");
                     std::process::exit(1);
                 }
             }
@@ -107,6 +114,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
+            "--dict-only" => {
+                import_vocab = false;
+                i += 1;
+            }
+            "--vocab-only" => {
+                import_dict_data = false;
+                i += 1;
+            }
             "--help" => {
                 print_usage();
                 return Ok(());
@@ -120,15 +135,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("===============================================");
-    println!("Dictionary Data Import Tool");
+    println!("Dictionary Import Tool");
     println!("===============================================");
-    println!("Source directory: {}", source_dir.display());
-    println!("Audio directory: {}", audio_dir.display());
-    println!("Batch size: {}", batch_size);
-    println!();
 
-    // Initialize database connection
-    println!("Initializing database connection...");
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let pool = DieselPool::new(
         &database_url,
@@ -137,78 +146,97 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     let mut conn = pool.get()?;
 
-    // Discover JSON files
-    println!("\nScanning for JSON files...");
-    let json_files = discover_json_files(&source_dir);
-    println!("Found {} JSON files", json_files.len());
-
-    // Build audio file cache
-    println!("\nBuilding audio file cache...");
-    let audio_cache = build_audio_cache(&audio_dir);
-    println!(
-        "Found {} uk audio files, {} us audio files",
-        audio_cache.uk.len(),
-        audio_cache.us.len()
-    );
-
-    // Process all JSON files
-    let mut total_entries = 0;
-    let mut total_words = 0;
-    let mut total_skipped = 0;
     let start_time = Instant::now();
 
-    for json_file in &json_files {
+    if import_dict_data {
+        println!("\n--- Importing Dictionary Data ---");
+        println!("Source directory: {}", dict_dir.display());
+        println!("Audio directory: {}", audio_dir.display());
+        println!("Batch size: {}", batch_size);
+
+        let json_files = discover_json_files(&dict_dir);
+        println!("Found {} JSON files", json_files.len());
+
+        println!("\nBuilding audio file cache...");
+        let audio_cache = build_audio_cache(&audio_dir);
         println!(
-            "\nProcessing: {}",
-            json_file.file_name().unwrap_or_default().to_string_lossy()
+            "Found {} uk audio files, {} us audio files",
+            audio_cache.uk.len(),
+            audio_cache.us.len()
         );
 
-        match import_json_file(&mut conn, json_file, &audio_cache, batch_size) {
-            Ok(stats) => {
-                println!(
-                    "  Entries: {}, Added: {}, Skipped: {}",
-                    stats.entries, stats.added, stats.skipped
-                );
-                total_entries += stats.entries;
-                total_words += stats.added;
-                total_skipped += stats.skipped;
-            }
-            Err(e) => {
-                eprintln!("  Error: {}", e);
+        let mut total_entries = 0;
+        let mut total_words = 0;
+        let mut total_skipped = 0;
+
+        for json_file in &json_files {
+            println!(
+                "\nProcessing: {}",
+                json_file.file_name().unwrap_or_default().to_string_lossy()
+            );
+
+            match import_json_file(&mut conn, json_file, &audio_cache, batch_size) {
+                Ok(stats) => {
+                    println!(
+                        "  Entries: {}, Added: {}, Skipped: {}",
+                        stats.entries, stats.added, stats.skipped
+                    );
+                    total_entries += stats.entries;
+                    total_words += stats.added;
+                    total_skipped += stats.skipped;
+                }
+                Err(e) => {
+                    eprintln!("  Error: {}", e);
+                }
             }
         }
+
+        println!("\n--- Dictionary Data Summary ---");
+        println!("Total entries processed: {}", total_entries);
+        println!("Total words added: {}", total_words);
+        println!("Total words skipped: {}", total_skipped);
     }
 
-    // Print summary
+    if import_vocab {
+        println!("\n--- Importing Vocabulary Data ---");
+        println!("Source directory: {}", vocab_dir.display());
+
+        let vocabulary_files = discover_vocabulary_files(&vocab_dir);
+        println!("Found {} vocabulary files", vocabulary_files.len());
+
+        let mut total_words = 0;
+        let mut total_associations = 0;
+
+        for vocab_file in &vocabulary_files {
+            println!("\nProcessing: {}", vocab_file.file_name().unwrap_or_default().to_string_lossy());
+
+            match import_vocabulary_file(&mut conn, vocab_file) {
+                Ok(stats) => {
+                    println!("  Words found: {}, Associations added: {}", stats.words, stats.associations);
+                    total_words += stats.words;
+                    total_associations += stats.associations;
+                }
+                Err(e) => {
+                    eprintln!("  Error: {}", e);
+                }
+            }
+        }
+
+        println!("\n--- Vocabulary Data Summary ---");
+        println!("Total words found: {}", total_words);
+        println!("Total associations added: {}", total_associations);
+    }
+
     let elapsed = start_time.elapsed();
     println!("\n===============================================");
-    println!("Import Summary");
+    println!("Overall Summary");
     println!("===============================================");
-    println!("Total entries processed: {}", total_entries);
-    println!("Total words added: {}", total_words);
-    println!("Total words skipped: {}", total_skipped);
     println!("Total time: {:.2}s", elapsed.as_secs_f64());
     println!();
 
     Ok(())
 }
 
-/// Audio file cache for both uk and us pronunciations
-#[derive(Debug, Clone)]
-struct AudioCache {
-    uk: HashMap<String, String>, // word_lower -> relative path like "uk/good.mp3"
-    us: HashMap<String, String>, // word_lower -> relative path like "us/good.mp3"
-}
-
-/// Import statistics
-#[derive(Debug)]
-struct ImportStats {
-    entries: usize,
-    added: usize,
-    skipped: usize,
-}
-
-/// Discover all JSON files in the source directory
 fn discover_json_files(dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
 
@@ -229,12 +257,30 @@ fn discover_json_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Build a cache of available audio files with relative paths
+fn discover_vocabulary_files(dir: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_file() {
+                if let Some(ext) = path.extension() {
+                    if ext == "json" {
+                        files.push(path);
+                    }
+                }
+            }
+        }
+    }
+
+    files.sort();
+    files
+}
+
 fn build_audio_cache(audio_dir: &Path) -> AudioCache {
     let mut uk = HashMap::new();
     let mut us = HashMap::new();
 
-    // Scan uk audio files
     let uk_dir = audio_dir.join("uk");
     if let Ok(entries) = fs::read_dir(&uk_dir) {
         for entry in entries.flatten() {
@@ -250,7 +296,6 @@ fn build_audio_cache(audio_dir: &Path) -> AudioCache {
         }
     }
 
-    // Scan us audio files
     let us_dir = audio_dir.join("us");
     if let Ok(entries) = fs::read_dir(&us_dir) {
         for entry in entries.flatten() {
@@ -269,7 +314,6 @@ fn build_audio_cache(audio_dir: &Path) -> AudioCache {
     AudioCache { uk, us }
 }
 
-/// Import a single JSON file
 fn import_json_file(
     conn: &mut PgConnection,
     json_file: &Path,
@@ -284,18 +328,15 @@ fn import_json_file(
     let mut entries = Vec::new();
     let mut line_number = 0;
 
-    // Parse JSON lines
     for line in reader.lines() {
         line_number += 1;
         let line = line?;
 
-        // Skip empty lines
         let line = line.trim();
         if line.is_empty() {
             continue;
         }
 
-        // Parse JSON
         match serde_json::from_str::<JsonDictEntry>(line) {
             Ok(json_entry) => {
                 if let Some(import_entry) = process_json_entry(json_entry) {
@@ -309,15 +350,12 @@ fn import_json_file(
     }
 
     let total_entries = entries.len();
-
-    // Process in batches
     let mut added = 0;
     let mut skipped = 0;
 
     for chunk in entries.chunks(batch_size) {
         conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
             for entry in chunk {
-                // Check if word already exists
                 let existing: Option<i64> = dict_words::table
                     .select(dict_words::id)
                     .filter(dict_words::word_lower.eq(&entry.word_lower))
@@ -325,21 +363,13 @@ fn import_json_file(
                     .optional()?;
 
                 if existing.is_some() {
-                    // Word exists, skip
                     skipped += 1;
                 } else {
-                    // Insert new word
                     let word_id = insert_word(conn, entry)?;
-
-                    // Insert definitions
                     insert_definitions(conn, word_id, entry)?;
-
-                    // Insert word forms
                     insert_word_forms(conn, word_id, &entry.word_forms)?;
-
-                    // Insert pronunciations
                     insert_pronunciations(conn, word_id, entry, audio_cache)?;
-
+                    insert_sentences(conn, word_id, &entry.examples)?;
                     added += 1;
                 }
             }
@@ -354,23 +384,19 @@ fn import_json_file(
     })
 }
 
-/// Process a JSON entry into an import entry
 fn process_json_entry(json_entry: JsonDictEntry) -> Option<ImportEntry> {
     let word = json_entry.word.trim();
     let word_lower = json_entry.search_word.trim();
 
-    // Skip invalid words
     if word.is_empty() || word.len() > 200 {
         return None;
     }
 
-    // Extract part of speech (use first one if multiple)
     let part_of_speech = json_entry
         .part_of_speech
         .first()
         .and_then(|p| normalize_part_of_speech(p));
 
-    // Parse word forms from exchange field
     let word_forms = parse_exchange_forms(&json_entry.exchange);
 
     Some(ImportEntry {
@@ -381,10 +407,10 @@ fn process_json_entry(json_entry: JsonDictEntry) -> Option<ImportEntry> {
         definitions_en: json_entry.definition,
         definitions_zh: json_entry.translation,
         word_forms,
+        examples: json_entry.examples,
     })
 }
 
-/// Normalize part of speech to database values
 fn normalize_part_of_speech(pos: &str) -> Option<String> {
     let pos_lower = pos.to_lowercase();
     match pos_lower.as_str() {
@@ -404,11 +430,6 @@ fn normalize_part_of_speech(pos: &str) -> Option<String> {
     }
 }
 
-/// Parse exchange field to extract word forms
-/// Exchange format: ["s:schools", "p:schooled", "d:schooled", "3:schools"]
-/// Prefixes: 0=third person, 1=past, 2=past participle, 3=plural, 4=present participle,
-///           5=comparative, 6=superlative, s=plural, p=past participle, i=present participle,
-/// d=past
 fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
     let mut forms = Vec::new();
 
@@ -422,14 +443,14 @@ fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
             }
 
             let form_type = match prefix {
-                "0" => "present",                  // Third person singular
-                "1" | "d" => "past",               // Past tense
-                "2" | "p" => "past_participle",    // Past participle
-                "3" | "s" => "plural",             // Plural
-                "4" | "i" => "present_participle", // Present participle
-                "5" => "comparative",              // Comparative
-                "6" => "superlative",              // Superlative
-                _ => continue,                     // Skip unknown prefixes
+                "0" => "present",
+                "1" | "d" => "past",
+                "2" | "p" => "past_participle",
+                "3" | "s" => "plural",
+                "4" | "i" => "present_participle",
+                "5" => "comparative",
+                "6" => "superlative",
+                _ => continue,
             };
 
             forms.push(Form {
@@ -442,14 +463,12 @@ fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
     forms
 }
 
-/// Insert a word into the database
 fn insert_word(
     conn: &mut PgConnection,
     entry: &ImportEntry,
 ) -> Result<i64, Box<dyn std::error::Error>> {
     use colang::db::schema::dict_words;
 
-    // Determine word type based on whether it contains spaces
     let word_type = if entry.word.contains(' ') {
         Some("phrase".to_string())
     } else {
@@ -472,7 +491,6 @@ fn insert_word(
     Ok(word_id)
 }
 
-/// Insert definitions for a word
 fn insert_definitions(
     conn: &mut PgConnection,
     word_id: i64,
@@ -482,7 +500,6 @@ fn insert_definitions(
 
     let mut definition_order = 1;
 
-    // Insert English definitions
     for definition in &entry.definitions_en {
         if !definition.is_empty() {
             diesel::insert_into(dict_definitions::table)
@@ -499,7 +516,6 @@ fn insert_definitions(
         }
     }
 
-    // Insert Chinese translations
     for translation in &entry.definitions_zh {
         if !translation.is_empty() {
             diesel::insert_into(dict_definitions::table)
@@ -519,7 +535,6 @@ fn insert_definitions(
     Ok(())
 }
 
-/// Insert word forms
 fn insert_word_forms(
     conn: &mut PgConnection,
     word_id: i64,
@@ -541,7 +556,6 @@ fn insert_word_forms(
     Ok(())
 }
 
-/// Insert pronunciations for a word
 fn insert_pronunciations(
     conn: &mut PgConnection,
     word_id: i64,
@@ -552,7 +566,6 @@ fn insert_pronunciations(
 
     let mut has_primary = false;
 
-    // Check for uk pronunciation
     if let Some(uk_audio_path) = audio_cache.uk.get(&entry.word_lower) {
         let ipa = if !entry.phonetic.is_empty() {
             entry.phonetic.clone()
@@ -573,7 +586,6 @@ fn insert_pronunciations(
         has_primary = true;
     }
 
-    // Check for us pronunciation
     if let Some(us_audio_path) = audio_cache.us.get(&entry.word_lower) {
         let ipa = if !entry.phonetic.is_empty() {
             entry.phonetic.clone()
@@ -594,7 +606,6 @@ fn insert_pronunciations(
         has_primary = true;
     }
 
-    // If no audio file but has phonetic, still add a pronunciation entry
     if !has_primary && !entry.phonetic.is_empty() {
         diesel::insert_into(dict_pronunciations::table)
             .values((
@@ -608,24 +619,146 @@ fn insert_pronunciations(
     Ok(())
 }
 
-/// Print usage information
+fn insert_sentences(
+    conn: &mut PgConnection,
+    word_id: i64,
+    examples: &[String],
+) -> Result<(), Box<dyn std::error::Error>> {
+    use colang::db::schema::*;
+
+    for example in examples {
+        if !example.is_empty() {
+            let sentence_id: i64 = diesel::insert_into(dict_sentences::table)
+                .values((
+                    dict_sentences::language.eq("en"),
+                    dict_sentences::sentence.eq(example),
+                    dict_sentences::is_common.eq(false),
+                ))
+                .returning(dict_sentences::id)
+                .get_result(conn)?;
+
+            diesel::insert_into(dict_word_sentences::table)
+                .values((
+                    dict_word_sentences::word_id.eq(word_id),
+                    dict_word_sentences::sentence_id.eq(sentence_id),
+                ))
+                .execute(conn)?;
+        }
+    }
+
+    Ok(())
+}
+
+fn import_vocabulary_file(
+    conn: &mut PgConnection,
+    vocab_file: &Path,
+) -> Result<VocabImportStats, Box<dyn std::error::Error>> {
+    use colang::db::schema::*;
+
+    let file_name = vocab_file.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let dictionary_name = match file_name.as_str() {
+        "cet4" => "CET4",
+        "cet6" => "CET6",
+        "chuzhong" => "初中",
+        "gaozhong" => "高中",
+        "kaoyan" => "考研",
+        "xiaoxue" => "小学",
+        _ => &file_name,
+    };
+
+    let file = File::open(vocab_file)?;
+    let reader = BufReader::new(file);
+
+    let words: Vec<String> = serde_json::from_reader(reader)?;
+    let mut words_count = 0;
+    let mut associations_count = 0;
+
+    conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
+        let dictionary_id: Option<i64> = dict_dictionaries::table
+            .select(dict_dictionaries::id)
+            .filter(dict_dictionaries::name.eq(dictionary_name))
+            .first(conn)
+            .optional()?;
+
+        let dictionary_id = match dictionary_id {
+            Some(id) => id,
+            None => {
+                let id: i64 = diesel::insert_into(dict_dictionaries::table)
+                    .values((
+                        dict_dictionaries::name.eq(dictionary_name),
+                        dict_dictionaries::is_active.eq(true),
+                        dict_dictionaries::is_official.eq(true),
+                        dict_dictionaries::priority_order.eq(1),
+                    ))
+                    .returning(dict_dictionaries::id)
+                    .get_result(conn)?;
+                id
+            }
+        };
+
+        for word in &words {
+            let word_lower = word.to_lowercase();
+            let word_id: Option<i64> = dict_words::table
+                .select(dict_words::id)
+                .filter(dict_words::word_lower.eq(&word_lower))
+                .first(conn)
+                .optional()?;
+
+            if let Some(word_id) = word_id {
+                let existing: Option<i64> = dict_word_dictionaries::table
+                    .select(dict_word_dictionaries::id)
+                    .filter(dict_word_dictionaries::word_id.eq(word_id))
+                    .filter(dict_word_dictionaries::dictionary_id.eq(dictionary_id))
+                    .first(conn)
+                    .optional()?;
+
+                if existing.is_none() {
+                    diesel::insert_into(dict_word_dictionaries::table)
+                        .values((
+                            dict_word_dictionaries::word_id.eq(word_id),
+                            dict_word_dictionaries::dictionary_id.eq(dictionary_id),
+                        ))
+                        .execute(conn)?;
+                    associations_count += 1;
+                }
+            }
+            words_count += 1;
+        }
+        Ok(())
+    })?;
+
+    Ok(VocabImportStats {
+        words: words_count,
+        associations: associations_count,
+    })
+}
+
 fn print_usage() {
-    println!("Dictionary Data Import Tool");
+    println!("Dictionary Import Tool");
     println!();
     println!("Usage:");
-    println!("  cargo run --bin import_dict_data [OPTIONS]");
+    println!("  cargo run --bin import_dict [OPTIONS]");
     println!();
     println!("Options:");
-    println!("  --source-dir <PATH>  Source directory with JSON files");
-    println!("                      (default: {})", DEFAULT_SOURCE_DIR);
+    println!("  --dict-dir <PATH>    Source directory with dictionary JSON files");
+    println!("                       (default: {})", DEFAULT_DICT_DIR);
+    println!("  --vocab-dir <PATH>   Source directory with vocabulary JSON files");
+    println!("                       (default: {})", DEFAULT_VOCAB_DIR);
     println!("  --audio-dir <PATH>   Audio directory with uk/us subdirs");
-    println!("                      (default: {})", DEFAULT_AUDIO_DIR);
-    println!(
-        "  --batch-size <N>     Batch size for inserts (default: {})",
-        DEFAULT_BATCH_SIZE
-    );
+    println!("                       (default: {})", DEFAULT_AUDIO_DIR);
+    println!("  --batch-size <N>     Batch size for inserts (default: {})", DEFAULT_BATCH_SIZE);
+    println!("  --dict-only          Only import dictionary data, skip vocabulary");
+    println!("  --vocab-only         Only import vocabulary data, skip dictionary");
     println!("  --help               Show this help message");
     println!();
     println!("Environment:");
     println!("  DATABASE_URL         PostgreSQL connection URL");
+    println!();
+    println!("Dictionary name mapping:");
+    println!("  cet4      -> CET4");
+    println!("  cet6      -> CET6");
+    println!("  chuzhong  -> 初中");
+    println!("  gaozhong  -> 高中");
+    println!("  kaoyan    -> 考研");
+    println!("  xiaoxue   -> 小学");
 }
