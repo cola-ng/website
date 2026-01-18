@@ -1,4 +1,5 @@
-import * as React from 'react'
+import { useState } from 'react'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -12,13 +13,17 @@ import { useAuth } from '../lib/auth'
 
 export function AuthCard({ intent }: { intent?: 'desktop' }) {
   const { setAuth } = useAuth()
-  const [mode, setMode] = React.useState<'login' | 'register'>('login')
-  const [email, setEmail] = React.useState('')
-  const [password, setPassword] = React.useState('')
-  const [name, setName] = React.useState('')
-  const [error, setError] = React.useState<string | null>(null)
-  const [loading, setLoading] = React.useState(false)
-  const [needsBind, setNeedsBind] = React.useState<{
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const redirectTo = searchParams.get('redirectTo') || '/'
+
+  const [mode, setMode] = useState<'login' | 'register'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [name, setName] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [needsBind, setNeedsBind] = useState<{
     oauthIdentityId: string
     provider: string
     email: string | null
@@ -43,6 +48,7 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
         const resp = await register({ email, password, name: name || undefined })
         setAuth(resp.access_token, resp.user)
       }
+      navigate(redirectTo)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Request failed')
     } finally {
@@ -62,6 +68,7 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
       })
       if (resp.status === 'ok') {
         setAuth(resp.access_token, resp.user)
+        navigate(redirectTo)
         return
       }
       setNeedsBind({
@@ -88,6 +95,7 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
       })
       if (resp.status === 'ok') {
         setAuth(resp.access_token, resp.user)
+        navigate(redirectTo)
       } else {
         setNeedsBind({
           oauthIdentityId: resp.oauth_identity_id,
@@ -114,6 +122,7 @@ export function AuthCard({ intent }: { intent?: 'desktop' }) {
       })
       if (resp.status === 'ok') {
         setAuth(resp.access_token, resp.user)
+        navigate(redirectTo)
       } else {
         setNeedsBind({
           oauthIdentityId: resp.oauth_identity_id,

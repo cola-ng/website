@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -7,16 +7,16 @@ import { useAuth } from '../lib/auth'
 
 export function RecordsPanel() {
   const { token } = useAuth()
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [records, setRecords] = React.useState<Array<{
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [records, setRecords] = useState<Array<{
     id: string
     record_type: string
     created_at: string
     content: unknown
   }>>([])
 
-  const load = React.useCallback(async () => {
+  const load = useCallback(async () => {
     if (!token) return
     setLoading(true)
     setError(null)
@@ -37,7 +37,7 @@ export function RecordsPanel() {
     }
   }, [token])
 
-  React.useEffect(() => {
+  useEffect(() => {
     void load()
   }, [load])
 

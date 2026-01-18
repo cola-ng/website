@@ -681,3 +681,12 @@ diesel::allow_tables_to_appear_in_same_query!(
     oauth_identities,
     oauth_login_sessions,
 );
+
+diesel::table! {
+    dict_searched_words (id) {
+        id -> BigInt,
+        user_id -> BigInt,
+        word -> Varchar,
+        searched_at -> Timestamp,
+    }
+}

@@ -401,3 +401,23 @@ pub struct NewWordEtymology {
     pub word_id: i64,
     pub etymology_id: i64,
 }
+
+// ============================================================================
+// Searched Words
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = dict_searched_words)]
+pub struct SearchedWord {
+    pub id: i64,
+    pub user_id: i64,
+    pub word: String,
+    pub searched_at: chrono::NaiveDateTime,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_searched_words)]
+pub struct NewSearchedWord {
+    pub user_id: i64,
+    pub word: String,
+}

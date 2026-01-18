@@ -172,6 +172,7 @@ export type WordDictionary = {
   dictionary_id: number
   definition_id: number | null
   priority_order: number | null
+  name: string
   created_at: string
 }
 
@@ -324,5 +325,35 @@ export function oauthSkip(input: {
 export function lookup(word: string): Promise<WordQueryResponse> {
   return requestJson<WordQueryResponse>(`/api/dict/lookup?word=${encodeURIComponent(word)}`, {
     method: 'GET',
+  })
+}
+
+// Search History types
+export type SearchHistory = {
+  id: number
+  user_id: number
+  word: string
+  searched_at: string
+}
+
+export function saveSearchHistory(token: string, word: string): Promise<SearchHistory> {
+  return requestJson<SearchHistory>('/api/dict/history', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ word }),
+  })
+}
+
+export function getSearchHistory(token: string, limit: number = 10): Promise<SearchHistory[]> {
+  return requestJson<SearchHistory[]>(`/api/dict/history?limit=${limit}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export function clearSearchHistory(token: string): Promise<{ cleared: boolean }> {
+  return requestJson('/api/dict/history', {
+    method: 'DELETE',
+    token,
   })
 }

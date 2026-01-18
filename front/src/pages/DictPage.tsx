@@ -35,11 +35,11 @@ export function DictPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header showDictLink={false} />
       <div className="container mx-auto px-4 py-4 max-w-5xl">
         <div className="text-center mb-4">
-          <h1 className="text-2xl font-bold text-indigo-900 mb-1">
+          <h1 className="text-2xl font-bold text-orange-900 mb-1">
             词典查询
           </h1>
           <p className="text-gray-600 text-sm">查询单词，探索英语世界</p>
@@ -52,12 +52,12 @@ export function DictPage() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="输入单词..."
-              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+              className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
             <button
               type="submit"
               disabled={loading}
-              className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:bg-indigo-400 flex items-center gap-2 transition-colors"
+              className="px-4 py-2 text-sm bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-orange-400 flex items-center gap-2 transition-colors"
             >
               <Search className="w-4 h-4" />
               {loading ? '查询中...' : '查询'}
@@ -83,17 +83,17 @@ export function DictPage() {
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {result.word.difficulty && (
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-xs font-medium">
+                    <span className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded-full text-xs font-medium">
                       难度: {result.word.difficulty}
                     </span>
                   )}
                   {result.word.frequency && (
-                    <span className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium">
+                    <span className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium">
                       频率: {result.word.frequency}
                     </span>
                   )}
                   {result.word.word_type && (
-                    <span className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs font-medium">
+                    <span className="px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-xs font-medium">
                       {result.word.word_type}
                     </span>
                   )}
@@ -105,7 +105,7 @@ export function DictPage() {
                     英 /{p.ipa}/
                     <button
                       onClick={() => playAudio(p.audio_url)}
-                      className="text-indigo-600 hover:text-indigo-800"
+                      className="text-orange-600 hover:text-orange-800"
                       title="Play audio"
                     >
                       <Volume2 className="w-3.5 h-3.5" />
@@ -117,7 +117,7 @@ export function DictPage() {
                     美 /{p.ipa}/
                     <button
                       onClick={() => playAudio(p.audio_url)}
-                      className="text-indigo-600 hover:text-indigo-800"
+                      className="text-orange-600 hover:text-orange-800"
                       title="Play audio"
                     >
                       <Volume2 className="w-3.5 h-3.5" />
@@ -130,7 +130,7 @@ export function DictPage() {
                   {(result.forms ?? []).map((form) => (
                     <span
                       key={form.id}
-                      className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full text-xs"
+                      className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded-full text-xs"
                     >
                       <span className="font-medium">{form.form_type}:</span> {form.form}
                     </span>
@@ -142,7 +142,7 @@ export function DictPage() {
                   {(result.dictionaries ?? []).map((wd) => (
                     <span
                       key={wd.id}
-                      className="px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-xs font-medium"
+                      className="px-2 py-0.5 bg-amber-100 text-amber-800 rounded-full text-xs font-medium"
                     >
                       {wd.name}
                     </span>
@@ -169,10 +169,10 @@ export function DictPage() {
                       <div className="bg-white rounded-xl shadow-lg p-5">
                         <div className="space-y-3">
                           {zhDefs.map((def) => (
-                            <div key={def.id} className="pl-3 border-l-2 border-indigo-500">
+                            <div key={def.id} className="pl-3 border-l-2 border-orange-500">
                               <div className="flex items-center gap-2 mb-0.5">
                                 {def.part_of_speech && (
-                                  <span className="px-2 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-medium">
+                                  <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
                                     {def.part_of_speech}
                                   </span>
                                 )}
@@ -198,10 +198,10 @@ export function DictPage() {
                       <div className="bg-white rounded-xl shadow-lg p-5">
                         <div className="space-y-3">
                           {enDefs.map((def) => (
-                            <div key={def.id} className="pl-3 border-l-2 border-indigo-500">
+                            <div key={def.id} className="pl-3 border-l-2 border-orange-500">
                               <div className="flex items-center gap-2 mb-0.5">
                                 {def.part_of_speech && (
-                                  <span className="px-2 py-0.5 bg-gray-200 text-gray-700 rounded text-xs font-medium">
+                                  <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
                                     {def.part_of_speech}
                                   </span>
                                 )}
@@ -241,7 +241,7 @@ export function DictPage() {
                 const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
                 const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi')
                 return sentence.replace(regex, (match) => 
-                  `<span class="font-bold text-indigo-600">${match}</span>`
+                  `<span class="font-bold text-orange-600">${match}</span>`
                 )
               }
 
@@ -272,7 +272,7 @@ export function DictPage() {
                         {(result.sentences ?? []).length > 10 && (
                           <button
                             onClick={() => setShowMoreSentences(!showMoreSentences)}
-                            className="mt-3 w-full py-2 text-indigo-600 hover:text-indigo-800 text-sm font-medium transition-colors"
+                            className="mt-3 w-full py-2 text-orange-600 hover:text-orange-800 text-sm font-medium transition-colors"
                           >
                             {showMoreSentences ? '收起' : `查看更多 (${((result.sentences ?? []).length - 10)} 条)`}
                           </button>
@@ -315,7 +315,7 @@ export function DictPage() {
                   {(result.categories ?? []).map((cat) => (
                     <span
                       key={cat.id}
-                      className="px-2 py-0.5 bg-purple-100 text-purple-800 rounded-full text-xs"
+                      className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded-full text-xs"
                     >
                       {cat.name}
                     </span>

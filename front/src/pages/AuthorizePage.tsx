@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -14,9 +14,9 @@ export function AuthorizePage() {
   const redirectUri = params.get('redirect_uri') || ''
   const state = params.get('state') || ''
 
-  const [status, setStatus] = React.useState<string | null>(null)
+  const [status, setStatus] = useState<string | null>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!token) return
     if (!redirectUri || !state) return
 

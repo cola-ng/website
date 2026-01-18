@@ -1,12 +1,9 @@
-import { Link } from 'react-router-dom'
-
 import { Header } from '../components/Header'
-import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 
 export function TermsPage() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header />
       <main className="mx-auto max-w-4xl p-4">
         <Card>

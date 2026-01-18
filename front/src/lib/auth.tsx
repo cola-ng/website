@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { createContext, useCallback, useContext, useMemo, useState, type ReactNode } from 'react'
 
 import type { User } from './api'
 
@@ -9,16 +9,16 @@ type AuthState = {
   clear: () => void
 }
 
-const AuthContext = React.createContext<AuthState | null>(null)
+const AuthContext = createContext<AuthState | null>(null)
 
 const TOKEN_KEY = 'colang.token'
 const USER_KEY = 'colang.user'
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [token, setToken] = React.useState<string | null>(() =>
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState<string | null>(() =>
     localStorage.getItem(TOKEN_KEY)
   )
-  const [user, setUser] = React.useState<User | null>(() => {
+  const [user, setUser] = useState<User | null>(() => {
     const raw = localStorage.getItem(USER_KEY)
     if (!raw) return null
     try {
@@ -28,21 +28,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   })
 
-  const setAuth = React.useCallback((nextToken: string, nextUser: User) => {
+  const setAuth = useCallback((nextToken: string, nextUser: User) => {
     localStorage.setItem(TOKEN_KEY, nextToken)
     localStorage.setItem(USER_KEY, JSON.stringify(nextUser))
     setToken(nextToken)
     setUser(nextUser)
   }, [])
 
-  const clear = React.useCallback(() => {
+  const clear = useCallback(() => {
     localStorage.removeItem(TOKEN_KEY)
     localStorage.removeItem(USER_KEY)
     setToken(null)
     setUser(null)
   }, [])
 
-  const value = React.useMemo<AuthState>(
+  const value = useMemo<AuthState>(
     () => ({ token, user, setAuth, clear }),
     [token, user, setAuth, clear]
   )
@@ -51,7 +51,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function useAuth() {
-  const ctx = React.useContext(AuthContext)
+  const ctx = useContext(AuthContext)
   if (!ctx) throw new Error('AuthProvider missing')
   return ctx
 }

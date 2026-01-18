@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -9,13 +9,13 @@ import { useAuth } from '../lib/auth'
 
 export function ProfilePanel() {
   const { token, user, setAuth } = useAuth()
-  const [name, setName] = React.useState(user?.name || '')
-  const [phone, setPhone] = React.useState(user?.phone || '')
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
-  const [saved, setSaved] = React.useState(false)
+  const [name, setName] = useState(user?.name || '')
+  const [phone, setPhone] = useState(user?.phone || '')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [saved, setSaved] = useState(false)
 
-  React.useEffect(() => {
+  useEffect(() => {
     setName(user?.name || '')
     setPhone(user?.phone || '')
   }, [user?.name, user?.phone])

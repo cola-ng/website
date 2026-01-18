@@ -1,4 +1,4 @@
-import * as React from 'react'
+import { useState } from 'react'
 
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
@@ -15,10 +15,10 @@ type Turn = {
 
 export function ChatPanel() {
   const { token } = useAuth()
-  const [message, setMessage] = React.useState('')
-  const [turns, setTurns] = React.useState<Turn[]>([])
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const [message, setMessage] = useState('')
+  const [turns, setTurns] = useState<Turn[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const send = async () => {
     if (!token) return

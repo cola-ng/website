@@ -1,9 +1,8 @@
-import * as React from 'react'
-import { Navigate, Link } from 'react-router-dom'
+import { useEffect, useState, type ReactNode } from 'react'
+import { Navigate } from 'react-router-dom'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Header } from '../components/Header'
-import { Button } from '../components/ui/button'
 import { me } from '../lib/api'
 import { useAuth } from '../lib/auth'
 import { ProfilePanel } from '../widgets/ProfilePanel'
@@ -15,7 +14,7 @@ function formatDate(value?: string | null) {
   return date.toLocaleString()
 }
 
-function InfoRow({ label, value }: { label: string; value?: React.ReactNode }) {
+function InfoRow({ label, value }: { label: string; value?: ReactNode }) {
   return (
     <div className="flex flex-col gap-0.5 rounded-lg border bg-card/30 px-2 py-1.5">
       <div className="text-xs text-muted-foreground">{label}</div>
@@ -25,11 +24,11 @@ function InfoRow({ label, value }: { label: string; value?: React.ReactNode }) {
 }
 
 export function MePage() {
-  const { token, user, setAuth, clear } = useAuth()
-  const [loading, setLoading] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  const { token, user, setAuth } = useAuth()
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (!token) return
     let cancelled = false
     setLoading(true)
@@ -59,7 +58,7 @@ export function MePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header />
 
       <main className="mx-auto max-w-6xl space-y-4 p-4">

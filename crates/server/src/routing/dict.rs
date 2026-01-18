@@ -16,6 +16,7 @@ mod form;
 mod image;
 mod pronunciation;
 mod relation;
+mod searched_words;
 mod sentence;
 mod words;
 
@@ -82,6 +83,12 @@ pub fn router() -> Router {
                 .post(image::create_image),
         )
         .push(Router::with_path("words/{id}/images/{image_id}").delete(image::delete_image))
+        .push(
+            Router::with_path("words/searched")
+                .get(searched_words::list_searched_words)
+                .post(searched_words::create_searched_word)
+                .delete(searched_words::clear_searched_words),
+        )
 }
 
 pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {

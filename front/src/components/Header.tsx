@@ -1,6 +1,15 @@
-import { Link } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
+import { User, LogOut, Settings } from 'lucide-react'
+
 import { Button } from './ui/button'
-import { Sun } from 'lucide-react'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from './ui/dropdown-menu'
 import { useAuth } from '../lib/auth'
 
 interface HeaderProps {
@@ -9,55 +18,77 @@ interface HeaderProps {
 
 export function Header({ showDictLink = true }: HeaderProps) {
   const { token, user, clear } = useAuth()
+  const location = useLocation()
+  
+  const getLoginUrl = () => {
+    const currentPath = location.pathname + location.search
+    if (currentPath === '/login' || currentPath.startsWith('/login?')) {
+      return '/login'
+    }
+    return `/login?redirectTo=${encodeURIComponent(currentPath)}`
+  }
+  
+  const loginUrl = getLoginUrl()
 
   return (
     <header className="border-b bg-white">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
         <div className="flex items-center gap-3">
-          <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-            <Sun className="w-5 h-5 text-white" />
+          <div className="h-8 w-8 flex items-center justify-center">
+            <img src="/colang-logo.svg" alt="Colang" className="h-8 w-8" />
           </div>
           <div>
-            <div className="text-sm font-bold leading-tight text-gray-900">
+            <div className="text-base font-bold leading-tight text-gray-900">
               开朗英语
-            </div>
-            <div className="text-xs text-gray-500 leading-tight">
-              CoLang English Coach
             </div>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
+          {showDictLink && (
+            <Button asChild variant="outline" size="sm">
+              <Link to="/dict">词典</Link>
+            </Button>
+          )}
           {token ? (
-            <>
-              {showDictLink && (
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/dict">词典</Link>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" className="gap-2">
+                  <User className="h-4 w-4" />
+                  <span className="max-w-[120px] truncate">
+                    {user?.name || user?.email}
+                  </span>
                 </Button>
-              )}
-              <div className="text-right px-3">
-                <div className="text-xs font-medium leading-tight text-gray-900">
-                  {user?.name || user?.email}
-                </div>
-                <div className="text-xs text-gray-500 leading-tight">
-                  已登录
-                </div>
-              </div>
-              <Button variant="outline" size="sm" onClick={clear}>
-                登出
-              </Button>
-            </>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>
+                  <div className="flex flex-col space-y-1">
+                    <p className="text-sm font-medium leading-none">
+                      {user?.name || '用户'}
+                    </p>
+                    <p className="text-xs leading-none text-muted-foreground">
+                      {user?.email}
+                    </p>
+                  </div>
+                </DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem asChild>
+                  <Link to="/me" className="cursor-pointer">
+                    <Settings className="mr-2 h-4 w-4" />
+                    <span>账户设置</span>
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={clear} className="cursor-pointer text-destructive focus:text-destructive">
+                  <LogOut className="mr-2 h-4 w-4" />
+                  <span>登出</span>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           ) : (
-            <>
-              {showDictLink && (
-                <Button asChild variant="outline" size="sm">
-                  <Link to="/dict">词典</Link>
-                </Button>
-              )}
-              <Button asChild size="sm">
-                <Link to="/">登录</Link>
-              </Button>
-            </>
+            <Button asChild size="sm">
+              <Link to={loginUrl}>登录</Link>
+            </Button>
           )}
         </div>
       </div>
