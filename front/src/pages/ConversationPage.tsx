@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Send, Mic, MicOff, Volume2, RotateCcw, Lightbulb, ChevronDown } from 'lucide-react'
 
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -75,6 +76,7 @@ export function ConversationPage() {
             </Button>
           </div>
         </div>
+        <Footer />
       </div>
     )
   }
@@ -207,6 +209,7 @@ export function ConversationPage() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   )
 }

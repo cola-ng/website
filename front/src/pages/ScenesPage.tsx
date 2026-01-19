@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Search, Play, Star, Clock, ChevronRight, Film, Tv, Mic2 } from 'lucide-react'
 
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
@@ -211,6 +212,7 @@ export function ScenesPage() {
           </div>
         </div>
       </main>
+      <Footer />
     </div>
   )
 }

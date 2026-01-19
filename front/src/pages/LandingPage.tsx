@@ -1,9 +1,12 @@
+import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageSquare, RotateCcw, Theater, Mic, BookOpen, TrendingUp, Target, Lightbulb, ChevronRight } from 'lucide-react'
+import { TrendingUp, Target, Lightbulb, ChevronRight } from 'lucide-react'
 
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
+import { getLearnSummary, LearnSummary } from '../lib/api'
 
 interface StatCardProps {
   value: string
@@ -24,26 +27,6 @@ function StatCard({ value, label, color }: StatCardProps) {
       <div className={`text-2xl font-bold ${colorClasses[color]}`}>{value}</div>
       <div className="text-xs text-gray-500 mt-1">{label}</div>
     </div>
-  )
-}
-
-interface QuickActionProps {
-  icon: React.ReactNode
-  label: string
-  to: string
-}
-
-function QuickAction({ icon, label, to }: QuickActionProps) {
-  return (
-    <Link
-      to={to}
-      className="flex flex-col items-center gap-2 p-4 bg-gray-50 rounded-lg hover:bg-orange-50 hover:border-orange-200 border border-transparent transition-all"
-    >
-      <div className="h-10 w-10 rounded-full bg-white shadow-sm flex items-center justify-center">
-        {icon}
-      </div>
-      <span className="text-sm text-gray-700 font-medium">{label}</span>
-    </Link>
   )
 }
 
@@ -92,6 +75,15 @@ function SceneCard({ icon, title, subtitle }: SceneCardProps) {
 
 export function LandingPage() {
   const { token, user } = useAuth()
+  const [learnSummary, setLearnSummary] = useState<LearnSummary | null>(null)
+
+  useEffect(() => {
+    if (token) {
+      getLearnSummary(token)
+        .then(setLearnSummary)
+        .catch(() => setLearnSummary(null))
+    }
+  }, [token])
 
   const greeting = () => {
     const hour = new Date().getHours()
@@ -161,33 +153,31 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Quick Actions */}
+            {/* Recommended Scenes - moved from right column */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="font-semibold text-gray-900 mb-4">
-                <span className="mr-2">⚡</span>
-                快捷入口
+                <span className="mr-2">🎯</span>
+                推荐场景
               </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                <QuickAction
-                  icon={<Theater className="h-5 w-5 text-purple-600" />}
-                  label="场景模拟"
-                  to="/scenes"
-                />
-                <QuickAction
-                  icon={<MessageSquare className="h-5 w-5 text-blue-600" />}
-                  label="经典对白"
-                  to="/scenes"
-                />
-                <QuickAction
-                  icon={<Mic className="h-5 w-5 text-red-600" />}
-                  label="跟读练习"
-                  to="/reading"
-                />
-                <QuickAction
-                  icon={<BookOpen className="h-5 w-5 text-amber-600" />}
-                  label="词典查询"
-                  to="/dict"
-                />
+              <div className="grid grid-cols-3 gap-4">
+                <Link to="/scenes" className="block">
+                  <SceneCard icon="🏨" title="酒店入住" subtitle="继续上次" />
+                </Link>
+                <Link to="/scenes" className="block">
+                  <SceneCard icon="🍽️" title="餐厅点餐" subtitle="新场景" />
+                </Link>
+                <Link to="/scenes" className="block">
+                  <SceneCard icon="💼" title="工作面试" subtitle="挑战" />
+                </Link>
+                <Link to="/scenes" className="block">
+                  <SceneCard icon="✈️" title="机场出行" subtitle="实用场景" />
+                </Link>
+                <Link to="/scenes" className="block">
+                  <SceneCard icon="🛒" title="购物结账" subtitle="日常对话" />
+                </Link>
+                <Link to="/scenes" className="block">
+                  <SceneCard icon="🏥" title="医院就诊" subtitle="应急必备" />
+                </Link>
               </div>
             </div>
           </div>
@@ -200,27 +190,66 @@ export function LandingPage() {
                 <TrendingUp className="h-5 w-5 inline mr-2 text-orange-500" />
                 学习数据
               </h2>
-              <div className="grid grid-cols-2 gap-3">
-                <StatCard value="47" label="本周对话(分钟)" color="orange" />
-                <StatCard value="156" label="已掌握词汇" color="green" />
-                <StatCard value="23" label="待复习" color="amber" />
-                <StatCard value="B1" label="当前水平" color="blue" />
+              <div className="grid grid-cols-3 gap-3">
+                <StatCard
+                  value={String(learnSummary?.weekly_conversation_minutes ?? 0)}
+                  label="本周对话(分钟)"
+                  color="orange"
+                />
+                <StatCard
+                  value={String(learnSummary?.mastered_vocabulary_count ?? 0)}
+                  label="已掌握词汇"
+                  color="green"
+                />
+                <StatCard
+                  value={String(learnSummary?.pending_review_count ?? 0)}
+                  label="待复习"
+                  color="amber"
+                />
               </div>
-              <div className="mt-4 bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500">本周学习时长分布</div>
-                <div className="flex items-center gap-1 mt-2">
-                  {[3, 5, 4, 2, 6, 5, 4].map((h, i) => (
-                    <div
-                      key={i}
-                      className="flex-1 bg-orange-400 rounded-sm"
-                      style={{ height: `${h * 6}px` }}
-                    />
-                  ))}
+              <div className="mt-4 bg-gray-50 rounded-lg p-4">
+                <div className="text-xs text-gray-500 mb-3">本周学习时长分布</div>
+                <div className="relative">
+                  {/* Y轴标注 */}
+                  <div className="absolute left-0 top-0 bottom-6 w-8 flex flex-col justify-between text-xs text-gray-400">
+                    <span>60</span>
+                    <span>40</span>
+                    <span>20</span>
+                    <span>0</span>
+                  </div>
+                  {/* 柱状图 */}
+                  <div className="ml-10 flex items-end gap-2 h-24">
+                    {(learnSummary?.weekly_minutes ?? [
+                      { day: 0, date: '', minutes: 0 },
+                      { day: 1, date: '', minutes: 0 },
+                      { day: 2, date: '', minutes: 0 },
+                      { day: 3, date: '', minutes: 0 },
+                      { day: 4, date: '', minutes: 0 },
+                      { day: 5, date: '', minutes: 0 },
+                      { day: 6, date: '', minutes: 0 },
+                    ]).map((item, i) => (
+                      <div key={i} className="flex-1 flex flex-col items-center">
+                        <div
+                          className="w-full bg-orange-400 rounded-sm transition-all"
+                          style={{ height: `${Math.min((item.minutes / 60) * 96, 96)}px` }}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {/* X轴标注 - 星期 */}
+                  <div className="ml-10 flex gap-2 mt-2">
+                    {['一', '二', '三', '四', '五', '六', '日'].map((day, i) => (
+                      <div key={i} className="flex-1 text-center text-xs text-gray-400">
+                        {day}
+                      </div>
+                    ))}
+                  </div>
                 </div>
+                <div className="text-xs text-gray-400 text-center mt-2">单位：分钟（每格10分钟）</div>
               </div>
             </div>
 
-            {/* AI Insights */}
+            {/* AI Insights - 4 items */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="font-semibold text-gray-900 mb-4">
                 <span className="mr-2">🧠</span>
@@ -243,24 +272,29 @@ export function LandingPage() {
                     点击开始专项练习 →
                   </Link>
                 </div>
-              </div>
-            </div>
-
-            {/* Recommended Scenes */}
-            <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="font-semibold text-gray-900 mb-4">
-                <span className="mr-2">🎯</span>
-                推荐场景
-              </h2>
-              <div className="grid grid-cols-3 gap-2">
-                <SceneCard icon="🏨" title="酒店入住" subtitle="继续上次" />
-                <SceneCard icon="🍽️" title="餐厅点餐" subtitle="新场景" />
-                <SceneCard icon="💼" title="工作面试" subtitle="挑战" />
+                <div className="bg-blue-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-700">
+                    <span className="mr-1">📈</span>
+                    本周学习时长比上周提升 25%，继续加油！
+                  </p>
+                  <span className="text-xs text-blue-600 mt-1 block">稳步提升中</span>
+                </div>
+                <div className="bg-purple-50 rounded-lg p-3">
+                  <p className="text-sm text-gray-700">
+                    <span className="mr-1">💡</span>
+                    尝试"餐厅点餐"场景，巩固已学的日常用语
+                  </p>
+                  <Link to="/scenes" className="text-xs text-purple-600 mt-1 block hover:underline">
+                    立即体验 →
+                  </Link>
+                </div>
               </div>
             </div>
           </div>
         </div>
       </main>
+
+      <Footer />
     </div>
   )
 }

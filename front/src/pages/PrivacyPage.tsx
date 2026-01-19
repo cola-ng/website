@@ -1,3 +1,4 @@
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 
@@ -19,6 +20,7 @@ export function PrivacyPage() {
           </CardContent>
         </Card>
       </main>
+      <Footer />
     </div>
   )
 }

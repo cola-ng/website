@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Search, Volume2, Star } from 'lucide-react'
 import { lookup, type WordQueryResponse } from '../lib/api'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 
 export function DictPage() {
@@ -326,6 +327,7 @@ export function DictPage() {
           </div>
         )}
       </div>
+      <Footer />
     </div>
   )
 }

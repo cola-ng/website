@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { RotateCcw, CheckCircle, XCircle, TrendingUp, Clock, Target, ChevronRight } from 'lucide-react'
 
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
@@ -174,6 +175,7 @@ export function ReviewPage() {
             </Button>
           </div>
         </div>
+        <Footer />
       </div>
     )
   }
@@ -304,6 +306,7 @@ export function ReviewPage() {
           </Tabs>
         </div>
       </main>
+      <Footer />
     </div>
   )
 }

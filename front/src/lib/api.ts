@@ -357,3 +357,25 @@ export function clearSearchHistory(token: string): Promise<{ cleared: boolean }>
     token,
   })
 }
+
+// Learning Summary types
+export type WeeklyMinutes = {
+  day: number
+  date: string
+  minutes: number
+}
+
+export type LearnSummary = {
+  has_data: boolean
+  weekly_conversation_minutes: number
+  mastered_vocabulary_count: number
+  pending_review_count: number
+  weekly_minutes: WeeklyMinutes[]
+}
+
+export function getLearnSummary(token: string): Promise<LearnSummary> {
+  return requestJson<LearnSummary>('/api/learn/summary', {
+    method: 'GET',
+    token,
+  })
+}

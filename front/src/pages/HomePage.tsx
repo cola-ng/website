@@ -2,6 +2,7 @@ import { ChatPanel } from '../widgets/ChatPanel'
 import { ProfilePanel } from '../widgets/ProfilePanel'
 import { RecordsPanel } from '../widgets/RecordsPanel'
 import { AuthCard } from '../widgets/AuthCard'
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useAuth } from '../lib/auth'
@@ -18,6 +19,7 @@ export function HomePage() {
             <AuthCard />
           </div>
         </div>
+        <Footer />
       </div>
     )
   }
@@ -44,6 +46,7 @@ export function HomePage() {
           </TabsContent>
         </Tabs>
       </main>
+      <Footer />
     </div>
   )
 }

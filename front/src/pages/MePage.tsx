@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { Navigate } from 'react-router-dom'
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
+import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { me } from '../lib/api'
 import { useAuth } from '../lib/auth'
@@ -83,6 +84,7 @@ export function MePage() {
 
         <ProfilePanel />
       </main>
+      <Footer />
     </div>
   )
 }
