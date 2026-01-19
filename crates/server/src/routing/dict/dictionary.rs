@@ -17,7 +17,7 @@ pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<Dictionary>>
     let dictionaries: Vec<Dictionary> = with_conn(move |conn| {
         let mut query = dict_dictionaries::table
             .order(dict_dictionaries::priority_order.asc())
-            .then_order_by(dict_dictionaries::name.asc())
+            .then_order_by(dict_dictionaries::name_en.asc())
             .limit(limit)
             .offset(offset)
             .into_boxed();
@@ -40,7 +40,10 @@ pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<Dictionary>>
 
 #[derive(Deserialize)]
 pub struct CreateDictionaryRequest {
-    pub name: String,
+    pub name_en: String,
+    pub name_zh: String,
+    pub short_en: String,
+    pub short_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub version: Option<String>,
@@ -61,15 +64,18 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let name = input.name.trim().to_string();
-    if name.is_empty() {
-        return Err(StatusError::bad_request().brief("name is required").into());
+    let name_en = input.name_en.trim().to_string();
+    if name_en.is_empty() {
+        return Err(StatusError::bad_request().brief("name_en is required").into());
     }
 
     let created: Dictionary = with_conn(move |conn| {
         diesel::insert_into(dict_dictionaries::table)
             .values(&NewDictionary {
-                name,
+                name_en,
+                name_zh: input.name_zh,
+                short_en: input.short_en,
+                short_zh: input.short_zh,
                 description_en: input.description_en,
                 description_zh: input.description_zh,
                 version: input.version,
@@ -94,7 +100,10 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
 
 #[derive(Deserialize)]
 pub struct UpdateDictionaryRequest {
-    pub name: Option<String>,
+    pub name_en: Option<String>,
+    pub name_zh: Option<String>,
+    pub short_en: Option<String>,
+    pub short_zh: Option<String>,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub version: Option<String>,
@@ -119,7 +128,10 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
     let updated: Dictionary = with_conn(move |conn| {
         diesel::update(dict_dictionaries::table.find(id))
             .set(&UpdateDictionary {
-                name: input.name.map(|n| n.trim().to_string()),
+                name_en: input.name_en.map(|n| n.trim().to_string()),
+                name_zh: input.name_zh.map(|n| n.trim().to_string()),
+                short_en: input.short_en.map(|n| n.trim().to_string()),
+                short_zh: input.short_zh.map(|n| n.trim().to_string()),
                 description_en: input.description_en,
                 description_zh: input.description_zh,
                 version: input.version,

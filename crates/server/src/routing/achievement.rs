@@ -29,10 +29,10 @@ pub fn router() -> Router {
 #[handler]
 pub async fn list_achievement_definitions(res: &mut Response) -> AppResult<()> {
     let achievements: Vec<AchievementDefinition> = with_conn(move |conn| {
-        achievement_definitions::table
-            .filter(achievement_definitions::is_active.eq(true))
-            .filter(achievement_definitions::is_hidden.eq(false).or(achievement_definitions::is_hidden.is_null()))
-            .order(achievement_definitions::sort_order.asc())
+        archive_achievement_definitions::table
+            .filter(archive_achievement_definitions::is_active.eq(true))
+            .filter(archive_achievement_definitions::is_hidden.eq(false).or(archive_achievement_definitions::is_hidden.is_null()))
+            .order(archive_achievement_definitions::sort_order.asc())
             .load::<AchievementDefinition>(conn)
     })
     .await
@@ -46,8 +46,8 @@ pub async fn list_achievement_definitions(res: &mut Response) -> AppResult<()> {
 #[handler]
 pub async fn list_rank_definitions(res: &mut Response) -> AppResult<()> {
     let ranks: Vec<RankDefinition> = with_conn(move |conn| {
-        rank_definitions::table
-            .order(rank_definitions::level.asc())
+        archive_rank_definitions::table
+            .order(archive_rank_definitions::level.asc())
             .load::<RankDefinition>(conn)
     })
     .await
@@ -71,8 +71,8 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
         let profile = get_or_create_profile(conn, user_id)?;
 
         // Get all ranks
-        let ranks: Vec<RankDefinition> = rank_definitions::table
-            .order(rank_definitions::level.asc())
+        let ranks: Vec<RankDefinition> = archive_rank_definitions::table
+            .order(archive_rank_definitions::level.asc())
             .load::<RankDefinition>(conn)?;
 
         // Find current rank and next rank
@@ -93,19 +93,19 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
             .max(0);
 
         // Get recent completed achievements (last 5)
-        let recent_achievements: Vec<AchievementBadge> = user_achievements::table
-            .inner_join(achievement_definitions::table)
-            .filter(user_achievements::user_id.eq(user_id))
-            .filter(user_achievements::is_completed.eq(true))
-            .order(user_achievements::completed_at.desc())
+        let recent_achievements: Vec<AchievementBadge> = archive_user_achievements::table
+            .inner_join(archive_achievement_definitions::table)
+            .filter(archive_user_achievements::user_id.eq(user_id))
+            .filter(archive_user_achievements::is_completed.eq(true))
+            .order(archive_user_achievements::completed_at.desc())
             .limit(5)
             .select((
-                achievement_definitions::code,
-                achievement_definitions::name_en,
-                achievement_definitions::name_zh,
-                achievement_definitions::icon,
-                achievement_definitions::rarity,
-                user_achievements::completed_at,
+                archive_achievement_definitions::code,
+                archive_achievement_definitions::name_en,
+                archive_achievement_definitions::name_zh,
+                archive_achievement_definitions::icon,
+                archive_achievement_definitions::rarity,
+                archive_user_achievements::completed_at,
             ))
             .load::<(String, String, String, Option<String>, String, Option<chrono::DateTime<Utc>>)>(conn)?
             .into_iter()
@@ -120,14 +120,14 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
             .collect();
 
         // Count total and completed achievements
-        let total_achievements: i64 = achievement_definitions::table
-            .filter(achievement_definitions::is_active.eq(true))
+        let total_achievements: i64 = archive_achievement_definitions::table
+            .filter(archive_achievement_definitions::is_active.eq(true))
             .count()
             .get_result(conn)?;
 
-        let completed_achievements: i64 = user_achievements::table
-            .filter(user_achievements::user_id.eq(user_id))
-            .filter(user_achievements::is_completed.eq(true))
+        let completed_achievements: i64 = archive_user_achievements::table
+            .filter(archive_user_achievements::user_id.eq(user_id))
+            .filter(archive_user_achievements::is_completed.eq(true))
             .count()
             .get_result(conn)?;
 
@@ -156,14 +156,14 @@ pub async fn list_user_achievements(depot: &mut Depot, res: &mut Response) -> Ap
 
     let achievements: Vec<AchievementWithProgress> = with_conn(move |conn| {
         // Get all active achievement definitions
-        let definitions: Vec<AchievementDefinition> = achievement_definitions::table
-            .filter(achievement_definitions::is_active.eq(true))
-            .order(achievement_definitions::sort_order.asc())
+        let definitions: Vec<AchievementDefinition> = archive_achievement_definitions::table
+            .filter(archive_achievement_definitions::is_active.eq(true))
+            .order(archive_achievement_definitions::sort_order.asc())
             .load::<AchievementDefinition>(conn)?;
 
         // Get user's achievement progress
-        let user_progress: Vec<UserAchievementRecord> = user_achievements::table
-            .filter(user_achievements::user_id.eq(user_id))
+        let user_progress: Vec<UserAchievementRecord> = archive_user_achievements::table
+            .filter(archive_user_achievements::user_id.eq(user_id))
             .load::<UserAchievementRecord>(conn)?;
 
         // Combine definitions with user progress
@@ -214,9 +214,9 @@ pub async fn list_xp_history(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
     let history: Vec<UserXpHistory> = with_conn(move |conn| {
-        user_xp_history::table
-            .filter(user_xp_history::user_id.eq(user_id))
-            .order(user_xp_history::created_at.desc())
+        archive_user_xp_history::table
+            .filter(archive_user_xp_history::user_id.eq(user_id))
+            .order(archive_user_xp_history::created_at.desc())
             .limit(limit)
             .load::<UserXpHistory>(conn)
     })
@@ -237,8 +237,8 @@ fn get_or_create_profile(
     user_id: i64,
 ) -> Result<UserProfile, diesel::result::Error> {
     // Try to find existing profile
-    let existing = user_profiles::table
-        .filter(user_profiles::user_id.eq(user_id))
+    let existing = archive_user_profiles::table
+        .filter(archive_user_profiles::user_id.eq(user_id))
         .first::<UserProfile>(conn)
         .optional()?;
 
@@ -248,7 +248,7 @@ fn get_or_create_profile(
 
     // Create new profile
     let new_profile = NewUserProfile { user_id };
-    diesel::insert_into(user_profiles::table)
+    diesel::insert_into(archive_user_profiles::table)
         .values(&new_profile)
         .get_result::<UserProfile>(conn)
 }

@@ -2,10 +2,14 @@
 -- DICTIONARY TABLES (English Dictionary - Server-side)
 -- ============================================================================
 
--- Table: dict_dictionaries - Dictionary metadata
+-- Table: dict_dictionaries - Dictionary metadata]
+drop table if exists dict_dictionaries;
 CREATE TABLE IF NOT EXISTS dict_dictionaries (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    name TEXT NOT NULL UNIQUE,               -- 字典名称
+    name_en TEXT NOT NULL UNIQUE,               -- 字典英语名称
+    name_zh TEXT NOT NULL UNIQUE,               -- 字典中文名称
+    short_en TEXT NOT NULL UNIQUE,        -- 英文短名称
+    short_zh TEXT NOT NULL UNIQUE,        -- 中文短名称
     description_en TEXT,                                -- 英文描述
     description_zh TEXT,                                -- 中文描述
     version TEXT,                                       -- 版本号
@@ -22,7 +26,8 @@ CREATE TABLE IF NOT EXISTS dict_dictionaries (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 更新时间
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
-CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_name ON dict_dictionaries(name);
+CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_name_en ON dict_dictionaries(name_en);
+CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_name_zh ON dict_dictionaries(name_zh);
 CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_active ON dict_dictionaries(is_active);
 CREATE INDEX IF NOT EXISTS idx_dict_dictionaries_priority ON dict_dictionaries(priority_order ASC);
 

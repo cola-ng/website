@@ -285,7 +285,10 @@ pub struct WordQueryResponse {
 #[diesel(table_name = dict_dictionaries)]
 pub struct Dictionary {
     pub id: i64,
-    pub name: String,
+    pub name_en: String,
+    pub name_zh: String,
+    pub short_en: String,
+    pub short_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub version: Option<String>,
@@ -306,7 +309,10 @@ pub struct Dictionary {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = dict_dictionaries)]
 pub struct NewDictionary {
-    pub name: String,
+    pub name_en: String,
+    pub name_zh: String,
+    pub short_en: String,
+    pub short_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub version: Option<String>,
@@ -325,7 +331,10 @@ pub struct NewDictionary {
 #[derive(AsChangeset, Deserialize)]
 #[diesel(table_name = dict_dictionaries)]
 pub struct UpdateDictionary {
-    pub name: Option<String>,
+    pub name_en: Option<String>,
+    pub name_zh: Option<String>,
+    pub short_en: Option<String>,
+    pub short_zh: Option<String>,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub version: Option<String>,
@@ -411,8 +420,9 @@ pub struct NewWordEtymology {
 pub struct SearchedWord {
     pub id: i64,
     pub user_id: i64,
+    pub word_id: Option<i64>,
     pub word: String,
-    pub searched_at: chrono::NaiveDateTime,
+    pub searched_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Insertable, Deserialize)]

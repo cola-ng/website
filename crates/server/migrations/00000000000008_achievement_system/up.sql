@@ -2,8 +2,8 @@
 -- ACHIEVEMENT SYSTEM TABLES
 -- ============================================================================
 
--- Table: achievement_definitions - All available achievements/badges
-CREATE TABLE IF NOT EXISTS achievement_definitions (
+-- Table: archive_achievement_definitions - All available achievements/badges
+CREATE TABLE IF NOT EXISTS archive_achievement_definitions (
     id BIGSERIAL PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,                              -- Unique identifier (e.g., 'first_conversation', 'vocab_100')
     name_en TEXT NOT NULL,                                  -- English name
@@ -23,12 +23,12 @@ CREATE TABLE IF NOT EXISTS achievement_definitions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_achievement_defs_category ON achievement_definitions(category);
-CREATE INDEX IF NOT EXISTS idx_achievement_defs_rarity ON achievement_definitions(rarity);
-CREATE INDEX IF NOT EXISTS idx_achievement_defs_active ON achievement_definitions(is_active) WHERE is_active = TRUE;
+CREATE INDEX IF NOT EXISTS idx_achievement_defs_category ON archive_achievement_definitions(category);
+CREATE INDEX IF NOT EXISTS idx_achievement_defs_rarity ON archive_achievement_definitions(rarity);
+CREATE INDEX IF NOT EXISTS idx_achievement_defs_active ON archive_achievement_definitions(is_active) WHERE is_active = TRUE;
 
--- Table: rank_definitions - User rank/level definitions
-CREATE TABLE IF NOT EXISTS rank_definitions (
+-- Table: archive_rank_definitions - User rank/level definitions
+CREATE TABLE IF NOT EXISTS archive_rank_definitions (
     id BIGSERIAL PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,                              -- Unique identifier (e.g., 'beginner', 'intermediate')
     name_en TEXT NOT NULL,                                  -- English name
@@ -42,15 +42,15 @@ CREATE TABLE IF NOT EXISTS rank_definitions (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_rank_defs_level ON rank_definitions(level);
-CREATE INDEX IF NOT EXISTS idx_rank_defs_xp ON rank_definitions(min_xp);
+CREATE INDEX IF NOT EXISTS idx_rank_defs_level ON archive_rank_definitions(level);
+CREATE INDEX IF NOT EXISTS idx_rank_defs_xp ON archive_rank_definitions(min_xp);
 
--- Table: user_profiles - Extended user profile with XP and stats
-CREATE TABLE IF NOT EXISTS user_profiles (
+-- Table: archive_user_profiles - Extended user profile with XP and stats
+CREATE TABLE IF NOT EXISTS archive_user_profiles (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL UNIQUE,                         -- Reference to base_users
     total_xp INTEGER NOT NULL DEFAULT 0,                    -- Total experience points
-    current_rank_id BIGINT,                                 -- Current rank (references rank_definitions)
+    current_rank_id BIGINT,                                 -- Current rank (references archive_rank_definitions)
     current_streak_days INTEGER NOT NULL DEFAULT 0,         -- Current learning streak
     longest_streak_days INTEGER NOT NULL DEFAULT 0,         -- Longest streak ever
     last_activity_date DATE,                                -- Last day user was active
@@ -62,15 +62,15 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_profiles_user ON user_profiles(user_id);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_xp ON user_profiles(total_xp DESC);
-CREATE INDEX IF NOT EXISTS idx_user_profiles_streak ON user_profiles(current_streak_days DESC);
+CREATE INDEX IF NOT EXISTS idx_archive_user_profiles_user ON archive_user_profiles(user_id);
+CREATE INDEX IF NOT EXISTS idx_archive_user_profiles_xp ON archive_user_profiles(total_xp DESC);
+CREATE INDEX IF NOT EXISTS idx_archive_user_profiles_streak ON archive_user_profiles(current_streak_days DESC);
 
--- Table: user_achievements - Achievements earned by users (enhanced version)
-CREATE TABLE IF NOT EXISTS user_achievements (
+-- Table: archive_user_achievements - Achievements earned by users (enhanced version)
+CREATE TABLE IF NOT EXISTS archive_user_achievements (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    achievement_id BIGINT NOT NULL,                         -- References achievement_definitions
+    achievement_id BIGINT NOT NULL,                         -- References archive_achievement_definitions
     progress INTEGER NOT NULL DEFAULT 0,                    -- Current progress towards achievement
     is_completed BOOLEAN NOT NULL DEFAULT FALSE,
     completed_at TIMESTAMPTZ,                               -- When achievement was earned
@@ -79,11 +79,11 @@ CREATE TABLE IF NOT EXISTS user_achievements (
     UNIQUE(user_id, achievement_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id, is_completed);
-CREATE INDEX IF NOT EXISTS idx_user_achievements_completed ON user_achievements(completed_at DESC) WHERE is_completed = TRUE;
+CREATE INDEX IF NOT EXISTS idx_archive_user_achievements_user ON archive_user_achievements(user_id, is_completed);
+CREATE INDEX IF NOT EXISTS idx_archive_user_achievements_completed ON archive_user_achievements(completed_at DESC) WHERE is_completed = TRUE;
 
--- Table: user_xp_history - Track XP gains
-CREATE TABLE IF NOT EXISTS user_xp_history (
+-- Table: archive_user_xp_history - Track XP gains
+CREATE TABLE IF NOT EXISTS archive_user_xp_history (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     xp_amount INTEGER NOT NULL,
@@ -93,13 +93,13 @@ CREATE TABLE IF NOT EXISTS user_xp_history (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_xp_history_user ON user_xp_history(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_archive_user_xp_history_user ON archive_user_xp_history(user_id, created_at DESC);
 
 -- ============================================================================
 -- SEED DATA: Achievement Definitions
 -- ============================================================================
 
-INSERT INTO achievement_definitions (code, name_en, name_zh, description_en, description_zh, icon, category, rarity, xp_reward, requirement_type, requirement_value, requirement_field, sort_order) VALUES
+INSERT INTO archive_achievement_definitions (code, name_en, name_zh, description_en, description_zh, icon, category, rarity, xp_reward, requirement_type, requirement_value, requirement_field, sort_order) VALUES
 -- Learning Milestones
 ('first_conversation', 'First Chat', '初次对话', 'Complete your first conversation', '完成你的第一次对话', 'message-circle', 'milestone', 'common', 10, 'count', 1, 'total_conversations', 1),
 ('conversations_10', 'Chatty Learner', '健谈学者', 'Complete 10 conversations', '完成10次对话', 'message-circle', 'milestone', 'common', 50, 'count', 10, 'total_conversations', 2),
@@ -138,7 +138,7 @@ ON CONFLICT (code) DO NOTHING;
 -- SEED DATA: Rank Definitions
 -- ============================================================================
 
-INSERT INTO rank_definitions (code, name_en, name_zh, description_en, description_zh, icon, color, min_xp, level) VALUES
+INSERT INTO archive_rank_definitions (code, name_en, name_zh, description_en, description_zh, icon, color, min_xp, level) VALUES
 ('novice', 'Novice', '新手', 'Just starting your English journey', '刚开始英语学习之旅', 'seedling', '#9CA3AF', 0, 1),
 ('beginner', 'Beginner', '初学者', 'Taking your first steps', '迈出第一步', 'sprout', '#6EE7B7', 100, 2),
 ('elementary', 'Elementary', '初级', 'Building your foundation', '打好基础', 'leaf', '#34D399', 300, 3),

@@ -9,7 +9,7 @@ use crate::db::schema::*;
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = achievement_definitions)]
+#[diesel(table_name = archive_achievement_definitions)]
 pub struct AchievementDefinition {
     pub id: i64,
     pub code: String,
@@ -35,7 +35,7 @@ pub struct AchievementDefinition {
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = rank_definitions)]
+#[diesel(table_name = archive_rank_definitions)]
 pub struct RankDefinition {
     pub id: i64,
     pub code: String,
@@ -55,7 +55,7 @@ pub struct RankDefinition {
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = user_profiles)]
+#[diesel(table_name = archive_user_profiles)]
 pub struct UserProfile {
     pub id: i64,
     pub user_id: i64,
@@ -73,13 +73,13 @@ pub struct UserProfile {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = user_profiles)]
+#[diesel(table_name = archive_user_profiles)]
 pub struct NewUserProfile {
     pub user_id: i64,
 }
 
 #[derive(AsChangeset, Default)]
-#[diesel(table_name = user_profiles)]
+#[diesel(table_name = archive_user_profiles)]
 pub struct UpdateUserProfile {
     pub total_xp: Option<i32>,
     pub current_rank_id: Option<i64>,
@@ -98,7 +98,7 @@ pub struct UpdateUserProfile {
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = user_achievements)]
+#[diesel(table_name = archive_user_achievements)]
 pub struct UserAchievementRecord {
     pub id: i64,
     pub user_id: i64,
@@ -111,7 +111,7 @@ pub struct UserAchievementRecord {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = user_achievements)]
+#[diesel(table_name = archive_user_achievements)]
 pub struct NewUserAchievement {
     pub user_id: i64,
     pub achievement_id: i64,
@@ -121,7 +121,7 @@ pub struct NewUserAchievement {
 }
 
 #[derive(AsChangeset)]
-#[diesel(table_name = user_achievements)]
+#[diesel(table_name = archive_user_achievements)]
 pub struct UpdateUserAchievement {
     pub progress: Option<i32>,
     pub is_completed: Option<bool>,
@@ -134,7 +134,7 @@ pub struct UpdateUserAchievement {
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = user_xp_history)]
+#[diesel(table_name = archive_user_xp_history)]
 pub struct UserXpHistory {
     pub id: i64,
     pub user_id: i64,
@@ -146,7 +146,7 @@ pub struct UserXpHistory {
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = user_xp_history)]
+#[diesel(table_name = archive_user_xp_history)]
 pub struct NewUserXpHistory {
     pub user_id: i64,
     pub xp_amount: i32,

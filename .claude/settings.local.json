@@ -6,7 +6,12 @@
       "Bash(findstr:*)",
       "Bash(cargo check:*)",
       "Bash(npm run build:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(if [ -d \"D:\\\\Works\\\\cola-ng\\\\website\\\\words\" ])",
+      "Bash(then ls \"D:\\\\Works\\\\cola-ng\\\\website\\\\words\")",
+      "Bash(else echo \"words directory does not exist\")",
+      "Bash(fi)",
+      "Bash(npx tsc:*)"
     ]
   }
 }

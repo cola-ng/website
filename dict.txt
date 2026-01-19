@@ -1,0 +1,8 @@
+CET4: 大学英语四级考试, 
+CET6: 大学英语六级考试, 
+考研英语
+Oxford English Dictionary, OED: 牛津英语词典
+Webster's Third New International Dictionary: 韦氏国际词典
+Collins COBUILD Advanced English-Chinese Bilingual Learning Dictionary:柯林斯 COBUILD 高阶英汉双解学习词典
+Cambridge Advanced Learner's Dictionary, CALD: 剑桥高级英语学习者词典
+Macmillan English Dictionary for Advanced Learners: 麦克米伦高阶英语词典

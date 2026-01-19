@@ -187,9 +187,12 @@ export function ReviewPage() {
       <main className="mx-auto max-w-6xl p-4">
         <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
           <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">复习巩固</h1>
-              <p className="text-sm text-gray-500">科学复习，牢记所学</p>
+            <div className="flex items-baseline gap-3">
+              <h1 className="text-2xl font-bold text-gray-900">
+                <span className="mr-2">📚</span>
+                复习巩固
+              </h1>
+              <p className="text-gray-500">科学复习，牢记所学</p>
             </div>
             <Button>
               <RotateCcw className="h-4 w-4 mr-2" />

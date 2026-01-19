@@ -76,6 +76,7 @@ function SceneCard({ icon, title, subtitle }: SceneCardProps) {
 export function LandingPage() {
   const { token, user } = useAuth()
   const [learnSummary, setLearnSummary] = useState<LearnSummary | null>(null)
+  const [chartPeriod, setChartPeriod] = useState<'day' | 'week' | 'month'>('day')
 
   useEffect(() => {
     if (token) {
@@ -133,23 +134,102 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Today's Tasks */}
+            {/* Stats - Learning Data */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
-                  <Target className="h-5 w-5 text-orange-500" />
-                  今日任务
+                <h2 className="font-semibold text-gray-900">
+                  <TrendingUp className="h-5 w-5 inline mr-2 text-orange-500" />
+                  学习数据
                 </h2>
-                <span className="text-sm text-gray-500">3/5 已完成</span>
+                <Button size="sm" variant="outline" asChild>
+                  <Link to="/review">开始复习</Link>
+                </Button>
               </div>
-              <div className="h-2 bg-gray-200 rounded-full mb-4">
-                <div className="h-2 bg-orange-500 rounded-full" style={{ width: '60%' }} />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <TaskItem title="3分钟自由对话" status="completed" />
-                <TaskItem title="场景练习：点餐" status="in_progress" />
-                <TaskItem title="复习 8 个易错点" status="pending" />
-                <TaskItem title="跟读训练 5 句" status="pending" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {/* Left: Stats Cards - 2x2 grid */}
+                <div className="grid grid-cols-2 gap-3">
+                  <StatCard
+                    value={String(learnSummary?.weekly_conversation_minutes ?? 0)}
+                    label="本周对话(分钟)"
+                    color="orange"
+                  />
+                  <StatCard
+                    value={String(learnSummary?.mastered_vocabulary_count ?? 0)}
+                    label="已掌握词汇"
+                    color="green"
+                  />
+                  <StatCard
+                    value={String(learnSummary?.pending_review_count ?? 0)}
+                    label="待复习"
+                    color="amber"
+                  />
+                  <StatCard
+                    value="85%"
+                    label="正确率"
+                    color="blue"
+                  />
+                </div>
+                {/* Right: Time Distribution Chart */}
+                <div className="bg-gray-50 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs text-gray-500">学习时长分布</span>
+                    <div className="flex gap-1">
+                      {(['day', 'week', 'month'] as const).map((period) => (
+                        <button
+                          key={period}
+                          onClick={() => setChartPeriod(period)}
+                          className={`px-2 py-0.5 text-xs rounded transition-colors ${
+                            chartPeriod === period
+                              ? 'bg-orange-500 text-white'
+                              : 'bg-white text-gray-500 hover:bg-orange-50'
+                          }`}
+                        >
+                          {period === 'day' ? '日' : period === 'week' ? '周' : '月'}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="relative">
+                    {/* Y轴标注 */}
+                    <div className="absolute left-0 top-0 bottom-6 w-6 flex flex-col justify-between text-xs text-gray-400">
+                      <span>60</span>
+                      <span>30</span>
+                      <span>0</span>
+                    </div>
+                    {/* 柱状图 */}
+                    <div className="ml-7 flex items-end gap-1 h-16">
+                      {(learnSummary?.weekly_minutes ?? [
+                        { day: 0, date: '', minutes: 0 },
+                        { day: 1, date: '', minutes: 0 },
+                        { day: 2, date: '', minutes: 0 },
+                        { day: 3, date: '', minutes: 0 },
+                        { day: 4, date: '', minutes: 0 },
+                        { day: 5, date: '', minutes: 0 },
+                        { day: 6, date: '', minutes: 0 },
+                      ]).map((item, i) => (
+                        <div key={i} className="flex-1 flex flex-col items-center">
+                          <div
+                            className="w-full bg-orange-400 rounded-sm transition-all"
+                            style={{ height: `${Math.min((item.minutes / 60) * 64, 64)}px` }}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {/* X轴标注 */}
+                    <div className="ml-7 flex gap-1 mt-1">
+                      {(chartPeriod === 'day'
+                        ? ['一', '二', '三', '四', '五', '六', '日']
+                        : chartPeriod === 'week'
+                        ? ['第1周', '第2周', '第3周', '第4周']
+                        : ['1月', '2月', '3月', '4月', '5月', '6月']
+                      ).map((label, i) => (
+                        <div key={i} className="flex-1 text-center text-xs text-gray-400">
+                          {label}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -182,70 +262,25 @@ export function LandingPage() {
             </div>
           </div>
 
-          {/* Right Column - Stats and Insights */}
+          {/* Right Column - Tasks and Insights */}
           <div className="space-y-4">
-            {/* Stats */}
+            {/* Today's Tasks */}
             <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="font-semibold text-gray-900 mb-4">
-                <TrendingUp className="h-5 w-5 inline mr-2 text-orange-500" />
-                学习数据
-              </h2>
-              <div className="grid grid-cols-3 gap-3">
-                <StatCard
-                  value={String(learnSummary?.weekly_conversation_minutes ?? 0)}
-                  label="本周对话(分钟)"
-                  color="orange"
-                />
-                <StatCard
-                  value={String(learnSummary?.mastered_vocabulary_count ?? 0)}
-                  label="已掌握词汇"
-                  color="green"
-                />
-                <StatCard
-                  value={String(learnSummary?.pending_review_count ?? 0)}
-                  label="待复习"
-                  color="amber"
-                />
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                  <Target className="h-5 w-5 text-orange-500" />
+                  今日任务
+                </h2>
+                <span className="text-sm text-gray-500">3/5 已完成</span>
               </div>
-              <div className="mt-4 bg-gray-50 rounded-lg p-4">
-                <div className="text-xs text-gray-500 mb-3">本周学习时长分布</div>
-                <div className="relative">
-                  {/* Y轴标注 */}
-                  <div className="absolute left-0 top-0 bottom-6 w-8 flex flex-col justify-between text-xs text-gray-400">
-                    <span>60</span>
-                    <span>40</span>
-                    <span>20</span>
-                    <span>0</span>
-                  </div>
-                  {/* 柱状图 */}
-                  <div className="ml-10 flex items-end gap-2 h-24">
-                    {(learnSummary?.weekly_minutes ?? [
-                      { day: 0, date: '', minutes: 0 },
-                      { day: 1, date: '', minutes: 0 },
-                      { day: 2, date: '', minutes: 0 },
-                      { day: 3, date: '', minutes: 0 },
-                      { day: 4, date: '', minutes: 0 },
-                      { day: 5, date: '', minutes: 0 },
-                      { day: 6, date: '', minutes: 0 },
-                    ]).map((item, i) => (
-                      <div key={i} className="flex-1 flex flex-col items-center">
-                        <div
-                          className="w-full bg-orange-400 rounded-sm transition-all"
-                          style={{ height: `${Math.min((item.minutes / 60) * 96, 96)}px` }}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  {/* X轴标注 - 星期 */}
-                  <div className="ml-10 flex gap-2 mt-2">
-                    {['一', '二', '三', '四', '五', '六', '日'].map((day, i) => (
-                      <div key={i} className="flex-1 text-center text-xs text-gray-400">
-                        {day}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-                <div className="text-xs text-gray-400 text-center mt-2">单位：分钟（每格10分钟）</div>
+              <div className="h-2 bg-gray-200 rounded-full mb-4">
+                <div className="h-2 bg-orange-500 rounded-full" style={{ width: '60%' }} />
+              </div>
+              <div className="space-y-2">
+                <TaskItem title="3分钟自由对话" status="completed" />
+                <TaskItem title="场景练习：点餐" status="in_progress" />
+                <TaskItem title="复习 8 个易错点" status="pending" />
+                <TaskItem title="跟读训练 5 句" status="pending" />
               </div>
             </div>
 

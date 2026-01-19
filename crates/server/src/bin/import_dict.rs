@@ -676,7 +676,7 @@ fn import_vocabulary_file(
     conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
         let dictionary_id: Option<i64> = dict_dictionaries::table
             .select(dict_dictionaries::id)
-            .filter(dict_dictionaries::name.eq(dictionary_name))
+            .filter(dict_dictionaries::name_en.eq(dictionary_name))
             .first(conn)
             .optional()?;
 
@@ -685,7 +685,10 @@ fn import_vocabulary_file(
             None => {
                 let id: i64 = diesel::insert_into(dict_dictionaries::table)
                     .values((
-                        dict_dictionaries::name.eq(dictionary_name),
+                        dict_dictionaries::name_en.eq(dictionary_name),
+                        dict_dictionaries::name_zh.eq(dictionary_name),
+                        dict_dictionaries::short_en.eq(dictionary_name),
+                        dict_dictionaries::short_zh.eq(dictionary_name),
                         dict_dictionaries::is_active.eq(true),
                         dict_dictionaries::is_official.eq(true),
                         dict_dictionaries::priority_order.eq(1),

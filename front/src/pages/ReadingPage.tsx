@@ -110,14 +110,12 @@ export function ReadingPage() {
       <main className="mx-auto max-w-6xl p-4">
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-xl font-semibold text-gray-900">
-                <span className="mr-2">🎤</span>
-                跟读练习
-              </h1>
-              <p className="text-sm text-gray-500">发音纠正 · 音波对比 · AI 智能评分</p>
-            </div>
+          <div className="flex items-baseline gap-3 mb-4">
+            <h1 className="text-2xl font-bold text-gray-900">
+              <span className="mr-2">🎤</span>
+              跟读练习
+            </h1>
+            <p className="text-gray-500">发音纠正 · 音波对比 · AI 智能评分</p>
           </div>
 
           {/* Progress */}

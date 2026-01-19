@@ -1,11 +1,17 @@
 import { useState, useRef, useEffect } from 'react'
-import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, Settings2, ChevronDown } from 'lucide-react'
+import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, Settings2, ChevronDown, FileDown, ClipboardList } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
+
+interface Correction {
+  original: string
+  corrected: string
+  explanation: string
+}
 
 interface Message {
   id: string
@@ -14,6 +20,7 @@ interface Message {
   contentZh: string
   hasAudio?: boolean
   timestamp: Date
+  corrections?: Correction[]
 }
 
 interface Conversation {
@@ -46,6 +53,13 @@ const mockConversations: Conversation[] = [
         contentZh: "我想下个月去日本。",
         hasAudio: true,
         timestamp: new Date(Date.now() - 1000 * 60 * 33),
+        corrections: [
+          {
+            original: "I want to visit",
+            corrected: "I'm planning to visit",
+            explanation: "使用 'planning to' 表达计划更自然，比 'want to' 更正式"
+          }
+        ]
       },
       {
         id: '1-3',
@@ -97,6 +111,7 @@ export function ConversationPage() {
   const [showAudioSettings, setShowAudioSettings] = useState(false)
   const [selectedMic, setSelectedMic] = useState('default')
   const [selectedSpeaker, setSelectedSpeaker] = useState('default')
+  const [reportMode, setReportMode] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const audioSettingsRef = useRef<HTMLDivElement>(null)
@@ -283,6 +298,61 @@ export function ConversationPage() {
     // In real app, this would play the audio
   }
 
+  const exportToPdf = () => {
+    // Simple PDF export using print dialog
+    const printWindow = window.open('', '_blank')
+    if (!printWindow || !activeConversation) return
+
+    const messagesHtml = activeConversation.messages.map(msg => {
+      const isUser = msg.role === 'user'
+      let correctionsHtml = ''
+      if (reportMode && isUser && msg.corrections && msg.corrections.length > 0) {
+        correctionsHtml = `
+          <div style="margin-top: 8px; padding: 8px 12px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
+            <div style="font-weight: 600; color: #92400e; margin-bottom: 4px;">改进建议:</div>
+            ${msg.corrections.map(c => `
+              <div style="margin-bottom: 4px;">
+                <span style="color: #dc2626; text-decoration: line-through;">${c.original}</span>
+                → <span style="color: #16a34a; font-weight: 500;">${c.corrected}</span>
+                <div style="color: #78716c; font-size: 12px; margin-top: 2px;">${c.explanation}</div>
+              </div>
+            `).join('')}
+          </div>
+        `
+      }
+      return `
+        <div style="margin-bottom: 16px; text-align: ${isUser ? 'right' : 'left'};">
+          <div style="display: inline-block; max-width: 70%; padding: 12px 16px; border-radius: 16px; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'};">
+            <p style="margin: 0;">${msg.contentEn}</p>
+            <p style="margin: 8px 0 0 0; opacity: 0.8; font-size: 14px;">${msg.contentZh}</p>
+          </div>
+          ${correctionsHtml}
+        </div>
+      `
+    }).join('')
+
+    printWindow.document.write(`
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>${activeConversation.title} - 对话记录</title>
+        <style>
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
+          h1 { color: #111827; border-bottom: 2px solid #f97316; padding-bottom: 8px; }
+          .meta { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+        </style>
+      </head>
+      <body>
+        <h1>${activeConversation.title}</h1>
+        <div class="meta">导出时间: ${new Date().toLocaleString()}${reportMode ? ' | 报告模式' : ''}</div>
+        ${messagesHtml}
+      </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.print()
+  }
+
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -418,6 +488,29 @@ export function ConversationPage() {
                         </div>
                       )}
                     </div>
+
+                    {/* Report Mode Toggle Button */}
+                    <button
+                      onClick={() => setReportMode(!reportMode)}
+                      className={cn(
+                        'p-1.5 rounded-md transition-all',
+                        reportMode
+                          ? 'bg-amber-100 text-amber-600'
+                          : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                      )}
+                      title={reportMode ? '关闭报告模式' : '开启报告模式'}
+                    >
+                      <ClipboardList className="h-4 w-4" />
+                    </button>
+
+                    {/* Export PDF Button */}
+                    <button
+                      onClick={exportToPdf}
+                      className="p-1.5 rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-all"
+                      title="导出 PDF"
+                    >
+                      <FileDown className="h-4 w-4" />
+                    </button>
                     <div className="flex items-center gap-2 border-l pl-3">
                       <span className="text-gray-500 text-xs">AI:</span>
                       <div className="flex rounded-lg border border-gray-200 overflow-hidden">
@@ -474,8 +567,8 @@ export function ConversationPage() {
                   <div
                     key={message.id}
                     className={cn(
-                      'flex',
-                      isUser ? 'justify-end' : 'justify-start'
+                      'flex flex-col',
+                      isUser ? 'items-end' : 'items-start'
                     )}
                   >
                     <div
@@ -524,6 +617,23 @@ export function ConversationPage() {
                         )}
                       </div>
                     </div>
+                    {/* Corrections display in report mode */}
+                    {reportMode && isUser && message.corrections && message.corrections.length > 0 && (
+                      <div className="max-w-[70%] mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl">
+                        <div className="text-xs font-medium text-amber-700 mb-1.5 flex items-center gap-1">
+                          <ClipboardList className="h-3 w-3" />
+                          改进建议
+                        </div>
+                        {message.corrections.map((correction, idx) => (
+                          <div key={idx} className="text-sm mb-1.5 last:mb-0">
+                            <span className="text-red-500 line-through">{correction.original}</span>
+                            <span className="text-gray-400 mx-1">→</span>
+                            <span className="text-green-600 font-medium">{correction.corrected}</span>
+                            <p className="text-xs text-gray-500 mt-0.5">{correction.explanation}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )
               })}

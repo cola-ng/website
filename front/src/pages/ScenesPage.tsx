@@ -126,59 +126,59 @@ export function ScenesPage() {
 
       <main className="mx-auto max-w-6xl p-4">
         {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900 mb-2">
+        <div className="flex items-baseline gap-3 mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">
             <span className="mr-2">🎭</span>
             场景中心
           </h1>
-          <p className="text-gray-600">沉浸式场景模拟 · AI智能推荐 · 经典对白学习</p>
+          <p className="text-gray-500">沉浸式场景模拟 · AI智能推荐 · 经典对白学习</p>
         </div>
 
-        {/* Search and Filters */}
-        <div className="flex flex-col sm:flex-row gap-4 mb-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索场景..."
-              className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-            />
-          </div>
-          <div className="flex gap-2">
-            {categories.map((cat) => (
-              <button
-                key={cat.id}
-                onClick={() => setSelectedCategory(cat.id)}
-                className={cn(
-                  'px-4 py-2 rounded-full text-sm font-medium transition-colors',
-                  selectedCategory === cat.id
-                    ? 'bg-orange-500 text-white'
-                    : 'bg-white text-gray-600 hover:bg-orange-50'
-                )}
-              >
-                {cat.label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Continue Learning */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-6">
-          <h2 className="font-semibold text-gray-900 mb-4">
-            <span className="mr-2">📚</span>
-            继续学习
-          </h2>
-          <div className="flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl p-4">
-            <div className="text-5xl">🏨</div>
-            <div className="flex-1">
-              <h3 className="font-semibold text-gray-900">酒店入住</h3>
-              <p className="text-sm text-gray-500 mb-2">进度 60% · 还剩 3 个对话</p>
-              <p className="text-sm text-gray-600">下一个任务：前台预订房间</p>
+        {/* Search, Filters & Continue Learning - Compact Layout */}
+        <div className="bg-white rounded-xl shadow-sm border p-3 mb-6 space-y-2">
+          {/* Row 1: Search and Filters */}
+          <div className="flex flex-col sm:flex-row gap-2">
+            <div className="relative flex-1 min-w-0">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索场景..."
+                className="w-full pl-9 pr-3 py-1.5 text-sm border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent bg-gray-50"
+              />
             </div>
-            <Button>
-              继续学习 <ChevronRight className="h-4 w-4 ml-1" />
+            <div className="flex gap-1.5 flex-shrink-0">
+              {categories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors whitespace-nowrap',
+                    selectedCategory === cat.id
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
+                  )}
+                >
+                  {cat.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Row 2: Continue Learning */}
+          <div className="flex items-center gap-3 px-3 py-2 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg">
+            <div className="text-2xl">🏨</div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-sm text-gray-900">酒店入住</span>
+                <span className="text-xs text-gray-500">进度 60%</span>
+                <span className="text-xs text-gray-400">·</span>
+                <span className="text-xs text-orange-600">下一个：前台预订房间</span>
+              </div>
+            </div>
+            <Button size="sm" className="h-7 text-xs px-3 flex-shrink-0">
+              继续学习 <ChevronRight className="h-3 w-3 ml-0.5" />
             </Button>
           </div>
         </div>
