@@ -6,7 +6,7 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
-import { getLearnSummary, LearnSummary } from '../lib/api'
+import { getLearnSummary, type LearnSummary } from '../lib/api'
 
 interface StatCardProps {
   value: string

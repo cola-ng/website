@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Mic, Play, Pause, SkipBack, SkipForward, Volume2, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react'
+import { Mic, Play, Pause, SkipBack, SkipForward, Volume2, CheckCircle, AlertCircle } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'

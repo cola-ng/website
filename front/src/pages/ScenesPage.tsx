@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Search, Play, Star, Clock, ChevronRight, Film, Tv, Mic2 } from 'lucide-react'
+import { Search, Play, Clock, ChevronRight, Film, Tv, Mic2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'

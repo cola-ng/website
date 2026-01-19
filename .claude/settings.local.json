@@ -4,7 +4,8 @@
       "Bash(cargo build:*)",
       "Bash(dir:*)",
       "Bash(findstr:*)",
-      "Bash(cargo check:*)"
+      "Bash(cargo check:*)",
+      "Bash(npm run build:*)"
     ]
   }
 }

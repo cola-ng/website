@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { RotateCcw, CheckCircle, XCircle, TrendingUp, Clock, Target, ChevronRight } from 'lucide-react'
+import { RotateCcw, CheckCircle, XCircle, TrendingUp, Clock, Target } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'

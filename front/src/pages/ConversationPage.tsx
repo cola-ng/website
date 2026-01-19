@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Send, Mic, MicOff, Volume2, RotateCcw, Lightbulb, ChevronDown } from 'lucide-react'
+import { Send, Mic, MicOff, Lightbulb, ChevronDown } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -27,9 +27,7 @@ export function ConversationPage() {
   ])
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
-  const [selectedScene, setSelectedScene] = useState('自由对话')
-
-  const scenes = ['自由对话', '酒店入住', '餐厅点餐', '商务会议', '旅游问路']
+  const [selectedScene] = useState('自由对话')
 
   const handleSend = () => {
     if (!input.trim()) return
