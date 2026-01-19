@@ -10,6 +10,7 @@ use crate::config::AppConfig;
 use crate::{AppResult, DepotExt};
 
 mod account;
+mod achievement;
 mod asset;
 mod auth;
 mod dict;
@@ -38,6 +39,7 @@ pub fn router() -> Router {
         )
         .get(health)
         .push(account::router())
+        .push(achievement::router())
         .push(auth::router())
         .push(asset::router())
         .push(dict::router())

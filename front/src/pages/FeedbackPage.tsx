@@ -6,7 +6,7 @@ export function FeedbackPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header />
-      <main className="mx-auto max-w-4xl p-4">
+      <main className="mx-auto max-w-6xl p-4">
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-lg">我们重视您的反馈</CardTitle>

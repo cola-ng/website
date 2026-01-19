@@ -1,0 +1,122 @@
+{
+  "accommodation": {
+    "id": 1,
+    "word_type": "noun",
+    "language": "en",
+    "frequency": 72,
+    "difficulty": 4,
+    "syllable_count": 5,
+    "is_lemma": true,
+    "word_count": 1,
+
+    "dictionaries": [
+      { "name": "Oxford Advanced Learner's Dictionary", "priority_order": 1 },
+      { "name": "Collins COBUILD", "priority_order": 2 }
+    ],
+
+    "pronunciations": [
+      { "ipa": "əˌkɒməˈdeɪʃn", "dialect": "UK" },
+      { "ipa": "əˌkɑːməˈdeɪʃn", "dialect": "US" }
+    ],
+
+    "definitions": [
+      {
+        "language": "en",
+        "part_of_speech": "noun",
+        "definition": "a place to live, work, or stay in",
+        "register": "neutral",
+        "is_primary": true,
+        "usage_notes": "Often used in the context of hotels, renting, or temporary living arrangements"
+      },
+      {
+        "language": "en",
+        "part_of_speech": "noun",
+        "definition": "the process of adapting or adjusting to someone or something",
+        "register": "formal",
+        "is_primary": false
+      },
+      {
+        "language": "en",
+        "part_of_speech": "noun",
+        "definition": "the automatic adjustment of the eye for seeing at different distances",
+        "register": "technical",
+        "is_primary": false
+      },
+      {
+        "language": "zh",
+        "part_of_speech": "noun",
+        "definition": "住所；住宿；膳宿",
+        "is_primary": true
+      },
+      {
+        "language": "zh",
+        "part_of_speech": "noun",
+        "definition": "适应；调节；和解",
+        "is_primary": false
+      },
+      {
+        "language": "zh",
+        "part_of_speech": "noun",
+        "definition": "（眼睛的）调节作用",
+        "is_primary": false
+      }
+    ],
+
+    "forms": [
+      { "form_type": "plural", "form": "accommodations", "is_irregular": false }
+    ],
+
+    "sentences": [
+      { "sentence": "We need to find accommodation for the night.", "source": "Oxford Dictionary", "difficulty": 2 },
+      { "sentence": "The hotel offers comfortable accommodation at reasonable prices.", "source": "Travel Guide", "difficulty": 2 },
+      { "sentence": "They reached an accommodation with the protesters.", "source": "News Article", "difficulty": 3 },
+      { "sentence": "The university provides student accommodation on campus.", "source": "University Brochure", "difficulty": 2 },
+      { "sentence": "Visual accommodation decreases with age.", "source": "Medical Journal", "difficulty": 4 }
+    ],
+
+    "etymologies": [
+      {
+        "language": "en",
+        "origin_language": "Latin",
+        "origin_word": "accommodatio",
+        "origin_meaning": "adjustment, adaptation",
+        "etymology": "From Latin 'accommodatio', from 'accommodare' meaning 'to make fit', from 'ad-' (to) + 'commodus' (fitting, suitable).",
+        "first_attested_year": 1520
+      },
+      {
+        "language": "zh",
+        "origin_language": "Latin",
+        "origin_word": "accommodatio",
+        "etymology": "源自拉丁语 'accommodatio'，由 'accommodare'（使适合）演变而来。"
+      }
+    ],
+
+    "categories": [
+      { "name": "Travel", "confidence": 90 },
+      { "name": "Housing", "confidence": 95 },
+      { "name": "IELTS Core Vocabulary", "confidence": 85 },
+      { "name": "Academic English", "confidence": 70 }
+    ],
+
+    "relations": {
+      "synonyms": [
+        { "word": "lodging", "strength": 85 },
+        { "word": "housing", "strength": 80 },
+        { "word": "quarters", "strength": 70 }
+      ],
+      "related": [
+        { "word": "hotel", "strength": 75 },
+        { "word": "residence", "strength": 70 }
+      ],
+      "broader": [
+        { "word": "shelter", "strength": 60 }
+      ]
+    },
+
+    "frequencies": [
+      { "corpus": "COCA", "corpus_type": "general", "band": "top_3000", "rank": 2847, "per_million": 35 },
+      { "corpus": "BNC", "corpus_type": "written", "band": "top_3000", "rank": 2156, "per_million": 42 },
+      { "corpus": "Academic Word List", "corpus_type": "academic", "band": "top_1000", "rank": 456, "per_million": 89 }
+    ]
+  }
+}

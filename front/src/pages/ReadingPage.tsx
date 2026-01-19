@@ -86,7 +86,7 @@ export function ReadingPage() {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
         <Header />
-        <div className="mx-auto max-w-4xl p-4">
+        <div className="mx-auto max-w-6xl p-4">
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">🎤</div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">大声跟读</h1>
@@ -107,7 +107,7 @@ export function ReadingPage() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header />
 
-      <main className="mx-auto max-w-4xl p-4">
+      <main className="mx-auto max-w-6xl p-4">
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
           <div className="flex items-center justify-between mb-4">

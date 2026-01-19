@@ -37,3 +37,10 @@ For how to use salvo, please refer to its documentation: https://salvo.rs/ and i
 
 我们还有一个桌面的系统, 所以需要后端协同前端提供一个从桌面系统登录到网站的接口. 用户登录成功后跳转到用户的桌面应用中.
 
+
+
+你需要完成一个 rust 文件, 放在 crates/server/src/bin 下面, 只有一个 rs 文件, 负责生成字典数据.
+具体实现: 你需要查看 bigmodel 相关技术文档, 了解具体接入的技术实现细节
+
+请求 bigmodel 的 AI 的api, 通过让他成为一个专职的语言专家或者你手头有几部著名的英文大字典, 返回 一个 json 格式的字典数据.
+

@@ -38,7 +38,7 @@ export function DictPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header />
-      <div className="container mx-auto px-4 py-4 max-w-5xl">
+      <div className="container mx-auto px-4 py-4 max-w-6xl">
         <div className="text-center mb-4">
           <h1 className="text-2xl font-bold text-orange-900 mb-1">
             词典查询

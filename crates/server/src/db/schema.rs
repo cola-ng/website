@@ -636,6 +636,7 @@ diesel::table! {
 }
 
 diesel::allow_tables_to_appear_in_same_query!(
+    achievement_definitions,
     asset_classic_clips,
     asset_classic_sources,
     asset_dialogue_turns,
@@ -680,6 +681,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_word_practices,
     oauth_identities,
     oauth_login_sessions,
+    rank_definitions,
+    user_achievements,
+    user_profiles,
+    user_xp_history,
 );
 
 diesel::table! {
@@ -688,5 +693,90 @@ diesel::table! {
         user_id -> BigInt,
         word -> Varchar,
         searched_at -> Timestamp,
+    }
+}
+
+// ============================================================================
+// Achievement System Tables
+// ============================================================================
+
+diesel::table! {
+    achievement_definitions (id) {
+        id -> Int8,
+        code -> Text,
+        name_en -> Text,
+        name_zh -> Text,
+        description_en -> Nullable<Text>,
+        description_zh -> Nullable<Text>,
+        icon -> Nullable<Text>,
+        category -> Text,
+        rarity -> Text,
+        xp_reward -> Int4,
+        requirement_type -> Text,
+        requirement_value -> Int4,
+        requirement_field -> Nullable<Text>,
+        is_hidden -> Nullable<Bool>,
+        is_active -> Nullable<Bool>,
+        sort_order -> Nullable<Int4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    rank_definitions (id) {
+        id -> Int8,
+        code -> Text,
+        name_en -> Text,
+        name_zh -> Text,
+        description_en -> Nullable<Text>,
+        description_zh -> Nullable<Text>,
+        icon -> Nullable<Text>,
+        color -> Nullable<Text>,
+        min_xp -> Int4,
+        level -> Int4,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    user_profiles (id) {
+        id -> Int8,
+        user_id -> Int8,
+        total_xp -> Int4,
+        current_rank_id -> Nullable<Int8>,
+        current_streak_days -> Int4,
+        longest_streak_days -> Int4,
+        last_activity_date -> Nullable<Date>,
+        total_study_minutes -> Int4,
+        total_words_mastered -> Int4,
+        total_conversations -> Int4,
+        total_sessions -> Int4,
+        joined_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    user_achievements (id) {
+        id -> Int8,
+        user_id -> Int8,
+        achievement_id -> Int8,
+        progress -> Int4,
+        is_completed -> Bool,
+        completed_at -> Nullable<Timestamptz>,
+        notified_at -> Nullable<Timestamptz>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    user_xp_history (id) {
+        id -> Int8,
+        user_id -> Int8,
+        xp_amount -> Int4,
+        source_type -> Text,
+        source_id -> Nullable<Int8>,
+        description -> Nullable<Text>,
+        created_at -> Timestamptz,
     }
 }

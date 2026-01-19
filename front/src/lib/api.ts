@@ -379,3 +379,75 @@ export function getLearnSummary(token: string): Promise<LearnSummary> {
     token,
   })
 }
+
+// ============================================================================
+// Achievement System Types
+// ============================================================================
+
+export type RankInfo = {
+  code: string
+  name_en: string
+  name_zh: string
+  icon: string | null
+  color: string | null
+  level: number
+  min_xp: number
+}
+
+export type AchievementBadge = {
+  code: string
+  name_en: string
+  name_zh: string
+  icon: string | null
+  rarity: string
+  completed_at: string | null
+}
+
+export type UserProfileSummary = {
+  total_xp: number
+  current_streak_days: number
+  rank: RankInfo | null
+  next_rank: RankInfo | null
+  xp_to_next_rank: number
+  recent_achievements: AchievementBadge[]
+  total_achievements: number
+  completed_achievements: number
+}
+
+export type AchievementWithProgress = {
+  id: number
+  code: string
+  name_en: string
+  name_zh: string
+  description_en: string | null
+  description_zh: string | null
+  icon: string | null
+  category: string
+  rarity: string
+  xp_reward: number
+  requirement_value: number
+  progress: number
+  is_completed: boolean
+  completed_at: string | null
+}
+
+// Achievement API functions
+export function getUserProfileSummary(token: string): Promise<UserProfileSummary> {
+  return requestJson<UserProfileSummary>('/api/achievements/profile', {
+    method: 'GET',
+    token,
+  })
+}
+
+export function getUserAchievements(token: string): Promise<AchievementWithProgress[]> {
+  return requestJson<AchievementWithProgress[]>('/api/achievements/my', {
+    method: 'GET',
+    token,
+  })
+}
+
+export function getRankDefinitions(): Promise<RankInfo[]> {
+  return requestJson<RankInfo[]>('/api/achievements/ranks', {
+    method: 'GET',
+  })
+}

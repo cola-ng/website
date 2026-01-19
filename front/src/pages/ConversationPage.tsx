@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Send, Mic, MicOff, Lightbulb, ChevronDown } from 'lucide-react'
+import { useState, useRef, useEffect } from 'react'
+import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, Settings2, ChevronDown } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -10,36 +10,164 @@ import { cn } from '../lib/utils'
 interface Message {
   id: string
   role: 'user' | 'assistant'
-  content: string
-  correction?: string
+  contentEn: string
+  contentZh: string
+  hasAudio?: boolean
   timestamp: Date
 }
 
+interface Conversation {
+  id: string
+  title: string
+  lastMessage: string
+  timestamp: Date
+  messages: Message[]
+}
+
+// Mock data for conversations
+const mockConversations: Conversation[] = [
+  {
+    id: '1',
+    title: '旅行计划讨论',
+    lastMessage: "That sounds like a great trip!",
+    timestamp: new Date(Date.now() - 1000 * 60 * 30),
+    messages: [
+      {
+        id: '1-1',
+        role: 'assistant',
+        contentEn: "Hi! I heard you're planning a trip. Where are you thinking of going?",
+        contentZh: "嗨！我听说你在计划旅行。你打算去哪里？",
+        timestamp: new Date(Date.now() - 1000 * 60 * 35),
+      },
+      {
+        id: '1-2',
+        role: 'user',
+        contentEn: "I want to visit Japan next month.",
+        contentZh: "我想下个月去日本。",
+        hasAudio: true,
+        timestamp: new Date(Date.now() - 1000 * 60 * 33),
+      },
+      {
+        id: '1-3',
+        role: 'assistant',
+        contentEn: "That sounds like a great trip! Japan is beautiful in spring.",
+        contentZh: "听起来是个很棒的旅行！日本的春天很美。",
+        timestamp: new Date(Date.now() - 1000 * 60 * 30),
+      },
+    ],
+  },
+  {
+    id: '2',
+    title: '工作面试准备',
+    lastMessage: "Let's practice some common questions.",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
+    messages: [
+      {
+        id: '2-1',
+        role: 'assistant',
+        contentEn: "Hello! I understand you have a job interview coming up. How can I help you prepare?",
+        contentZh: "你好！我了解到你即将有一场工作面试。我能帮你准备什么？",
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
+      },
+    ],
+  },
+  {
+    id: '3',
+    title: '餐厅点餐练习',
+    lastMessage: "Would you like to see the menu?",
+    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
+    messages: [
+      {
+        id: '3-1',
+        role: 'assistant',
+        contentEn: "Welcome to our restaurant! Would you like to see the menu?",
+        contentZh: "欢迎来到我们的餐厅！您想看看菜单吗？",
+        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
+      },
+    ],
+  },
+]
+
 export function ConversationPage() {
   const { token } = useAuth()
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Hi there! I'm your AI English conversation partner. What would you like to talk about today? We could discuss travel, food, work, hobbies, or anything else you're interested in!",
-      timestamp: new Date(),
-    },
-  ])
+  const [conversations, setConversations] = useState<Conversation[]>(mockConversations)
+  const [activeConversationId, setActiveConversationId] = useState<string>(mockConversations[0].id)
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
-  const [selectedScene] = useState('自由对话')
+  const [showAudioSettings, setShowAudioSettings] = useState(false)
+  const [selectedMic, setSelectedMic] = useState('default')
+  const [selectedSpeaker, setSelectedSpeaker] = useState('default')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const audioSettingsRef = useRef<HTMLDivElement>(null)
+
+  // Display settings: 'both' | 'en' | 'zh'
+  const [botLang, setBotLang] = useState<'both' | 'en' | 'zh'>('both')
+  const [userLang, setUserLang] = useState<'both' | 'en' | 'zh'>('both')
+
+  // Derived display settings
+  const showBotEn = botLang === 'both' || botLang === 'en'
+  const showBotZh = botLang === 'both' || botLang === 'zh'
+  const showUserEn = userLang === 'both' || userLang === 'en'
+  const showUserZh = userLang === 'both' || userLang === 'zh'
+
+  const activeConversation = conversations.find(c => c.id === activeConversationId)
+  const messages = activeConversation?.messages || []
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  // Auto-resize textarea
+  useEffect(() => {
+    if (textareaRef.current) {
+      // Reset to single line height first to get accurate scrollHeight
+      textareaRef.current.style.height = '36px'
+      const scrollHeight = textareaRef.current.scrollHeight
+      // Only expand if content exceeds single line
+      if (scrollHeight > 36) {
+        textareaRef.current.style.height = Math.min(scrollHeight, 120) + 'px'
+      }
+    }
+  }, [input])
+
+  // Close audio settings when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (audioSettingsRef.current && !audioSettingsRef.current.contains(event.target as Node)) {
+        setShowAudioSettings(false)
+      }
+    }
+    if (showAudioSettings) {
+      document.addEventListener('mousedown', handleClickOutside)
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [showAudioSettings])
 
   const handleSend = () => {
-    if (!input.trim()) return
+    if (!input.trim() || !activeConversation) return
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      contentEn: input,
+      contentZh: input, // In real app, this would be translated
       timestamp: new Date(),
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const updatedConversations = conversations.map(c => {
+      if (c.id === activeConversationId) {
+        return {
+          ...c,
+          messages: [...c.messages, userMessage],
+          lastMessage: input,
+          timestamp: new Date(),
+        }
+      }
+      return c
+    })
+
+    setConversations(updatedConversations)
     setInput('')
 
     // Simulate AI response
@@ -47,22 +175,121 @@ export function ConversationPage() {
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: "That's a great point! Let me think about how to respond to that. In English, when we want to express agreement, we often say 'I totally agree' or 'That's exactly what I think'. How about you try using one of these phrases in your next response?",
+        contentEn: "That's a great point! I totally agree with you. Would you like to explore this topic further?",
+        contentZh: "说得好！我完全同意你的看法。你想进一步探讨这个话题吗？",
         timestamp: new Date(),
       }
-      setMessages((prev) => [...prev, aiMessage])
+
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            messages: [...c.messages, aiMessage],
+            lastMessage: aiMessage.contentEn,
+            timestamp: new Date(),
+          }
+        }
+        return c
+      }))
     }, 1000)
   }
 
   const toggleRecording = () => {
-    setIsRecording(!isRecording)
+    if (!isRecording) {
+      // Start recording
+      setIsRecording(true)
+    } else {
+      // Stop recording and send
+      setIsRecording(false)
+
+      // Simulate voice message
+      const userMessage: Message = {
+        id: Date.now().toString(),
+        role: 'user',
+        contentEn: "This is what I said in my voice message.",
+        contentZh: "这是我在语音消息中说的话。",
+        hasAudio: true,
+        timestamp: new Date(),
+      }
+
+      const updatedConversations = conversations.map(c => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            messages: [...c.messages, userMessage],
+            lastMessage: userMessage.contentEn,
+            timestamp: new Date(),
+          }
+        }
+        return c
+      })
+
+      setConversations(updatedConversations)
+
+      // Simulate AI response
+      setTimeout(() => {
+        const aiMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          contentEn: "I understood what you said! Your pronunciation is getting better. Let me respond to that...",
+          contentZh: "我听懂你说的了！你的发音越来越好了。让我回应一下...",
+          hasAudio: true,
+          timestamp: new Date(),
+        }
+
+        setConversations(prev => prev.map(c => {
+          if (c.id === activeConversationId) {
+            return {
+              ...c,
+              messages: [...c.messages, aiMessage],
+              lastMessage: aiMessage.contentEn,
+              timestamp: new Date(),
+            }
+          }
+          return c
+        }))
+      }, 1500)
+    }
+  }
+
+  const handleNewConversation = () => {
+    const newConversation: Conversation = {
+      id: Date.now().toString(),
+      title: '新对话',
+      lastMessage: '',
+      timestamp: new Date(),
+      messages: [
+        {
+          id: Date.now().toString() + '-1',
+          role: 'assistant',
+          contentEn: "Hi there! I'm your AI English conversation partner. What would you like to talk about today?",
+          contentZh: "你好！我是你的AI英语对话伙伴。今天你想聊些什么？",
+          timestamp: new Date(),
+        },
+      ],
+    }
+
+    setConversations(prev => [newConversation, ...prev])
+    setActiveConversationId(newConversation.id)
+  }
+
+  const playAudio = (messageId: string) => {
+    console.log('Playing audio for message:', messageId)
+    // In real app, this would play the audio
+  }
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault()
+      handleSend()
+    }
   }
 
   if (!token) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
         <Header />
-        <div className="mx-auto max-w-4xl p-4">
+        <div className="mx-auto max-w-6xl p-4">
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">💬</div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">日常唠嗑</h1>
@@ -80,133 +307,280 @@ export function ConversationPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       <Header />
 
-      <main className="mx-auto max-w-4xl p-4">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          {/* Header */}
-          <div className="border-b px-6 py-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-xl font-semibold text-gray-900">日常唠嗑</h1>
-                <p className="text-sm text-gray-500">与 AI 进行自然的英语对话</p>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <span>{selectedScene}</span>
-                    <ChevronDown className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
+      <main className="flex-1 mx-auto w-full max-w-6xl p-4">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden h-[calc(100vh-180px)] flex">
+          {/* Left Sidebar - Conversation History */}
+          <div className="w-72 border-r flex flex-col bg-gray-50">
+            <div className="p-4 border-b bg-white">
+              <Button onClick={handleNewConversation} className="w-full gap-2">
+                <Plus className="h-4 w-4" />
+                新对话
+              </Button>
             </div>
-          </div>
-
-          {/* Messages */}
-          <div className="h-[400px] overflow-y-auto p-6 space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  'flex',
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                )}
-              >
+            <div className="flex-1 overflow-y-auto">
+              {conversations.map((conv) => (
                 <div
+                  key={conv.id}
+                  onClick={() => setActiveConversationId(conv.id)}
                   className={cn(
-                    'max-w-[80%] rounded-2xl px-4 py-3',
-                    message.role === 'user'
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-900'
+                    'p-4 border-b cursor-pointer hover:bg-white transition-colors',
+                    activeConversationId === conv.id && 'bg-white border-l-4 border-l-orange-500'
                   )}
                 >
-                  <p className="text-sm">{message.content}</p>
-                  {message.correction && (
-                    <div className="mt-2 pt-2 border-t border-orange-400/30">
-                      <p className="text-xs opacity-80">
-                        <Lightbulb className="h-3 w-3 inline mr-1" />
-                        建议: {message.correction}
+                  <div className="flex items-start gap-3">
+                    <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="h-5 w-5 text-orange-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h3 className="font-medium text-gray-900 truncate">{conv.title}</h3>
+                      <p className="text-sm text-gray-500 truncate">{conv.lastMessage || '开始对话...'}</p>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {conv.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </p>
                     </div>
-                  )}
-                  <div className={cn(
-                    'text-xs mt-1',
-                    message.role === 'user' ? 'text-orange-100' : 'text-gray-400'
-                  )}>
-                    {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Quick Actions */}
-          <div className="border-t border-b px-6 py-3 bg-gray-50">
-            <div className="flex items-center gap-2 text-sm">
-              <span className="text-gray-500">快捷短语:</span>
-              {['Could you repeat that?', "I'm not sure I understand", 'Let me think...'].map((phrase) => (
-                <button
-                  key={phrase}
-                  onClick={() => setInput(phrase)}
-                  className="px-3 py-1 bg-white border rounded-full text-gray-600 hover:bg-orange-50 hover:border-orange-200 transition-colors"
-                >
-                  {phrase}
-                </button>
               ))}
             </div>
           </div>
 
-          {/* Input */}
-          <div className="p-4">
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="icon"
-                onClick={toggleRecording}
-                className={cn(
-                  isRecording && 'bg-red-100 border-red-300 text-red-600'
-                )}
-              >
-                {isRecording ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
-              </Button>
-              <input
-                type="text"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && handleSend()}
-                placeholder="输入你想说的话..."
-                className="flex-1 px-4 py-2 border rounded-full focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-              />
-              <Button onClick={handleSend} disabled={!input.trim()}>
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
-          </div>
-        </div>
+          {/* Right Panel - Chat Window */}
+          <div className="flex-1 flex flex-col">
+            {/* Chat Header with Display Settings */}
+            <div className="border-b px-6 py-3 bg-white">
+              <div className="flex items-center justify-between">
+                <h2 className="font-semibold text-gray-900">
+                  {activeConversation?.title || '日常唠嗑'}
+                </h2>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 text-sm">
+                    {/* Audio Settings Button with Popover */}
+                    <div className="relative" ref={audioSettingsRef}>
+                      <button
+                        onClick={() => setShowAudioSettings(!showAudioSettings)}
+                        className={cn(
+                          'p-1.5 rounded-md transition-all',
+                          showAudioSettings
+                            ? 'bg-orange-100 text-orange-600'
+                            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
+                        )}
+                        title="音频设置"
+                      >
+                        <Settings2 className="h-4 w-4" />
+                      </button>
 
-        {/* Tips Card */}
-        <div className="mt-4 bg-white rounded-xl shadow-lg p-6">
-          <h2 className="font-semibold text-gray-900 mb-3">
-            <Lightbulb className="h-5 w-5 inline mr-2 text-orange-500" />
-            对话技巧
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-orange-50 rounded-lg p-4">
-              <div className="font-medium text-gray-800 mb-1">🎯 主动提问</div>
-              <p className="text-sm text-gray-600">用 "What do you think about..." 来延续话题</p>
+                      {/* Audio Settings Popover */}
+                      {showAudioSettings && (
+                        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border p-4 z-10">
+                          <div className="text-sm font-medium text-gray-900 mb-3">音频设置</div>
+
+                          {/* Microphone Selection */}
+                          <div className="mb-3">
+                            <label className="text-xs text-gray-500 mb-1 block">麦克风</label>
+                            <div className="relative">
+                              <select
+                                value={selectedMic}
+                                onChange={(e) => setSelectedMic(e.target.value)}
+                                className="w-full px-3 py-2 pr-8 text-sm border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none"
+                              >
+                                <option value="default">默认麦克风</option>
+                                <option value="mic1">内置麦克风</option>
+                                <option value="mic2">外接麦克风</option>
+                              </select>
+                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                            </div>
+                          </div>
+
+                          {/* Speaker Selection */}
+                          <div>
+                            <label className="text-xs text-gray-500 mb-1 block">扬声器</label>
+                            <div className="relative">
+                              <select
+                                value={selectedSpeaker}
+                                onChange={(e) => setSelectedSpeaker(e.target.value)}
+                                className="w-full px-3 py-2 pr-8 text-sm border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none"
+                              >
+                                <option value="default">默认扬声器</option>
+                                <option value="speaker1">内置扬声器</option>
+                                <option value="speaker2">外接音响</option>
+                              </select>
+                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 border-l pl-3">
+                      <span className="text-gray-500 text-xs">AI:</span>
+                      <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                        {(['both', 'en', 'zh'] as const).map((lang) => (
+                          <button
+                            key={lang}
+                            onClick={() => setBotLang(lang)}
+                            className={cn(
+                              'px-2.5 py-1 text-xs font-medium transition-colors',
+                              botLang === lang
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-white text-gray-600 hover:bg-orange-50'
+                            )}
+                          >
+                            {lang === 'both' ? '双语' : lang === 'en' ? '英' : '中'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 border-l pl-3">
+                      <span className="text-gray-500 text-xs">我:</span>
+                      <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+                        {(['both', 'en', 'zh'] as const).map((lang) => (
+                          <button
+                            key={lang}
+                            onClick={() => setUserLang(lang)}
+                            className={cn(
+                              'px-2.5 py-1 text-xs font-medium transition-colors',
+                              userLang === lang
+                                ? 'bg-orange-500 text-white'
+                                : 'bg-white text-gray-600 hover:bg-orange-50'
+                            )}
+                          >
+                            {lang === 'both' ? '双语' : lang === 'en' ? '英' : '中'}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <div className="bg-orange-50 rounded-lg p-4">
-              <div className="font-medium text-gray-800 mb-1">🔄 改述练习</div>
-              <p className="text-sm text-gray-600">尝试用不同方式表达同一个意思</p>
+
+            {/* Messages */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {messages.map((message) => {
+                const isUser = message.role === 'user'
+                const showEn = isUser ? showUserEn : showBotEn
+                const showZh = isUser ? showUserZh : showBotZh
+
+                if (!showEn && !showZh) return null
+
+                return (
+                  <div
+                    key={message.id}
+                    className={cn(
+                      'flex',
+                      isUser ? 'justify-end' : 'justify-start'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'max-w-[70%] rounded-2xl px-4 py-3',
+                        isUser
+                          ? 'bg-orange-500 text-white'
+                          : 'bg-gray-100 text-gray-900'
+                      )}
+                    >
+                      {showEn && (
+                        <p className="text-sm">{message.contentEn}</p>
+                      )}
+                      {showEn && showZh && (
+                        <div className={cn(
+                          'my-2 border-t',
+                          isUser ? 'border-orange-400/30' : 'border-gray-200'
+                        )} />
+                      )}
+                      {showZh && (
+                        <p className={cn(
+                          'text-sm',
+                          isUser ? 'text-orange-100' : 'text-gray-600'
+                        )}>
+                          {message.contentZh}
+                        </p>
+                      )}
+                      <div className={cn(
+                        'flex items-center justify-between mt-2 text-xs',
+                        isUser ? 'text-orange-200' : 'text-gray-400'
+                      )}>
+                        <span>
+                          {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {message.hasAudio && (
+                          <button
+                            onClick={() => playAudio(message.id)}
+                            className={cn(
+                              'p-1 rounded hover:bg-black/10 transition-colors',
+                              isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200'
+                            )}
+                            title="播放语音"
+                          >
+                            <Volume2 className="h-4 w-4" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+              <div ref={messagesEndRef} />
             </div>
-            <div className="bg-orange-50 rounded-lg p-4">
-              <div className="font-medium text-gray-800 mb-1">📝 记录新词</div>
-              <p className="text-sm text-gray-600">遇到生词及时查询并收藏</p>
+
+            {/* Input Area */}
+            <div className="border-t p-4 bg-white">
+              {/* Row 1: Mic button */}
+              <div className="flex items-center justify-center mb-4">
+                {/* Large Mic Button */}
+                <button
+                  onClick={toggleRecording}
+                  className={cn(
+                    'h-16 w-16 rounded-full flex items-center justify-center transition-all flex-shrink-0',
+                    isRecording
+                      ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
+                      : 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200'
+                  )}
+                  title={isRecording ? '停止录音' : '开始录音'}
+                >
+                  {isRecording ? (
+                    <MicOff className="h-7 w-7" />
+                  ) : (
+                    <Mic className="h-7 w-7" />
+                  )}
+                </button>
+              </div>
+
+              {/* Recording indicator */}
+              {isRecording && (
+                <div className="mb-3 flex items-center justify-center gap-2 text-red-500">
+                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                  <span className="text-sm">正在录音... 点击话筒停止</span>
+                </div>
+              )}
+
+              {/* Row 2: Text input and send button */}
+              <div className="flex items-center gap-2">
+                <textarea
+                  ref={textareaRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="输入文字消息... (Shift+Enter 换行)"
+                  rows={1}
+                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none overflow-y-auto text-sm"
+                  style={{ height: '36px', maxHeight: '120px' }}
+                />
+                <Button
+                  onClick={handleSend}
+                  disabled={!input.trim()}
+                  className="h-9 px-4"
+                >
+                  <Send className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           </div>
         </div>
       </main>
+
       <Footer />
     </div>
   )
