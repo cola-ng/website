@@ -3,10 +3,8 @@ import { ProfilePanel } from '../widgets/ProfilePanel'
 import { RecordsPanel } from '../widgets/RecordsPanel'
 import { AuthCard } from '../widgets/AuthCard'
 import { Header } from '../components/Header'
-import { Button } from '../components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useAuth } from '../lib/auth'
-import { Link } from 'react-router-dom'
 
 export function HomePage() {
   const { token } = useAuth()
@@ -18,11 +16,6 @@ export function HomePage() {
         <div className="mx-auto flex min-h-[calc(100vh-60px)] max-w-6xl items-center justify-center p-4">
           <div className="w-full max-w-md">
             <AuthCard />
-            <div className="mt-3 flex justify-center">
-              <Button asChild variant="outline" size="sm">
-                <Link to="/dict">词典</Link>
-              </Button>
-            </div>
           </div>
         </div>
       </div>
