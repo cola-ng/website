@@ -1,5 +1,6 @@
 import { Link, useLocation } from 'react-router-dom'
-import { User, LogOut, Settings } from 'lucide-react'
+import { User, LogOut, Settings, Home, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu } from 'lucide-react'
+import { useState } from 'react'
 
 import { Button } from './ui/button'
 import {
@@ -11,15 +12,28 @@ import {
   DropdownMenuTrigger,
 } from './ui/dropdown-menu'
 import { useAuth } from '../lib/auth'
+import { cn } from '../lib/utils'
 
-interface HeaderProps {
-  showDictLink?: boolean
+interface NavItem {
+  label: string
+  path: string
+  icon: React.ReactNode
 }
 
-export function Header({ showDictLink = true }: HeaderProps) {
+const navItems: NavItem[] = [
+  { label: '首页', path: '/', icon: <Home className="h-4 w-4" /> },
+  { label: '日常唠嗑', path: '/conversation', icon: <MessageSquare className="h-4 w-4" /> },
+  { label: '复习巩固', path: '/review', icon: <RotateCcw className="h-4 w-4" /> },
+  { label: '场景中心', path: '/scenes', icon: <Theater className="h-4 w-4" /> },
+  { label: '大声跟读', path: '/reading', icon: <Mic className="h-4 w-4" /> },
+  { label: '词典查询', path: '/dict', icon: <BookOpen className="h-4 w-4" /> },
+]
+
+export function Header() {
   const { token, user, clear } = useAuth()
   const location = useLocation()
-  
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
   const getLoginUrl = () => {
     const currentPath = location.pathname + location.search
     if (currentPath === '/login' || currentPath.startsWith('/login?')) {
@@ -27,35 +41,66 @@ export function Header({ showDictLink = true }: HeaderProps) {
     }
     return `/login?redirectTo=${encodeURIComponent(currentPath)}`
   }
-  
+
   const loginUrl = getLoginUrl()
 
+  const isActive = (path: string) => {
+    if (path === '/') {
+      return location.pathname === '/'
+    }
+    return location.pathname.startsWith(path)
+  }
+
   return (
-    <header className="border-b bg-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-3">
-        <div className="flex items-center gap-3">
+    <header className="border-b bg-white sticky top-0 z-50">
+      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
+        {/* Logo */}
+        <Link to="/" className="flex items-center gap-2 shrink-0">
           <div className="h-8 w-8 flex items-center justify-center">
             <img src="/colang-logo.svg" alt="Colang" className="h-8 w-8" />
           </div>
-          <div>
-            <div className="text-base font-bold leading-tight text-gray-900">
-              开朗英语
-            </div>
-          </div>
-        </div>
+          <span className="text-base font-bold text-gray-900 hidden sm:block">
+            开朗英语
+          </span>
+        </Link>
 
+        {/* Desktop Navigation */}
+        <nav className="hidden md:flex items-center gap-1">
+          {navItems.map((item) => (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
+                isActive(item.path)
+                  ? "bg-orange-100 text-orange-700"
+                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+              )}
+            >
+              {item.icon}
+              <span>{item.label}</span>
+            </Link>
+          ))}
+        </nav>
+
+        {/* Right side: User menu */}
         <div className="flex items-center gap-2">
-          {showDictLink && (
-            <Button asChild variant="outline" size="sm">
-              <Link to="/dict">词典</Link>
-            </Button>
-          )}
+          {/* Mobile menu button */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="md:hidden"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            <Menu className="h-5 w-5" />
+          </Button>
+
           {token ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm" className="gap-2">
                   <User className="h-4 w-4" />
-                  <span className="max-w-[120px] truncate">
+                  <span className="max-w-[80px] truncate hidden sm:block">
                     {user?.name || user?.email}
                   </span>
                 </Button>
@@ -92,6 +137,30 @@ export function Header({ showDictLink = true }: HeaderProps) {
           )}
         </div>
       </div>
+
+      {/* Mobile Navigation */}
+      {mobileMenuOpen && (
+        <nav className="md:hidden border-t bg-white px-4 py-2">
+          <div className="grid grid-cols-3 gap-2">
+            {navItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setMobileMenuOpen(false)}
+                className={cn(
+                  "flex flex-col items-center gap-1 px-2 py-2 rounded-md text-xs font-medium transition-colors",
+                  isActive(item.path)
+                    ? "bg-orange-100 text-orange-700"
+                    : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                )}
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </Link>
+            ))}
+          </div>
+        </nav>
+      )}
     </header>
   )
 }

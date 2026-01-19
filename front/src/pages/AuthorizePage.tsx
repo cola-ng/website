@@ -6,6 +6,7 @@ import { Button } from '../components/ui/button'
 import { AuthCard } from '../widgets/AuthCard'
 import { useAuth } from '../lib/auth'
 import { desktopCreateCode } from '../lib/api'
+import { AuthSuccessPage } from './AuthSuccessPage'
 
 export function AuthorizePage() {
   const { token } = useAuth()
@@ -41,23 +42,20 @@ export function AuthorizePage() {
     }
   }, [token, redirectUri, state])
 
+  // If user is logged in but no redirect_uri/state (direct access to /auth)
+  // Show the auth success page
+  if (token && (!redirectUri || !state)) {
+    return <AuthSuccessPage />
+  }
+
+  // If no redirect_uri/state and not logged in, show login form
   if (!redirectUri || !state) {
     return (
-      <div className="min-h-screen bg-background">
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
         <div className="mx-auto flex min-h-screen max-w-6xl items-center justify-center p-6">
-          <Card className="w-full max-w-md">
-            <CardHeader>
-              <CardTitle>Invalid request</CardTitle>
-              <CardDescription>
-                Missing redirect_uri or state.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button variant="outline" onClick={() => navigate('/')}>
-                Back
-              </Button>
-            </CardContent>
-          </Card>
+          <div className="w-full max-w-md">
+            <AuthCard />
+          </div>
         </div>
       </div>
     )

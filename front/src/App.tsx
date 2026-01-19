@@ -8,12 +8,22 @@ import { MePage } from './pages/MePage'
 import { FeedbackPage } from './pages/FeedbackPage'
 import { TermsPage } from './pages/TermsPage'
 import { PrivacyPage } from './pages/PrivacyPage'
+import { LandingPage } from './pages/LandingPage'
+import { ConversationPage } from './pages/ConversationPage'
+import { ReviewPage } from './pages/ReviewPage'
+import { ScenesPage } from './pages/ScenesPage'
+import { ReadingPage } from './pages/ReadingPage'
 
 function AppRoutes() {
   const { token } = useAuth()
   return (
     <Routes>
-      <Route path="/" element={<DictPage />} />
+      <Route path="/" element={<LandingPage />} />
+      <Route path="/dict" element={<DictPage />} />
+      <Route path="/conversation" element={<ConversationPage />} />
+      <Route path="/review" element={<ReviewPage />} />
+      <Route path="/scenes" element={<ScenesPage />} />
+      <Route path="/reading" element={<ReadingPage />} />
       <Route path="/login" element={<HomePage />} />
       <Route path="/auth" element={<AuthorizePage />} />
       <Route path="/me" element={token ? <MePage /> : <Navigate to="/" replace />} />
