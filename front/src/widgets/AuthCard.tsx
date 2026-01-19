@@ -11,11 +11,11 @@ import { OAUTH_PROVIDERS } from '../lib/oauth-config'
 import { login, oauthBind, oauthLogin, oauthSkip, register } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
-export function AuthCard({ intent }: { intent?: 'desktop' }) {
+export function AuthCard({ intent, redirectTo: redirectToProp }: { intent?: 'desktop'; redirectTo?: string }) {
   const { setAuth } = useAuth()
   const navigate = useNavigate()
   const [searchParams] = useSearchParams()
-  const redirectTo = searchParams.get('redirectTo') || '/'
+  const redirectTo = redirectToProp ?? searchParams.get('redirectTo') ?? '/'
 
   const [mode, setMode] = useState<'login' | 'register'>('login')
   const [email, setEmail] = useState('')
