@@ -113,10 +113,15 @@ export function ConversationPage() {
 
   const activeConversation = conversations.find(c => c.id === activeConversationId)
   const messages = activeConversation?.messages || []
+  const prevMessagesLengthRef = useRef(messages.length)
 
+  // Only scroll when new messages are added, not on initial load
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+    if (messages.length > prevMessagesLengthRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    }
+    prevMessagesLengthRef.current = messages.length
+  }, [messages.length])
 
   // Auto-resize textarea
   useEffect(() => {
