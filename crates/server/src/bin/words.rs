@@ -14,6 +14,7 @@ const DEFAULT_OUTPUT_DIR: &str = "../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
+const DEFAULT_BATCH_SIZE: usize = 10;
 
 /// 通用模型及其并发限制
 /// 筛选适合文本生成的模型（排除 Vision/Voice/Search/Phone/AllTools 等特殊用途模型）
@@ -459,12 +460,19 @@ async fn process_words_concurrent(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Arc::new(
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(120))
+            .timeout(Duration::from_secs(300)) // 增加超时时间以适应批量请求
             .build()?,
     );
 
-    let total = words.len();
-    let processed = Arc::new(AtomicUsize::new(0));
+    // 将单词分成批次
+    let batches: Vec<Vec<String>> = words
+        .chunks(DEFAULT_BATCH_SIZE)
+        .map(|chunk| chunk.to_vec())
+        .collect();
+
+    let total_batches = batches.len();
+    let total_words = words.len();
+    let processed_batches = Arc::new(AtomicUsize::new(0));
     let success_count = Arc::new(AtomicUsize::new(0));
     let error_count = Arc::new(AtomicUsize::new(0));
 
@@ -473,18 +481,22 @@ async fn process_words_concurrent(
 
     let concurrency = model_pool.total_concurrency();
     println!(
-        "\nStarting concurrent processing with {} total concurrency across {} models...\n",
+        "\nStarting batch processing with {} total concurrency across {} models...",
         concurrency,
         model_pool.models.len()
     );
+    println!(
+        "Total: {} words in {} batches (batch size: {})\n",
+        total_words, total_batches, DEFAULT_BATCH_SIZE
+    );
 
-    stream::iter(words.iter().cloned())
-        .map(|word| {
+    stream::iter(batches.into_iter())
+        .map(|batch| {
             let client = Arc::clone(&client);
             let api_key = Arc::clone(&api_key);
             let model_pool = Arc::clone(model_pool);
             let output_dir = Arc::clone(&output_dir);
-            let processed = Arc::clone(&processed);
+            let processed_batches = Arc::clone(&processed_batches);
             let success_count = Arc::clone(&success_count);
             let error_count = Arc::clone(&error_count);
 
@@ -493,33 +505,63 @@ async fn process_words_concurrent(
                 let model = model_pool.acquire().await;
                 let guard = ModelGuard::new(model);
 
-                let current = processed.fetch_add(1, Ordering::SeqCst) + 1;
-                println!("[{}/{}] Processing: {} (using {})", current, total, word, guard.name());
+                let current_batch = processed_batches.fetch_add(1, Ordering::SeqCst) + 1;
+                let batch_words: Vec<&str> = batch.iter().map(|s| s.as_str()).collect();
+                println!(
+                    "[Batch {}/{}] Processing {} words: {} (using {})",
+                    current_batch,
+                    total_batches,
+                    batch.len(),
+                    batch_words.join(", "),
+                    guard.name()
+                );
 
-                match generate_word_data(&client, &api_key, guard.name(), &word).await {
-                    Ok(json_data) => {
-                        let filename = format!("{}.json", word.to_lowercase());
-                        let filepath = output_dir.join(&filename);
+                match generate_batch_word_data(&client, &api_key, guard.name(), &batch).await {
+                    Ok(word_map) => {
+                        // 将每个单词的数据写入单独的 JSON 文件
+                        for word in &batch {
+                            let word_lower = word.to_lowercase();
+                            if let Some(word_data) = word_map.get(&word_lower).or_else(|| word_map.get(word)) {
+                                let filename = format!("{}.json", word_lower);
+                                let filepath = output_dir.join(&filename);
 
-                        match File::create(&filepath) {
-                            Ok(mut file) => {
-                                if file.write_all(json_data.as_bytes()).is_ok() {
-                                    success_count.fetch_add(1, Ordering::SeqCst);
-                                    println!("  [OK] {} ({})", word, guard.name());
-                                } else {
-                                    error_count.fetch_add(1, Ordering::SeqCst);
-                                    eprintln!("  [ERR] {} - Failed to write file", word);
+                                // 创建单个单词的 JSON 对象
+                                let mut single_word_obj = serde_json::Map::new();
+                                single_word_obj.insert(word_lower.clone(), word_data.clone());
+                                let json_content = serde_json::to_string_pretty(&single_word_obj)
+                                    .unwrap_or_else(|_| "{}".to_string());
+
+                                match File::create(&filepath) {
+                                    Ok(mut file) => {
+                                        if file.write_all(json_content.as_bytes()).is_ok() {
+                                            success_count.fetch_add(1, Ordering::SeqCst);
+                                            println!("  [OK] {}", word);
+                                        } else {
+                                            error_count.fetch_add(1, Ordering::SeqCst);
+                                            eprintln!("  [ERR] {} - Failed to write file", word);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        error_count.fetch_add(1, Ordering::SeqCst);
+                                        eprintln!("  [ERR] {} - {}", word, e);
+                                    }
                                 }
-                            }
-                            Err(e) => {
+                            } else {
                                 error_count.fetch_add(1, Ordering::SeqCst);
-                                eprintln!("  [ERR] {} - {}", word, e);
+                                eprintln!("  [ERR] {} - Word not found in API response", word);
                             }
                         }
                     }
                     Err(e) => {
-                        error_count.fetch_add(1, Ordering::SeqCst);
-                        eprintln!("  [ERR] {} ({}) - {}", word, guard.name(), e);
+                        // 批次处理失败，所有单词都标记为错误
+                        let batch_size = batch.len();
+                        error_count.fetch_add(batch_size, Ordering::SeqCst);
+                        eprintln!(
+                            "  [ERR] Batch failed ({} words) using {} - {}",
+                            batch_size,
+                            guard.name(),
+                            e
+                        );
                     }
                 }
                 // guard 在这里自动释放，归还模型槽位
@@ -533,22 +575,22 @@ async fn process_words_concurrent(
     let final_errors = error_count.load(Ordering::SeqCst);
 
     println!("\n-----------------------------------------------");
-    println!("Processed: {} words", total);
+    println!("Processed: {} words in {} batches", total_words, total_batches);
     println!("Success: {}", final_success);
     println!("Errors: {}", final_errors);
 
     Ok(())
 }
 
-async fn generate_word_data(
+async fn generate_batch_word_data(
     client: &reqwest::Client,
     api_key: &str,
     model: &str,
-    word: &str,
-) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    words: &[String],
+) -> Result<serde_json::Map<String, serde_json::Value>, Box<dyn std::error::Error + Send + Sync>> {
     let system_prompt = r#"You are a professional lexicographer with access to major English dictionaries including 牛津英语词典, 韦氏国际词典, 柯林斯 COBUILD 高阶英汉双解学习词典, 剑桥高级英语学习者词典, and 麦克米伦高阶英语词典.
 
-Your task is to generate comprehensive dictionary entries in JSON format. For each word, provide:
+Your task is to generate comprehensive dictionary entries in JSON format. For EACH word provided, you must include:
 1. Word metadata (type, frequency, difficulty, syllable count)
 2. Pronunciations (UK and US IPA)
 3. Definitions in both English and Chinese
@@ -559,120 +601,113 @@ Your task is to generate comprehensive dictionary entries in JSON format. For ea
 8. Related words (synonyms, antonyms, broader terms)
 9. Frequency data from major corpora
 
+IMPORTANT: You MUST return entries for ALL words provided. Each word should be a top-level key in the returned JSON object.
 Always return valid JSON matching the exact structure provided in the example."#;
 
+    let words_list = words.join("\", \"");
+
     let user_prompt = format!(
-        r#"Generate a complete dictionary entry for the word "{word}" in the following JSON format:
+        r#"Generate complete dictionary entries for ALL of the following {count} words: ["{words_list}"]
+
+Return a SINGLE JSON object where each word is a top-level key. Format:
 
 {{
-  "{word}": {{
-    "word_type": "<part of speech: noun/verb/adjective/adverb/etc>",
-    "language": "en",
-    "frequency": <1-100 based on common usage>,
-    "difficulty": <1-5, where 1 is easiest>,
-    "syllable_count": <number of syllables>,
-    "is_lemma": <true if this is the base form>,
-    "word_count": <number of words, 1 for single words>,
-
-    "pronunciations": [
-      {{ "ipa": "<UK IPA>", "dialect": "UK" }},
-      {{ "ipa": "<US IPA>", "dialect": "US" }}
-    ],
-
-    "definitions": [
-      {{
-        "language": "en",
-        "part_of_speech": "<part of speech>",
-        "definition": "<English definition>",
-        "register": "<neutral/formal/informal/technical/literary>",
-        "is_primary": true,
-        "usage_notes": "<optional usage notes>"
-      }},
-      {{
-        "language": "zh",
-        "part_of_speech": "<part of speech>",
-        "definition": "<Chinese definition>",
-        "is_primary": true
-      }}
-    ],
-
-    "forms": [
-      {{ "form_type": "<plural/past/past_participle/present_participle/comparative/superlative>", "form": "<word form>", "is_irregular": <true/false> }}
-    ],
-
-    "sentences": [
-      {{ "sentence": "<example sentence>", "source": "<source>", "difficulty": <1-5> }}
-    ],
-
-    "etymologies": [
-      {{
-        "language": "en",
-        "origin_language": "<origin language>",
-        "origin_word": "<original word>",
-        "origin_meaning": "<original meaning>",
-        "etymology": "<etymology description>",
-        "first_attested_year": <year or null>
-      }},
-      {{
-        "language": "zh",
-        "origin_language": "<origin language>",
-        "origin_word": "<original word>",
-        "etymology": "<Chinese etymology description>"
-      }}
-    ],
-
-    "categories": [
-      {{ "name": "<category>", "confidence": <50-100> }}
-    ],
-
-    "relations": {{
-      "synonyms": [
-        {{ "word": "<synonym>", "strength": <50-100> }}
-      ],
-      "antonyms": [
-        {{ "word": "<antonym>", "strength": <50-100> }}
-      ],
-      "related": [
-        {{ "word": "<related word>", "strength": <50-100> }}
-      ],
-      "broader": [
-        {{ "word": "<broader term>", "strength": <50-100> }}
-      ]
-    }},
-
-    "frequencies": [
-      {{ "corpus": "COCA", "corpus_type": "general", "band": "<top_1000/top_3000/top_5000/top_10000>", "rank": <rank>, "per_million": <frequency per million> }},
-      {{ "corpus": "BNC", "corpus_type": "written", "band": "<band>", "rank": <rank>, "per_million": <frequency per million> }}
-    ]
-  }}
+  "word1": {{ ... full entry ... }},
+  "word2": {{ ... full entry ... }},
+  ...
 }}
 
-Important:
+For EACH word entry, include this structure:
+{{
+  "word_type": "<part of speech: noun/verb/adjective/adverb/etc>",
+  "language": "en",
+  "frequency": <1-100 based on common usage>,
+  "difficulty": <1-5, where 1 is easiest>,
+  "syllable_count": <number of syllables>,
+  "is_lemma": <true if this is the base form>,
+  "word_count": <number of words, 1 for single words>,
+
+  "pronunciations": [
+    {{ "ipa": "<UK IPA>", "dialect": "UK" }},
+    {{ "ipa": "<US IPA>", "dialect": "US" }}
+  ],
+
+  "definitions": [
+    {{
+      "language": "en",
+      "part_of_speech": "<part of speech>",
+      "definition": "<English definition>",
+      "register": "<neutral/formal/informal/technical/literary>",
+      "is_primary": true,
+      "usage_notes": "<optional usage notes>"
+    }},
+    {{
+      "language": "zh",
+      "part_of_speech": "<part of speech>",
+      "definition": "<Chinese definition>",
+      "is_primary": true
+    }}
+  ],
+
+  "forms": [
+    {{ "form_type": "<plural/past/past_participle/present_participle/comparative/superlative>", "form": "<word form>", "is_irregular": <true/false> }}
+  ],
+
+  "sentences": [
+    {{ "sentence": "<example sentence>", "source": "<source>", "difficulty": <1-5> }}
+  ],
+
+  "etymologies": [
+    {{
+      "language": "en",
+      "origin_language": "<origin language>",
+      "origin_word": "<original word>",
+      "origin_meaning": "<original meaning>",
+      "etymology": "<etymology description>",
+      "first_attested_year": <year or null>
+    }},
+    {{
+      "language": "zh",
+      "origin_language": "<origin language>",
+      "origin_word": "<original word>",
+      "etymology": "<Chinese etymology description>"
+    }}
+  ],
+
+  "categories": [
+    {{ "name": "<category>", "confidence": <50-100> }}
+  ],
+
+  "relations": {{
+    "synonyms": [
+      {{ "word": "<synonym>", "strength": <50-100> }}
+    ],
+    "antonyms": [
+      {{ "word": "<antonym>", "strength": <50-100> }}
+    ],
+    "related": [
+      {{ "word": "<related word>", "strength": <50-100> }}
+    ],
+    "broader": [
+      {{ "word": "<broader term>", "strength": <50-100> }}
+    ]
+  }},
+
+  "frequencies": [
+    {{ "corpus": "COCA", "corpus_type": "general", "band": "<top_1000/top_3000/top_5000/top_10000>", "rank": <rank>, "per_million": <frequency per million> }},
+    {{ "corpus": "BNC", "corpus_type": "written", "band": "<band>", "rank": <rank>, "per_million": <frequency per million> }}
+  ]
+}}
+
+CRITICAL REQUIREMENTS:
+- You MUST return entries for ALL {count} words: ["{words_list}"]
+- Each word should be a lowercase top-level key in the JSON
 - Provide accurate IPA pronunciations for both UK and US English
 - Include at least 2-3 English definitions and their Chinese translations
 - Add 3-5 example sentences with varying difficulty levels
-- Include relevant word forms based on the part of speech
-- Provide accurate etymology information
-- List relevant synonyms, antonyms, and related words
-
-CRITICAL - dictionaries field rules:
-- The "dictionaries" array indicates which dictionaries/vocabulary lists CONTAIN this word
-- ONLY include a dictionary entry if the word actually appears in that dictionary or vocabulary list
-- Do NOT blindly include all 10 options - be selective based on the word's actual presence
-- Available options with priority_order:
-  1. 牛津英语词典 (most words appear here)
-  2. 柯林斯 COBUILD 高阶英汉双解学习词典
-  3. 韦氏国际词典
-  4. 剑桥高级英语学习者词典
-  5. 麦克米伦高阶英语词典
-  6. 大学英语四级考试 (CET4 ~4500 common words)
-  7. 大学英语六级考试 (CET6 ~6000 words, includes CET4)
-  8. 英语专业四级考试 (TEM4 ~8000 words)
-  9. 英语专业八级考试 (TEM8 ~13000 words)
-  10. 考研英语 (NEEP ~5500 words)
-- Example: "apple" (common) -> include all 10; "ubiquitous" (advanced) -> include dictionaries + CET6/TEM4/TEM8/NEEP but NOT CET4
 - Only return valid JSON, no additional text or explanation"#,
-        word = word
+        count = words.len(),
+        words_list = words_list
     );
 
     let request = ChatRequest {
@@ -718,11 +753,17 @@ CRITICAL - dictionaries field rules:
                             if let Some(choice) = chat_response.choices.first() {
                                 let content = &choice.message.content;
 
-                                if serde_json::from_str::<serde_json::Value>(content).is_ok() {
-                                    return Ok(content.clone());
-                                } else {
-                                    last_error =
-                                        Some(format!("Invalid JSON response: {}", content));
+                                match serde_json::from_str::<serde_json::Value>(content) {
+                                    Ok(value) => {
+                                        if let Some(obj) = value.as_object() {
+                                            return Ok(obj.clone());
+                                        } else {
+                                            last_error = Some("Response is not a JSON object".to_string());
+                                        }
+                                    }
+                                    Err(e) => {
+                                        last_error = Some(format!("Invalid JSON response: {}", e));
+                                    }
                                 }
                             } else {
                                 last_error = Some("Empty response from API".to_string());
@@ -755,7 +796,7 @@ CRITICAL - dictionaries field rules:
 
 fn print_usage() {
     println!("Dictionary Generator using BigModel AI");
-    println!("(Multi-Model Load Balancing Mode)");
+    println!("(Multi-Model Load Balancing Mode with Batch Processing)");
     println!();
     println!("Usage:");
     println!("  cargo run --bin words [OPTIONS]");
@@ -773,6 +814,13 @@ fn print_usage() {
     println!("  --limit <N>           Limit number of words to process");
     println!("  --help                Show this help message");
     println!();
+    println!("Batch Processing:");
+    println!(
+        "  Words are processed in batches of {} words per API request.",
+        DEFAULT_BATCH_SIZE
+    );
+    println!("  Each word's result is saved to a separate JSON file.");
+    println!();
     println!("Models:");
     println!("  This tool automatically uses all available general models with load balancing.");
     println!("  Models are selected based on their available concurrency ratio.");
@@ -782,7 +830,10 @@ fn print_usage() {
         println!("    {:<30} {:>5}", name, limit);
     }
     println!();
-    println!("  Total concurrency capacity: {}", GENERAL_MODELS.iter().map(|(_, c)| c).sum::<usize>());
+    println!(
+        "  Total concurrency capacity: {}",
+        GENERAL_MODELS.iter().map(|(_, c)| c).sum::<usize>()
+    );
     println!();
     println!("Environment:");
     println!("  BIGMODEL_API_KEY      BigModel API key (required)");
