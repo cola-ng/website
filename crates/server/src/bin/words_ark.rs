@@ -11,9 +11,10 @@ use serde::{Deserialize, Serialize};
 
 const DEFAULT_WORDS_FILE: &str = "words-all.txt";
 const DEFAULT_OUTPUT_DIR: &str = "../words";
-const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const DEFAULT_MODEL: &str = "GLM-4-Flash";
-const DEFAULT_CONCURRENCY: usize = 50;
+// 火山方舟 API endpoint (OpenAI compatible)
+const ARK_API_URL: &str = "https://ark.cn-beijing.volces.com/api/v3/chat/completions";
+const DEFAULT_MODEL: &str = "glm-4-7-251222";//doubao-seed-1-6-250615
+const DEFAULT_CONCURRENCY: usize = 20;
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
 
@@ -62,6 +63,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut start_from: Option<String> = None;
     let mut limit: Option<usize> = None;
     let mut model = DEFAULT_MODEL.to_string();
+    let mut reverse = true; // Default: scan from the end of the list
 
     let mut i = 1;
     while i < args.len() {
@@ -120,6 +122,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
+            "--forward" => {
+                reverse = false;
+                i += 1;
+            }
+            "--reverse" => {
+                reverse = true;
+                i += 1;
+            }
             "--help" => {
                 print_usage();
                 return Ok(());
@@ -132,15 +142,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let api_key = std::env::var("BIGMODEL_API_KEY").expect("BIGMODEL_API_KEY must be set");
+    let api_key = std::env::var("ARK_API_KEY").expect("ARK_API_KEY must be set");
 
     println!("===============================================");
-    println!("Dictionary Generator using BigModel AI");
+    println!("Dictionary Generator using 火山方舟 (Volcano Ark)");
     println!("===============================================");
     println!("Words file: {}", words_file.display());
     println!("Output directory: {}", output_dir.display());
     println!("Model: {}", model);
     println!("Concurrency: {}", concurrency);
+    println!("Scan direction: {}", if reverse { "reverse (from end)" } else { "forward (from start)" });
     if let Some(ref start) = start_from {
         println!("Starting from: {}", start);
     }
@@ -153,7 +164,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let existing_words = load_existing_valid_words(&output_dir)?;
     println!("Found {} existing valid word files", existing_words.len());
 
-    let words = load_words(&words_file, &existing_words, start_from.as_deref())?;
+    let words = load_words(&words_file, &existing_words, start_from.as_deref(), reverse)?;
     println!("Found {} words to process", words.len());
 
     let words_to_process: Vec<String> = if let Some(l) = limit {
@@ -236,13 +247,14 @@ fn load_words(
     words_file: &Path,
     existing: &HashSet<String>,
     start_from: Option<&str>,
+    reverse: bool,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let file = File::open(words_file)?;
     let reader = BufReader::new(file);
 
-    let mut words = Vec::new();
-    let mut started = start_from.is_none();
+    let mut all_words = Vec::new();
 
+    // First, collect all valid words
     for line in reader.lines() {
         let line = line?;
         let word = line.split('\t').next().unwrap_or(&line).trim().to_string();
@@ -255,25 +267,37 @@ fn load_words(
             continue;
         }
 
-        if !started {
-            if let Some(start) = start_from {
-                if word.eq_ignore_ascii_case(start) {
-                    started = true;
-                } else {
-                    continue;
-                }
-            }
-        }
-
         let word_lower = word.to_lowercase();
         if existing.contains(&word_lower) {
             continue;
         }
 
-        words.push(word);
+        all_words.push(word);
     }
 
-    Ok(words)
+    // Reverse the list if needed (scan from end)
+    if reverse {
+        all_words.reverse();
+    }
+
+    // Apply start_from filter
+    if let Some(start) = start_from {
+        let mut started = false;
+        all_words = all_words
+            .into_iter()
+            .filter(|word| {
+                if started {
+                    return true;
+                }
+                if word.eq_ignore_ascii_case(start) {
+                    started = true;
+                }
+                started
+            })
+            .collect();
+    }
+
+    Ok(all_words)
 }
 
 fn is_valid_word(word: &str) -> bool {
@@ -418,7 +442,7 @@ Always return valid JSON matching the exact structure provided in the example."#
     "syllable_count": <number of syllables>,
     "is_lemma": <true if this is the base form>,
     "word_count": <number of words, 1 for single words>,
-    
+
     "pronunciations": [
       {{ "ipa": "<UK IPA>", "dialect": "UK" }},
       {{ "ipa": "<US IPA>", "dialect": "US" }}
@@ -549,7 +573,7 @@ CRITICAL - dictionaries field rules:
         }
 
         match client
-            .post(BIGMODEL_API_URL)
+            .post(ARK_API_URL)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&request)
@@ -599,10 +623,10 @@ CRITICAL - dictionaries field rules:
 }
 
 fn print_usage() {
-    println!("Dictionary Generator using BigModel AI");
+    println!("Dictionary Generator using 火山方舟 (Volcano Ark)");
     println!();
     println!("Usage:");
-    println!("  cargo run --bin words [OPTIONS]");
+    println!("  cargo run --bin words_ark [OPTIONS]");
     println!();
     println!("Options:");
     println!(
@@ -620,16 +644,19 @@ fn print_usage() {
     println!("  --start-from <WORD>   Start processing from this word");
     println!("  --limit <N>           Limit number of words to process");
     println!(
-        "  --model <MODEL>       BigModel model name (default: {})",
+        "  --model <MODEL>       Model ID (default: {})",
         DEFAULT_MODEL
     );
+    println!("  --forward             Scan words from the beginning of the list");
+    println!("  --reverse             Scan words from the end of the list (default)");
     println!("  --help                Show this help message");
     println!();
     println!("Environment:");
-    println!("  BIGMODEL_API_KEY      BigModel API key (required)");
+    println!("  ARK_API_KEY           火山方舟 API key (required)");
     println!();
     println!("Examples:");
-    println!("  cargo run --bin words --limit 10");
-    println!("  cargo run --bin words --start-from apple --limit 100");
-    println!("  cargo run --bin words --concurrency 5 --limit 50");
+    println!("  cargo run --bin words_ark --limit 10");
+    println!("  cargo run --bin words_ark --start-from apple --limit 100");
+    println!("  cargo run --bin words_ark --concurrency 5 --limit 50");
+    println!("  cargo run --bin words_ark --forward --limit 100  # Scan from beginning");
 }
