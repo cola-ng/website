@@ -19,7 +19,7 @@ const DEFAULT_BATCH_SIZE: usize = 5;
 /// 通用模型及其并发限制
 /// 筛选适合文本生成的模型（排除 Vision/Voice/Search/Phone/AllTools 等特殊用途模型）
 const GENERAL_MODELS: &[(&str, usize)] = &[
-    ("GLM-4-Flash", 100),
+    ("GLM-4-Flash", 50),
     // ("GLM-4-FlashX-250414", 25),
     // ("GLM-4-Air", 25),
     // ("GLM-Zero-Preview", 2),
