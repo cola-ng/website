@@ -11,7 +11,11 @@
       "Bash(then ls \"D:\\\\Works\\\\cola-ng\\\\website\\\\words\")",
       "Bash(else echo \"words directory does not exist\")",
       "Bash(fi)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "WebFetch(domain:docs.bigmodel.cn)",
+      "WebFetch(domain:bigmodel.cn)",
+      "WebFetch(domain:open.bigmodel.cn)",
+      "WebSearch"
     ]
   }
 }

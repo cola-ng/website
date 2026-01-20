@@ -15,6 +15,7 @@ mod asset;
 mod auth;
 mod dict;
 mod learn;
+mod voice_chat;
 
 pub fn router() -> Router {
     Router::with_path("api")
@@ -44,6 +45,7 @@ pub fn router() -> Router {
         .push(asset::router())
         .push(dict::router())
         .push(learn::router())
+        .push(voice_chat::router())
 }
 
 #[handler]

@@ -9,6 +9,7 @@ mod global;
 mod hoops;
 pub mod models;
 mod routing;
+pub mod services;
 pub mod user;
 
 pub use config::{AppConfig, DbConfig};

@@ -451,3 +451,101 @@ export function getRankDefinitions(): Promise<RankInfo[]> {
     method: 'GET',
   })
 }
+
+// ============================================================================
+// Voice Chat Types and Functions
+// ============================================================================
+
+export type HistoryMessage = {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+export type Correction = {
+  original: string
+  corrected: string
+  explanation: string
+}
+
+export type VoiceChatResponse = {
+  user_text: string | null
+  ai_text: string
+  ai_text_zh: string | null
+  ai_audio_base64: string | null
+  corrections: Correction[]
+}
+
+export type TtsResponse = {
+  audio_base64: string
+}
+
+/**
+ * Send audio for voice chat
+ * @param token Auth token
+ * @param audioBase64 Base64 encoded audio (WAV format)
+ * @param history Conversation history
+ * @param systemPrompt Optional custom system prompt
+ */
+export function voiceChatSend(
+  token: string,
+  audioBase64: string,
+  history: HistoryMessage[] = [],
+  systemPrompt?: string
+): Promise<VoiceChatResponse> {
+  return requestJson<VoiceChatResponse>('/api/voice-chat/send', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      audio_base64: audioBase64,
+      history,
+      system_prompt: systemPrompt,
+    }),
+  })
+}
+
+/**
+ * Send text for chat with optional TTS response
+ * @param token Auth token
+ * @param message Text message
+ * @param history Conversation history
+ * @param generateAudio Whether to generate audio response
+ * @param systemPrompt Optional custom system prompt
+ */
+export function textChatSend(
+  token: string,
+  message: string,
+  history: HistoryMessage[] = [],
+  generateAudio: boolean = true,
+  systemPrompt?: string
+): Promise<VoiceChatResponse> {
+  return requestJson<VoiceChatResponse>('/api/voice-chat/text-send', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      message,
+      history,
+      generate_audio: generateAudio,
+      system_prompt: systemPrompt,
+    }),
+  })
+}
+
+/**
+ * Convert text to speech
+ * @param token Auth token
+ * @param text Text to synthesize
+ * @param voice Voice option
+ * @param speed Speed (0.5 - 2.0)
+ */
+export function textToSpeech(
+  token: string,
+  text: string,
+  voice?: string,
+  speed?: number
+): Promise<TtsResponse> {
+  return requestJson<TtsResponse>('/api/voice-chat/tts', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ text, voice, speed }),
+  })
+}

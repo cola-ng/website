@@ -1,11 +1,12 @@
-import { useState, useRef, useEffect } from 'react'
-import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, Settings2, ChevronDown, FileDown, ClipboardList } from 'lucide-react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, Settings2, ChevronDown, FileDown, ClipboardList, Loader2, Square } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
+import { voiceChatSend, textChatSend, textToSpeech, type HistoryMessage, type Correction as ApiCorrection } from '../lib/api'
 
 interface Correction {
   original: string
@@ -19,6 +20,7 @@ interface Message {
   contentEn: string
   contentZh: string
   hasAudio?: boolean
+  audioBase64?: string
   timestamp: Date
   corrections?: Correction[]
 }
@@ -112,9 +114,16 @@ export function ConversationPage() {
   const [selectedMic, setSelectedMic] = useState('default')
   const [selectedSpeaker, setSelectedSpeaker] = useState('default')
   const [reportMode, setReportMode] = useState(false)
+  const [isProcessing, setIsProcessing] = useState(false)
+  const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null)
+  const [recordingDuration, setRecordingDuration] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const audioSettingsRef = useRef<HTMLDivElement>(null)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
   // Display settings: 'both' | 'en' | 'zh'
   const [botLang, setBotLang] = useState<'both' | 'en' | 'zh'>('both')
@@ -164,111 +173,289 @@ export function ConversationPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showAudioSettings])
 
-  const handleSend = () => {
-    if (!input.trim() || !activeConversation) return
+  // Helper function to convert conversation history for API
+  const getConversationHistory = useCallback((): HistoryMessage[] => {
+    if (!activeConversation) return []
+    // Get last 10 messages for context
+    return activeConversation.messages.slice(-10).map(msg => ({
+      role: msg.role,
+      content: msg.contentEn,
+    }))
+  }, [activeConversation])
 
+  // Helper function to play audio from base64
+  const playAudioFromBase64 = useCallback((base64: string, messageId: string) => {
+    if (audioElementRef.current) {
+      audioElementRef.current.pause()
+    }
+
+    const audio = new Audio(`data:audio/wav;base64,${base64}`)
+    audioElementRef.current = audio
+    setIsPlayingAudio(messageId)
+
+    audio.onended = () => {
+      setIsPlayingAudio(null)
+    }
+    audio.onerror = () => {
+      setIsPlayingAudio(null)
+      console.error('Audio playback failed')
+    }
+    audio.play().catch(err => {
+      console.error('Failed to play audio:', err)
+      setIsPlayingAudio(null)
+    })
+  }, [])
+
+  // Stop audio playback
+  const stopAudio = useCallback(() => {
+    if (audioElementRef.current) {
+      audioElementRef.current.pause()
+      audioElementRef.current = null
+    }
+    setIsPlayingAudio(null)
+  }, [])
+
+  const handleSend = async () => {
+    if (!input.trim() || !activeConversation || !token || isProcessing) return
+
+    const messageText = input.trim()
+    setInput('')
+    setIsProcessing(true)
+
+    // Add user message immediately
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      contentEn: input,
-      contentZh: input, // In real app, this would be translated
+      contentEn: messageText,
+      contentZh: messageText,
       timestamp: new Date(),
     }
 
-    const updatedConversations = conversations.map(c => {
+    setConversations(prev => prev.map(c => {
       if (c.id === activeConversationId) {
         return {
           ...c,
           messages: [...c.messages, userMessage],
-          lastMessage: input,
+          lastMessage: messageText,
           timestamp: new Date(),
         }
       }
       return c
-    })
+    }))
 
-    setConversations(updatedConversations)
-    setInput('')
+    try {
+      // Call API for text chat
+      const history = getConversationHistory()
+      const response = await textChatSend(token, messageText, history, true)
 
-    // Simulate AI response
-    setTimeout(() => {
+      // Add AI response
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        contentEn: "That's a great point! I totally agree with you. Would you like to explore this topic further?",
-        contentZh: "说得好！我完全同意你的看法。你想进一步探讨这个话题吗？",
+        contentEn: response.ai_text,
+        contentZh: response.ai_text_zh || response.ai_text,
+        hasAudio: !!response.ai_audio_base64,
+        audioBase64: response.ai_audio_base64 || undefined,
         timestamp: new Date(),
       }
 
       setConversations(prev => prev.map(c => {
         if (c.id === activeConversationId) {
+          // Also update user message with corrections if any
+          const updatedMessages = c.messages.map(m =>
+            m.id === userMessage.id && response.corrections.length > 0
+              ? { ...m, corrections: response.corrections }
+              : m
+          )
           return {
             ...c,
-            messages: [...c.messages, aiMessage],
+            messages: [...updatedMessages, aiMessage],
             lastMessage: aiMessage.contentEn,
             timestamp: new Date(),
           }
         }
         return c
       }))
-    }, 1000)
-  }
 
-  const toggleRecording = () => {
-    if (!isRecording) {
-      // Start recording
-      setIsRecording(true)
-    } else {
-      // Stop recording and send
-      setIsRecording(false)
-
-      // Simulate voice message
-      const userMessage: Message = {
-        id: Date.now().toString(),
-        role: 'user',
-        contentEn: "This is what I said in my voice message.",
-        contentZh: "这是我在语音消息中说的话。",
-        hasAudio: true,
+      // Auto-play AI response
+      if (response.ai_audio_base64) {
+        playAudioFromBase64(response.ai_audio_base64, aiMessage.id)
+      }
+    } catch (err) {
+      console.error('Chat error:', err)
+      // Add error message
+      const errorMessage: Message = {
+        id: (Date.now() + 1).toString(),
+        role: 'assistant',
+        contentEn: 'Sorry, I encountered an error. Please try again.',
+        contentZh: '抱歉，发生了错误。请重试。',
         timestamp: new Date(),
       }
-
-      const updatedConversations = conversations.map(c => {
+      setConversations(prev => prev.map(c => {
         if (c.id === activeConversationId) {
           return {
             ...c,
-            messages: [...c.messages, userMessage],
-            lastMessage: userMessage.contentEn,
+            messages: [...c.messages, errorMessage],
+            lastMessage: errorMessage.contentEn,
             timestamp: new Date(),
           }
         }
         return c
+      }))
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  // Convert Blob to base64
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64 = reader.result as string
+        // Remove data URL prefix (e.g., "data:audio/webm;base64,")
+        const base64Data = base64.split(',')[1]
+        resolve(base64Data)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  // Start recording
+  const startRecording = async () => {
+    if (!token || !activeConversation) return
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
       })
 
-      setConversations(updatedConversations)
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
 
-      // Simulate AI response
-      setTimeout(() => {
-        const aiMessage: Message = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          contentEn: "I understood what you said! Your pronunciation is getting better. Let me respond to that...",
-          contentZh: "我听懂你说的了！你的发音越来越好了。让我回应一下...",
-          hasAudio: true,
-          timestamp: new Date(),
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = async () => {
+        // Stop all tracks
+        stream.getTracks().forEach(track => track.stop())
+
+        // Clear recording timer
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current)
+          recordingTimerRef.current = null
+        }
+        setRecordingDuration(0)
+
+        // Process audio
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
+        if (audioBlob.size === 0) {
+          console.error('No audio recorded')
+          return
         }
 
-        setConversations(prev => prev.map(c => {
-          if (c.id === activeConversationId) {
-            return {
-              ...c,
-              messages: [...c.messages, aiMessage],
-              lastMessage: aiMessage.contentEn,
-              timestamp: new Date(),
-            }
+        setIsProcessing(true)
+
+        try {
+          const audioBase64 = await blobToBase64(audioBlob)
+          const history = getConversationHistory()
+          const response = await voiceChatSend(token, audioBase64, history)
+
+          // Add user message with transcribed text
+          const userMessage: Message = {
+            id: Date.now().toString(),
+            role: 'user',
+            contentEn: response.user_text || '(Audio message)',
+            contentZh: response.user_text || '(语音消息)',
+            hasAudio: true,
+            timestamp: new Date(),
+            corrections: response.corrections,
           }
-          return c
-        }))
-      }, 1500)
+
+          // Add AI response
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            contentEn: response.ai_text,
+            contentZh: response.ai_text_zh || response.ai_text,
+            hasAudio: !!response.ai_audio_base64,
+            audioBase64: response.ai_audio_base64 || undefined,
+            timestamp: new Date(),
+          }
+
+          setConversations(prev => prev.map(c => {
+            if (c.id === activeConversationId) {
+              return {
+                ...c,
+                messages: [...c.messages, userMessage, aiMessage],
+                lastMessage: aiMessage.contentEn,
+                timestamp: new Date(),
+              }
+            }
+            return c
+          }))
+
+          // Auto-play AI response
+          if (response.ai_audio_base64) {
+            playAudioFromBase64(response.ai_audio_base64, aiMessage.id)
+          }
+        } catch (err) {
+          console.error('Voice chat error:', err)
+          const errorMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            contentEn: 'Sorry, I could not process your voice message. Please try again.',
+            contentZh: '抱歉，无法处理您的语音消息。请重试。',
+            timestamp: new Date(),
+          }
+          setConversations(prev => prev.map(c => {
+            if (c.id === activeConversationId) {
+              return {
+                ...c,
+                messages: [...c.messages, errorMessage],
+                lastMessage: errorMessage.contentEn,
+                timestamp: new Date(),
+              }
+            }
+            return c
+          }))
+        } finally {
+          setIsProcessing(false)
+        }
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+      setRecordingDuration(0)
+
+      // Start recording timer
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1)
+      }, 1000)
+    } catch (err) {
+      console.error('Failed to start recording:', err)
+      alert('无法访问麦克风。请确保已授予麦克风权限。')
+    }
+  }
+
+  // Stop recording
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    setIsRecording(false)
+  }
+
+  const toggleRecording = () => {
+    if (!isRecording) {
+      startRecording()
+    } else {
+      stopRecording()
     }
   }
 
@@ -294,8 +481,26 @@ export function ConversationPage() {
   }
 
   const playAudio = (messageId: string) => {
-    console.log('Playing audio for message:', messageId)
-    // In real app, this would play the audio
+    // If already playing this message, stop it
+    if (isPlayingAudio === messageId) {
+      stopAudio()
+      return
+    }
+
+    // Find the message and play its audio
+    const message = activeConversation?.messages.find(m => m.id === messageId)
+    if (message?.audioBase64) {
+      playAudioFromBase64(message.audioBase64, messageId)
+    } else if (message?.hasAudio && token) {
+      // If message has audio but no base64, try to get TTS for the text
+      textToSpeech(token, message.contentEn)
+        .then(response => {
+          playAudioFromBase64(response.audio_base64, messageId)
+        })
+        .catch(err => {
+          console.error('Failed to get TTS:', err)
+        })
+    }
   }
 
   const exportToPdf = () => {
@@ -603,16 +808,21 @@ export function ConversationPage() {
                         <span>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {message.hasAudio && (
+                        {(message.hasAudio || message.audioBase64) && (
                           <button
                             onClick={() => playAudio(message.id)}
                             className={cn(
                               'p-1 rounded hover:bg-black/10 transition-colors',
-                              isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200'
+                              isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200',
+                              isPlayingAudio === message.id && 'bg-black/10'
                             )}
-                            title="播放语音"
+                            title={isPlayingAudio === message.id ? '停止播放' : '播放语音'}
                           >
-                            <Volume2 className="h-4 w-4" />
+                            {isPlayingAudio === message.id ? (
+                              <Square className="h-4 w-4" />
+                            ) : (
+                              <Volume2 className="h-4 w-4" />
+                            )}
                           </button>
                         )}
                       </div>
@@ -647,15 +857,20 @@ export function ConversationPage() {
                 {/* Large Mic Button */}
                 <button
                   onClick={toggleRecording}
+                  disabled={isProcessing}
                   className={cn(
                     'h-16 w-16 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                    isRecording
-                      ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
-                      : 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200'
+                    isProcessing
+                      ? 'bg-gray-400 text-white cursor-not-allowed'
+                      : isRecording
+                        ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
+                        : 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200'
                   )}
-                  title={isRecording ? '停止录音' : '开始录音'}
+                  title={isProcessing ? '处理中...' : isRecording ? '停止录音' : '开始录音'}
                 >
-                  {isRecording ? (
+                  {isProcessing ? (
+                    <Loader2 className="h-7 w-7 animate-spin" />
+                  ) : isRecording ? (
                     <MicOff className="h-7 w-7" />
                   ) : (
                     <Mic className="h-7 w-7" />
@@ -663,11 +878,25 @@ export function ConversationPage() {
                 </button>
               </div>
 
-              {/* Recording indicator */}
-              {isRecording && (
-                <div className="mb-3 flex items-center justify-center gap-2 text-red-500">
-                  <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                  <span className="text-sm">正在录音... 点击话筒停止</span>
+              {/* Recording/Processing indicator */}
+              {(isRecording || isProcessing) && (
+                <div className={cn(
+                  'mb-3 flex items-center justify-center gap-2',
+                  isProcessing ? 'text-gray-500' : 'text-red-500'
+                )}>
+                  {isProcessing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-sm">正在处理语音...</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      <span className="text-sm">
+                        正在录音 {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')} - 点击话筒停止
+                      </span>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -685,10 +914,14 @@ export function ConversationPage() {
                 />
                 <Button
                   onClick={handleSend}
-                  disabled={!input.trim()}
+                  disabled={!input.trim() || isProcessing}
                   className="h-9 px-4"
                 >
-                  <Send className="h-4 w-4" />
+                  {isProcessing ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Send className="h-4 w-4" />
+                  )}
                 </Button>
               </div>
             </div>
