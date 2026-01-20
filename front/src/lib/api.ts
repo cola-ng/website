@@ -189,6 +189,61 @@ export type WordQueryResponse = {
   dictionaries: (WordDictionary & { dictionary: Dictionary })[]
 }
 
+// Error message mappings for user-friendly messages
+const ERROR_MESSAGES: Record<string, string> = {
+  'failed to create user': '注册失败，请稍后重试',
+  'email already registered': '该邮箱已被注册',
+  'phone already registered': '该手机号已被注册',
+  'email or phone already registered': '该邮箱或手机号已被注册',
+  'invalid credentials': '邮箱或密码错误',
+  'user not found': '用户不存在',
+  'email already exists': '该邮箱已被注册',
+  'invalid email': '请输入有效的邮箱地址',
+  'password too short': '密码长度不足',
+  'password must be at least 8 characters': '密码至少需要8个字符',
+  unauthorized: '请先登录',
+  forbidden: '没有权限执行此操作',
+}
+
+function parseErrorMessage(text: string, status: number): string {
+  // Try to parse as JSON error response
+  try {
+    const json = JSON.parse(text)
+    const brief = json?.error?.brief || json?.error?.message || json?.message
+    if (brief && typeof brief === 'string') {
+      // Check if we have a friendly message for this error
+      const lowerBrief = brief.toLowerCase()
+      for (const [key, message] of Object.entries(ERROR_MESSAGES)) {
+        if (lowerBrief.includes(key.toLowerCase())) {
+          return message
+        }
+      }
+      // Return the brief message if no mapping found
+      return brief
+    }
+  } catch {
+    // Not JSON, continue with text
+  }
+
+  // Check raw text against error messages
+  const lowerText = text.toLowerCase()
+  for (const [key, message] of Object.entries(ERROR_MESSAGES)) {
+    if (lowerText.includes(key.toLowerCase())) {
+      return message
+    }
+  }
+
+  // Fallback based on status code
+  if (status === 400) return '请求无效，请检查输入'
+  if (status === 401) return '请先登录'
+  if (status === 403) return '没有权限执行此操作'
+  if (status === 404) return '请求的资源不存在'
+  if (status === 409) return '数据冲突，请刷新后重试'
+  if (status === 500) return '服务器错误，请稍后重试'
+
+  return text || `请求失败 (${status})`
+}
+
 async function requestJson<T>(
   path: string,
   init: RequestInit & { token?: string } = {}
@@ -201,7 +256,7 @@ async function requestJson<T>(
   const res = await fetch(path, { ...init, headers })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(text || `HTTP ${res.status}`)
+    throw new Error(parseErrorMessage(text, res.status))
   }
   return (await res.json()) as T
 }

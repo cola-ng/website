@@ -27,6 +27,7 @@ pub struct RegisterRequest {
     name: String,
     email: String,
     password: String,
+    phone: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -77,6 +78,10 @@ pub async fn login(
     })
 }
 
+// Custom error for distinguishing between email and phone conflicts
+const ERR_EMAIL_EXISTS: &str = "EMAIL_EXISTS";
+const ERR_PHONE_EXISTS: &str = "PHONE_EXISTS";
+
 #[handler]
 pub async fn register(
     req: &mut Request,
@@ -98,13 +103,22 @@ pub async fn register(
             .into());
     }
 
+    // Normalize phone: trim and filter empty strings
+    let phone = input
+        .phone
+        .as_ref()
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
+
     let password_hash = crate::auth::hash_password(&input.password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
 
+    let email_for_check = email.clone();
+    let phone_for_check = phone.clone();
     let new_user = NewUser {
         name: input.name.clone(),
         email: Some(email.clone()),
-        phone: None,
+        phone: phone.clone(),
         display_name: None,
         inviter_id: None,
         created_by: None,
@@ -112,67 +126,70 @@ pub async fn register(
     };
 
     let user: User = with_conn(move |conn| {
-        let _is_first = base_users::table
-            .select(diesel::dsl::count_star())
-            .first::<i64>(conn)?
-            == 0;
+        conn.transaction(|conn| {
+            // Check if email already exists
+            let email_exists = base_users::table
+                .filter(base_users::email.eq(&email_for_check))
+                .select(base_users::id)
+                .first::<i64>(conn)
+                .optional()?
+                .is_some();
 
-        let user = diesel::insert_into(base_users::table)
-            .values(&new_user)
-            .get_result::<User>(conn)?;
+            if email_exists {
+                return Err(diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                    Box::new(ERR_EMAIL_EXISTS.to_string()),
+                ));
+            }
 
-        // if is_first {
-        //     use crate::db::schema::role_permissions::dsl as rp;
-        //     use crate::db::schema::role_users::dsl as ur;
-        //     use crate::db::schema::roles::dsl as r;
+            // Check if phone already exists (only if phone is provided)
+            if let Some(ref phone_val) = phone_for_check {
+                let phone_exists = base_users::table
+                    .filter(base_users::phone.eq(phone_val))
+                    .select(base_users::id)
+                    .first::<i64>(conn)
+                    .optional()?
+                    .is_some();
 
-        //     let role = diesel::insert_into(r::roles)
-        //         .values(&NewRole {
-        //             name: "admin".to_string(),
-        //         })
-        //         .on_conflict_do_nothing()
-        //         .get_result::<Role>(conn)
-        //         .or_else(|_| r::roles.filter(r::name.eq("admin")).first(conn))?;
+                if phone_exists {
+                    return Err(diesel::result::Error::DatabaseError(
+                        diesel::result::DatabaseErrorKind::UniqueViolation,
+                        Box::new(ERR_PHONE_EXISTS.to_string()),
+                    ));
+                }
+            }
 
-        //     let _ = diesel::insert_into(rp::role_permissions)
-        //         .values(&NewRolePermission {
-        //             role_id: role.id,
-        //             operation: "users.delete".to_string(),
-        //         })
-        //         .on_conflict_do_nothing()
-        //         .execute(conn);
+            // Create user
+            let user = diesel::insert_into(base_users::table)
+                .values(&new_user)
+                .get_result::<User>(conn)?;
 
-        //     let _ = diesel::insert_into(ur::role_users)
-        //         .values(&RoleUser {
-        //             user_id: user.id,
-        //             role_id: role.id,
-        //         })
-        //         .on_conflict_do_nothing()
-        //         .execute(conn);
-        // }
+            // Create password in the same transaction
+            let new_password = NewPassword {
+                user_id: user.id,
+                hash: password_hash,
+                created_at: Utc::now(),
+            };
+            diesel::insert_into(base_passwords::table)
+                .values(&new_password)
+                .execute(conn)?;
 
-        Ok(user)
+            Ok(user)
+        })
     })
     .await
     .map_err(|e| {
-        if e.contains("UniqueViolation") || e.contains("unique") {
+        if e.contains(ERR_EMAIL_EXISTS) {
             StatusError::conflict().brief("email already registered")
+        } else if e.contains(ERR_PHONE_EXISTS) {
+            StatusError::conflict().brief("phone already registered")
+        } else if e.contains("UniqueViolation") || e.contains("unique") {
+            StatusError::conflict().brief("email or phone already registered")
         } else {
             StatusError::internal_server_error().brief("failed to create user")
         }
     })?;
 
-    let new_password = NewPassword {
-        user_id: user.id,
-        hash: password_hash,
-        created_at: Utc::now(),
-    };
-    with_conn(move |conn| {
-        diesel::insert_into(base_passwords::table)
-            .values(&new_password)
-            .execute(conn)
-    })
-    .await?;
     let config = AppConfig::get();
     let access_token =
         crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())

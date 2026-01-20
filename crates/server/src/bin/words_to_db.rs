@@ -8,7 +8,7 @@ use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::Deserialize;
 
-const DEFAULT_WORDS_DIR: &str = "../../../words";
+const DEFAULT_WORDS_DIR: &str = "../words";
 const DEFAULT_BATCH_SIZE: usize = 100;
 
 #[derive(Debug, Deserialize)]

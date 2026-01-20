@@ -9,11 +9,11 @@ use std::time::Duration;
 use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_WORDS_FILE: &str = "../../words-all.txt";
-const DEFAULT_OUTPUT_DIR: &str = "../../../words";
+const DEFAULT_WORDS_FILE: &str = "words-all.txt";
+const DEFAULT_OUTPUT_DIR: &str = "../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const DEFAULT_MODEL: &str = "glm-4-flash";
-const DEFAULT_CONCURRENCY: usize = 50;
+const DEFAULT_MODEL: &str = "GLM-4-Flash";
+const DEFAULT_CONCURRENCY: usize = 200;
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
 
