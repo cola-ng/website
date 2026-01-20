@@ -15,7 +15,8 @@
       "WebFetch(domain:docs.bigmodel.cn)",
       "WebFetch(domain:bigmodel.cn)",
       "WebFetch(domain:open.bigmodel.cn)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(python -c:*)"
     ]
   }
 }

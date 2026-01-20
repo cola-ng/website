@@ -52,7 +52,7 @@ export function DictPage() {
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="输入单词..."
+              placeholder="输入英/汉字词..."
               className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent"
             />
             <button
