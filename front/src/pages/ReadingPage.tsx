@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Mic, Play, Pause, SkipBack, SkipForward, Volume2, CheckCircle, AlertCircle } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
@@ -7,20 +7,26 @@ import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
 
-interface Sentence {
-  id: string
-  english: string
-  chinese: string
+interface ReadingExercise {
+  id: number
+  title_en: string
+  title_zh: string
+  description_en: string | null
+  description_zh: string | null
+  difficulty: string | null
+  exercise_type: string | null
 }
 
-const sentences: Sentence[] = [
-  { id: '1', english: 'Could you please help me with this?', chinese: '你能帮我一下吗？' },
-  { id: '2', english: 'I would like to make a reservation.', chinese: '我想预订一下。' },
-  { id: '3', english: 'What time does the meeting start?', chinese: '会议几点开始？' },
-  { id: '4', english: 'Thank you for your patience.', chinese: '感谢您的耐心等待。' },
-  { id: '5', english: 'Could you repeat that more slowly?', chinese: '你能说慢一点吗？' },
-  { id: '6', english: 'I completely agree with you.', chinese: '我完全同意你的看法。' },
-]
+interface ReadingSentence {
+  id: number
+  exercise_id: number
+  sentence_order: number
+  content_en: string
+  content_zh: string
+  phonetic_transcription: string | null
+  native_audio_path: string | null
+  tips?: string | null
+}
 
 interface ScoreDetail {
   label: string
@@ -49,13 +55,58 @@ function ScoreBar({ label, score, color }: ScoreDetail) {
 
 export function ReadingPage() {
   const { token } = useAuth()
+  const [exercises, setExercises] = useState<ReadingExercise[]>([])
+  const [sentences, setSentences] = useState<ReadingSentence[]>([])
+  const [selectedExercise, setSelectedExercise] = useState<ReadingExercise | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasRecorded, setHasRecorded] = useState(false)
+  const [loading, setLoading] = useState(true)
+
+  // Fetch exercises from API
+  useEffect(() => {
+    async function fetchExercises() {
+      try {
+        setLoading(true)
+        const response = await fetch('/api/asset/reading-exercises')
+        if (response.ok) {
+          const data = await response.json()
+          setExercises(data)
+          if (data.length > 0) {
+            setSelectedExercise(data[0])
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch exercises:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchExercises()
+  }, [])
+
+  // Fetch sentences for selected exercise
+  useEffect(() => {
+    async function fetchSentences() {
+      if (!selectedExercise) return
+      try {
+        const response = await fetch(`/api/asset/reading-exercises/${selectedExercise.id}/sentences`)
+        if (response.ok) {
+          const data = await response.json()
+          setSentences(data)
+          setCurrentIndex(0)
+          setHasRecorded(false)
+        }
+      } catch (err) {
+        console.error('Failed to fetch sentences:', err)
+      }
+    }
+    fetchSentences()
+  }, [selectedExercise])
 
   const currentSentence = sentences[currentIndex]
-  const progress = ((currentIndex + 1) / sentences.length) * 100
+  const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0
 
   const handleNext = () => {
     if (currentIndex < sentences.length - 1) {
@@ -103,6 +154,20 @@ export function ReadingPage() {
     )
   }
 
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+        <Header />
+        <main className="mx-auto max-w-6xl p-4">
+          <div className="flex items-center justify-center h-64">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+          </div>
+        </main>
+        <Footer />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
       <Header />
@@ -118,6 +183,26 @@ export function ReadingPage() {
             <p className="text-gray-500">发音纠正 · 音波对比 · AI 智能评分</p>
           </div>
 
+          {/* Exercise selector */}
+          {exercises.length > 0 && (
+            <div className="flex gap-2 mb-4 flex-wrap">
+              {exercises.map((exercise) => (
+                <button
+                  key={exercise.id}
+                  onClick={() => setSelectedExercise(exercise)}
+                  className={cn(
+                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                    selectedExercise?.id === exercise.id
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
+                  )}
+                >
+                  {exercise.title_zh}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Progress */}
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-500">练习进度</span>
@@ -128,151 +213,170 @@ export function ReadingPage() {
               />
             </div>
             <span className="text-sm font-semibold text-gray-700">
-              {currentIndex + 1}/{sentences.length} 句
+              {sentences.length > 0 ? `${currentIndex + 1}/${sentences.length} 句` : '0/0 句'}
             </span>
           </div>
         </div>
 
         {/* Sentence Display */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-4 text-center">
-          <div className="text-xs text-gray-400 mb-2">今日练习</div>
-          <h2 className="text-2xl font-semibold text-gray-900 mb-2">
-            {currentSentence.english}
-          </h2>
-          <p className="text-gray-500">{currentSentence.chinese}</p>
-        </div>
+        {currentSentence ? (
+          <>
+            <div className="bg-white rounded-xl shadow-lg p-6 mb-4 text-center">
+              <div className="text-xs text-gray-400 mb-2">
+                {selectedExercise?.title_zh || '今日练习'}
+              </div>
+              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+                {currentSentence.content_en}
+              </h2>
+              <p className="text-gray-500">{currentSentence.content_zh}</p>
+              {currentSentence.tips && (
+                <p className="text-sm text-orange-600 mt-2">💡 {currentSentence.tips}</p>
+              )}
+            </div>
 
-        {/* Waveforms */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-          {/* Native Audio */}
-          <div className="bg-white rounded-xl shadow-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-700">
-                <Volume2 className="h-4 w-4 inline mr-2" />
-                标准发音
-              </span>
-              <Button size="sm" variant="ghost" onClick={handlePlay}>
-                {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {/* Waveforms */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+              {/* Native Audio */}
+              <div className="bg-white rounded-xl shadow-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-700">
+                    <Volume2 className="h-4 w-4 inline mr-2" />
+                    标准发音
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={handlePlay}>
+                    {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  </Button>
+                </div>
+                <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
+                  <div className="flex items-end gap-1 h-12">
+                    {Array.from({ length: 30 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className="w-1 bg-green-400 rounded-full"
+                        style={{ height: `${Math.random() * 100}%` }}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* User Audio */}
+              <div className="bg-white rounded-xl shadow-lg p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-700">
+                    <Mic className="h-4 w-4 inline mr-2" />
+                    你的发音
+                  </span>
+                  {hasRecorded && (
+                    <Button size="sm" variant="ghost">
+                      <Play className="h-4 w-4" />
+                    </Button>
+                  )}
+                </div>
+                <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
+                  {hasRecorded ? (
+                    <div className="flex items-end gap-1 h-12">
+                      {Array.from({ length: 30 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-1 bg-orange-400 rounded-full"
+                          style={{ height: `${Math.random() * 100}%` }}
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-sm text-gray-400">点击录音开始</span>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Score Card (shown after recording) */}
+            {hasRecorded && (
+              <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
+                <h3 className="font-semibold text-gray-900 mb-4">
+                  <span className="mr-2">🧠</span>
+                  AI 评分与建议
+                </h3>
+                <div className="flex items-start gap-6">
+                  {/* Overall Score */}
+                  <div className="text-center">
+                    <div className="w-20 h-20 rounded-full border-4 border-green-500 flex items-center justify-center bg-green-50">
+                      <span className="text-3xl font-bold text-green-600">85</span>
+                    </div>
+                    <span className="text-sm text-gray-500 mt-2 block">总分</span>
+                  </div>
+
+                  {/* Detailed Scores */}
+                  <div className="flex-1 space-y-3">
+                    <ScoreBar label="发音准确度" score={90} color="bg-green-500" />
+                    <ScoreBar label="流畅度" score={80} color="bg-amber-500" />
+                    <ScoreBar label="语调" score={85} color="bg-green-500" />
+                  </div>
+                </div>
+
+                {/* Feedback */}
+                <div className="mt-4 pt-4 border-t space-y-2">
+                  <div className="flex items-start gap-2 text-sm">
+                    <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                    <span className="text-gray-700">
+                      需要注意: 注意单词之间的连读和停顿
+                    </span>
+                  </div>
+                  <div className="flex items-start gap-2 text-sm">
+                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                    <span className="text-green-700">
+                      做得好: 发音清晰，语速适中！
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div className="flex items-center justify-center gap-3">
+              <Button
+                variant="outline"
+                onClick={handlePrev}
+                disabled={currentIndex === 0}
+              >
+                <SkipBack className="h-4 w-4 mr-2" />
+                上一句
+              </Button>
+
+              <Button
+                size="lg"
+                onClick={handleRecord}
+                className={cn(
+                  'px-8',
+                  isRecording && 'bg-red-500 hover:bg-red-600'
+                )}
+              >
+                <Mic className={cn('h-5 w-5 mr-2', isRecording && 'animate-pulse')} />
+                {isRecording ? '停止录音' : hasRecorded ? '重新录音' : '开始录音'}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleNext}
+                disabled={currentIndex === sentences.length - 1}
+              >
+                下一句
+                <SkipForward className="h-4 w-4 ml-2" />
               </Button>
             </div>
-            <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-              <div className="flex items-end gap-1 h-12">
-                {Array.from({ length: 30 }).map((_, i) => (
-                  <div
-                    key={i}
-                    className="w-1 bg-green-400 rounded-full"
-                    style={{ height: `${Math.random() * 100}%` }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* User Audio */}
-          <div className="bg-white rounded-xl shadow-lg p-4">
-            <div className="flex items-center justify-between mb-3">
-              <span className="text-sm font-medium text-gray-700">
-                <Mic className="h-4 w-4 inline mr-2" />
-                你的发音
-              </span>
-              {hasRecorded && (
-                <Button size="sm" variant="ghost">
-                  <Play className="h-4 w-4" />
-                </Button>
-              )}
-            </div>
-            <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-              {hasRecorded ? (
-                <div className="flex items-end gap-1 h-12">
-                  {Array.from({ length: 30 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="w-1 bg-orange-400 rounded-full"
-                      style={{ height: `${Math.random() * 100}%` }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <span className="text-sm text-gray-400">点击录音开始</span>
-              )}
-            </div>
-          </div>
-        </div>
-
-        {/* Score Card (shown after recording) */}
-        {hasRecorded && (
-          <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
-            <h3 className="font-semibold text-gray-900 mb-4">
-              <span className="mr-2">🧠</span>
-              AI 评分与建议
+          </>
+        ) : (
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="text-6xl mb-4">📝</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-2">
+              暂无练习内容
             </h3>
-            <div className="flex items-start gap-6">
-              {/* Overall Score */}
-              <div className="text-center">
-                <div className="w-20 h-20 rounded-full border-4 border-green-500 flex items-center justify-center bg-green-50">
-                  <span className="text-3xl font-bold text-green-600">85</span>
-                </div>
-                <span className="text-sm text-gray-500 mt-2 block">总分</span>
-              </div>
-
-              {/* Detailed Scores */}
-              <div className="flex-1 space-y-3">
-                <ScoreBar label="发音准确度" score={90} color="bg-green-500" />
-                <ScoreBar label="流畅度" score={80} color="bg-amber-500" />
-                <ScoreBar label="语调" score={85} color="bg-green-500" />
-              </div>
-            </div>
-
-            {/* Feedback */}
-            <div className="mt-4 pt-4 border-t space-y-2">
-              <div className="flex items-start gap-2 text-sm">
-                <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                <span className="text-gray-700">
-                  需要注意: "help" 的发音稍重，注意轻读
-                </span>
-              </div>
-              <div className="flex items-start gap-2 text-sm">
-                <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                <span className="text-green-700">
-                  做得好: "Could you" 的连读非常自然！
-                </span>
-              </div>
-            </div>
+            <p className="text-gray-500">
+              请稍后再试或选择其他练习
+            </p>
           </div>
         )}
-
-        {/* Action Buttons */}
-        <div className="flex items-center justify-center gap-3">
-          <Button
-            variant="outline"
-            onClick={handlePrev}
-            disabled={currentIndex === 0}
-          >
-            <SkipBack className="h-4 w-4 mr-2" />
-            上一句
-          </Button>
-
-          <Button
-            size="lg"
-            onClick={handleRecord}
-            className={cn(
-              'px-8',
-              isRecording && 'bg-red-500 hover:bg-red-600'
-            )}
-          >
-            <Mic className={cn('h-5 w-5 mr-2', isRecording && 'animate-pulse')} />
-            {isRecording ? '停止录音' : hasRecorded ? '重新录音' : '开始录音'}
-          </Button>
-
-          <Button
-            variant="outline"
-            onClick={handleNext}
-            disabled={currentIndex === sentences.length - 1}
-          >
-            下一句
-            <SkipForward className="h-4 w-4 ml-2" />
-          </Button>
-        </div>
 
         {/* Tips */}
         <div className="mt-6 bg-white rounded-xl shadow-lg p-6">

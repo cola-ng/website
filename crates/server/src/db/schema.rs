@@ -115,6 +115,9 @@ diesel::table! {
         imdb_id -> Nullable<Text>,
         difficulty -> Nullable<Text>,
         created_at -> Timestamptz,
+        icon_emoji -> Nullable<Text>,
+        is_featured -> Nullable<Bool>,
+        display_order -> Nullable<Int4>,
     }
 }
 
@@ -189,6 +192,7 @@ diesel::table! {
         native_audio_path -> Nullable<Text>,
         focus_sounds -> Nullable<Jsonb>,
         common_mistakes -> Nullable<Jsonb>,
+        tips -> Nullable<Text>,
     }
 }
 
@@ -205,6 +209,8 @@ diesel::table! {
         display_order -> Nullable<Int4>,
         is_active -> Nullable<Bool>,
         created_at -> Timestamptz,
+        duration_minutes -> Nullable<Int4>,
+        is_featured -> Nullable<Bool>,
     }
 }
 
@@ -730,8 +736,53 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    user_clip_progress (id) {
+        id -> Int8,
+        user_id -> Int8,
+        clip_id -> Int8,
+        progress_percent -> Nullable<Int4>,
+        completed_at -> Nullable<Timestamptz>,
+        last_practiced_at -> Nullable<Timestamptz>,
+        practice_count -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    user_read_progress (id) {
+        id -> Int8,
+        user_id -> Int8,
+        exercise_id -> Int8,
+        current_sentence_order -> Nullable<Int4>,
+        progress_percent -> Nullable<Int4>,
+        completed_at -> Nullable<Timestamptz>,
+        last_practiced_at -> Nullable<Timestamptz>,
+        practice_count -> Nullable<Int4>,
+        average_score -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    user_scene_progress (id) {
+        id -> Int8,
+        user_id -> Int8,
+        scene_id -> Int8,
+        current_dialogue_id -> Nullable<Int8>,
+        progress_percent -> Nullable<Int4>,
+        completed_at -> Nullable<Timestamptz>,
+        last_practiced_at -> Nullable<Timestamptz>,
+        practice_count -> Nullable<Int4>,
+        best_score -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
 diesel::joinable!(archive_user_achievements -> archive_achievement_definitions (achievement_id));
-diesel::joinable!(archive_user_profiles -> archive_rank_definitions (current_rank_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     archive_achievement_definitions,
@@ -784,4 +835,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_word_practices,
     oauth_identities,
     oauth_login_sessions,
+    user_clip_progress,
+    user_read_progress,
+    user_scene_progress,
 );

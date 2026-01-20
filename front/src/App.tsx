@@ -11,7 +11,9 @@ import { PrivacyPage } from './pages/PrivacyPage'
 import { LandingPage } from './pages/LandingPage'
 import { ConversationPage } from './pages/ConversationPage'
 import { ReviewPage } from './pages/ReviewPage'
+import { ReviewSessionPage } from './pages/ReviewSessionPage'
 import { ScenesPage } from './pages/ScenesPage'
+import { SceneDetailPage } from './pages/SceneDetailPage'
 import { ReadingPage } from './pages/ReadingPage'
 
 function AppRoutes() {
@@ -22,7 +24,9 @@ function AppRoutes() {
       <Route path="/dict" element={<DictPage />} />
       <Route path="/conversation" element={<ConversationPage />} />
       <Route path="/review" element={<ReviewPage />} />
+      <Route path="/review/session" element={<ReviewSessionPage />} />
       <Route path="/scenes" element={<ScenesPage />} />
+      <Route path="/scenes/:id" element={<SceneDetailPage />} />
       <Route path="/reading" element={<ReadingPage />} />
       <Route path="/login" element={<HomePage />} />
       <Route path="/auth" element={<AuthorizePage />} />

@@ -13,6 +13,10 @@ path = "src/bin/import_dict.rs"
 name = "words"
 path = "src/bin/words.rs"
 
+[[bin]]
+name = "words_to_db"
+path = "src/bin/words_to_db.rs"
+
 [dependencies]
 argon2 = { workspace = true }
 base64 = { workspace = true }

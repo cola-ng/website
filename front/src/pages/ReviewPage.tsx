@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { RotateCcw, CheckCircle, XCircle, TrendingUp, Clock, Target } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
@@ -194,9 +195,11 @@ export function ReviewPage() {
               </h1>
               <p className="text-gray-500">科学复习，牢记所学</p>
             </div>
-            <Button>
-              <RotateCcw className="h-4 w-4 mr-2" />
-              开始复习
+            <Button asChild>
+              <Link to="/review/session">
+                <RotateCcw className="h-4 w-4 mr-2" />
+                开始复习
+              </Link>
             </Button>
           </div>
           <StatsPanel />

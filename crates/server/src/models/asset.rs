@@ -23,6 +23,8 @@ pub struct Scene {
     pub display_order: Option<i32>,
     pub is_active: Option<bool>,
     pub created_at: DateTime<Utc>,
+    pub duration_minutes: Option<i32>,
+    pub is_featured: Option<bool>,
 }
 
 #[derive(Insertable, Deserialize)]
@@ -112,6 +114,9 @@ pub struct ClassicDialogueSource {
     pub imdb_id: Option<String>,
     pub difficulty: Option<String>,
     pub created_at: DateTime<Utc>,
+    pub icon_emoji: Option<String>,
+    pub is_featured: Option<bool>,
+    pub display_order: Option<i32>,
 }
 
 #[derive(Insertable, Deserialize)]
@@ -206,6 +211,7 @@ pub struct ReadingSentence {
     pub native_audio_path: Option<String>,
     pub focus_sounds: Option<Value>,
     pub common_mistakes: Option<Value>,
+    pub tips: Option<String>,
 }
 
 #[derive(Insertable, Deserialize)]
