@@ -166,7 +166,7 @@ export function ReviewPage() {
         <div className="mx-auto max-w-6xl p-4">
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">📚</div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">复习巩固</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">温故知新</h1>
             <p className="text-gray-600 mb-6">
               科学的间隔重复系统，帮助你巩固所学知识
             </p>
@@ -190,7 +190,7 @@ export function ReviewPage() {
             <div className="flex items-baseline gap-3">
               <h1 className="text-2xl font-bold text-gray-900">
                 <span className="mr-2">📚</span>
-                复习巩固
+                温故知新
               </h1>
               <p className="text-gray-500">科学复习，牢记所学</p>
             </div>

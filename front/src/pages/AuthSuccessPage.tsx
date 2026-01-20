@@ -50,7 +50,7 @@ export function AuthSuccessPage() {
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-green-100">
                     <RotateCcw className="h-5 w-5 text-green-600" />
                   </div>
-                  <span className="text-sm font-medium text-gray-700">复习巩固</span>
+                  <span className="text-sm font-medium text-gray-700">温故知新</span>
                 </div>
               </Link>
 

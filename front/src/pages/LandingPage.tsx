@@ -145,9 +145,9 @@ export function LandingPage() {
                   <Link to="/review">开始复习</Link>
                 </Button>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-5 gap-4">
                 {/* Left: Stats Cards - 2x2 grid */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="sm:col-span-2 grid grid-cols-2 gap-3">
                   <StatCard
                     value={String(learnSummary?.weekly_conversation_minutes ?? 0)}
                     label="本周对话(分钟)"
@@ -170,7 +170,7 @@ export function LandingPage() {
                   />
                 </div>
                 {/* Right: Time Distribution Chart */}
-                <div className="bg-gray-50 rounded-lg p-4">
+                <div className="sm:col-span-3 bg-gray-50 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-xs text-gray-500">学习时长分布</span>
                     <div className="flex gap-1">
@@ -189,44 +189,44 @@ export function LandingPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="relative">
+                  <div className="relative flex">
                     {/* Y轴标注 */}
-                    <div className="absolute left-0 top-0 bottom-6 w-6 flex flex-col justify-between text-xs text-gray-400">
+                    <div className="w-6 flex flex-col justify-between text-xs text-gray-400 h-16">
                       <span>60</span>
                       <span>30</span>
                       <span>0</span>
                     </div>
-                    {/* 柱状图 */}
-                    <div className="ml-7 flex items-end gap-1 h-16">
-                      {(learnSummary?.weekly_minutes ?? [
-                        { day: 0, date: '', minutes: 0 },
-                        { day: 1, date: '', minutes: 0 },
-                        { day: 2, date: '', minutes: 0 },
-                        { day: 3, date: '', minutes: 0 },
-                        { day: 4, date: '', minutes: 0 },
-                        { day: 5, date: '', minutes: 0 },
-                        { day: 6, date: '', minutes: 0 },
-                      ]).map((item, i) => (
-                        <div key={i} className="flex-1 flex flex-col items-center">
-                          <div
-                            className="w-full bg-orange-400 rounded-sm transition-all"
-                            style={{ height: `${Math.min((item.minutes / 60) * 64, 64)}px` }}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                    {/* X轴标注 */}
-                    <div className="ml-7 flex gap-1 mt-1">
-                      {(chartPeriod === 'day'
-                        ? ['一', '二', '三', '四', '五', '六', '日']
-                        : chartPeriod === 'week'
-                        ? ['第1周', '第2周', '第3周', '第4周']
-                        : ['1月', '2月', '3月', '4月', '5月', '6月']
-                      ).map((label, i) => (
-                        <div key={i} className="flex-1 text-center text-xs text-gray-400">
-                          {label}
-                        </div>
-                      ))}
+                    {/* 图表区域 */}
+                    <div className="flex-1">
+                      {/* 柱状图 */}
+                      <div className="flex items-end gap-1 h-16 border-b border-gray-300">
+                        {(chartPeriod === 'day'
+                          ? (learnSummary?.weekly_minutes ?? Array(7).fill({ minutes: 0 }))
+                          : chartPeriod === 'week'
+                          ? Array(8).fill({ minutes: 0 })
+                          : Array(6).fill({ minutes: 0 })
+                        ).map((item, i) => (
+                          <div key={i} className="flex-1 flex flex-col justify-end items-center h-full">
+                            <div
+                              className="w-full bg-orange-400 rounded-sm transition-all"
+                              style={{ height: `${Math.min((item.minutes / 60) * 64, 64)}px` }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      {/* X轴标注 */}
+                      <div className="flex gap-1 mt-1">
+                        {(chartPeriod === 'day'
+                          ? ['一', '二', '三', '四', '五', '六', '日']
+                          : chartPeriod === 'week'
+                          ? ['1周', '2周', '3周', '4周', '5周', '6周', '7周', '8周']
+                          : ['1月', '2月', '3月', '4月', '5月', '6月']
+                        ).map((label, i) => (
+                          <div key={i} className="flex-1 text-center text-xs text-gray-400">
+                            {label}
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>

@@ -13,7 +13,7 @@ const DEFAULT_WORDS_FILE: &str = "../../words-all.txt";
 const DEFAULT_OUTPUT_DIR: &str = "../../../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_MODEL: &str = "glm-4-flash";
-const DEFAULT_CONCURRENCY: usize = 500;
+const DEFAULT_CONCURRENCY: usize = 50;
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
 
@@ -403,13 +403,6 @@ Your task is to generate comprehensive dictionary entries in JSON format. For ea
 7. Categories and tags
 8. Related words (synonyms, antonyms, broader terms)
 9. Frequency data from major corpora
-10. Dictionary/exam source information
-
-The "dictionaries" field should include:
-- Dictionary sources (牛津英语词典, 韦氏国际词典, 柯林斯 COBUILD 高阶英汉双解学习词典, 剑桥高级英语学习者词典, 麦克米伦高阶英语词典)
-- Exam vocabulary lists if applicable (大学英语四级考试, 大学英语六级考试, 英语专业四级考试, 英语专业八级考试, 考研英语)
-
-If the word is commonly found in CET4/CET6/TEM4/TEM8/考研 vocabulary lists, include those entries in the dictionaries array.
 
 Always return valid JSON matching the exact structure provided in the example."#;
 
@@ -425,20 +418,7 @@ Always return valid JSON matching the exact structure provided in the example."#
     "syllable_count": <number of syllables>,
     "is_lemma": <true if this is the base form>,
     "word_count": <number of words, 1 for single words>,
-
-    "dictionaries": [
-      {{ "name": "牛津英语词典", "priority_order": 1 }},
-      {{ "name": "柯林斯 COBUILD 高阶英汉双解学习词典", "priority_order": 2 }},
-      {{ "name": "韦氏国际词典", "priority_order": 3 }},
-      {{ "name": "剑桥高级英语学习者词典", "priority_order": 4 }},
-      {{ "name": "麦克米伦高阶英语词典", "priority_order": 5 }},
-      {{ "name": "大学英语四级考试", "priority_order": 6 }},
-      {{ "name": "大学英语六级考试", "priority_order": 7 }},
-      {{ "name": "英语专业四级考试", "priority_order": 8 }},
-      {{ "name": "英语专业八级考试", "priority_order": 9 }},
-      {{ "name": "考研英语", "priority_order": 10 }}
-    ],
-
+    
     "pronunciations": [
       {{ "ipa": "<UK IPA>", "dialect": "UK" }},
       {{ "ipa": "<US IPA>", "dialect": "US" }}
@@ -519,6 +499,23 @@ Important:
 - Include relevant word forms based on the part of speech
 - Provide accurate etymology information
 - List relevant synonyms, antonyms, and related words
+
+CRITICAL - dictionaries field rules:
+- The "dictionaries" array indicates which dictionaries/vocabulary lists CONTAIN this word
+- ONLY include a dictionary entry if the word actually appears in that dictionary or vocabulary list
+- Do NOT blindly include all 10 options - be selective based on the word's actual presence
+- Available options with priority_order:
+  1. 牛津英语词典 (most words appear here)
+  2. 柯林斯 COBUILD 高阶英汉双解学习词典
+  3. 韦氏国际词典
+  4. 剑桥高级英语学习者词典
+  5. 麦克米伦高阶英语词典
+  6. 大学英语四级考试 (CET4 ~4500 common words)
+  7. 大学英语六级考试 (CET6 ~6000 words, includes CET4)
+  8. 英语专业四级考试 (TEM4 ~8000 words)
+  9. 英语专业八级考试 (TEM8 ~13000 words)
+  10. 考研英语 (NEEP ~5500 words)
+- Example: "apple" (common) -> include all 10; "ubiquitous" (advanced) -> include dictionaries + CET6/TEM4/TEM8/NEEP but NOT CET4
 - Only return valid JSON, no additional text or explanation"#,
         word = word
     );
