@@ -12,10 +12,175 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_WORDS_FILE: &str = "words-all.txt";
 const DEFAULT_OUTPUT_DIR: &str = "../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
-const DEFAULT_MODEL: &str = "GLM-4-Flash";
-const DEFAULT_CONCURRENCY: usize = 200;
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
+
+/// 通用模型及其并发限制
+/// 筛选适合文本生成的模型（排除 Vision/Voice/Search/Phone/AllTools 等特殊用途模型）
+const GENERAL_MODELS: &[(&str, usize)] = &[
+    ("GLM-4-Flash", 200),
+    ("GLM-4-FlashX-250414", 100),
+    ("GLM-4-Air", 100),
+    ("GLM-Zero-Preview", 50),
+    ("GLM-4-FlashX", 50),
+    ("GLM-Z1-FlashX", 50),
+    ("GLM-3-Turbo", 50),
+    ("GLM-Z1-Air", 30),
+    ("GLM-Z1-Flash", 30),
+    ("GLM-Z1-AirX", 30),
+    ("GLM-4-Air-250414", 30),
+    ("GLM-4", 30),
+    ("GLM-4-Plus", 20),
+    ("GLM-4-0520", 20),
+    ("GLM-4-Flash-250414", 20),
+    ("GLM-4-32B-0414-128K", 15),
+    ("GLM-4.5", 10),
+    ("GLM-4-Long", 10),
+    ("GLM-4.5-Air", 5),
+    ("GLM-4.5-AirX", 5),
+    ("GLM-4-AirX", 5),
+    ("GLM-4-9B", 5),
+    ("GLM-4.7", 3),
+    ("GLM-4.7-FlashX", 3),
+    ("GLM-4.6", 2),
+    ("GLM-4.5-Flash", 2),
+    ("GLM-4.7-Flash", 1),
+];
+
+#[derive(Debug)]
+struct ModelInfo {
+    name: String,
+    max_concurrency: usize,
+    current_usage: AtomicUsize,
+}
+
+impl ModelInfo {
+    fn new(name: &str, max_concurrency: usize) -> Self {
+        Self {
+            name: name.to_string(),
+            max_concurrency,
+            current_usage: AtomicUsize::new(0),
+        }
+    }
+
+    /// 获取剩余并发量的百分比 (0.0 - 1.0)
+    fn available_ratio(&self) -> f64 {
+        let current = self.current_usage.load(Ordering::SeqCst);
+        if current >= self.max_concurrency {
+            0.0
+        } else {
+            (self.max_concurrency - current) as f64 / self.max_concurrency as f64
+        }
+    }
+
+    /// 尝试获取一个并发槽位，如果成功返回 true
+    fn try_acquire(&self) -> bool {
+        loop {
+            let current = self.current_usage.load(Ordering::SeqCst);
+            if current >= self.max_concurrency {
+                return false;
+            }
+            if self
+                .current_usage
+                .compare_exchange(current, current + 1, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+            {
+                return true;
+            }
+        }
+    }
+
+    /// 释放一个并发槽位
+    fn release(&self) {
+        self.current_usage.fetch_sub(1, Ordering::SeqCst);
+    }
+}
+
+#[derive(Debug)]
+struct ModelPool {
+    models: Vec<Arc<ModelInfo>>,
+}
+
+impl ModelPool {
+    fn new() -> Self {
+        let models = GENERAL_MODELS
+            .iter()
+            .map(|(name, concurrency)| Arc::new(ModelInfo::new(name, *concurrency)))
+            .collect();
+        Self { models }
+    }
+
+    /// 获取总并发能力
+    fn total_concurrency(&self) -> usize {
+        self.models.iter().map(|m| m.max_concurrency).sum()
+    }
+
+    /// 选择最空闲的模型（剩余量百分比最高）并获取槽位
+    /// 如果所有模型都满了，会等待直到有可用槽位
+    async fn acquire(&self) -> Arc<ModelInfo> {
+        loop {
+            // 按剩余量百分比排序，选择最空闲的模型
+            let mut candidates: Vec<_> = self
+                .models
+                .iter()
+                .map(|m| (m.clone(), m.available_ratio()))
+                .filter(|(_, ratio)| *ratio > 0.0)
+                .collect();
+
+            // 按剩余量百分比降序排序
+            candidates.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+            // 尝试获取最空闲模型的槽位
+            for (model, _) in candidates {
+                if model.try_acquire() {
+                    return model;
+                }
+            }
+
+            // 所有模型都满了，等待一小段时间后重试
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+    }
+
+    /// 打印模型池状态
+    fn print_status(&self) {
+        println!("\nModel Pool Status:");
+        println!("{:-<60}", "");
+        println!("{:<30} {:>10} {:>10} {:>8}", "Model", "Max", "Current", "Avail%");
+        println!("{:-<60}", "");
+        for model in &self.models {
+            let current = model.current_usage.load(Ordering::SeqCst);
+            let ratio = model.available_ratio() * 100.0;
+            println!(
+                "{:<30} {:>10} {:>10} {:>7.1}%",
+                model.name, model.max_concurrency, current, ratio
+            );
+        }
+        println!("{:-<60}", "");
+        println!("Total concurrency capacity: {}", self.total_concurrency());
+    }
+}
+
+/// RAII guard for model slot
+struct ModelGuard {
+    model: Arc<ModelInfo>,
+}
+
+impl ModelGuard {
+    fn new(model: Arc<ModelInfo>) -> Self {
+        Self { model }
+    }
+
+    fn name(&self) -> &str {
+        &self.model.name
+    }
+}
+
+impl Drop for ModelGuard {
+    fn drop(&mut self) {
+        self.model.release();
+    }
+}
 
 #[derive(Debug, Serialize)]
 struct ChatRequest {
@@ -58,10 +223,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = std::env::args().collect();
     let mut words_file = PathBuf::from(DEFAULT_WORDS_FILE);
     let mut output_dir = PathBuf::from(DEFAULT_OUTPUT_DIR);
-    let mut concurrency = DEFAULT_CONCURRENCY;
     let mut start_from: Option<String> = None;
     let mut limit: Option<usize> = None;
-    let mut model = DEFAULT_MODEL.to_string();
 
     let mut i = 1;
     while i < args.len() {
@@ -84,15 +247,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
-            "--concurrency" => {
-                if i + 1 < args.len() {
-                    concurrency = args[i + 1].parse().unwrap_or(DEFAULT_CONCURRENCY);
-                    i += 2;
-                } else {
-                    eprintln!("Error: --concurrency requires a number argument");
-                    std::process::exit(1);
-                }
-            }
             "--start-from" => {
                 if i + 1 < args.len() {
                     start_from = Some(args[i + 1].clone());
@@ -111,15 +265,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     std::process::exit(1);
                 }
             }
-            "--model" => {
-                if i + 1 < args.len() {
-                    model = args[i + 1].clone();
-                    i += 2;
-                } else {
-                    eprintln!("Error: --model requires a model name argument");
-                    std::process::exit(1);
-                }
-            }
             "--help" => {
                 print_usage();
                 return Ok(());
@@ -134,13 +279,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let api_key = std::env::var("BIGMODEL_API_KEY").expect("BIGMODEL_API_KEY must be set");
 
+    let model_pool = Arc::new(ModelPool::new());
+
     println!("===============================================");
     println!("Dictionary Generator using BigModel AI");
+    println!("(Multi-Model Load Balancing Mode)");
     println!("===============================================");
     println!("Words file: {}", words_file.display());
     println!("Output directory: {}", output_dir.display());
-    println!("Model: {}", model);
-    println!("Concurrency: {}", concurrency);
     if let Some(ref start) = start_from {
         println!("Starting from: {}", start);
     }
@@ -148,10 +294,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Limit: {} words", l);
     }
 
+    model_pool.print_status();
+
     fs::create_dir_all(&output_dir)?;
 
     let existing_words = load_existing_valid_words(&output_dir)?;
-    println!("Found {} existing valid word files", existing_words.len());
+    println!("\nFound {} existing valid word files", existing_words.len());
 
     let words = load_words(&words_file, &existing_words, start_from.as_deref())?;
     println!("Found {} words to process", words.len());
@@ -169,8 +317,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        process_words_concurrent(&api_key, &model, &words_to_process, &output_dir, concurrency)
-            .await
+        process_words_concurrent(&api_key, &model_pool, &words_to_process, &output_dir).await
     })?;
 
     println!("\n===============================================");
@@ -306,10 +453,9 @@ fn is_valid_word(word: &str) -> bool {
 
 async fn process_words_concurrent(
     api_key: &str,
-    model: &str,
+    model_pool: &Arc<ModelPool>,
     words: &[String],
     output_dir: &Path,
-    concurrency: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Arc::new(
         reqwest::Client::builder()
@@ -323,26 +469,34 @@ async fn process_words_concurrent(
     let error_count = Arc::new(AtomicUsize::new(0));
 
     let api_key = Arc::new(api_key.to_string());
-    let model = Arc::new(model.to_string());
     let output_dir = Arc::new(output_dir.to_path_buf());
 
-    println!("\nStarting concurrent processing with {} workers...\n", concurrency);
+    let concurrency = model_pool.total_concurrency();
+    println!(
+        "\nStarting concurrent processing with {} total concurrency across {} models...\n",
+        concurrency,
+        model_pool.models.len()
+    );
 
     stream::iter(words.iter().cloned())
         .map(|word| {
             let client = Arc::clone(&client);
             let api_key = Arc::clone(&api_key);
-            let model = Arc::clone(&model);
+            let model_pool = Arc::clone(model_pool);
             let output_dir = Arc::clone(&output_dir);
             let processed = Arc::clone(&processed);
             let success_count = Arc::clone(&success_count);
             let error_count = Arc::clone(&error_count);
 
             async move {
-                let current = processed.fetch_add(1, Ordering::SeqCst) + 1;
-                println!("[{}/{}] Processing: {}", current, total, word);
+                // 获取最空闲的模型
+                let model = model_pool.acquire().await;
+                let guard = ModelGuard::new(model);
 
-                match generate_word_data(&client, &api_key, &model, &word).await {
+                let current = processed.fetch_add(1, Ordering::SeqCst) + 1;
+                println!("[{}/{}] Processing: {} (using {})", current, total, word, guard.name());
+
+                match generate_word_data(&client, &api_key, guard.name(), &word).await {
                     Ok(json_data) => {
                         let filename = format!("{}.json", word.to_lowercase());
                         let filepath = output_dir.join(&filename);
@@ -351,7 +505,7 @@ async fn process_words_concurrent(
                             Ok(mut file) => {
                                 if file.write_all(json_data.as_bytes()).is_ok() {
                                     success_count.fetch_add(1, Ordering::SeqCst);
-                                    println!("  [OK] {}", word);
+                                    println!("  [OK] {} ({})", word, guard.name());
                                 } else {
                                     error_count.fetch_add(1, Ordering::SeqCst);
                                     eprintln!("  [ERR] {} - Failed to write file", word);
@@ -365,9 +519,10 @@ async fn process_words_concurrent(
                     }
                     Err(e) => {
                         error_count.fetch_add(1, Ordering::SeqCst);
-                        eprintln!("  [ERR] {} - {}", word, e);
+                        eprintln!("  [ERR] {} ({}) - {}", word, guard.name(), e);
                     }
                 }
+                // guard 在这里自动释放，归还模型槽位
             }
         })
         .buffer_unordered(concurrency)
@@ -418,7 +573,7 @@ Always return valid JSON matching the exact structure provided in the example."#
     "syllable_count": <number of syllables>,
     "is_lemma": <true if this is the base form>,
     "word_count": <number of words, 1 for single words>,
-    
+
     "pronunciations": [
       {{ "ipa": "<UK IPA>", "dialect": "UK" }},
       {{ "ipa": "<US IPA>", "dialect": "US" }}
@@ -600,6 +755,7 @@ CRITICAL - dictionaries field rules:
 
 fn print_usage() {
     println!("Dictionary Generator using BigModel AI");
+    println!("(Multi-Model Load Balancing Mode)");
     println!();
     println!("Usage:");
     println!("  cargo run --bin words [OPTIONS]");
@@ -613,17 +769,20 @@ fn print_usage() {
         "  --output-dir <PATH>   Output directory for JSON files (default: {})",
         DEFAULT_OUTPUT_DIR
     );
-    println!(
-        "  --concurrency <N>     Number of concurrent requests (default: {})",
-        DEFAULT_CONCURRENCY
-    );
     println!("  --start-from <WORD>   Start processing from this word");
     println!("  --limit <N>           Limit number of words to process");
-    println!(
-        "  --model <MODEL>       BigModel model name (default: {})",
-        DEFAULT_MODEL
-    );
     println!("  --help                Show this help message");
+    println!();
+    println!("Models:");
+    println!("  This tool automatically uses all available general models with load balancing.");
+    println!("  Models are selected based on their available concurrency ratio.");
+    println!();
+    println!("  Available models and their concurrency limits:");
+    for (name, limit) in GENERAL_MODELS {
+        println!("    {:<30} {:>5}", name, limit);
+    }
+    println!();
+    println!("  Total concurrency capacity: {}", GENERAL_MODELS.iter().map(|(_, c)| c).sum::<usize>());
     println!();
     println!("Environment:");
     println!("  BIGMODEL_API_KEY      BigModel API key (required)");
@@ -631,5 +790,4 @@ fn print_usage() {
     println!("Examples:");
     println!("  cargo run --bin words --limit 10");
     println!("  cargo run --bin words --start-from apple --limit 100");
-    println!("  cargo run --bin words --concurrency 5 --limit 50");
 }
