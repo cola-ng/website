@@ -19,6 +19,7 @@ path = "src/bin/words_to_db.rs"
 
 [dependencies]
 argon2 = { workspace = true }
+async-trait = { workspace = true }
 base64 = { workspace = true }
 chrono = { workspace = true }
 diesel = { workspace = true, features = ["postgres", "r2d2", "chrono", "uuid", "serde_json"] }

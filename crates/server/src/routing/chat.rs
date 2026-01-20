@@ -1,6 +1,6 @@
 //! Chat API Routes
 //!
-//! Provides chat functionality using BigModel APIs:
+//! Provides chat functionality using configurable AI providers (BigModel, Doubao):
 //! - POST /api/chat/send: Send audio and receive AI response with audio
 //! - POST /api/chat/text-send: Send text and receive AI response with optional audio
 //! - POST /api/chat/tts: Text to speech only
@@ -19,7 +19,7 @@ use crate::db::with_conn;
 use crate::models::{
     ChatMessage as DbChatMessage, ChatSession, HistoryMessage, NewChatMessage, NewChatSession,
 };
-use crate::services::bigmodel::{BigModelClient, BigModelError, ChatMessage};
+use crate::services::{create_provider_from_env, AiProviderError, ChatMessage};
 use crate::{hoops, AppResult, DepotExt};
 
 pub fn router() -> Router {
@@ -283,9 +283,9 @@ pub async fn chat_send(
             .into());
     }
 
-    // Get BigModel client
-    let client = BigModelClient::from_env().ok_or_else(|| {
-        StatusError::internal_server_error().brief("BigModel API key not configured")
+    // Get AI provider
+    let provider = create_provider_from_env().ok_or_else(|| {
+        StatusError::internal_server_error().brief("AI provider not configured")
     })?;
 
     // Get or create session
@@ -307,15 +307,15 @@ pub async fn chat_send(
         .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
 
     // Call voice chat pipeline
-    tracing::info!("Calling BigModel voice_chat API...");
-    let result = client
+    tracing::info!("Calling {} voice_chat API...", provider.name());
+    let result = provider
         .voice_chat(audio_data, history, Some(system_prompt))
         .await
-        .map_err(|e: BigModelError| {
-            tracing::error!("BigModel voice_chat error: {:?}", e);
+        .map_err(|e: AiProviderError| {
+            tracing::error!("{} voice_chat error: {:?}", provider.name(), e);
             StatusError::internal_server_error().brief(e.to_string())
         })?;
-    tracing::info!("BigModel voice_chat API completed successfully");
+    tracing::info!("{} voice_chat API completed successfully", provider.name());
 
     // Save to database
     save_messages(session.id, user_id, &result.user_text, &result.ai_text).await?;
@@ -355,9 +355,9 @@ pub async fn text_chat_send(
             .into());
     }
 
-    // Get BigModel client
-    let client = BigModelClient::from_env().ok_or_else(|| {
-        StatusError::internal_server_error().brief("BigModel API key not configured")
+    // Get AI provider
+    let provider = create_provider_from_env().ok_or_else(|| {
+        StatusError::internal_server_error().brief("AI provider not configured")
     })?;
 
     // Get or create session
@@ -389,28 +389,36 @@ pub async fn text_chat_send(
     });
 
     // Generate AI response
-    tracing::info!("Calling BigModel chat API...");
-    let ai_text: String = client.chat(messages, Some(0.7)).await.map_err(|e: BigModelError| {
-        tracing::error!("BigModel chat error: {:?}", e);
+    let chat_service = provider.chat_service().ok_or_else(|| {
+        StatusError::internal_server_error().brief("Chat service not available")
+    })?;
+    tracing::info!("Calling {} chat API...", provider.name());
+    let ai_text: String = chat_service.chat(messages, Some(0.7), None).await.map_err(|e: AiProviderError| {
+        tracing::error!("{} chat error: {:?}", provider.name(), e);
         StatusError::internal_server_error().brief(e.to_string())
     })?;
-    tracing::info!("BigModel chat API completed successfully");
+    tracing::info!("{} chat API completed successfully", provider.name());
 
     // Save to database
     save_messages(session.id, user_id, &input.message, &ai_text).await?;
 
     // Generate audio if requested
     let ai_audio_base64 = if input.generate_audio {
-        tracing::info!("Calling BigModel TTS API...");
-        match client.synthesize(&ai_text, None, None).await {
-            Ok(audio_bytes) => {
-                tracing::info!("BigModel TTS API completed successfully");
-                Some(BASE64.encode(&audio_bytes))
+        if let Some(tts) = provider.tts() {
+            tracing::info!("Calling {} TTS API...", provider.name());
+            match tts.synthesize(&ai_text, None, None).await {
+                Ok(tts_response) => {
+                    tracing::info!("{} TTS API completed successfully", provider.name());
+                    Some(BASE64.encode(&tts_response.audio_data))
+                }
+                Err(e) => {
+                    tracing::warn!("TTS failed: {}", e);
+                    None
+                }
             }
-            Err(e) => {
-                tracing::warn!("TTS failed: {}", e);
-                None
-            }
+        } else {
+            tracing::warn!("TTS not available for provider {}", provider.name());
+            None
         }
     } else {
         None
@@ -451,23 +459,28 @@ pub async fn text_to_speech(
             .into());
     }
 
-    // Get BigModel client
-    let client = BigModelClient::from_env().ok_or_else(|| {
-        StatusError::internal_server_error().brief("BigModel API key not configured")
+    // Get AI provider
+    let provider = create_provider_from_env().ok_or_else(|| {
+        StatusError::internal_server_error().brief("AI provider not configured")
+    })?;
+
+    // Get TTS service
+    let tts = provider.tts().ok_or_else(|| {
+        StatusError::internal_server_error().brief("TTS service not available")
     })?;
 
     // Generate audio
-    tracing::info!("Calling BigModel TTS API...");
-    let audio_bytes: Vec<u8> = client
+    tracing::info!("Calling {} TTS API...", provider.name());
+    let tts_response = tts
         .synthesize(&input.text, input.voice.as_deref(), input.speed)
         .await
-        .map_err(|e: BigModelError| {
-            tracing::error!("BigModel TTS error: {:?}", e);
+        .map_err(|e: AiProviderError| {
+            tracing::error!("{} TTS error: {:?}", provider.name(), e);
             StatusError::internal_server_error().brief(e.to_string())
         })?;
-    tracing::info!("BigModel TTS API completed successfully");
+    tracing::info!("{} TTS API completed successfully", provider.name());
 
-    let audio_base64 = BASE64.encode(&audio_bytes);
+    let audio_base64 = BASE64.encode(&tts_response.audio_data);
 
     res.status_code(StatusCode::OK);
     res.render(Json(TtsResponse { audio_base64 }));
