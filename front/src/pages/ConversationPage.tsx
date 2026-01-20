@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, type HistoryMessage, type Correction as ApiCorrection } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, type HistoryMessage } from '../lib/api'
 
 interface Correction {
   original: string
@@ -122,7 +122,7 @@ export function ConversationPage() {
   const audioSettingsRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
-  const recordingTimerRef = useRef<NodeJS.Timeout | null>(null)
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
   // Display settings: 'both' | 'en' | 'zh'
@@ -322,6 +322,61 @@ export function ConversationPage() {
     })
   }
 
+  // Convert audio blob to WAV format using Web Audio API
+  const convertToWav = async (audioBlob: Blob): Promise<Blob> => {
+    const audioContext = new AudioContext()
+    const arrayBuffer = await audioBlob.arrayBuffer()
+
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+      // Create WAV file
+      const numberOfChannels = audioBuffer.numberOfChannels
+      const sampleRate = audioBuffer.sampleRate
+      const length = audioBuffer.length
+
+      // Create buffer for WAV file
+      const wavBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2)
+      const view = new DataView(wavBuffer)
+
+      // Write WAV header
+      const writeString = (offset: number, str: string) => {
+        for (let i = 0; i < str.length; i++) {
+          view.setUint8(offset + i, str.charCodeAt(i))
+        }
+      }
+
+      writeString(0, 'RIFF')
+      view.setUint32(4, 36 + length * numberOfChannels * 2, true)
+      writeString(8, 'WAVE')
+      writeString(12, 'fmt ')
+      view.setUint32(16, 16, true) // Subchunk1Size
+      view.setUint16(20, 1, true) // AudioFormat (PCM)
+      view.setUint16(22, numberOfChannels, true)
+      view.setUint32(24, sampleRate, true)
+      view.setUint32(28, sampleRate * numberOfChannels * 2, true) // ByteRate
+      view.setUint16(32, numberOfChannels * 2, true) // BlockAlign
+      view.setUint16(34, 16, true) // BitsPerSample
+      writeString(36, 'data')
+      view.setUint32(40, length * numberOfChannels * 2, true)
+
+      // Write audio data
+      const offset = 44
+      for (let i = 0; i < length; i++) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          const sample = audioBuffer.getChannelData(channel)[i]
+          // Convert float to 16-bit PCM
+          const intSample = Math.max(-1, Math.min(1, sample))
+          view.setInt16(offset + (i * numberOfChannels + channel) * 2, intSample < 0 ? intSample * 0x8000 : intSample * 0x7FFF, true)
+        }
+      }
+
+      return new Blob([wavBuffer], { type: 'audio/wav' })
+    } finally {
+      await audioContext.close()
+    }
+  }
+
   // Start recording
   const startRecording = async () => {
     if (!token || !activeConversation) return
@@ -362,7 +417,9 @@ export function ConversationPage() {
         setIsProcessing(true)
 
         try {
-          const audioBase64 = await blobToBase64(audioBlob)
+          // Convert to WAV format for BigModel ASR API
+          const wavBlob = await convertToWav(audioBlob)
+          const audioBase64 = await blobToBase64(wavBlob)
           const history = getConversationHistory()
           const response = await voiceChatSend(token, audioBase64, history)
 

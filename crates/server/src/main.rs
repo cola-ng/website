@@ -9,6 +9,7 @@ mod global;
 mod hoops;
 mod models;
 mod routing;
+mod services;
 pub use global::*;
 pub mod user;
 pub use error::AppError;

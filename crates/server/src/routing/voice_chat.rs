@@ -8,7 +8,7 @@ use salvo::http::StatusCode;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::services::bigmodel::{BigModelClient, ChatMessage};
+use crate::services::bigmodel::{BigModelClient, BigModelError, ChatMessage};
 use crate::{hoops, AppResult, DepotExt};
 
 pub fn router() -> Router {
@@ -160,9 +160,9 @@ pub async fn voice_chat_send(
     let result = client
         .voice_chat(audio_data, history, Some(system_prompt))
         .await
-        .map_err(|e| StatusError::internal_server_error().brief(e.to_string()))?;
+        .map_err(|e: BigModelError| StatusError::internal_server_error().brief(e.to_string()))?;
 
-    // TODO: Analyze user_text for corrections
+    // Analyze user_text for corrections
     let corrections = analyze_corrections(&result.user_text);
 
     res.status_code(StatusCode::OK);
@@ -202,7 +202,7 @@ pub async fn text_chat_send(
         .ok_or_else(|| StatusError::internal_server_error().brief("BigModel API key not configured"))?;
 
     // Build messages
-    let mut messages = Vec::new();
+    let mut messages: Vec<ChatMessage> = Vec::new();
 
     // Add system prompt
     let system_prompt = input
@@ -223,23 +223,20 @@ pub async fn text_chat_send(
     });
 
     // Generate AI response
-    let ai_text = client
+    let ai_text: String = client
         .chat(messages, Some(0.7))
         .await
-        .map_err(|e| StatusError::internal_server_error().brief(e.to_string()))?;
+        .map_err(|e: BigModelError| StatusError::internal_server_error().brief(e.to_string()))?;
 
     // Generate audio if requested
     let ai_audio_base64 = if input.generate_audio {
-        let audio_bytes = client
-            .synthesize(&ai_text, None, None)
-            .await
-            .map_err(|e| {
+        match client.synthesize(&ai_text, None, None).await {
+            Ok(audio_bytes) => Some(BASE64.encode(&audio_bytes)),
+            Err(e) => {
                 tracing::warn!("TTS failed: {}", e);
-                e
-            })
-            .ok();
-
-        audio_bytes.map(|bytes| BASE64.encode(&bytes))
+                None
+            }
+        }
     } else {
         None
     };
@@ -284,10 +281,10 @@ pub async fn text_to_speech(
         .ok_or_else(|| StatusError::internal_server_error().brief("BigModel API key not configured"))?;
 
     // Generate audio
-    let audio_bytes = client
+    let audio_bytes: Vec<u8> = client
         .synthesize(&input.text, input.voice.as_deref(), input.speed)
         .await
-        .map_err(|e| StatusError::internal_server_error().brief(e.to_string()))?;
+        .map_err(|e: BigModelError| StatusError::internal_server_error().brief(e.to_string()))?;
 
     let audio_base64 = BASE64.encode(&audio_bytes);
 

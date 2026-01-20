@@ -6,7 +6,6 @@
 //! - GLM-4-Flash: Chat completion (对话生成)
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use reqwest::multipart;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 
@@ -26,7 +25,7 @@ pub struct AsrResponse {
     pub text: String,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ChatMessage {
     pub role: String,
     pub content: String,
@@ -59,6 +58,32 @@ struct TtsRequest {
     response_format: String,
 }
 
+// ASR request using chat completions API with audio content
+#[derive(Debug, Serialize)]
+struct AsrChatRequest {
+    model: String,
+    messages: Vec<AsrChatMessage>,
+}
+
+#[derive(Debug, Serialize)]
+struct AsrChatMessage {
+    role: String,
+    content: Vec<AsrContent>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+enum AsrContent {
+    #[serde(rename = "input_audio")]
+    InputAudio { input_audio: AudioData },
+}
+
+#[derive(Debug, Serialize)]
+struct AudioData {
+    data: String, // base64 encoded audio
+    format: String,
+}
+
 #[derive(Debug, Deserialize)]
 struct AsrApiResponse {
     choices: Vec<AsrApiChoice>,
@@ -89,32 +114,54 @@ impl BigModelClient {
         std::env::var("BIGMODEL_API_KEY")
             .ok()
             .filter(|k| !k.is_empty())
-            .map(|api_key| Self::new(api_key))
+            .map(Self::new)
     }
 
-    /// Speech-to-Text using GLM-ASR
-    /// Accepts audio bytes (WAV format recommended)
+    /// Speech-to-Text using GLM-ASR via chat completions API
+    /// Accepts audio bytes (WAV or MP3 format - BigModel only supports these two)
     pub async fn transcribe(&self, audio_data: Vec<u8>) -> Result<AsrResponse, BigModelError> {
-        let url = format!("{}/audio/transcriptions", BIGMODEL_API_BASE);
+        let url = format!("{}/chat/completions", BIGMODEL_API_BASE);
 
-        // Create multipart form with audio file
-        let part = multipart::Part::bytes(audio_data)
-            .file_name("audio.wav")
-            .mime_str("audio/wav")
-            .map_err(|e| BigModelError::Request(e.to_string()))?;
+        // Encode audio as base64
+        let audio_base64 = BASE64.encode(&audio_data);
 
-        let form = multipart::Form::new()
-            .text("model", ASR_MODEL)
-            .part("file", part);
+        // Detect format from magic bytes (BigModel only supports wav and mp3)
+        let format = if audio_data.starts_with(b"RIFF") {
+            "wav"
+        } else if audio_data.len() >= 3 && (
+            // MP3 with ID3 tag
+            audio_data.starts_with(b"ID3") ||
+            // MP3 sync word (0xFF 0xFB, 0xFF 0xFA, 0xFF 0xF3, 0xFF 0xF2)
+            (audio_data[0] == 0xFF && (audio_data[1] & 0xE0) == 0xE0)
+        ) {
+            "mp3"
+        } else {
+            // Default to wav - the API will return an error if format is wrong
+            "wav"
+        };
+
+        let request = AsrChatRequest {
+            model: ASR_MODEL.to_string(),
+            messages: vec![AsrChatMessage {
+                role: "user".to_string(),
+                content: vec![AsrContent::InputAudio {
+                    input_audio: AudioData {
+                        data: audio_base64,
+                        format: format.to_string(),
+                    },
+                }],
+            }],
+        };
 
         let response = self
             .client
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.api_key))
-            .multipart(form)
+            .header("Content-Type", "application/json")
+            .json(&request)
             .send()
             .await
-            .map_err(|e| BigModelError::Request(e.to_string()))?;
+            .map_err(|e: reqwest::Error| BigModelError::Request(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -128,7 +175,7 @@ impl BigModelClient {
         let api_response: AsrApiResponse = response
             .json()
             .await
-            .map_err(|e| BigModelError::Parse(e.to_string()))?;
+            .map_err(|e: reqwest::Error| BigModelError::Parse(e.to_string()))?;
 
         let text = api_response
             .choices
@@ -161,7 +208,7 @@ impl BigModelClient {
             .json(&request)
             .send()
             .await
-            .map_err(|e| BigModelError::Request(e.to_string()))?;
+            .map_err(|e: reqwest::Error| BigModelError::Request(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -175,7 +222,7 @@ impl BigModelClient {
         let chat_response: ChatResponse = response
             .json()
             .await
-            .map_err(|e| BigModelError::Parse(e.to_string()))?;
+            .map_err(|e: reqwest::Error| BigModelError::Parse(e.to_string()))?;
 
         let reply = chat_response
             .choices
@@ -213,7 +260,7 @@ impl BigModelClient {
             .json(&request)
             .send()
             .await
-            .map_err(|e| BigModelError::Request(e.to_string()))?;
+            .map_err(|e: reqwest::Error| BigModelError::Request(e.to_string()))?;
 
         if !response.status().is_success() {
             let status = response.status();
@@ -227,7 +274,7 @@ impl BigModelClient {
         let audio_bytes = response
             .bytes()
             .await
-            .map_err(|e| BigModelError::Request(e.to_string()))?;
+            .map_err(|e: reqwest::Error| BigModelError::Request(e.to_string()))?;
 
         Ok(audio_bytes.to_vec())
     }

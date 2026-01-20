@@ -1,3 +1,3 @@
 pub mod bigmodel;
 
-pub use bigmodel::BigModelClient;
+pub use bigmodel::{BigModelClient, BigModelError, ChatMessage};
