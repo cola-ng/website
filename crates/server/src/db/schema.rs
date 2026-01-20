@@ -566,6 +566,31 @@ diesel::table! {
 }
 
 diesel::table! {
+    learn_chat_messages (id) {
+        id -> Int8,
+        session_id -> Int8,
+        user_id -> Int8,
+        role -> Text,
+        content -> Text,
+        audio_base64 -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    learn_chat_sessions (id) {
+        id -> Int8,
+        user_id -> Int8,
+        title -> Nullable<Text>,
+        system_prompt -> Nullable<Text>,
+        is_active -> Bool,
+        message_count -> Int4,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_conversation_annotations (id) {
         id -> Int8,
         user_id -> Int8,
@@ -783,6 +808,7 @@ diesel::table! {
 }
 
 diesel::joinable!(archive_user_achievements -> archive_achievement_definitions (achievement_id));
+diesel::joinable!(learn_chat_messages -> learn_chat_sessions (session_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     archive_achievement_definitions,
@@ -824,6 +850,8 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_word_sentences,
     dict_words,
     learn_achievements,
+    learn_chat_messages,
+    learn_chat_sessions,
     learn_conversation_annotations,
     learn_conversations,
     learn_daily_stats,

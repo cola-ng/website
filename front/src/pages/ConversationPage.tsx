@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, type HistoryMessage } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory } from '../lib/api'
 
 interface Correction {
   original: string
@@ -173,16 +173,6 @@ export function ConversationPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [showAudioSettings])
 
-  // Helper function to convert conversation history for API
-  const getConversationHistory = useCallback((): HistoryMessage[] => {
-    if (!activeConversation) return []
-    // Get last 10 messages for context
-    return activeConversation.messages.slice(-10).map(msg => ({
-      role: msg.role,
-      content: msg.contentEn,
-    }))
-  }, [activeConversation])
-
   // Helper function to play audio from base64
   const playAudioFromBase64 = useCallback((base64: string, messageId: string) => {
     if (audioElementRef.current) {
@@ -244,9 +234,8 @@ export function ConversationPage() {
     }))
 
     try {
-      // Call API for text chat
-      const history = getConversationHistory()
-      const response = await textChatSend(token, messageText, history, true)
+      // Call API for text chat (history is managed server-side)
+      const response = await textChatSend(token, messageText, true)
 
       // Add AI response
       const aiMessage: Message = {
@@ -420,8 +409,8 @@ export function ConversationPage() {
           // Convert to WAV format for BigModel ASR API
           const wavBlob = await convertToWav(audioBlob)
           const audioBase64 = await blobToBase64(wavBlob)
-          const history = getConversationHistory()
-          const response = await voiceChatSend(token, audioBase64, history)
+          // History is managed server-side
+          const response = await voiceChatSend(token, audioBase64)
 
           // Add user message with transcribed text
           const userMessage: Message = {
@@ -516,7 +505,16 @@ export function ConversationPage() {
     }
   }
 
-  const handleNewConversation = () => {
+  const handleNewConversation = async () => {
+    // Clear server-side history when starting a new conversation
+    if (token) {
+      try {
+        await clearChatHistory(token)
+      } catch (err) {
+        console.error('Failed to clear history:', err)
+      }
+    }
+
     const newConversation: Conversation = {
       id: Date.now().toString(),
       title: '新对话',
