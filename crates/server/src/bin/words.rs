@@ -14,12 +14,12 @@ const DEFAULT_OUTPUT_DIR: &str = "../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
-const DEFAULT_BATCH_SIZE: usize = 10;
+const DEFAULT_BATCH_SIZE: usize = 5;
 
 /// 通用模型及其并发限制
 /// 筛选适合文本生成的模型（排除 Vision/Voice/Search/Phone/AllTools 等特殊用途模型）
 const GENERAL_MODELS: &[(&str, usize)] = &[
-    ("GLM-4-Flash", 50),
+    ("GLM-4-Flash", 100),
     // ("GLM-4-FlashX-250414", 25),
     // ("GLM-4-Air", 25),
     // ("GLM-Zero-Preview", 2),
@@ -460,7 +460,7 @@ async fn process_words_concurrent(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = Arc::new(
         reqwest::Client::builder()
-            .timeout(Duration::from_secs(300)) // 增加超时时间以适应批量请求
+            .timeout(Duration::from_secs(600)) // 增加超时时间以适应批量请求
             .build()?,
     );
 
@@ -474,6 +474,7 @@ async fn process_words_concurrent(
     let total_words = words.len();
     let processed_batches = Arc::new(AtomicUsize::new(0));
     let success_count = Arc::new(AtomicUsize::new(0));
+    let skip_count = Arc::new(AtomicUsize::new(0));
     let error_count = Arc::new(AtomicUsize::new(0));
 
     let api_key = Arc::new(api_key.to_string());
@@ -498,6 +499,7 @@ async fn process_words_concurrent(
             let output_dir = Arc::clone(&output_dir);
             let processed_batches = Arc::clone(&processed_batches);
             let success_count = Arc::clone(&success_count);
+            let skip_count = Arc::clone(&skip_count);
             let error_count = Arc::clone(&error_count);
 
             async move {
@@ -547,8 +549,9 @@ async fn process_words_concurrent(
                                     }
                                 }
                             } else {
-                                error_count.fetch_add(1, Ordering::SeqCst);
-                                eprintln!("  [ERR] {} - Word not found in API response", word);
+                                // 单词不存在于 API 响应中，跳过
+                                skip_count.fetch_add(1, Ordering::SeqCst);
+                                println!("  [SKIP] {}", word);
                             }
                         }
                     }
@@ -572,11 +575,13 @@ async fn process_words_concurrent(
         .await;
 
     let final_success = success_count.load(Ordering::SeqCst);
+    let final_skip = skip_count.load(Ordering::SeqCst);
     let final_errors = error_count.load(Ordering::SeqCst);
 
     println!("\n-----------------------------------------------");
     println!("Processed: {} words in {} batches", total_words, total_batches);
     println!("Success: {}", final_success);
+    println!("Skipped: {}", final_skip);
     println!("Errors: {}", final_errors);
 
     Ok(())
