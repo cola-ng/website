@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
@@ -69,9 +70,11 @@ pub struct NewChatMessage {
 // Helper types for API
 // ============================================================================
 
-#[derive(Debug, Deserialize, Serialize, Clone)]
+#[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
 pub struct HistoryMessage {
+    /// Message role (user, assistant, system)
     pub role: String,
+    /// Message content
     pub content: String,
 }
 

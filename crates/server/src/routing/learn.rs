@@ -1,13 +1,14 @@
 use chrono::{Datelike, Duration, NaiveDate, Utc};
 use diesel::prelude::*;
-use salvo::http::StatusCode;
+use salvo::oapi::extract::JsonBody;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::{AppResult, DepotExt, hoops};
+use crate::{AppResult, DepotExt, JsonResult, OkResponse, hoops, json_ok};
 
 pub fn router() -> Router {
     Router::with_path("learn")
@@ -80,21 +81,26 @@ pub fn router() -> Router {
 // Issue Words API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateIssueWordRequest {
+    /// Word with issue
     word: String,
+    /// Type of issue (pronunciation, grammar, etc.)
     issue_type: String,
+    /// English description
     description_en: Option<String>,
+    /// Chinese description
     description_zh: Option<String>,
+    /// Context where the issue was found
     context: Option<String>,
 }
 
-#[handler]
+/// List issue words for current user
+#[endpoint(tags("Learn"))]
 pub async fn list_issue_words(
     req: &mut Request,
     depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+) -> JsonResult<Vec<IssueWord>> {
     let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
@@ -120,21 +126,16 @@ pub async fn list_issue_words(
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list issue words"))?;
 
-    res.render(Json(words));
-    Ok(())
+    json_ok(words)
 }
 
-#[handler]
+/// Create a new issue word
+#[endpoint(tags("Learn"))]
 pub async fn create_issue_word(
-    req: &mut Request,
+    input: JsonBody<CreateIssueWordRequest>,
     depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+) -> JsonResult<IssueWord> {
     let user_id = depot.user_id()?;
-    let input: CreateIssueWordRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.word.trim().is_empty() || input.issue_type.trim().is_empty() {
         return Err(StatusError::bad_request()
@@ -144,11 +145,11 @@ pub async fn create_issue_word(
 
     let new_word = NewIssueWord {
         user_id,
-        word: input.word,
-        issue_type: input.issue_type,
-        description_en: input.description_en,
-        description_zh: input.description_zh,
-        context: input.context,
+        word: input.word.clone(),
+        issue_type: input.issue_type.clone(),
+        description_en: input.description_en.clone(),
+        description_zh: input.description_zh.clone(),
+        context: input.context.clone(),
     };
 
     let word: IssueWord = with_conn(move |conn| {
@@ -159,9 +160,7 @@ pub async fn create_issue_word(
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create issue word"))?;
 
-    res.status_code(StatusCode::CREATED);
-    res.render(Json(word));
-    Ok(())
+    json_ok(word)
 }
 
 // ============================================================================

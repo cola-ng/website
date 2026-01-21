@@ -1,5 +1,6 @@
 use diesel::prelude::*;
 use itertools::Itertools;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -101,7 +102,8 @@ pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> 
         .map_err(|_| StatusError::bad_request().brief("invalid id"))
 }
 
-#[handler]
+/// Lookup a word in the dictionary
+#[endpoint(tags("Dictionary"))]
 pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
     let word = req
         .query::<String>("word")

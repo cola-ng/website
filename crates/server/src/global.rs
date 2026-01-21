@@ -1,12 +1,23 @@
 use salvo::http::StatusError;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::AppError;
 
 #[derive(Serialize, ToSchema, Clone, Copy, Debug)]
 pub struct EmptyObject {}
+
+#[derive(Serialize, ToSchema, Clone, Debug)]
+pub struct OkResponse {
+    pub ok: bool,
+}
+
+impl Default for OkResponse {
+    fn default() -> Self {
+        Self { ok: true }
+    }
+}
 
 pub type AppResult<T> = Result<T, AppError>;
 pub type DieselResult<T> = Result<T, diesel::result::Error>;
@@ -18,6 +29,9 @@ pub fn json_ok<T>(data: T) -> JsonResult<T> {
 }
 pub fn empty_ok() -> JsonResult<EmptyObject> {
     Ok(Json(EmptyObject {}))
+}
+pub fn ok_response() -> JsonResult<OkResponse> {
+    Ok(Json(OkResponse::default()))
 }
 
 pub trait DepotExt {

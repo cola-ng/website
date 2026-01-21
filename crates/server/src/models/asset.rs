@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -9,7 +10,7 @@ use crate::db::schema::*;
 // Shared content models (no user_id)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_scenes)]
 pub struct Scene {
     pub id: i64,
@@ -41,7 +42,7 @@ pub struct NewScene {
     pub is_active: Option<bool>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_dialogues)]
 #[diesel(belongs_to(Scene))]
 pub struct Dialogue {
@@ -70,7 +71,7 @@ pub struct NewDialogue {
     pub difficulty: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_dialogue_turns)]
 pub struct DialogueTurn {
     pub id: i64,
@@ -101,7 +102,7 @@ pub struct NewDialogueTurn {
     pub notes: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_classic_sources)]
 pub struct ClassicDialogueSource {
     pub id: i64,
@@ -132,7 +133,7 @@ pub struct NewClassicDialogueSource {
     pub difficulty: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_classic_clips)]
 #[diesel(belongs_to(ClassicDialogueSource, foreign_key = source_id))]
 pub struct ClassicDialogueClip {
@@ -174,7 +175,7 @@ pub struct NewClassicDialogueClip {
     pub difficulty_slang: Option<i32>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_read_exercises)]
 pub struct ReadingExercise {
     pub id: i64,
@@ -198,7 +199,7 @@ pub struct NewReadingExercise {
     pub exercise_type: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_read_sentences)]
 #[diesel(belongs_to(ReadingExercise, foreign_key = exercise_id))]
 pub struct ReadingSentence {
@@ -227,7 +228,7 @@ pub struct NewReadingSentence {
     pub common_mistakes: Option<Value>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_phrases)]
 pub struct KeyPhrase {
     pub id: i64,

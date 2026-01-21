@@ -1,6 +1,7 @@
 use chrono::Utc;
 use diesel::prelude::*;
-use salvo::http::header;
+use salvo::oapi::extract::JsonBody;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -22,36 +23,37 @@ pub fn router() -> Router {
         )
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct RegisterRequest {
+    /// User display name
     name: String,
+    /// User email address
     email: String,
+    /// Password (min 8 characters)
     password: String,
+    /// Phone number (optional)
     phone: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct AuthResponse {
+    /// User information
     user: User,
+    /// JWT access token
     access_token: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct LoginRequest {
+    /// User email address
     email: String,
+    /// User password
     password: String,
 }
 
-#[handler]
-pub async fn login(
-    req: &mut Request,
-    _depot: &mut Depot,
-    _res: &mut Response,
-) -> JsonResult<AuthResponse> {
-    let input: LoginRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+/// User login with email and password
+#[endpoint(tags("Account"))]
+pub async fn login(input: JsonBody<LoginRequest>) -> JsonResult<AuthResponse> {
     let email_input = input.email.trim().to_lowercase();
     if email_input.is_empty() {
         return Err(StatusError::bad_request().brief("email is required").into());
@@ -82,17 +84,9 @@ pub async fn login(
 const ERR_EMAIL_EXISTS: &str = "EMAIL_EXISTS";
 const ERR_PHONE_EXISTS: &str = "PHONE_EXISTS";
 
-#[handler]
-pub async fn register(
-    req: &mut Request,
-    _depot: &mut Depot,
-    _res: &mut Response,
-) -> JsonResult<AuthResponse> {
-    let input: RegisterRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-
+/// Register a new user account
+#[endpoint(tags("Account"))]
+pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthResponse> {
     let email = input.email.trim().to_lowercase();
     if email.is_empty() {
         return Err(StatusError::bad_request().brief("email is required").into());
@@ -104,11 +98,11 @@ pub async fn register(
     }
 
     // Normalize phone: trim and filter empty strings
-    let phone = input
+    let phone: Option<String> = input
         .phone
         .as_ref()
-        .map(|p| p.trim().to_string())
-        .filter(|p| !p.is_empty());
+        .map(|p: &String| p.trim().to_string())
+        .filter(|p: &String| !p.is_empty());
 
     let password_hash = crate::auth::hash_password(&input.password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
@@ -201,8 +195,9 @@ pub async fn register(
     }))
 }
 
-#[handler]
-pub async fn me(depot: &mut Depot, res: &mut Response) -> JsonResult<User> {
+/// Get current user profile
+#[endpoint(tags("Account"))]
+pub async fn me(depot: &mut Depot) -> JsonResult<User> {
     let user_id = depot.user_id()?;
     let user: User = with_conn(move |conn| {
         base_users::table
@@ -211,34 +206,38 @@ pub async fn me(depot: &mut Depot, res: &mut Response) -> JsonResult<User> {
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
-    res.headers_mut()
-        .insert(header::CONTENT_TYPE, "application/json".parse().unwrap());
     Ok(Json(User::from(user)))
 }
 
-#[derive(AsChangeset, Deserialize)]
+#[derive(AsChangeset, Deserialize, ToSchema)]
 #[diesel(table_name = base_users)]
 pub struct UpdateUserProfile {
+    /// Updated display name
     pub name: Option<String>,
+    /// Updated phone number
     pub phone: Option<String>,
 }
-#[handler]
-pub async fn update_me(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    let input: UpdateUserProfile = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+/// Update current user profile
+#[endpoint(tags("Account"))]
+pub async fn update_me(
+    input: JsonBody<UpdateUserProfile>,
+    depot: &mut Depot,
+) -> JsonResult<User> {
     let user_id = depot.user_id()?;
-    let _now = Utc::now();
+
+    let input_value = UpdateUserProfile {
+        name: input.name.clone(),
+        phone: input.phone.clone(),
+    };
 
     let updated: User = with_conn(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
-            .set(&input)
+            .set(&input_value)
             .get_result::<User>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update profile"))?;
 
-    res.render(Json(User::from(updated)));
-    Ok(())
+    json_ok(User::from(updated))
 }

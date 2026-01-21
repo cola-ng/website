@@ -1,5 +1,7 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use salvo::oapi::extract::JsonBody;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -20,30 +22,32 @@ pub fn router() -> Router {
         .push(Router::with_path("consume").post(consume_code))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CodeRequest {
+    /// OAuth redirect URI
     redirect_uri: String,
+    /// OAuth state parameter
     state: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct CodeResponse {
+    /// Authorization code
     code: String,
+    /// Original redirect URI
     redirect_uri: String,
+    /// Original state parameter
     state: String,
+    /// Code expiration time
     expires_at: DateTime<Utc>,
 }
 
-#[handler]
+/// Create an authorization code for OAuth flow
+#[endpoint(tags("Auth"))]
 pub async fn create_code(
-    req: &mut Request,
+    input: JsonBody<CodeRequest>,
     depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let input: CodeRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+) -> JsonResult<CodeResponse> {
     if input.redirect_uri.trim().is_empty() {
         return Err(StatusError::bad_request()
             .brief("redirect_uri is required")
@@ -74,35 +78,31 @@ pub async fn create_code(
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create code"))?;
 
-    res.render(Json(CodeResponse {
+    json_ok(CodeResponse {
         code,
-        redirect_uri: input.redirect_uri,
-        state: input.state,
+        redirect_uri: input.redirect_uri.clone(),
+        state: input.state.clone(),
         expires_at,
-    }));
-    Ok(())
+    })
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ConsumeCodeRequest {
+    /// Authorization code to consume
     code: String,
+    /// Original redirect URI
     redirect_uri: String,
 }
-#[derive(Serialize)]
+
+#[derive(Serialize, ToSchema)]
 pub struct ConsumeCodeResponse {
+    /// JWT access token
     access_token: String,
 }
 
-#[handler]
-pub async fn consume_code(
-    req: &mut Request,
-    _depot: &mut Depot,
-    _res: &mut Response,
-) -> JsonResult<ConsumeCodeResponse> {
-    let input: ConsumeCodeRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+/// Exchange authorization code for access token
+#[endpoint(tags("Auth"))]
+pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<ConsumeCodeResponse> {
     if input.code.trim().is_empty() || input.redirect_uri.trim().is_empty() {
         return Err(StatusError::bad_request()
             .brief("code and redirect_uri are required")

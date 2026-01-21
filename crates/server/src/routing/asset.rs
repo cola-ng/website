@@ -1,6 +1,8 @@
 use chrono::Utc;
 use diesel::prelude::*;
 use salvo::http::StatusCode;
+use salvo::oapi::extract::JsonBody;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -8,7 +10,7 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
 use crate::models::learn::*;
-use crate::{AppResult, DepotExt};
+use crate::{AppResult, DepotExt, JsonResult, json_ok};
 
 pub fn router() -> Router {
     Router::with_path("asset")

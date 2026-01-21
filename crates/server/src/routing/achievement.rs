@@ -1,12 +1,13 @@
 use chrono::Utc;
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Serialize;
 
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::achievement::*;
-use crate::{AppResult, DepotExt, hoops};
+use crate::{AppResult, DepotExt, JsonResult, hoops, json_ok};
 
 pub fn router() -> Router {
     Router::with_path("achievements")

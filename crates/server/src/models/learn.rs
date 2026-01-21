@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -9,7 +10,7 @@ use crate::db::schema::*;
 // User-specific models (with user_id)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = learn_issue_words)]
 pub struct IssueWord {
     pub id: i64,

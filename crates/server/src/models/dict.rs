@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_words)]
 pub struct Word {
     pub id: i64,
@@ -58,7 +59,7 @@ pub struct UpdateWord {
     pub updated_by: Option<i64>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_definitions)]
 pub struct Definition {
     pub id: i64,
@@ -89,7 +90,7 @@ pub struct NewDefinition {
     pub usage_notes: Option<String>,
     pub is_primary: Option<bool>,
 }
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_sentences)]
 pub struct Sentence {
     pub id: i64,
@@ -113,7 +114,7 @@ pub struct NewSentence {
     pub is_common: Option<bool>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_word_sentences)]
 pub struct WordSentence {
     pub id: i64,
@@ -133,7 +134,7 @@ pub struct NewWordSentence {
     pub priority_order: Option<i32>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_pronunciations)]
 pub struct Pronunciation {
     pub id: i64,
@@ -161,7 +162,7 @@ pub struct NewPronunciation {
     pub is_primary: Option<bool>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_forms)]
 pub struct Form {
     pub id: i64,
@@ -183,7 +184,7 @@ pub struct NewForm {
     pub notes: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_categories)]
 pub struct Category {
     pub id: i64,
@@ -199,7 +200,7 @@ pub struct NewCategory {
     pub parent_id: Option<i64>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_word_categories)]
 pub struct WordCategory {
     pub id: i64,
@@ -217,7 +218,7 @@ pub struct NewWordCategory {
     pub confidence: Option<i16>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_images)]
 pub struct Image {
     pub id: i64,
@@ -245,7 +246,7 @@ pub struct NewImage {
     pub created_by: Option<i64>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_relations)]
 pub struct Relation {
     pub id: i64,
@@ -267,7 +268,7 @@ pub struct NewRelation {
     pub relation_strength: Option<i16>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, ToSchema, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
     pub definitions: Vec<Definition>,
@@ -281,7 +282,7 @@ pub struct WordQueryResponse {
     pub images: Vec<Image>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_dictionaries)]
 pub struct Dictionary {
     pub id: i64,
@@ -349,7 +350,7 @@ pub struct UpdateDictionary {
     pub updated_by: Option<i64>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_word_dictionaries)]
 pub struct WordDictionary {
     pub id: i64,
@@ -367,7 +368,7 @@ pub struct NewWorldDictionary {
     pub dictionary_id: i64,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_etymologies)]
 pub struct Etymology {
     pub id: i64,
@@ -382,7 +383,7 @@ pub struct Etymology {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_word_etymologies)]
 pub struct WordEtymology {
     pub id: i64,
@@ -415,7 +416,7 @@ pub struct NewWordEtymology {
 // Searched Words
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_searched_words)]
 pub struct SearchedWord {
     pub id: i64,

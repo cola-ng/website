@@ -1,5 +1,6 @@
 use chrono::{DateTime, NaiveDate, Utc};
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
@@ -8,7 +9,7 @@ use crate::db::schema::*;
 // Achievement Definitions (global, read-only for users)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = archive_achievement_definitions)]
 pub struct AchievementDefinition {
     pub id: i64,
@@ -34,7 +35,7 @@ pub struct AchievementDefinition {
 // Rank Definitions (global, read-only for users)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = archive_rank_definitions)]
 pub struct RankDefinition {
     pub id: i64,
@@ -54,7 +55,7 @@ pub struct RankDefinition {
 // User Profile (user-specific)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = archive_user_profiles)]
 pub struct UserProfile {
     pub id: i64,
@@ -97,7 +98,7 @@ pub struct UpdateUserProfile {
 // User Achievements (user-specific)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = archive_user_achievements)]
 pub struct UserAchievementRecord {
     pub id: i64,
@@ -133,7 +134,7 @@ pub struct UpdateUserAchievement {
 // User XP History (user-specific)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = archive_user_xp_history)]
 pub struct UserXpHistory {
     pub id: i64,

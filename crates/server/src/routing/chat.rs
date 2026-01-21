@@ -10,7 +10,8 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use chrono::Utc;
 use diesel::prelude::*;
-use salvo::http::StatusCode;
+use salvo::oapi::extract::JsonBody;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -20,7 +21,7 @@ use crate::models::{
     ChatMessage as DbChatMessage, ChatSession, HistoryMessage, NewChatMessage, NewChatSession,
 };
 use crate::services::{create_provider_from_env, AiProviderError, ChatMessage};
-use crate::{hoops, AppResult, DepotExt};
+use crate::{hoops, AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
 pub fn router() -> Router {
     Router::with_path("chat")
@@ -33,7 +34,7 @@ pub fn router() -> Router {
 }
 
 /// Request for voice chat - audio input
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct ChatSendRequest {
     /// Base64 encoded audio data (WAV format)
     pub audio_base64: String,
@@ -42,7 +43,7 @@ pub struct ChatSendRequest {
 }
 
 /// Request for text chat - text input with TTS response
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TextChatRequest {
     /// User's text message
     pub message: String,
@@ -58,7 +59,7 @@ fn default_true() -> bool {
 }
 
 /// Request for TTS only
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, ToSchema)]
 pub struct TtsRequest {
     /// Text to synthesize
     pub text: String,
@@ -69,7 +70,7 @@ pub struct TtsRequest {
 }
 
 /// Response for voice/text chat
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct ChatResponse {
     /// Transcribed user text (for voice input)
     pub user_text: Option<String>,
@@ -83,23 +84,27 @@ pub struct ChatResponse {
     pub corrections: Vec<Correction>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct Correction {
+    /// Original text with error
     pub original: String,
+    /// Corrected text
     pub corrected: String,
+    /// Explanation of the correction
     pub explanation: String,
 }
 
 /// Response for TTS only
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct TtsResponse {
     /// Base64 encoded audio
     pub audio_base64: String,
 }
 
 /// Response for history
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, ToSchema)]
 pub struct HistoryResponse {
+    /// Chat messages history
     pub messages: Vec<HistoryMessage>,
 }
 
@@ -247,14 +252,12 @@ async fn clear_user_session(user_id: i64) -> Result<(), StatusError> {
 // API Handlers
 // ============================================================================
 
-/// POST /api/chat/send
 /// Send audio and receive AI response with audio
-#[handler]
+#[endpoint(tags("Chat"))]
 pub async fn chat_send(
     req: &mut Request,
     depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+) -> JsonResult<ChatResponse> {
     let user_id = depot.user_id()?;
 
     // Read body with larger size limit for audio (50MB)
@@ -323,31 +326,22 @@ pub async fn chat_send(
     // Analyze user_text for corrections
     let corrections = analyze_corrections(&result.user_text);
 
-    res.status_code(StatusCode::OK);
-    res.render(Json(ChatResponse {
+    json_ok(ChatResponse {
         user_text: Some(result.user_text),
         ai_text: result.ai_text,
         ai_text_zh: None,
         ai_audio_base64: Some(result.ai_audio_base64),
         corrections,
-    }));
-    Ok(())
+    })
 }
 
-/// POST /api/chat/text-send
 /// Send text and receive AI response with optional audio
-#[handler]
+#[endpoint(tags("Chat"))]
 pub async fn text_chat_send(
-    req: &mut Request,
+    input: JsonBody<TextChatRequest>,
     depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+) -> JsonResult<ChatResponse> {
     let user_id = depot.user_id()?;
-
-    let input: TextChatRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.message.trim().is_empty() {
         return Err(StatusError::bad_request()
@@ -369,6 +363,7 @@ pub async fn text_chat_send(
     // Add system prompt
     let system_prompt = input
         .system_prompt
+        .clone()
         .unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string());
     messages.push(ChatMessage {
         role: "system".to_string(),
@@ -427,31 +422,22 @@ pub async fn text_chat_send(
     // Analyze for corrections
     let corrections = analyze_corrections(&input.message);
 
-    res.status_code(StatusCode::OK);
-    res.render(Json(ChatResponse {
-        user_text: Some(input.message),
+    json_ok(ChatResponse {
+        user_text: Some(input.message.clone()),
         ai_text,
         ai_text_zh: None,
         ai_audio_base64,
         corrections,
-    }));
-    Ok(())
+    })
 }
 
-/// POST /api/chat/tts
 /// Convert text to speech only
-#[handler]
+#[endpoint(tags("Chat"))]
 pub async fn text_to_speech(
-    req: &mut Request,
+    input: JsonBody<TtsRequest>,
     depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+) -> JsonResult<TtsResponse> {
     let _user_id = depot.user_id()?;
-
-    let input: TtsRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.text.trim().is_empty() {
         return Err(StatusError::bad_request()
@@ -482,34 +468,26 @@ pub async fn text_to_speech(
 
     let audio_base64 = BASE64.encode(&tts_response.audio_data);
 
-    res.status_code(StatusCode::OK);
-    res.render(Json(TtsResponse { audio_base64 }));
-    Ok(())
+    json_ok(TtsResponse { audio_base64 })
 }
 
-/// POST /api/chat/clear
 /// Clear chat history
-#[handler]
-pub async fn clear_session(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+#[endpoint(tags("Chat"))]
+pub async fn clear_session(depot: &mut Depot) -> JsonResult<OkResponse> {
     let user_id = depot.user_id()?;
     clear_user_session(user_id).await?;
-    res.status_code(StatusCode::OK);
-    res.render(Json(serde_json::json!({ "ok": true })));
-    Ok(())
+    json_ok(OkResponse::default())
 }
 
-/// GET /api/chat/history
 /// Get chat history
-#[handler]
-pub async fn get_history(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+#[endpoint(tags("Chat"))]
+pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
     let user_id = depot.user_id()?;
 
     let session = get_or_create_session(user_id).await?;
     let messages = get_session_history(session.id).await?;
 
-    res.status_code(StatusCode::OK);
-    res.render(Json(HistoryResponse { messages }));
-    Ok(())
+    json_ok(HistoryResponse { messages })
 }
 
 /// Simple grammar/vocabulary analysis for corrections

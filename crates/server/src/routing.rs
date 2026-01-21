@@ -2,12 +2,13 @@ use std::time::Duration;
 
 use salvo::cors::{self, AllowHeaders, Cors};
 use salvo::http::Method;
+use salvo::oapi::extract::JsonBody;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
-use crate::config::AppConfig;
-use crate::{AppResult, DepotExt};
+use crate::{DepotExt, OkResponse};
 
 mod account;
 mod achievement;
@@ -48,20 +49,25 @@ pub fn router() -> Router {
         .push(learn::router())
 }
 
-#[handler]
-pub async fn health(res: &mut Response) {
-    res.render(Json(json!({ "ok": true })));
+/// Health check endpoint
+#[endpoint(tags("System"))]
+pub async fn health() -> Json<OkResponse> {
+    Json(OkResponse::default())
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct ChatSendRequest {
+    /// User message content
     message: String,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, ToSchema)]
 pub struct ChatSendResponse {
+    /// AI reply message
     reply: String,
+    /// Grammar corrections
     corrections: Vec<String>,
+    /// Conversation suggestions
     suggestions: Vec<String>,
 }
 
@@ -77,16 +83,14 @@ fn simple_corrections(message: &str) -> Vec<String> {
     out
 }
 
-#[handler]
-pub async fn chat_send(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    let input: ChatSendRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+/// Simple chat endpoint (deprecated, use /api/chat/send instead)
+#[endpoint(tags("Chat"))]
+pub async fn chat_send(
+    input: JsonBody<ChatSendRequest>,
+    depot: &mut Depot,
+) -> Result<Json<ChatSendResponse>, StatusError> {
     if input.message.trim().is_empty() {
-        return Err(StatusError::bad_request()
-            .brief("message is required")
-            .into());
+        return Err(StatusError::bad_request().brief("message is required"));
     }
 
     let corrections = simple_corrections(&input.message);
@@ -99,7 +103,7 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot, res: &mut Response)
         input.message.trim()
     );
 
-    let _user_id = depot.user_id()?;
+    let _user_id = depot.user_id().map_err(|e| StatusError::unauthorized().brief(e.to_string()))?;
     let _content = json!({
         "user_message": input.message,
         "assistant_reply": reply,
@@ -107,12 +111,11 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot, res: &mut Response)
         "suggestions": suggestions
     });
 
-    res.render(Json(ChatSendResponse {
+    Ok(Json(ChatSendResponse {
         reply,
         corrections,
         suggestions,
-    }));
-    Ok(())
+    }))
 }
 
 fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
