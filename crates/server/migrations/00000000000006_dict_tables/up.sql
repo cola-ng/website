@@ -160,15 +160,6 @@ CREATE TABLE IF NOT EXISTS dict_word_etymologies (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_etymology_word ON dict_word_etymologies(word_id, etymology_id);
 
--- Table: dict_categories - Word categories and classifications
-CREATE TABLE IF NOT EXISTS dict_categories (
-    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    name TEXT NOT NULL,                               -- 分类名称
-    parent_id BIGINT,                                  -- 父分类 ID
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_dict_categories_name ON dict_categories(name);
-
 -- Table: dict_word_categories - Word categories and classifications
 CREATE TABLE IF NOT EXISTS dict_word_categories (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID

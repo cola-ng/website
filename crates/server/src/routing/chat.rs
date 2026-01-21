@@ -323,13 +323,16 @@ pub async fn chat_send(
     // Save to database
     save_messages(session.id, user_id, &result.user_text, &result.ai_text).await?;
 
+    // Translate AI response to Chinese
+    let ai_text_zh = translate_to_chinese(&provider, &result.ai_text).await;
+
     // Analyze user_text for corrections
     let corrections = analyze_corrections(&result.user_text);
 
     json_ok(ChatResponse {
         user_text: Some(result.user_text),
         ai_text: result.ai_text,
-        ai_text_zh: None,
+        ai_text_zh,
         ai_audio_base64: Some(result.ai_audio_base64),
         corrections,
     })
@@ -419,13 +422,16 @@ pub async fn text_chat_send(
         None
     };
 
+    // Translate AI response to Chinese
+    let ai_text_zh = translate_to_chinese(&provider, &ai_text).await;
+
     // Analyze for corrections
     let corrections = analyze_corrections(&input.message);
 
     json_ok(ChatResponse {
         user_text: Some(input.message.clone()),
         ai_text,
-        ai_text_zh: None,
+        ai_text_zh,
         ai_audio_base64,
         corrections,
     })
@@ -488,6 +494,33 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
     let messages = get_session_history(session.id).await?;
 
     json_ok(HistoryResponse { messages })
+}
+
+/// Translate English text to Chinese using the chat service
+async fn translate_to_chinese(
+    provider: &std::sync::Arc<dyn crate::services::AiProvider>,
+    english_text: &str,
+) -> Option<String> {
+    let chat_service = provider.chat_service()?;
+
+    let messages = vec![
+        ChatMessage {
+            role: "system".to_string(),
+            content: "You are a translator. Translate the following English text to Chinese. Only output the Chinese translation, nothing else. Do not add any explanation or notes.".to_string(),
+        },
+        ChatMessage {
+            role: "user".to_string(),
+            content: english_text.to_string(),
+        },
+    ];
+
+    match chat_service.chat(messages, Some(0.3), None).await {
+        Ok(translation) => Some(translation.trim().to_string()),
+        Err(e) => {
+            tracing::warn!("Translation failed: {:?}", e);
+            None
+        }
+    }
 }
 
 /// Simple grammar/vocabulary analysis for corrections

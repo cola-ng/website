@@ -1,21 +1,46 @@
+-- Table: taxon_spheres - spheres and classifications
+CREATE TABLE IF NOT EXISTS taxon_spheres (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    name TEXT NOT NULL,                               -- 领域名称
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_taxon_spheres_name ON taxon_spheres(name);
+
+-- Table: taxon_categories - categories and classifications
+CREATE TABLE IF NOT EXISTS taxon_categories (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    name TEXT NOT NULL,                               -- 分类名称
+    sphere_id BIGINT NOT NULL,                        -- 关联领域 ID
+    parent_id BIGINT,                                  -- 父分类 ID
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_taxon_categories_name ON taxon_categories(name);
+
 CREATE TABLE IF NOT EXISTS asset_scenes (
     id BIGSERIAL PRIMARY KEY,
-    name_en TEXT NOT NULL,
-    name_zh TEXT NOT NULL,
-    description_en TEXT,
-    description_zh TEXT,
+    name TEXT NOT NULL,
+    description TEXT,
     icon_emoji TEXT,
-    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')) DEFAULT 'intermediate',
-    category TEXT,
     display_order INTEGER DEFAULT 0,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(name_en)
 );
-
 CREATE INDEX IF NOT EXISTS idx_asset_scenes_active ON asset_scenes(is_active, display_order);
 
-CREATE TABLE IF NOT EXISTS asset_dialogues (
+-- Table: dict_scene_categories - Scene categories and classifications
+CREATE TABLE IF NOT EXISTS dict_scene_categories (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    scene_id BIGINT NOT NULL,                            -- 关联场景 ID
+    category_id BIGINT NOT NULL,                        -- 分类 ID
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
+    UNIQUE(scene_id, category_id)
+);
+CREATE INDEX IF NOT EXISTS idx_dict_scene_categories_scene ON dict_scene_categories(scene_id);
+CREATE INDEX IF NOT EXISTS idx_dict_scene_categories_id ON dict_scene_categories(category_id);
+
+
+CREATE TABLE IF NOT EXISTS asset_scripts (
     id BIGSERIAL PRIMARY KEY,
     scene_id BIGINT NOT NULL,
     title_en TEXT NOT NULL,
@@ -28,11 +53,11 @@ CREATE TABLE IF NOT EXISTS asset_dialogues (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_dialogues_scene ON asset_dialogues(scene_id);
+CREATE INDEX IF NOT EXISTS idx_asset_scripts_scene ON asset_scripts(scene_id);
 
-CREATE TABLE IF NOT EXISTS asset_dialogue_turns (
+CREATE TABLE IF NOT EXISTS asset_script_turns (
     id BIGSERIAL PRIMARY KEY,
-    dialogue_id BIGINT NOT NULL,
+    script_id BIGINT NOT NULL,
     turn_number INTEGER NOT NULL,
     speaker_role TEXT NOT NULL,
     speaker_name TEXT,
@@ -47,63 +72,23 @@ CREATE TABLE IF NOT EXISTS asset_dialogue_turns (
 
 CREATE INDEX IF NOT EXISTS idx_asset_dialogue_turns_scene ON asset_dialogue_turns(dialogue_id, turn_number);
 
-CREATE TABLE IF NOT EXISTS asset_classic_sources (
-    id BIGSERIAL PRIMARY KEY,
-    source_type TEXT NOT NULL CHECK(source_type IN ('movie', 'tv_show', 'ted_talk', 'documentary', 'other')),
-    title TEXT NOT NULL,
-    year INTEGER,
-    description_en TEXT,
-    description_zh TEXT,
-    thumbnail_url TEXT,
-    imdb_id TEXT,
-    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')),
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(source_type, title)
-);
-
-CREATE INDEX IF NOT EXISTS idx_asset_classic_sources_type ON asset_classic_sources(source_type);
-
-CREATE TABLE IF NOT EXISTS asset_classic_clips (
-    id BIGSERIAL PRIMARY KEY,
-    source_id BIGINT NOT NULL,
-    clip_title_en TEXT NOT NULL,
-    clip_title_zh TEXT NOT NULL,
-    start_time_seconds INTEGER,
-    end_time_seconds INTEGER,
-    video_url TEXT,
-    transcript_en TEXT NOT NULL,
-    transcript_zh TEXT NOT NULL,
-    key_vocabulary JSONB,
-    cultural_notes TEXT,
-    grammar_points JSONB,
-    difficulty_vocab INTEGER DEFAULT 3 CHECK(difficulty_vocab BETWEEN 1 AND 5),
-    difficulty_speed INTEGER DEFAULT 3 CHECK(difficulty_speed BETWEEN 1 AND 5),
-    difficulty_slang INTEGER DEFAULT 3 CHECK(difficulty_slang BETWEEN 1 AND 5),
-    popularity_score INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-);
-
-CREATE INDEX IF NOT EXISTS idx_asset_classic_clips_source ON asset_classic_clips(source_id);
-CREATE INDEX IF NOT EXISTS idx_asset_classic_clips_popularity ON asset_classic_clips(popularity_score DESC);
-
 -- ============================================================================
--- READING PRACTICE (Shared content - no user_id)
+-- READING SUBJECT (Shared content - no user_id)
 -- ============================================================================
-
-CREATE TABLE IF NOT EXISTS asset_read_exercises (
+CREATE TABLE IF NOT EXISTS asset_read_subjects (
     id BIGSERIAL PRIMARY KEY,
     title_en TEXT NOT NULL,
     title_zh TEXT NOT NULL,
     description_en TEXT,
     description_zh TEXT,
-    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')),
-    exercise_type TEXT CHECK(exercise_type IN ('sentence', 'paragraph', 'dialogue', 'tongue_twister')) DEFAULT 'sentence',
+    difficulty TEXT,
+    subject_type TEXT DEFAULT 'sentence',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS asset_read_sentences (
     id BIGSERIAL PRIMARY KEY,
-    exercise_id BIGINT NOT NULL,
+    subject_id BIGINT NOT NULL,
     sentence_order INTEGER NOT NULL,
     content_en TEXT NOT NULL,
     content_zh TEXT NOT NULL,
@@ -111,13 +96,13 @@ CREATE TABLE IF NOT EXISTS asset_read_sentences (
     native_audio_path TEXT,
     focus_sounds JSONB,
     common_mistakes JSONB,
-    UNIQUE(exercise_id, sentence_order)
+    UNIQUE(subject_id, sentence_order)
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_read_sentences_exercise ON asset_read_sentences(exercise_id, sentence_order);
+CREATE INDEX IF NOT EXISTS idx_asset_read_sentences_subject ON asset_read_sentences(subject_id, sentence_order);
 
 -- ============================================================================
--- KEY PHRASES (Shared content - no user_id)
+-- PHRASES (Shared content - no user_id)
 -- ============================================================================
 
 CREATE TABLE IF NOT EXISTS asset_phrases (
@@ -136,3 +121,13 @@ CREATE TABLE IF NOT EXISTS asset_phrases (
 );
 
 CREATE INDEX IF NOT EXISTS idx_asset_phrases_category ON asset_phrases(category);
+
+
+CREATE TABLE IF NOT EXISTS asset_phrase_sentences (
+    id BIGSERIAL PRIMARY KEY,
+    phrase_id BIGINT NOT NULL,
+    sentence_id BIGINT NOT NULL,
+    sentence_order INTEGER NOT NULL,
+    UNIQUE(phrase_id, sentence_order)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_phrase_sentences_phrase ON asset_phrase_sentences(phrase_id, sentence_id);

@@ -24,36 +24,25 @@ CREATE TABLE IF NOT EXISTS learn_issue_words (
 CREATE INDEX IF NOT EXISTS idx_learn_issue_words_user ON learn_issue_words(user_id, next_review_at);
 CREATE INDEX IF NOT EXISTS idx_learn_issue_words_review ON learn_issue_words(next_review_at) WHERE next_review_at IS NOT NULL;
 
--- Table: learn_sessions - Track overall learning sessions
-CREATE TABLE IF NOT EXISTS learn_sessions (
+
+CREATE TABLE IF NOT EXISTS learn_chats (
     id BIGSERIAL PRIMARY KEY,
-    session_id TEXT NOT NULL UNIQUE,
     user_id BIGINT NOT NULL,
-    session_type TEXT CHECK(session_type IN ('free_talk', 'scene', 'classic_dialogue', 'reading', 'review', 'assistant')),
-    scene_id BIGINT,
-    dialogue_id BIGINT,
-    classic_clip_id BIGINT,
-    started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    ended_at TIMESTAMPTZ,
-    duration_seconds INTEGER,
-    total_words_spoken INTEGER DEFAULT 0,
-    average_wpm REAL,
-    error_count INTEGER DEFAULT 0,
-    correction_count INTEGER DEFAULT 0,
-    notes TEXT,
-    ai_summary_en TEXT,
-    ai_summary_zh TEXT
+    title TEXT NOT NULL,
+    duration_ms INTEGER,
+    pause_count INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_learn_chats_user_session ON learn_chats(user_id, session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_learn_chats_created ON learn_chats(created_at);
 
-CREATE INDEX IF NOT EXISTS idx_learn_sessions_user ON learn_sessions(user_id, started_at DESC);
-CREATE INDEX IF NOT EXISTS idx_learn_sessions_type ON learn_sessions(session_type, started_at);
 
--- Table: learn_conversations - Stores all conversation history
-CREATE TABLE IF NOT EXISTS learn_conversations (
+-- Table: learn_chat_turns - Stores all chat history
+CREATE TABLE IF NOT EXISTS learn_chat_turns (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    session_id TEXT NOT NULL,
-    speaker TEXT NOT NULL CHECK(speaker IN ('user', 'teacher')),
+    chat_id TEXT NOT NULL,
+    speaker TEXT NOT NULL,
     use_lang TEXT NOT NULL CHECK(use_lang IN ('en', 'zh')),
     content_en TEXT NOT NULL,
     content_zh TEXT NOT NULL,
@@ -64,15 +53,15 @@ CREATE TABLE IF NOT EXISTS learn_conversations (
     hesitation_count INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+CREATE INDEX IF NOT EXISTS idx_learn_chat_turns_user_chat ON learn_chat_turns(user_id, chat_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_learn_chat_turns_created ON learn_chat_turns(created_at);
 
-CREATE INDEX IF NOT EXISTS idx_learn_conversations_user_session ON learn_conversations(user_id, session_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_learn_conversations_created ON learn_conversations(created_at);
-
--- Table: learn_conversation_annotations - Stores annotations and issues found in learn_conversations
-CREATE TABLE IF NOT EXISTS learn_conversation_annotations (
+-- Table: learn_chat_annotations - Stores annotations and issues found in learn_chats
+CREATE TABLE IF NOT EXISTS learn_chat_annotations (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    conversation_id BIGINT NOT NULL,
+    chat_id BIGINT NOT NULL,
+    chat_turn_id BIGINT NOT NULL,
     annotation_type TEXT NOT NULL CHECK(
         annotation_type IN ('pronunciation_error', 'grammar_error', 'word_choice',
                            'fluency_issue', 'suggestion', 'correction')
@@ -86,12 +75,21 @@ CREATE TABLE IF NOT EXISTS learn_conversation_annotations (
     severity TEXT CHECK(severity IN ('low', 'medium', 'high')) DEFAULT 'medium',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
-CREATE INDEX IF NOT EXISTS idx_annotations_conversation ON learn_conversation_annotations(conversation_id);
-CREATE INDEX IF NOT EXISTS idx_annotations_user ON learn_conversation_annotations(user_id, annotation_type);
+CREATE INDEX IF NOT EXISTS idx_annotations_chat ON learn_chat_annotations(chat_id, chat_turn_id);
+CREATE INDEX IF NOT EXISTS idx_annotations_user ON learn_chat_annotations(user_id, annotation_type);
 
 -- Table: learn_word_practices - Logs each time a word is practiced
-CREATE TABLE IF NOT EXISTS learn_word_practices (
+CREATE TABLE IF NOT EXISTS learn_practices (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    success_level INTEGER CHECK(success_level BETWEEN 1 AND 5),
+    notes TEXT,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_write_practices(user_id, session_id);
+
+CREATE TABLE IF NOT EXISTS learn_write_practices (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     word_id BIGINT NOT NULL,
@@ -101,15 +99,16 @@ CREATE TABLE IF NOT EXISTS learn_word_practices (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_learn_practices_word ON learn_word_practices(word_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_word_practices(user_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_learn_practices_word ON learn_write_practices(word_id, updated_at);
+CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_write_practices(user_id, session_id);
+
 
 -- Table: learn_read_practices - Log of user's reading practice attempts
 CREATE TABLE IF NOT EXISTS learn_read_practices (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    sentence_id BIGINT NOT NULL,
-    session_id TEXT NOT NULL,
+    sentence_id BIGINT,
+    session_id TEXT,
     user_audio_path TEXT,
     pronunciation_score INTEGER CHECK(pronunciation_score BETWEEN 0 AND 100),
     fluency_score INTEGER CHECK(fluency_score BETWEEN 0 AND 100),
@@ -121,7 +120,6 @@ CREATE TABLE IF NOT EXISTS learn_read_practices (
     waveform_data JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-
 CREATE INDEX IF NOT EXISTS idx_read_practices_sentence ON learn_read_practices(sentence_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_read_practices_user_session ON learn_read_practices(user_id, session_id);
 
@@ -137,7 +135,6 @@ CREATE TABLE IF NOT EXISTS learn_achievements (
     earned_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(user_id, achievement_type, achievement_name)
 );
-
 CREATE INDEX IF NOT EXISTS idx_achievements_user ON learn_achievements(user_id, earned_at DESC);
 
 -- Table: learn_daily_stats - Daily learning statistics
@@ -153,7 +150,6 @@ CREATE TABLE IF NOT EXISTS learn_daily_stats (
     review_words_count INTEGER DEFAULT 0,
     UNIQUE(user_id, stat_date)
 );
-
 CREATE INDEX IF NOT EXISTS idx_learn_daily_stats_user_date ON learn_daily_stats(user_id, stat_date DESC);
 
 -- Table: learn_vocabularies - Track user's vocabulary mastery
@@ -170,7 +166,6 @@ CREATE TABLE IF NOT EXISTS learn_vocabularies (
     next_review_at TIMESTAMPTZ,
     UNIQUE(user_id, word)
 );
-
 CREATE INDEX IF NOT EXISTS idx_user_vocab_user ON learn_vocabularies(user_id, next_review_at);
 CREATE INDEX IF NOT EXISTS idx_user_vocab_review ON learn_vocabularies(next_review_at) WHERE next_review_at IS NOT NULL;
 

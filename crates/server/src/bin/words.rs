@@ -9,7 +9,7 @@ use std::time::Duration;
 use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_WORDS_FILE: &str = "words-all.txt";
+const DEFAULT_WORDS_FILE: &str = "../words-all.txt";
 const DEFAULT_OUTPUT_DIR: &str = "../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_RETRY_COUNT: usize = 3;
