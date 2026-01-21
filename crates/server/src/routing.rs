@@ -2,8 +2,8 @@ use std::time::Duration;
 
 use salvo::cors::{self, AllowHeaders, Cors};
 use salvo::http::Method;
-use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
+use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -19,34 +19,36 @@ mod dict;
 mod learn;
 
 pub fn router() -> Router {
-    Router::with_path("api")
-        .hoop(
-            Cors::new()
-                .allow_origin(cors::Any)
-                .allow_methods([
-                    Method::GET,
-                    Method::POST,
-                    Method::PUT,
-                    Method::DELETE,
-                    Method::OPTIONS,
-                ])
-                .allow_headers(AllowHeaders::list([
-                    salvo::http::header::ACCEPT,
-                    salvo::http::header::CONTENT_TYPE,
-                    salvo::http::header::AUTHORIZATION,
-                    salvo::http::header::RANGE,
-                ]))
-                .max_age(Duration::from_secs(86400))
-                .into_handler(),
-        )
-        .get(health)
-        .push(account::router())
-        .push(achievement::router())
-        .push(auth::router())
-        .push(asset::router())
-        .push(chat::router())
-        .push(dict::router())
-        .push(learn::router())
+    Router::new().push(
+        Router::with_path("api")
+            .hoop(
+                Cors::new()
+                    .allow_origin(cors::Any)
+                    .allow_methods([
+                        Method::GET,
+                        Method::POST,
+                        Method::PUT,
+                        Method::DELETE,
+                        Method::OPTIONS,
+                    ])
+                    .allow_headers(AllowHeaders::list([
+                        salvo::http::header::ACCEPT,
+                        salvo::http::header::CONTENT_TYPE,
+                        salvo::http::header::AUTHORIZATION,
+                        salvo::http::header::RANGE,
+                    ]))
+                    .max_age(Duration::from_secs(86400))
+                    .into_handler(),
+            )
+            .get(health)
+            .push(account::router())
+            .push(achievement::router())
+            .push(auth::router())
+            .push(asset::router())
+            .push(chat::router())
+            .push(dict::router())
+            .push(learn::router()),
+    )
 }
 
 /// Health check endpoint
@@ -103,7 +105,9 @@ pub async fn chat_send(
         input.message.trim()
     );
 
-    let _user_id = depot.user_id().map_err(|e| StatusError::unauthorized().brief(e.to_string()))?;
+    let _user_id = depot
+        .user_id()
+        .map_err(|e| StatusError::unauthorized().brief(e.to_string()))?;
     let _content = json!({
         "user_message": input.message,
         "assistant_reply": reply,

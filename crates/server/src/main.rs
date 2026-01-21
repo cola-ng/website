@@ -17,7 +17,6 @@ use salvo::oapi::OpenApi;
 use salvo::prelude::*;
 
 use crate::config::AppConfig;
-use crate::db::DbConfig;
 
 #[tokio::main]
 async fn main() {
@@ -32,13 +31,13 @@ async fn main() {
     let doc = OpenApi::new("Cola API", env!("CARGO_PKG_VERSION")).merge_router(&router);
 
     let router = router
-        .push(doc.into_router("/api-doc/openapi.json"))
-        .push(
-            Router::with_path("/api-doc/swagger-ui/<**>")
+        .unshift(doc.into_router("/api-doc/openapi.json"))
+        .unshift(
+            Router::with_path("/api-doc/swagger-ui/{**}")
                 .get(salvo::oapi::swagger_ui::SwaggerUi::new("/api-doc/openapi.json")),
         )
-        .push(
-            Router::with_path("/api-doc/scalar/<**>")
+        .unshift(
+            Router::with_path("/api-doc/scalar/{**}")
                 .get(salvo::oapi::scalar::Scalar::new("/api-doc/openapi.json")),
         );
 
