@@ -1187,7 +1187,7 @@ export function ConversationPage() {
             onClick={() => setShowContextDialog(false)}
           />
           {/* Dialog */}
-          <div className="relative bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+          <div className="relative bg-white rounded-xl shadow-xl max-w-3xl w-full mx-4 max-h-[80vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-4 border-b">
               <h2 className="text-lg font-semibold text-gray-900">选择对话场景</h2>
@@ -1209,7 +1209,7 @@ export function ConversationPage() {
                   暂无可用场景
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   {contexts.map((context) => (
                     <button
                       key={context.id}
