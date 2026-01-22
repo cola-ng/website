@@ -23,7 +23,7 @@ interface NavItem {
 const navItems: NavItem[] = [
   { label: '日常唠嗑', path: '/conversation', icon: <MessageSquare className="h-4 w-4" /> },
   { label: '温故知新', path: '/review', icon: <RotateCcw className="h-4 w-4" /> },
-  { label: '角色扮演', path: '/scenes', icon: <Theater className="h-4 w-4" /> },
+  { label: '角色扮演', path: '/stages', icon: <Theater className="h-4 w-4" /> },
   { label: '大声跟读', path: '/reading', icon: <Mic className="h-4 w-4" /> },
   { label: '词典查询', path: '/dict', icon: <BookOpen className="h-4 w-4" /> },
 ]

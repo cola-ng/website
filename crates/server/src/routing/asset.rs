@@ -102,7 +102,7 @@ pub async fn get_categories_by_domain(req: &mut Request, res: &mut Response) -> 
 }
 
 // ============================================================================
-// Contexts API (scenarios/scenes)
+// Contexts API
 // ============================================================================
 
 #[handler]

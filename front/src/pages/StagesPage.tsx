@@ -120,7 +120,7 @@ export function StagesPage() {
   const [classicSources, setClassicSources] = useState<ClassicSource[]>([])
   const [loading, setLoading] = useState(true)
 
-  // Fetch scenes from API
+  // Fetch stage from API
   useEffect(() => {
     async function fetchData() {
       try {

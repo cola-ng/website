@@ -202,7 +202,7 @@ export function StageDetailPage() {
       <Header />
 
       <main className="mx-auto max-w-6xl p-4">
-        {/* Back button and scene info */}
+        {/* Back button and stage info */}
         <div className="mb-6">
           <button
             onClick={() => navigate('/stages')}
