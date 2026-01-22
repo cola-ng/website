@@ -302,7 +302,7 @@ export async function uploadAvatar(token: string, file: File): Promise<User> {
   const formData = new FormData()
   formData.append('image', file)
 
-  const response = await fetch('/api/avatar', {
+  const response = await fetch('/api/me/avatar', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${token}`,
@@ -319,7 +319,7 @@ export async function uploadAvatar(token: string, file: File): Promise<User> {
 }
 
 export function deleteAvatar(token: string): Promise<User> {
-  return requestJson<User>('/api/avatar', {
+  return requestJson<User>('/api/me/avatar', {
     method: 'DELETE',
     token,
   })
