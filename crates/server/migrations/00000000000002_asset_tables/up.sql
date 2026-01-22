@@ -101,33 +101,11 @@ CREATE TABLE IF NOT EXISTS asset_read_sentences (
 
 CREATE INDEX IF NOT EXISTS idx_asset_read_sentences_subject ON asset_read_sentences(subject_id, sentence_order);
 
--- ============================================================================
--- PHRASES (Shared content - no user_id)
--- ============================================================================
-
-CREATE TABLE IF NOT EXISTS asset_phrases (
+CREATE TABLE IF NOT EXISTS asset_word_sentences (
     id BIGSERIAL PRIMARY KEY,
-    phrase_en TEXT NOT NULL,
-    phrase_zh TEXT NOT NULL,
-    phonetic_transcription TEXT,
-    usage_context TEXT,
-    example_sentence_en TEXT,
-    example_sentence_zh TEXT,
-    category TEXT,
-    formality_level TEXT CHECK(formality_level IN ('casual', 'neutral', 'formal')),
-    frequency INTEGER DEFAULT 0,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(phrase_en)
-);
-
-CREATE INDEX IF NOT EXISTS idx_asset_phrases_category ON asset_phrases(category);
-
-
-CREATE TABLE IF NOT EXISTS asset_phrase_sentences (
-    id BIGSERIAL PRIMARY KEY,
-    phrase_id BIGINT NOT NULL,
+    word_id BIGINT NOT NULL, -- Word reference to dict_words table
     sentence_id BIGINT NOT NULL,
     sentence_order INTEGER NOT NULL,
-    UNIQUE(phrase_id, sentence_order)
+    UNIQUE(word_id, sentence_order)
 );
-CREATE INDEX IF NOT EXISTS idx_asset_phrase_sentences_phrase ON asset_phrase_sentences(phrase_id, sentence_id);
+CREATE INDEX IF NOT EXISTS idx_asset_word_sentences_word ON asset_word_sentences(word_id, sentence_id);

@@ -125,15 +125,54 @@ export function ConversationPage() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
-  // Display settings: 'both' | 'en' | 'zh'
-  const [botLang, setBotLang] = useState<'both' | 'en' | 'zh'>('both')
-  const [userLang, setUserLang] = useState<'both' | 'en' | 'zh'>('both')
+  // Display settings - independent toggles for each language (persisted to localStorage)
+  const [showBotEn, setShowBotEn] = useState(() => {
+    const saved = localStorage.getItem('conv_showBotEn')
+    return saved !== null ? saved === 'true' : true
+  })
+  const [showBotZh, setShowBotZh] = useState(() => {
+    const saved = localStorage.getItem('conv_showBotZh')
+    return saved !== null ? saved === 'true' : true
+  })
+  const [showUserEn, setShowUserEn] = useState(() => {
+    const saved = localStorage.getItem('conv_showUserEn')
+    return saved !== null ? saved === 'true' : true
+  })
+  const [showUserZh, setShowUserZh] = useState(() => {
+    const saved = localStorage.getItem('conv_showUserZh')
+    return saved !== null ? saved === 'true' : true
+  })
 
-  // Derived display settings
-  const showBotEn = botLang === 'both' || botLang === 'en'
-  const showBotZh = botLang === 'both' || botLang === 'zh'
-  const showUserEn = userLang === 'both' || userLang === 'en'
-  const showUserZh = userLang === 'both' || userLang === 'zh'
+  // Track which language was last deselected (for blur behavior when both are off)
+  // Default to 'en' so English text is shown blurred when both are off
+  const [lastDeselectedBot, setLastDeselectedBot] = useState<'en' | 'zh'>('en')
+  const [lastDeselectedUser, setLastDeselectedUser] = useState<'en' | 'zh'>('en')
+
+  // Toggle handlers that track the last deselected language
+  const toggleBotEn = () => {
+    if (showBotEn) setLastDeselectedBot('en')
+    setShowBotEn(!showBotEn)
+  }
+  const toggleBotZh = () => {
+    if (showBotZh) setLastDeselectedBot('zh')
+    setShowBotZh(!showBotZh)
+  }
+  const toggleUserEn = () => {
+    if (showUserEn) setLastDeselectedUser('en')
+    setShowUserEn(!showUserEn)
+  }
+  const toggleUserZh = () => {
+    if (showUserZh) setLastDeselectedUser('zh')
+    setShowUserZh(!showUserZh)
+  }
+
+  // Persist display settings to localStorage
+  useEffect(() => {
+    localStorage.setItem('conv_showBotEn', String(showBotEn))
+    localStorage.setItem('conv_showBotZh', String(showBotZh))
+    localStorage.setItem('conv_showUserEn', String(showUserEn))
+    localStorage.setItem('conv_showUserZh', String(showUserZh))
+  }, [showBotEn, showBotZh, showUserEn, showUserZh])
 
   const activeConversation = conversations.find(c => c.id === activeConversationId)
   const messages = activeConversation?.messages || []
@@ -773,40 +812,56 @@ export function ConversationPage() {
                     </button>
                     <div className="flex items-center gap-2 border-l pl-3">
                       <span className="text-gray-500 text-xs">AI:</span>
-                      <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-                        {(['both', 'en', 'zh'] as const).map((lang) => (
-                          <button
-                            key={lang}
-                            onClick={() => setBotLang(lang)}
-                            className={cn(
-                              'px-2.5 py-1 text-xs font-medium transition-colors',
-                              botLang === lang
-                                ? 'bg-orange-500 text-white'
-                                : 'bg-white text-gray-600 hover:bg-orange-50'
-                            )}
-                          >
-                            {lang === 'both' ? '双语' : lang === 'en' ? '英' : '中'}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={toggleBotEn}
+                          className={cn(
+                            'px-2 py-0.5 text-xs font-medium rounded-full transition-all',
+                            showBotEn
+                              ? 'bg-orange-500 text-white shadow-sm'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          )}
+                        >
+                          英
+                        </button>
+                        <button
+                          onClick={toggleBotZh}
+                          className={cn(
+                            'px-2 py-0.5 text-xs font-medium rounded-full transition-all',
+                            showBotZh
+                              ? 'bg-orange-500 text-white shadow-sm'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          )}
+                        >
+                          中
+                        </button>
                       </div>
                     </div>
                     <div className="flex items-center gap-2 border-l pl-3">
                       <span className="text-gray-500 text-xs">我:</span>
-                      <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-                        {(['both', 'en', 'zh'] as const).map((lang) => (
-                          <button
-                            key={lang}
-                            onClick={() => setUserLang(lang)}
-                            className={cn(
-                              'px-2.5 py-1 text-xs font-medium transition-colors',
-                              userLang === lang
-                                ? 'bg-orange-500 text-white'
-                                : 'bg-white text-gray-600 hover:bg-orange-50'
-                            )}
-                          >
-                            {lang === 'both' ? '双语' : lang === 'en' ? '英' : '中'}
-                          </button>
-                        ))}
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={toggleUserEn}
+                          className={cn(
+                            'px-2 py-0.5 text-xs font-medium rounded-full transition-all',
+                            showUserEn
+                              ? 'bg-orange-500 text-white shadow-sm'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          )}
+                        >
+                          英
+                        </button>
+                        <button
+                          onClick={toggleUserZh}
+                          className={cn(
+                            'px-2 py-0.5 text-xs font-medium rounded-full transition-all',
+                            showUserZh
+                              ? 'bg-orange-500 text-white shadow-sm'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          )}
+                        >
+                          中
+                        </button>
                       </div>
                     </div>
                   </div>
@@ -820,8 +875,14 @@ export function ConversationPage() {
                 const isUser = message.role === 'user'
                 const showEn = isUser ? showUserEn : showBotEn
                 const showZh = isUser ? showUserZh : showBotZh
+                const lastDeselected = isUser ? lastDeselectedUser : lastDeselectedBot
+                const bothOff = !showEn && !showZh
 
-                if (!showEn && !showZh) return null
+                // Determine what to display and blur when both are off
+                const displayEn = showEn || (bothOff && lastDeselected === 'en')
+                const displayZh = showZh || (bothOff && lastDeselected === 'zh')
+                const blurEn = bothOff && lastDeselected === 'en'
+                const blurZh = bothOff && lastDeselected === 'zh'
 
                 return (
                   <div
@@ -833,25 +894,26 @@ export function ConversationPage() {
                   >
                     <div
                       className={cn(
-                        'max-w-[70%] rounded-2xl px-4 py-3',
+                        'max-w-[70%] rounded-2xl px-4 py-3 transition-all',
                         isUser
                           ? 'bg-orange-500 text-white'
                           : 'bg-gray-100 text-gray-900'
                       )}
                     >
-                      {showEn && (
-                        <p className="text-sm">{message.contentEn}</p>
+                      {displayEn && (
+                        <p className={cn('text-sm', blurEn && 'blur-sm select-none')}>{message.contentEn}</p>
                       )}
-                      {showEn && showZh && (
+                      {displayEn && displayZh && (
                         <div className={cn(
                           'my-2 border-t',
                           isUser ? 'border-orange-400/30' : 'border-gray-200'
                         )} />
                       )}
-                      {showZh && (
+                      {displayZh && (
                         <p className={cn(
                           'text-sm',
-                          isUser ? 'text-orange-100' : 'text-gray-600'
+                          isUser ? 'text-orange-100' : 'text-gray-600',
+                          blurZh && 'blur-sm select-none'
                         )}>
                           {message.contentZh}
                         </p>
@@ -863,7 +925,7 @@ export function ConversationPage() {
                         <span>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {(message.hasAudio || message.audioBase64) && (
+                        {(message.hasAudio || message.audioBase64 || !isUser) && (
                           <button
                             onClick={() => playAudio(message.id)}
                             className={cn(
