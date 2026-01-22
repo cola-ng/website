@@ -7,75 +7,168 @@ use serde_json::Value;
 use crate::db::schema::*;
 
 // ============================================================================
-// Shared content models (no user_id)
+// Taxonomy models
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_scenes)]
-pub struct Scene {
+#[diesel(table_name = taxon_domains)]
+pub struct TaxonDomain {
+    pub id: i64,
+    pub name_en: String,
+    pub name_zh: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = taxon_domains)]
+pub struct NewTaxonDomain {
+    pub name_en: String,
+    pub name_zh: String,
+}
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = taxon_categories)]
+pub struct TaxonCategory {
+    pub id: i64,
+    pub name_en: String,
+    pub name_zh: String,
+    pub domain_id: i64,
+    pub parent_id: Option<i64>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = taxon_categories)]
+pub struct NewTaxonCategory {
+    pub name_en: String,
+    pub name_zh: String,
+    pub domain_id: i64,
+    pub parent_id: Option<i64>,
+}
+
+// ============================================================================
+// Context models (scenarios/scenes)
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = asset_contexts)]
+pub struct Context {
     pub id: i64,
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub icon_emoji: Option<String>,
-    pub difficulty: Option<String>,
-    pub category: Option<String>,
     pub display_order: Option<i32>,
+    pub difficulty: Option<i16>,
     pub is_active: Option<bool>,
     pub created_at: DateTime<Utc>,
-    pub duration_minutes: Option<i32>,
-    pub is_featured: Option<bool>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_scenes)]
-pub struct NewScene {
+#[diesel(table_name = asset_contexts)]
+pub struct NewContext {
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub icon_emoji: Option<String>,
-    pub difficulty: Option<String>,
-    pub category: Option<String>,
     pub display_order: Option<i32>,
+    pub difficulty: Option<i16>,
     pub is_active: Option<bool>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_dialogues)]
-#[diesel(belongs_to(Scene))]
-pub struct Dialogue {
+#[diesel(table_name = asset_context_categories)]
+pub struct ContextCategory {
     pub id: i64,
-    pub scene_id: i64,
-    pub title_en: String,
-    pub title_zh: String,
-    pub description_en: Option<String>,
-    pub description_zh: Option<String>,
-    pub total_turns: Option<i32>,
-    pub estimated_duration_seconds: Option<i32>,
-    pub difficulty: Option<String>,
+    pub context_id: i64,
+    pub category_id: i64,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_dialogues)]
-pub struct NewDialogue {
-    pub scene_id: i64,
+#[diesel(table_name = asset_context_categories)]
+pub struct NewContextCategory {
+    pub context_id: i64,
+    pub category_id: i64,
+}
+
+// ============================================================================
+// Stage models (learning stages)
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = asset_stages)]
+pub struct Stage {
+    pub id: i64,
+    pub name_en: String,
+    pub name_zh: String,
+    pub description_en: Option<String>,
+    pub description_zh: Option<String>,
+    pub icon_emoji: Option<String>,
+    pub display_order: Option<i32>,
+    pub difficulty: Option<i16>,
+    pub is_active: Option<bool>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = asset_stages)]
+pub struct NewStage {
+    pub name_en: String,
+    pub name_zh: String,
+    pub description_en: Option<String>,
+    pub description_zh: Option<String>,
+    pub icon_emoji: Option<String>,
+    pub display_order: Option<i32>,
+    pub difficulty: Option<i16>,
+    pub is_active: Option<bool>,
+}
+
+// ============================================================================
+// Script models (dialogues)
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = asset_scripts)]
+#[diesel(belongs_to(Stage))]
+pub struct Script {
+    pub id: i64,
+    pub stage_id: i64,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub total_turns: Option<i32>,
     pub estimated_duration_seconds: Option<i32>,
-    pub difficulty: Option<String>,
+    pub difficulty: Option<i16>,
+    pub created_at: DateTime<Utc>,
 }
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = asset_scripts)]
+pub struct NewScript {
+    pub stage_id: i64,
+    pub title_en: String,
+    pub title_zh: String,
+    pub description_en: Option<String>,
+    pub description_zh: Option<String>,
+    pub total_turns: Option<i32>,
+    pub estimated_duration_seconds: Option<i32>,
+    pub difficulty: Option<i16>,
+}
+
+// ============================================================================
+// Script turn models (dialogue lines)
+// ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_script_turns)]
-pub struct DialogueTurn {
+#[diesel(belongs_to(Script))]
+pub struct ScriptTurn {
     pub id: i64,
-    pub dialogue_id: i64,
+    pub script_id: i64,
     pub turn_number: i32,
     pub speaker_role: String,
     pub speaker_name: Option<String>,
@@ -89,8 +182,8 @@ pub struct DialogueTurn {
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = asset_script_turns)]
-pub struct NewDialogueTurn {
-    pub dialogue_id: i64,
+pub struct NewScriptTurn {
+    pub script_id: i64,
     pub turn_number: i32,
     pub speaker_role: String,
     pub speaker_name: Option<String>,
@@ -102,157 +195,85 @@ pub struct NewDialogueTurn {
     pub notes: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_classic_sources)]
-pub struct ClassicDialogueSource {
-    pub id: i64,
-    pub source_type: String,
-    pub title: String,
-    pub year: Option<i32>,
-    pub description_en: Option<String>,
-    pub description_zh: Option<String>,
-    pub thumbnail_url: Option<String>,
-    pub imdb_id: Option<String>,
-    pub difficulty: Option<String>,
-    pub created_at: DateTime<Utc>,
-    pub icon_emoji: Option<String>,
-    pub is_featured: Option<bool>,
-    pub display_order: Option<i32>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_classic_sources)]
-pub struct NewClassicDialogueSource {
-    pub source_type: String,
-    pub title: String,
-    pub year: Option<i32>,
-    pub description_en: Option<String>,
-    pub description_zh: Option<String>,
-    pub thumbnail_url: Option<String>,
-    pub imdb_id: Option<String>,
-    pub difficulty: Option<String>,
-}
+// ============================================================================
+// Reading subject models
+// ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_classic_clips)]
-#[diesel(belongs_to(ClassicDialogueSource, foreign_key = source_id))]
-pub struct ClassicDialogueClip {
-    pub id: i64,
-    pub source_id: i64,
-    pub clip_title_en: String,
-    pub clip_title_zh: String,
-    pub start_time_seconds: Option<i32>,
-    pub end_time_seconds: Option<i32>,
-    pub video_url: Option<String>,
-    pub transcript_en: String,
-    pub transcript_zh: String,
-    pub key_vocabulary: Option<Value>,
-    pub cultural_notes: Option<String>,
-    pub grammar_points: Option<Value>,
-    pub difficulty_vocab: Option<i32>,
-    pub difficulty_speed: Option<i32>,
-    pub difficulty_slang: Option<i32>,
-    pub popularity_score: Option<i32>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_classic_clips)]
-pub struct NewClassicDialogueClip {
-    pub source_id: i64,
-    pub clip_title_en: String,
-    pub clip_title_zh: String,
-    pub start_time_seconds: Option<i32>,
-    pub end_time_seconds: Option<i32>,
-    pub video_url: Option<String>,
-    pub transcript_en: String,
-    pub transcript_zh: String,
-    pub key_vocabulary: Option<Value>,
-    pub cultural_notes: Option<String>,
-    pub grammar_points: Option<Value>,
-    pub difficulty_vocab: Option<i32>,
-    pub difficulty_speed: Option<i32>,
-    pub difficulty_slang: Option<i32>,
-}
-
-#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_read_exercises)]
-pub struct ReadingExercise {
+#[diesel(table_name = asset_read_subjects)]
+pub struct ReadSubject {
     pub id: i64,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
-    pub difficulty: Option<String>,
-    pub exercise_type: Option<String>,
+    pub difficulty: Option<i16>,
+    pub subject_type: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_read_exercises)]
-pub struct NewReadingExercise {
+#[diesel(table_name = asset_read_subjects)]
+pub struct NewReadSubject {
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
-    pub difficulty: Option<String>,
-    pub exercise_type: Option<String>,
+    pub difficulty: Option<i16>,
+    pub subject_type: Option<String>,
 }
+
+// ============================================================================
+// Reading sentence models
+// ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = asset_read_sentences)]
-#[diesel(belongs_to(ReadingExercise, foreign_key = exercise_id))]
-pub struct ReadingSentence {
+#[diesel(belongs_to(ReadSubject, foreign_key = subject_id))]
+pub struct ReadSentence {
     pub id: i64,
-    pub exercise_id: i64,
+    pub subject_id: i64,
     pub sentence_order: i32,
     pub content_en: String,
     pub content_zh: String,
     pub phonetic_transcription: Option<String>,
     pub native_audio_path: Option<String>,
+    pub difficulty: Option<i16>,
     pub focus_sounds: Option<Value>,
     pub common_mistakes: Option<Value>,
-    pub tips: Option<String>,
 }
 
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = asset_read_sentences)]
-pub struct NewReadingSentence {
-    pub exercise_id: i64,
+pub struct NewReadSentence {
+    pub subject_id: i64,
     pub sentence_order: i32,
     pub content_en: String,
     pub content_zh: String,
     pub phonetic_transcription: Option<String>,
     pub native_audio_path: Option<String>,
+    pub difficulty: Option<i16>,
     pub focus_sounds: Option<Value>,
     pub common_mistakes: Option<Value>,
 }
 
+// ============================================================================
+// Word sentence junction model
+// ============================================================================
+
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_phrases)]
-pub struct KeyPhrase {
+#[diesel(table_name = asset_word_sentences)]
+pub struct WordSentence {
     pub id: i64,
-    pub phrase_en: String,
-    pub phrase_zh: String,
-    pub phonetic_transcription: Option<String>,
-    pub usage_context: Option<String>,
-    pub example_sentence_en: Option<String>,
-    pub example_sentence_zh: Option<String>,
-    pub category: Option<String>,
-    pub formality_level: Option<String>,
-    pub frequency: Option<i32>,
-    pub created_at: DateTime<Utc>,
+    pub word_id: i64,
+    pub sentence_id: i64,
+    pub sentence_order: i32,
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_phrases)]
-pub struct NewKeyPhrase {
-    pub phrase_en: String,
-    pub phrase_zh: String,
-    pub phonetic_transcription: Option<String>,
-    pub usage_context: Option<String>,
-    pub example_sentence_en: Option<String>,
-    pub example_sentence_zh: Option<String>,
-    pub category: Option<String>,
-    pub formality_level: Option<String>,
+#[diesel(table_name = asset_word_sentences)]
+pub struct NewWordSentence {
+    pub word_id: i64,
+    pub sentence_id: i64,
+    pub sentence_order: i32,
 }

@@ -14,12 +14,11 @@ use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
-use crate::db::schema::{learn_chat_messages, learn_chat_sessions};
+use crate::db::schema::{learn_chat_turns, learn_chats};
 use crate::db::with_conn;
-use crate::models::{
-    ChatMessage as DbChatMessage, ChatSession, HistoryMessage, NewChatMessage, NewChatSession,
-};
+use crate::models::{ChatMessage as DbChatMessage, ChatSession, HistoryMessage, NewChatMessage, NewChatSession};
 use crate::services::{create_provider_from_env, AiProviderError, ChatMessage};
 use crate::{hoops, AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
@@ -127,10 +126,10 @@ Remember: Your goal is to help users improve their spoken English through natura
 /// Get or create active session for user
 async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError> {
     with_conn(move |conn| {
-        // Try to find active session
-        let existing = learn_chat_sessions::table
-            .filter(learn_chat_sessions::user_id.eq(user_id))
-            .filter(learn_chat_sessions::is_active.eq(true))
+        // Try to find the most recent session for this user
+        let existing = learn_chats::table
+            .filter(learn_chats::user_id.eq(user_id))
+            .order(learn_chats::created_at.desc())
             .first::<ChatSession>(conn)
             .optional()?;
 
@@ -141,11 +140,12 @@ async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError>
         // Create new session
         let new_session = NewChatSession {
             user_id,
-            title: None,
-            system_prompt: None,
+            title: "Chat Session".to_string(),
+            duration_ms: None,
+            pause_count: None,
         };
 
-        diesel::insert_into(learn_chat_sessions::table)
+        diesel::insert_into(learn_chats::table)
             .values(&new_session)
             .get_result::<ChatSession>(conn)
     })
@@ -157,11 +157,11 @@ async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError>
 }
 
 /// Get chat history for a session (last 20 messages)
-async fn get_session_history(session_id: i64) -> Result<Vec<HistoryMessage>, StatusError> {
+async fn get_session_history(chat_id: String) -> Result<Vec<HistoryMessage>, StatusError> {
     with_conn(move |conn| {
-        let messages = learn_chat_messages::table
-            .filter(learn_chat_messages::session_id.eq(session_id))
-            .order(learn_chat_messages::created_at.asc())
+        let messages = learn_chat_turns::table
+            .filter(learn_chat_turns::chat_id.eq(chat_id))
+            .order(learn_chat_turns::created_at.asc())
             .limit(20)
             .load::<DbChatMessage>(conn)?;
 
@@ -176,44 +176,50 @@ async fn get_session_history(session_id: i64) -> Result<Vec<HistoryMessage>, Sta
 
 /// Save messages to database
 async fn save_messages(
-    session_id: i64,
+    chat_id: String,
     user_id: i64,
     user_message: &str,
     ai_message: &str,
+    ai_message_zh: Option<&str>,
 ) -> Result<(), StatusError> {
     let user_msg = user_message.to_string();
     let ai_msg = ai_message.to_string();
+    let ai_msg_zh = ai_message_zh.unwrap_or("").to_string();
+    let chat_id_clone = chat_id.clone();
 
     with_conn(move |conn| {
         // Insert user message
-        diesel::insert_into(learn_chat_messages::table)
+        diesel::insert_into(learn_chat_turns::table)
             .values(&NewChatMessage {
-                session_id,
                 user_id,
-                role: "user".to_string(),
-                content: user_msg,
-                audio_base64: None,
+                chat_id: chat_id.clone(),
+                speaker: "user".to_string(),
+                use_lang: "en".to_string(),
+                content_en: user_msg.clone(),
+                content_zh: user_msg,
+                audio_path: None,
+                duration_ms: None,
+                words_per_minute: None,
+                pause_count: None,
+                hesitation_count: None,
             })
             .execute(conn)?;
 
         // Insert assistant message
-        diesel::insert_into(learn_chat_messages::table)
+        diesel::insert_into(learn_chat_turns::table)
             .values(&NewChatMessage {
-                session_id,
                 user_id,
-                role: "assistant".to_string(),
-                content: ai_msg,
-                audio_base64: None,
+                chat_id: chat_id_clone,
+                speaker: "assistant".to_string(),
+                use_lang: "en".to_string(),
+                content_en: ai_msg,
+                content_zh: ai_msg_zh,
+                audio_path: None,
+                duration_ms: None,
+                words_per_minute: None,
+                pause_count: None,
+                hesitation_count: None,
             })
-            .execute(conn)?;
-
-        // Update session message count and timestamp
-        diesel::update(learn_chat_sessions::table.find(session_id))
-            .set((
-                learn_chat_sessions::message_count
-                    .eq(learn_chat_sessions::message_count + 2),
-                learn_chat_sessions::updated_at.eq(Utc::now()),
-            ))
             .execute(conn)?;
 
         Ok(())
@@ -225,19 +231,15 @@ async fn save_messages(
     })
 }
 
-/// Clear session (mark as inactive and create new one)
+/// Clear session (delete all messages for this user's active chat)
 async fn clear_user_session(user_id: i64) -> Result<(), StatusError> {
     with_conn(move |conn| {
-        diesel::update(
-            learn_chat_sessions::table
-                .filter(learn_chat_sessions::user_id.eq(user_id))
-                .filter(learn_chat_sessions::is_active.eq(true)),
-        )
-        .set((
-            learn_chat_sessions::is_active.eq(false),
-            learn_chat_sessions::updated_at.eq(Utc::now()),
-        ))
-        .execute(conn)?;
+        // Delete all chat turns for this user
+        diesel::delete(learn_chat_turns::table.filter(learn_chat_turns::user_id.eq(user_id)))
+            .execute(conn)?;
+
+        // Delete all chat sessions for this user
+        diesel::delete(learn_chats::table.filter(learn_chats::user_id.eq(user_id))).execute(conn)?;
 
         Ok(())
     })
@@ -254,10 +256,7 @@ async fn clear_user_session(user_id: i64) -> Result<(), StatusError> {
 
 /// Send audio and receive AI response with audio
 #[endpoint(tags("Chat"))]
-pub async fn chat_send(
-    req: &mut Request,
-    depot: &mut Depot,
-) -> JsonResult<ChatResponse> {
+pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatResponse> {
     let user_id = depot.user_id()?;
 
     // Read body with larger size limit for audio (50MB)
@@ -293,9 +292,10 @@ pub async fn chat_send(
 
     // Get or create session
     let session = get_or_create_session(user_id).await?;
+    let chat_id = format!("chat_{}", session.id);
 
     // Get history from database
-    let history_messages = get_session_history(session.id).await?;
+    let history_messages = get_session_history(chat_id.clone()).await?;
     let history: Vec<ChatMessage> = history_messages
         .into_iter()
         .map(|m| ChatMessage {
@@ -320,11 +320,18 @@ pub async fn chat_send(
         })?;
     tracing::info!("{} voice_chat API completed successfully", provider.name());
 
-    // Save to database
-    save_messages(session.id, user_id, &result.user_text, &result.ai_text).await?;
-
     // Translate AI response to Chinese
     let ai_text_zh = translate_to_chinese(&provider, &result.ai_text).await;
+
+    // Save to database
+    save_messages(
+        chat_id,
+        user_id,
+        &result.user_text,
+        &result.ai_text,
+        ai_text_zh.as_deref(),
+    )
+    .await?;
 
     // Analyze user_text for corrections
     let corrections = analyze_corrections(&result.user_text);
@@ -359,6 +366,7 @@ pub async fn text_chat_send(
 
     // Get or create session
     let session = get_or_create_session(user_id).await?;
+    let chat_id = format!("chat_{}", session.id);
 
     // Build messages
     let mut messages: Vec<ChatMessage> = Vec::new();
@@ -374,7 +382,7 @@ pub async fn text_chat_send(
     });
 
     // Add history from database
-    let history_messages = get_session_history(session.id).await?;
+    let history_messages = get_session_history(chat_id.clone()).await?;
     messages.extend(history_messages.into_iter().map(|m| ChatMessage {
         role: m.role,
         content: m.content,
@@ -391,14 +399,27 @@ pub async fn text_chat_send(
         StatusError::internal_server_error().brief("Chat service not available")
     })?;
     tracing::info!("Calling {} chat API...", provider.name());
-    let ai_text: String = chat_service.chat(messages, Some(0.7), None).await.map_err(|e: AiProviderError| {
-        tracing::error!("{} chat error: {:?}", provider.name(), e);
-        StatusError::internal_server_error().brief(e.to_string())
-    })?;
+    let ai_text: String = chat_service
+        .chat(messages, Some(0.7), None)
+        .await
+        .map_err(|e: AiProviderError| {
+            tracing::error!("{} chat error: {:?}", provider.name(), e);
+            StatusError::internal_server_error().brief(e.to_string())
+        })?;
     tracing::info!("{} chat API completed successfully", provider.name());
 
+    // Translate AI response to Chinese
+    let ai_text_zh = translate_to_chinese(&provider, &ai_text).await;
+
     // Save to database
-    save_messages(session.id, user_id, &input.message, &ai_text).await?;
+    save_messages(
+        chat_id,
+        user_id,
+        &input.message,
+        &ai_text,
+        ai_text_zh.as_deref(),
+    )
+    .await?;
 
     // Generate audio if requested
     let ai_audio_base64 = if input.generate_audio {
@@ -421,9 +442,6 @@ pub async fn text_chat_send(
     } else {
         None
     };
-
-    // Translate AI response to Chinese
-    let ai_text_zh = translate_to_chinese(&provider, &ai_text).await;
 
     // Analyze for corrections
     let corrections = analyze_corrections(&input.message);
@@ -491,7 +509,8 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
     let user_id = depot.user_id()?;
 
     let session = get_or_create_session(user_id).await?;
-    let messages = get_session_history(session.id).await?;
+    let chat_id = format!("chat_{}", session.id);
+    let messages = get_session_history(chat_id).await?;
 
     json_ok(HistoryResponse { messages })
 }

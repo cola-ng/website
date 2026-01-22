@@ -6,64 +6,65 @@ use serde::{Deserialize, Serialize};
 use crate::db::schema::*;
 
 // ============================================================================
-// Chat Session
+// Chat (conversation sessions)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = learn_chat_sessions)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_chats)]
 pub struct ChatSession {
     pub id: i64,
     pub user_id: i64,
-    pub title: Option<String>,
-    pub system_prompt: Option<String>,
-    pub is_active: bool,
-    pub message_count: i32,
+    pub title: String,
+    pub duration_ms: Option<i32>,
+    pub pause_count: Option<i32>,
     pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = learn_chat_sessions)]
+#[diesel(table_name = learn_chats)]
 pub struct NewChatSession {
     pub user_id: i64,
-    pub title: Option<String>,
-    pub system_prompt: Option<String>,
-}
-
-#[derive(AsChangeset)]
-#[diesel(table_name = learn_chat_sessions)]
-pub struct UpdateChatSession {
-    pub title: Option<String>,
-    pub system_prompt: Option<String>,
-    pub is_active: Option<bool>,
-    pub message_count: Option<i32>,
-    pub updated_at: Option<DateTime<Utc>>,
+    pub title: String,
+    pub duration_ms: Option<i32>,
+    pub pause_count: Option<i32>,
 }
 
 // ============================================================================
-// Chat Message
+// Chat Turns (conversation messages)
 // ============================================================================
 
-#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
-#[diesel(table_name = learn_chat_messages)]
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_chat_turns)]
 pub struct ChatMessage {
     pub id: i64,
-    pub session_id: i64,
     pub user_id: i64,
-    pub role: String,
-    pub content: String,
-    pub audio_base64: Option<String>,
+    pub chat_id: String,
+    pub speaker: String,
+    pub use_lang: String,
+    pub content_en: String,
+    pub content_zh: String,
+    pub audio_path: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub words_per_minute: Option<f32>,
+    pub pause_count: Option<i32>,
+    pub hesitation_count: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 
 #[derive(Insertable)]
-#[diesel(table_name = learn_chat_messages)]
+#[diesel(table_name = learn_chat_turns)]
 pub struct NewChatMessage {
-    pub session_id: i64,
     pub user_id: i64,
-    pub role: String,
-    pub content: String,
-    pub audio_base64: Option<String>,
+    pub chat_id: String,
+    pub speaker: String,
+    pub use_lang: String,
+    pub content_en: String,
+    pub content_zh: String,
+    pub audio_path: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub words_per_minute: Option<f32>,
+    pub pause_count: Option<i32>,
+    pub hesitation_count: Option<i32>,
 }
 
 // ============================================================================
@@ -72,17 +73,20 @@ pub struct NewChatMessage {
 
 #[derive(Debug, Deserialize, Serialize, Clone, ToSchema)]
 pub struct HistoryMessage {
-    /// Message role (user, assistant, system)
+    /// Message role (user, assistant)
     pub role: String,
-    /// Message content
+    /// Message content in English
     pub content: String,
+    /// Message content in Chinese
+    pub content_zh: Option<String>,
 }
 
 impl From<ChatMessage> for HistoryMessage {
     fn from(msg: ChatMessage) -> Self {
         HistoryMessage {
-            role: msg.role,
-            content: msg.content,
+            role: msg.speaker,
+            content: msg.content_en,
+            content_zh: Some(msg.content_zh),
         }
     }
 }

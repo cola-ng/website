@@ -21,29 +21,28 @@ pub fn router() -> Router {
                 .delete(reset_issue_words),
         )
         .push(
-            Router::with_path("sessions")
-                .get(list_sessions)
-                .post(create_session)
-                .delete(reset_sessions)
-                .push(Router::with_path("{session_id}").patch(update_session)),
+            Router::with_path("chats")
+                .get(list_chats)
+                .post(create_chat)
+                .delete(reset_chats),
         )
         .push(
-            Router::with_path("conversations")
-                .get(list_conversations)
-                .post(create_conversation)
-                .delete(reset_conversations),
+            Router::with_path("chat-turns")
+                .get(list_chat_turns)
+                .post(create_chat_turn)
+                .delete(reset_chat_turns),
         )
         .push(
-            Router::with_path("conversation-annotations")
-                .get(list_conversation_annotations)
-                .post(create_conversation_annotation)
-                .delete(reset_conversation_annotations),
+            Router::with_path("chat-annotations")
+                .get(list_chat_annotations)
+                .post(create_chat_annotation)
+                .delete(reset_chat_annotations),
         )
         .push(
-            Router::with_path("word-practices")
-                .get(list_word_practices)
-                .post(create_word_practice)
-                .delete(reset_word_practices),
+            Router::with_path("write-practices")
+                .get(list_write_practices)
+                .post(create_write_practice)
+                .delete(reset_write_practices),
         )
         .push(
             Router::with_path("read-practices")
@@ -164,161 +163,84 @@ pub async fn create_issue_word(
 }
 
 // ============================================================================
-// Learning Sessions API (user-specific)
+// Chats API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
-pub struct CreateSessionRequest {
-    session_id: String,
-    session_type: Option<String>,
-    scene_id: Option<i64>,
-    dialogue_id: Option<i64>,
-    classic_clip_id: Option<i64>,
-}
-
-#[derive(Deserialize)]
-pub struct UpdateSessionRequest {
-    ended_at: Option<String>,
-    duration_seconds: Option<i32>,
-    total_words_spoken: Option<i32>,
-    average_wpm: Option<f32>,
-    error_count: Option<i32>,
-    correction_count: Option<i32>,
-    notes: Option<String>,
-    ai_summary_en: Option<String>,
-    ai_summary_zh: Option<String>,
+#[derive(Deserialize, ToSchema)]
+pub struct CreateChatRequest {
+    title: String,
+    duration_ms: Option<i32>,
+    pause_count: Option<i32>,
 }
 
 #[handler]
-pub async fn list_sessions(
+pub async fn list_chats(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let session_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let sessions: Vec<LearningSession> = with_conn(move |conn| {
-        let mut query = learn_sessions::table
-            .filter(learn_sessions::user_id.eq(user_id))
-            .order(learn_sessions::started_at.desc())
+    let chats: Vec<Chat> = with_conn(move |conn| {
+        learn_chats::table
+            .filter(learn_chats::user_id.eq(user_id))
+            .order(learn_chats::created_at.desc())
             .limit(limit)
-            .into_boxed();
-
-        if let Some(st) = session_type_param {
-            query = query.filter(learn_sessions::session_type.eq(st));
-        }
-
-        query.load::<LearningSession>(conn)
+            .load::<Chat>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list sessions"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list chats"))?;
 
-    res.render(Json(sessions));
+    res.render(Json(chats));
     Ok(())
 }
 
 #[handler]
-pub async fn create_session(
+pub async fn create_chat(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let input: CreateSessionRequest = req
+    let input: CreateChatRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    if input.session_id.trim().is_empty() {
+    if input.title.trim().is_empty() {
         return Err(StatusError::bad_request()
-            .brief("session_id is required")
+            .brief("title is required")
             .into());
     }
 
-    let new_session = NewLearningSession {
-        session_id: input.session_id,
+    let new_chat = NewChat {
         user_id,
-        session_type: input.session_type,
-        scene_id: input.scene_id,
-        dialogue_id: input.dialogue_id,
-        classic_clip_id: input.classic_clip_id,
+        title: input.title,
+        duration_ms: input.duration_ms,
+        pause_count: input.pause_count,
     };
 
-    let session: LearningSession = with_conn(move |conn| {
-        diesel::insert_into(learn_sessions::table)
-            .values(&new_session)
-            .get_result::<LearningSession>(conn)
+    let chat: Chat = with_conn(move |conn| {
+        diesel::insert_into(learn_chats::table)
+            .values(&new_chat)
+            .get_result::<Chat>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create session"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create chat"))?;
 
     res.status_code(StatusCode::CREATED);
-    res.render(Json(session));
-    Ok(())
-}
-
-#[handler]
-pub async fn update_session(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let user_id = depot.user_id()?;
-    let session_id_param: String = req
-        .param::<String>("session_id")
-        .ok_or_else(|| StatusError::bad_request().brief("missing session_id"))?;
-
-    let input: UpdateSessionRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-
-    let ended_at_parsed = input
-        .ended_at
-        .map(|s| {
-            chrono::DateTime::parse_from_rfc3339(&s)
-                .ok()
-                .map(|d| d.with_timezone(&Utc))
-        })
-        .flatten();
-
-    let update = UpdateLearningSession {
-        ended_at: ended_at_parsed,
-        duration_seconds: input.duration_seconds,
-        total_words_spoken: input.total_words_spoken,
-        average_wpm: input.average_wpm,
-        error_count: input.error_count,
-        correction_count: input.correction_count,
-        notes: input.notes,
-        ai_summary_en: input.ai_summary_en,
-        ai_summary_zh: input.ai_summary_zh,
-    };
-
-    let session: LearningSession = with_conn(move |conn| {
-        diesel::update(
-            learn_sessions::table
-                .filter(learn_sessions::session_id.eq(session_id_param))
-                .filter(learn_sessions::user_id.eq(user_id)),
-        )
-        .set(&update)
-        .get_result::<LearningSession>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::not_found().brief("session not found"))?;
-
-    res.render(Json(session));
+    res.render(Json(chat));
     Ok(())
 }
 
 // ============================================================================
-// Conversations API (user-specific)
+// Chat Turns API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
-pub struct CreateConversationRequest {
-    session_id: String,
+#[derive(Deserialize, ToSchema)]
+pub struct CreateChatTurnRequest {
+    chat_id: String,
     speaker: String,
     use_lang: String,
     content_en: String,
@@ -331,52 +253,50 @@ pub struct CreateConversationRequest {
 }
 
 #[handler]
-pub async fn list_conversations(
+pub async fn list_chat_turns(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let session_id_param = req.query::<String>("session_id");
+    let chat_id_param = req.query::<String>("chat_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
-    let convos: Vec<Conversation> = with_conn(move |conn| {
-        let mut query = learn_conversations::table
-            .filter(learn_conversations::user_id.eq(user_id))
-            .order(learn_conversations::created_at.desc())
+    let turns: Vec<ChatTurn> = with_conn(move |conn| {
+        let mut query = learn_chat_turns::table
+            .filter(learn_chat_turns::user_id.eq(user_id))
+            .order(learn_chat_turns::created_at.desc())
             .limit(limit)
             .into_boxed();
 
-        if let Some(sid) = session_id_param {
-            query = query.filter(learn_conversations::session_id.eq(sid));
+        if let Some(cid) = chat_id_param {
+            query = query.filter(learn_chat_turns::chat_id.eq(cid));
         }
 
-        query.load::<Conversation>(conn)
+        query.load::<ChatTurn>(conn)
     })
     .await
-    .map_err(|_| {
-        StatusError::internal_server_error().brief("failed to list learn_conversations")
-    })?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list chat turns"))?;
 
-    res.render(Json(convos));
+    res.render(Json(turns));
     Ok(())
 }
 
 #[handler]
-pub async fn create_conversation(
+pub async fn create_chat_turn(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let input: CreateConversationRequest = req
+    let input: CreateChatTurnRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let new_convo = NewConversation {
+    let new_turn = NewChatTurn {
         user_id,
-        session_id: input.session_id,
+        chat_id: input.chat_id,
         speaker: input.speaker,
         use_lang: input.use_lang,
         content_en: input.content_en,
@@ -388,16 +308,103 @@ pub async fn create_conversation(
         hesitation_count: input.hesitation_count,
     };
 
-    let convo: Conversation = with_conn(move |conn| {
-        diesel::insert_into(learn_conversations::table)
-            .values(&new_convo)
-            .get_result::<Conversation>(conn)
+    let turn: ChatTurn = with_conn(move |conn| {
+        diesel::insert_into(learn_chat_turns::table)
+            .values(&new_turn)
+            .get_result::<ChatTurn>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create conversation"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create chat turn"))?;
 
     res.status_code(StatusCode::CREATED);
-    res.render(Json(convo));
+    res.render(Json(turn));
+    Ok(())
+}
+
+// ============================================================================
+// Chat Annotations API (user-specific)
+// ============================================================================
+
+#[derive(Deserialize, ToSchema)]
+pub struct CreateChatAnnotationRequest {
+    chat_id: i64,
+    chat_turn_id: i64,
+    annotation_type: String,
+    start_position: Option<i32>,
+    end_position: Option<i32>,
+    original_text: Option<String>,
+    suggested_text: Option<String>,
+    description_en: Option<String>,
+    description_zh: Option<String>,
+    severity: Option<String>,
+}
+
+#[handler]
+pub async fn list_chat_annotations(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
+    let chat_id_param = req.query::<i64>("chat_id");
+    let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
+
+    let annotations: Vec<ChatAnnotation> = with_conn(move |conn| {
+        let mut query = learn_chat_annotations::table
+            .filter(learn_chat_annotations::user_id.eq(user_id))
+            .order(learn_chat_annotations::created_at.desc())
+            .limit(limit)
+            .into_boxed();
+
+        if let Some(cid) = chat_id_param {
+            query = query.filter(learn_chat_annotations::chat_id.eq(cid));
+        }
+
+        query.load::<ChatAnnotation>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
+
+    res.render(Json(annotations));
+    Ok(())
+}
+
+#[handler]
+pub async fn create_chat_annotation(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
+    let input: CreateChatAnnotationRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+    let new_annotation = NewChatAnnotation {
+        user_id,
+        chat_id: input.chat_id,
+        chat_turn_id: input.chat_turn_id,
+        annotation_type: input.annotation_type,
+        start_position: input.start_position,
+        end_position: input.end_position,
+        original_text: input.original_text,
+        suggested_text: input.suggested_text,
+        description_en: input.description_en,
+        description_zh: input.description_zh,
+        severity: input.severity,
+    };
+
+    let annotation: ChatAnnotation = with_conn(move |conn| {
+        diesel::insert_into(learn_chat_annotations::table)
+            .values(&new_annotation)
+            .get_result::<ChatAnnotation>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create annotation"))?;
+
+    res.status_code(StatusCode::CREATED);
+    res.render(Json(annotation));
     Ok(())
 }
 
@@ -405,7 +412,7 @@ pub async fn create_conversation(
 // User Vocabulary API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateVocabularyRequest {
     word: String,
     word_zh: Option<String>,
@@ -485,7 +492,7 @@ pub async fn create_vocabulary(
 // Daily Stats API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct UpsertDailyStatRequest {
     stat_date: String,
     minutes_studied: Option<i32>,
@@ -589,163 +596,78 @@ pub async fn list_achievements(depot: &mut Depot, res: &mut Response) -> AppResu
 }
 
 // ============================================================================
-// Conversation Annotations API (user-specific)
+// Write Practices API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
-pub struct CreateConversationAnnotationRequest {
-    conversation_id: i64,
-    annotation_type: String,
-    start_position: Option<i32>,
-    end_position: Option<i32>,
-    original_text: Option<String>,
-    suggested_text: Option<String>,
-    description_en: Option<String>,
-    description_zh: Option<String>,
-    severity: Option<String>,
-}
-
-#[handler]
-pub async fn list_conversation_annotations(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let user_id = depot.user_id()?;
-    let conversation_id_param = req.query::<i64>("conversation_id");
-    let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
-
-    let annotations: Vec<ConversationAnnotation> = with_conn(move |conn| {
-        let mut query = learn_conversation_annotations::table
-            .filter(learn_conversation_annotations::user_id.eq(user_id))
-            .order(learn_conversation_annotations::created_at.desc())
-            .limit(limit)
-            .into_boxed();
-
-        if let Some(cid) = conversation_id_param {
-            query = query.filter(learn_conversation_annotations::conversation_id.eq(cid));
-        }
-
-        query.load::<ConversationAnnotation>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
-
-    res.render(Json(annotations));
-    Ok(())
-}
-
-#[handler]
-pub async fn create_conversation_annotation(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let user_id = depot.user_id()?;
-    let input: CreateConversationAnnotationRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-
-    let new_annotation = NewConversationAnnotation {
-        user_id,
-        conversation_id: input.conversation_id,
-        annotation_type: input.annotation_type,
-        start_position: input.start_position,
-        end_position: input.end_position,
-        original_text: input.original_text,
-        suggested_text: input.suggested_text,
-        description_en: input.description_en,
-        description_zh: input.description_zh,
-        severity: input.severity,
-    };
-
-    let annotation: ConversationAnnotation = with_conn(move |conn| {
-        diesel::insert_into(learn_conversation_annotations::table)
-            .values(&new_annotation)
-            .get_result::<ConversationAnnotation>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create annotation"))?;
-
-    res.status_code(StatusCode::CREATED);
-    res.render(Json(annotation));
-    Ok(())
-}
-
-// ============================================================================
-// Word Practices API (user-specific)
-// ============================================================================
-
-#[derive(Deserialize)]
-pub struct CreateWordPracticeRequest {
+#[derive(Deserialize, ToSchema)]
+pub struct CreateWritePracticeRequest {
     word_id: i64,
-    session_id: String,
+    practice_id: String,
     success_level: Option<i32>,
     notes: Option<String>,
 }
 
 #[handler]
-pub async fn list_word_practices(
+pub async fn list_write_practices(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
     let word_id_param = req.query::<i64>("word_id");
-    let session_id_param = req.query::<String>("session_id");
+    let practice_id_param = req.query::<String>("practice_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
-    let practices: Vec<WordPracticeLog> = with_conn(move |conn| {
-        let mut query = learn_word_practices::table
-            .filter(learn_word_practices::user_id.eq(user_id))
-            .order(learn_word_practices::updated_at.desc())
+    let practices: Vec<WritePractice> = with_conn(move |conn| {
+        let mut query = learn_write_practices::table
+            .filter(learn_write_practices::user_id.eq(user_id))
+            .order(learn_write_practices::updated_at.desc())
             .limit(limit)
             .into_boxed();
 
         if let Some(wid) = word_id_param {
-            query = query.filter(learn_word_practices::word_id.eq(wid));
+            query = query.filter(learn_write_practices::word_id.eq(wid));
         }
-        if let Some(sid) = session_id_param {
-            query = query.filter(learn_word_practices::session_id.eq(sid));
+        if let Some(pid) = practice_id_param {
+            query = query.filter(learn_write_practices::practice_id.eq(pid));
         }
 
-        query.load::<WordPracticeLog>(conn)
+        query.load::<WritePractice>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list word practices"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list write practices"))?;
 
     res.render(Json(practices));
     Ok(())
 }
 
 #[handler]
-pub async fn create_word_practice(
+pub async fn create_write_practice(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let input: CreateWordPracticeRequest = req
+    let input: CreateWritePracticeRequest = req
         .parse_json()
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let new_practice = NewWordPracticeLog {
+    let new_practice = NewWritePractice {
         user_id,
         word_id: input.word_id,
-        session_id: input.session_id,
+        practice_id: input.practice_id,
         success_level: input.success_level,
         notes: input.notes,
     };
 
-    let practice: WordPracticeLog = with_conn(move |conn| {
-        diesel::insert_into(learn_word_practices::table)
+    let practice: WritePractice = with_conn(move |conn| {
+        diesel::insert_into(learn_write_practices::table)
             .values(&new_practice)
-            .get_result::<WordPracticeLog>(conn)
+            .get_result::<WritePractice>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create word practice"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create write practice"))?;
 
     res.status_code(StatusCode::CREATED);
     res.render(Json(practice));
@@ -756,10 +678,10 @@ pub async fn create_word_practice(
 // Reading Practices API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateReadPracticeRequest {
-    sentence_id: i64,
-    session_id: String,
+    sentence_id: Option<i64>,
+    practice_id: String,
     user_audio_path: Option<String>,
     pronunciation_score: Option<i32>,
     fluency_score: Option<i32>,
@@ -779,10 +701,10 @@ pub async fn list_read_practices(
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
     let sentence_id_param = req.query::<i64>("sentence_id");
-    let session_id_param = req.query::<String>("session_id");
+    let practice_id_param = req.query::<String>("practice_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
-    let practices: Vec<ReadingPracticeAttempt> = with_conn(move |conn| {
+    let practices: Vec<ReadPractice> = with_conn(move |conn| {
         let mut query = learn_read_practices::table
             .filter(learn_read_practices::user_id.eq(user_id))
             .order(learn_read_practices::created_at.desc())
@@ -792,11 +714,11 @@ pub async fn list_read_practices(
         if let Some(sid) = sentence_id_param {
             query = query.filter(learn_read_practices::sentence_id.eq(sid));
         }
-        if let Some(sess_id) = session_id_param {
-            query = query.filter(learn_read_practices::session_id.eq(sess_id));
+        if let Some(pid) = practice_id_param {
+            query = query.filter(learn_read_practices::practice_id.eq(pid));
         }
 
-        query.load::<ReadingPracticeAttempt>(conn)
+        query.load::<ReadPractice>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read practices"))?;
@@ -817,10 +739,10 @@ pub async fn create_read_practice(
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let new_practice = NewReadingPracticeAttempt {
+    let new_practice = NewReadPractice {
         user_id,
         sentence_id: input.sentence_id,
-        session_id: input.session_id,
+        practice_id: input.practice_id,
         user_audio_path: input.user_audio_path,
         pronunciation_score: input.pronunciation_score,
         fluency_score: input.fluency_score,
@@ -832,10 +754,10 @@ pub async fn create_read_practice(
         waveform_data: input.waveform_data,
     };
 
-    let practice: ReadingPracticeAttempt = with_conn(move |conn| {
+    let practice: ReadPractice = with_conn(move |conn| {
         diesel::insert_into(learn_read_practices::table)
             .values(&new_practice)
-            .get_result::<ReadingPracticeAttempt>(conn)
+            .get_result::<ReadPractice>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create read practice"))?;
@@ -849,7 +771,7 @@ pub async fn create_read_practice(
 // Suggestions API (user-specific)
 // ============================================================================
 
-#[derive(Deserialize)]
+#[derive(Deserialize, ToSchema)]
 pub struct CreateSuggestionRequest {
     suggestion_type: Option<String>,
     suggested_text: String,
@@ -953,83 +875,76 @@ pub async fn reset_issue_words(depot: &mut Depot, res: &mut Response) -> AppResu
 }
 
 #[handler]
-pub async fn reset_sessions(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn reset_chats(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
     let deleted_count = with_conn(move |conn| {
-        diesel::delete(learn_sessions::table.filter(learn_sessions::user_id.eq(user_id)))
-            .execute(conn)
+        diesel::delete(learn_chats::table.filter(learn_chats::user_id.eq(user_id))).execute(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to reset sessions"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to reset chats"))?;
 
     res.render(Json(ResetResponse {
         deleted_count,
-        table: "learn_sessions".to_string(),
+        table: "learn_chats".to_string(),
     }));
     Ok(())
 }
 
 #[handler]
-pub async fn reset_conversations(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn reset_chat_turns(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
     let deleted_count = with_conn(move |conn| {
-        diesel::delete(learn_conversations::table.filter(learn_conversations::user_id.eq(user_id)))
+        diesel::delete(learn_chat_turns::table.filter(learn_chat_turns::user_id.eq(user_id)))
             .execute(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to reset conversations"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to reset chat turns"))?;
 
     res.render(Json(ResetResponse {
         deleted_count,
-        table: "learn_conversations".to_string(),
+        table: "learn_chat_turns".to_string(),
     }));
     Ok(())
 }
 
 #[handler]
-pub async fn reset_conversation_annotations(
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn reset_chat_annotations(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
     let deleted_count = with_conn(move |conn| {
         diesel::delete(
-            learn_conversation_annotations::table
-                .filter(learn_conversation_annotations::user_id.eq(user_id)),
+            learn_chat_annotations::table.filter(learn_chat_annotations::user_id.eq(user_id)),
         )
         .execute(conn)
     })
     .await
-    .map_err(|_| {
-        StatusError::internal_server_error().brief("failed to reset conversation annotations")
-    })?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to reset chat annotations"))?;
 
     res.render(Json(ResetResponse {
         deleted_count,
-        table: "learn_conversation_annotations".to_string(),
+        table: "learn_chat_annotations".to_string(),
     }));
     Ok(())
 }
 
 #[handler]
-pub async fn reset_word_practices(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn reset_write_practices(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
     let deleted_count = with_conn(move |conn| {
         diesel::delete(
-            learn_word_practices::table.filter(learn_word_practices::user_id.eq(user_id)),
+            learn_write_practices::table.filter(learn_write_practices::user_id.eq(user_id)),
         )
         .execute(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to reset word practices"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to reset write practices"))?;
 
     res.render(Json(ResetResponse {
         deleted_count,
-        table: "learn_word_practices".to_string(),
+        table: "learn_write_practices".to_string(),
     }));
     Ok(())
 }
@@ -1146,25 +1061,43 @@ pub async fn reset_all_learn_data(depot: &mut Depot, res: &mut Response) -> AppR
         // Delete in order to respect foreign key constraints
         // First delete dependent tables, then parent tables
 
-        // Conversation annotations (depends on conversations)
+        // Chat annotations (depends on chat turns)
         let count = diesel::delete(
-            learn_conversation_annotations::table
-                .filter(learn_conversation_annotations::user_id.eq(user_id)),
+            learn_chat_annotations::table.filter(learn_chat_annotations::user_id.eq(user_id)),
         )
         .execute(conn)?;
         tables_reset.push(ResetResponse {
             deleted_count: count,
-            table: "learn_conversation_annotations".to_string(),
+            table: "learn_chat_annotations".to_string(),
         });
 
-        // Word practices (depends on issue_words)
+        // Chat turns
         let count = diesel::delete(
-            learn_word_practices::table.filter(learn_word_practices::user_id.eq(user_id)),
+            learn_chat_turns::table.filter(learn_chat_turns::user_id.eq(user_id)),
         )
         .execute(conn)?;
         tables_reset.push(ResetResponse {
             deleted_count: count,
-            table: "learn_word_practices".to_string(),
+            table: "learn_chat_turns".to_string(),
+        });
+
+        // Chats
+        let count =
+            diesel::delete(learn_chats::table.filter(learn_chats::user_id.eq(user_id)))
+                .execute(conn)?;
+        tables_reset.push(ResetResponse {
+            deleted_count: count,
+            table: "learn_chats".to_string(),
+        });
+
+        // Write practices
+        let count = diesel::delete(
+            learn_write_practices::table.filter(learn_write_practices::user_id.eq(user_id)),
+        )
+        .execute(conn)?;
+        tables_reset.push(ResetResponse {
+            deleted_count: count,
+            table: "learn_write_practices".to_string(),
         });
 
         // Read practices
@@ -1175,25 +1108,6 @@ pub async fn reset_all_learn_data(depot: &mut Depot, res: &mut Response) -> AppR
         tables_reset.push(ResetResponse {
             deleted_count: count,
             table: "learn_read_practices".to_string(),
-        });
-
-        // Conversations
-        let count = diesel::delete(
-            learn_conversations::table.filter(learn_conversations::user_id.eq(user_id)),
-        )
-        .execute(conn)?;
-        tables_reset.push(ResetResponse {
-            deleted_count: count,
-            table: "learn_conversations".to_string(),
-        });
-
-        // Sessions
-        let count =
-            diesel::delete(learn_sessions::table.filter(learn_sessions::user_id.eq(user_id)))
-                .execute(conn)?;
-        tables_reset.push(ResetResponse {
-            deleted_count: count,
-            table: "learn_sessions".to_string(),
         });
 
         // Issue words
@@ -1345,8 +1259,8 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .get_result(conn)?;
 
         // 4. Check if user has any learning data
-        let has_sessions: i64 = learn_sessions::table
-            .filter(learn_sessions::user_id.eq(user_id))
+        let has_chats: i64 = learn_chats::table
+            .filter(learn_chats::user_id.eq(user_id))
             .count()
             .get_result(conn)?;
 
@@ -1355,7 +1269,7 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .count()
             .get_result(conn)?;
 
-        let has_data = has_sessions > 0 || has_vocab > 0 || weekly_conversation_minutes > 0;
+        let has_data = has_chats > 0 || has_vocab > 0 || weekly_conversation_minutes > 0;
 
         Ok::<_, diesel::result::Error>(LearnSummary {
             has_data,

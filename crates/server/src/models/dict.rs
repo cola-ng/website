@@ -184,21 +184,7 @@ pub struct NewForm {
     pub notes: Option<String>,
 }
 
-#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = dict_categories)]
-pub struct Category {
-    pub id: i64,
-    pub name: String,
-    pub parent_id: Option<i64>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Insertable, Deserialize)]
-#[diesel(table_name = dict_categories)]
-pub struct NewCategory {
-    pub name: String,
-    pub parent_id: Option<i64>,
-}
+// Note: dict_categories table does not exist - category features disabled
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_word_categories)]
@@ -278,7 +264,6 @@ pub struct WordQueryResponse {
     pub relations: Vec<Relation>,
     pub etymologies: Vec<Etymology>,
     pub forms: Vec<Form>,
-    pub categories: Vec<Category>,
     pub images: Vec<Image>,
 }
 

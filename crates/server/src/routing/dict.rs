@@ -65,13 +65,11 @@ pub fn router() -> Router {
         )
         .push(
             Router::with_path("words/{id}/categories")
-                .get(category::list_categories)
-                .post(category::create_category),
+                .get(category::list_categories),
         )
         .push(
             Router::with_path("words/{id}/tags")
-                .get(category::list_categories)
-                .post(category::create_category),
+                .get(category::list_categories),
         )
         .push(
             Router::with_path("words/{id}/etymology")
@@ -183,16 +181,6 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .filter(dict_forms::word_id.eq(word_id))
             .load::<Form>(conn)?;
 
-        let categories = dict_categories::table
-            .filter(
-                dict_categories::id.eq_any(
-                    dict_word_categories::table
-                        .filter(dict_word_categories::word_id.eq(word_id))
-                        .select(dict_word_categories::category_id),
-                ),
-            )
-            .load::<Category>(conn)?;
-
         let images = dict_images::table
             .filter(dict_images::word_id.eq(word_id))
             .load::<Image>(conn)?;
@@ -233,7 +221,6 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             relations,
             etymologies,
             forms,
-            categories,
             images,
         })
     })

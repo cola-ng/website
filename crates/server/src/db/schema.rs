@@ -82,49 +82,61 @@ diesel::table! {
 }
 
 diesel::table! {
-    asset_classic_clips (id) {
+    asset_context_categories (id) {
         id -> Int8,
-        source_id -> Int8,
-        clip_title_en -> Text,
-        clip_title_zh -> Text,
-        start_time_seconds -> Nullable<Int4>,
-        end_time_seconds -> Nullable<Int4>,
-        video_url -> Nullable<Text>,
-        transcript_en -> Text,
-        transcript_zh -> Text,
-        key_vocabulary -> Nullable<Jsonb>,
-        cultural_notes -> Nullable<Text>,
-        grammar_points -> Nullable<Jsonb>,
-        difficulty_vocab -> Nullable<Int4>,
-        difficulty_speed -> Nullable<Int4>,
-        difficulty_slang -> Nullable<Int4>,
-        popularity_score -> Nullable<Int4>,
+        context_id -> Int8,
+        category_id -> Int8,
         created_at -> Timestamptz,
     }
 }
 
 diesel::table! {
-    asset_classic_sources (id) {
+    asset_contexts (id) {
         id -> Int8,
-        source_type -> Text,
-        title -> Text,
-        year -> Nullable<Int4>,
+        name_en -> Text,
+        name_zh -> Text,
         description_en -> Nullable<Text>,
         description_zh -> Nullable<Text>,
-        thumbnail_url -> Nullable<Text>,
-        imdb_id -> Nullable<Text>,
-        difficulty -> Nullable<Text>,
-        created_at -> Timestamptz,
         icon_emoji -> Nullable<Text>,
-        is_featured -> Nullable<Bool>,
         display_order -> Nullable<Int4>,
+        difficulty -> Nullable<Int2>,
+        is_active -> Nullable<Bool>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    asset_read_sentences (id) {
+        id -> Int8,
+        subject_id -> Int8,
+        sentence_order -> Int4,
+        content_en -> Text,
+        content_zh -> Text,
+        phonetic_transcription -> Nullable<Text>,
+        native_audio_path -> Nullable<Text>,
+        difficulty -> Nullable<Int2>,
+        focus_sounds -> Nullable<Jsonb>,
+        common_mistakes -> Nullable<Jsonb>,
+    }
+}
+
+diesel::table! {
+    asset_read_subjects (id) {
+        id -> Int8,
+        title_en -> Text,
+        title_zh -> Text,
+        description_en -> Nullable<Text>,
+        description_zh -> Nullable<Text>,
+        difficulty -> Nullable<Int2>,
+        subject_type -> Nullable<Text>,
+        created_at -> Timestamptz,
     }
 }
 
 diesel::table! {
     asset_script_turns (id) {
         id -> Int8,
-        dialogue_id -> Int8,
+        script_id -> Int8,
         turn_number -> Int4,
         speaker_role -> Text,
         speaker_name -> Nullable<Text>,
@@ -138,79 +150,41 @@ diesel::table! {
 }
 
 diesel::table! {
-    asset_dialogues (id) {
+    asset_scripts (id) {
         id -> Int8,
-        scene_id -> Int8,
+        stage_id -> Int8,
         title_en -> Text,
         title_zh -> Text,
         description_en -> Nullable<Text>,
         description_zh -> Nullable<Text>,
         total_turns -> Nullable<Int4>,
         estimated_duration_seconds -> Nullable<Int4>,
-        difficulty -> Nullable<Text>,
+        difficulty -> Nullable<Int2>,
         created_at -> Timestamptz,
     }
 }
 
 diesel::table! {
-    asset_phrases (id) {
-        id -> Int8,
-        phrase_en -> Text,
-        phrase_zh -> Text,
-        phonetic_transcription -> Nullable<Text>,
-        usage_context -> Nullable<Text>,
-        example_sentence_en -> Nullable<Text>,
-        example_sentence_zh -> Nullable<Text>,
-        category -> Nullable<Text>,
-        formality_level -> Nullable<Text>,
-        frequency -> Nullable<Int4>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    asset_read_exercises (id) {
-        id -> Int8,
-        title_en -> Text,
-        title_zh -> Text,
-        description_en -> Nullable<Text>,
-        description_zh -> Nullable<Text>,
-        difficulty -> Nullable<Text>,
-        exercise_type -> Nullable<Text>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    asset_read_sentences (id) {
-        id -> Int8,
-        exercise_id -> Int8,
-        sentence_order -> Int4,
-        content_en -> Text,
-        content_zh -> Text,
-        phonetic_transcription -> Nullable<Text>,
-        native_audio_path -> Nullable<Text>,
-        focus_sounds -> Nullable<Jsonb>,
-        common_mistakes -> Nullable<Jsonb>,
-        tips -> Nullable<Text>,
-    }
-}
-
-diesel::table! {
-    asset_scenes (id) {
+    asset_stages (id) {
         id -> Int8,
         name_en -> Text,
         name_zh -> Text,
         description_en -> Nullable<Text>,
         description_zh -> Nullable<Text>,
         icon_emoji -> Nullable<Text>,
-        difficulty -> Nullable<Text>,
-        category -> Nullable<Text>,
         display_order -> Nullable<Int4>,
+        difficulty -> Nullable<Int2>,
         is_active -> Nullable<Bool>,
         created_at -> Timestamptz,
-        duration_minutes -> Nullable<Int4>,
-        is_featured -> Nullable<Bool>,
+    }
+}
+
+diesel::table! {
+    asset_word_sentences (id) {
+        id -> Int8,
+        word_id -> Int8,
+        sentence_id -> Int8,
+        sentence_order -> Int4,
     }
 }
 
@@ -288,15 +262,6 @@ diesel::table! {
         updated_by -> Nullable<Int8>,
         updated_at -> Timestamptz,
         created_by -> Nullable<Int8>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    dict_categories (id) {
-        id -> Int8,
-        name -> Text,
-        parent_id -> Nullable<Int8>,
         created_at -> Timestamptz,
     }
 }
@@ -566,35 +531,11 @@ diesel::table! {
 }
 
 diesel::table! {
-    learn_chat_messages (id) {
-        id -> Int8,
-        session_id -> Int8,
-        user_id -> Int8,
-        role -> Text,
-        content -> Text,
-        audio_base64 -> Nullable<Text>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    learn_chat_sessions (id) {
+    learn_chat_annotations (id) {
         id -> Int8,
         user_id -> Int8,
-        title -> Nullable<Text>,
-        system_prompt -> Nullable<Text>,
-        is_active -> Bool,
-        message_count -> Int4,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    learn_conversation_annotations (id) {
-        id -> Int8,
-        user_id -> Int8,
-        conversation_id -> Int8,
+        chat_id -> Int8,
+        chat_turn_id -> Int8,
         annotation_type -> Text,
         start_position -> Nullable<Int4>,
         end_position -> Nullable<Int4>,
@@ -608,10 +549,10 @@ diesel::table! {
 }
 
 diesel::table! {
-    learn_conversations (id) {
+    learn_chat_turns (id) {
         id -> Int8,
         user_id -> Int8,
-        session_id -> Text,
+        chat_id -> Text,
         speaker -> Text,
         use_lang -> Text,
         content_en -> Text,
@@ -621,6 +562,17 @@ diesel::table! {
         words_per_minute -> Nullable<Float4>,
         pause_count -> Nullable<Int4>,
         hesitation_count -> Nullable<Int4>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    learn_chats (id) {
+        id -> Int8,
+        user_id -> Int8,
+        title -> Text,
+        duration_ms -> Nullable<Int4>,
+        pause_count -> Nullable<Int4>,
         created_at -> Timestamptz,
     }
 }
@@ -659,11 +611,22 @@ diesel::table! {
 }
 
 diesel::table! {
+    learn_practices (id) {
+        id -> Int8,
+        user_id -> Int8,
+        success_level -> Nullable<Int4>,
+        notes -> Nullable<Text>,
+        updated_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_read_practices (id) {
         id -> Int8,
         user_id -> Int8,
-        sentence_id -> Int8,
-        session_id -> Text,
+        sentence_id -> Nullable<Int8>,
+        practice_id -> Text,
         user_audio_path -> Nullable<Text>,
         pronunciation_score -> Nullable<Int4>,
         fluency_score -> Nullable<Int4>,
@@ -678,24 +641,34 @@ diesel::table! {
 }
 
 diesel::table! {
-    learn_sessions (id) {
+    learn_read_progress (id) {
         id -> Int8,
-        session_id -> Text,
         user_id -> Int8,
-        session_type -> Nullable<Text>,
-        scene_id -> Nullable<Int8>,
-        dialogue_id -> Nullable<Int8>,
-        classic_clip_id -> Nullable<Int8>,
-        started_at -> Timestamptz,
-        ended_at -> Nullable<Timestamptz>,
-        duration_seconds -> Nullable<Int4>,
-        total_words_spoken -> Nullable<Int4>,
-        average_wpm -> Nullable<Float4>,
-        error_count -> Nullable<Int4>,
-        correction_count -> Nullable<Int4>,
-        notes -> Nullable<Text>,
-        ai_summary_en -> Nullable<Text>,
-        ai_summary_zh -> Nullable<Text>,
+        exercise_id -> Int8,
+        current_sentence_order -> Nullable<Int4>,
+        progress_percent -> Nullable<Int4>,
+        completed_at -> Nullable<Timestamptz>,
+        last_practiced_at -> Nullable<Timestamptz>,
+        practice_count -> Nullable<Int4>,
+        average_score -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    learn_script_progress (id) {
+        id -> Int8,
+        user_id -> Int8,
+        stage_id -> Int8,
+        script_id -> Int8,
+        progress_percent -> Nullable<Int4>,
+        completed_at -> Nullable<Timestamptz>,
+        last_practiced_at -> Nullable<Timestamptz>,
+        practice_count -> Nullable<Int4>,
+        best_score -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
     }
 }
 
@@ -726,11 +699,11 @@ diesel::table! {
 }
 
 diesel::table! {
-    learn_word_practices (id) {
+    learn_write_practices (id) {
         id -> Int8,
         user_id -> Int8,
         word_id -> Int8,
-        session_id -> Text,
+        practice_id -> Text,
         success_level -> Nullable<Int4>,
         notes -> Nullable<Text>,
         updated_at -> Timestamptz,
@@ -762,53 +735,27 @@ diesel::table! {
 }
 
 diesel::table! {
-    user_clip_progress (id) {
+    taxon_categories (id) {
         id -> Int8,
-        user_id -> Int8,
-        clip_id -> Int8,
-        progress_percent -> Nullable<Int4>,
-        completed_at -> Nullable<Timestamptz>,
-        last_practiced_at -> Nullable<Timestamptz>,
-        practice_count -> Nullable<Int4>,
+        name_en -> Text,
+        name_zh -> Text,
+        domain_id -> Int8,
+        parent_id -> Nullable<Int8>,
         created_at -> Timestamptz,
-        updated_at -> Timestamptz,
     }
 }
 
 diesel::table! {
-    user_read_progress (id) {
+    taxon_domains (id) {
         id -> Int8,
-        user_id -> Int8,
-        exercise_id -> Int8,
-        current_sentence_order -> Nullable<Int4>,
-        progress_percent -> Nullable<Int4>,
-        completed_at -> Nullable<Timestamptz>,
-        last_practiced_at -> Nullable<Timestamptz>,
-        practice_count -> Nullable<Int4>,
-        average_score -> Nullable<Int4>,
+        name_en -> Text,
+        name_zh -> Text,
         created_at -> Timestamptz,
-        updated_at -> Timestamptz,
     }
 }
 
-diesel::table! {
-    user_scene_progress (id) {
-        id -> Int8,
-        user_id -> Int8,
-        scene_id -> Int8,
-        current_dialogue_id -> Nullable<Int8>,
-        progress_percent -> Nullable<Int4>,
-        completed_at -> Nullable<Timestamptz>,
-        last_practiced_at -> Nullable<Timestamptz>,
-        practice_count -> Nullable<Int4>,
-        best_score -> Nullable<Int4>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
-    }
-}
-
+// Join relationships for archive tables
 diesel::joinable!(archive_user_achievements -> archive_achievement_definitions (achievement_id));
-diesel::joinable!(learn_chat_messages -> learn_chat_sessions (session_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     archive_achievement_definitions,
@@ -816,21 +763,20 @@ diesel::allow_tables_to_appear_in_same_query!(
     archive_user_achievements,
     archive_user_profiles,
     archive_user_xp_history,
-    asset_classic_clips,
-    asset_classic_sources,
-    asset_script_turns,
-    asset_dialogues,
-    asset_phrases,
-    asset_read_exercises,
+    asset_context_categories,
+    asset_contexts,
     asset_read_sentences,
-    asset_scenes,
+    asset_read_subjects,
+    asset_script_turns,
+    asset_scripts,
+    asset_stages,
+    asset_word_sentences,
     auth_codes,
     base_passwords,
     base_role_permissions,
     base_role_users,
     base_roles,
     base_users,
-    dict_categories,
     dict_definitions,
     dict_dictionaries,
     dict_etymologies,
@@ -850,20 +796,20 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_word_sentences,
     dict_words,
     learn_achievements,
-    learn_chat_messages,
-    learn_chat_sessions,
-    learn_conversation_annotations,
-    learn_conversations,
+    learn_chat_annotations,
+    learn_chat_turns,
+    learn_chats,
     learn_daily_stats,
     learn_issue_words,
+    learn_practices,
     learn_read_practices,
-    learn_sessions,
+    learn_read_progress,
+    learn_script_progress,
     learn_suggestions,
     learn_vocabularies,
-    learn_word_practices,
+    learn_write_practices,
     oauth_identities,
     oauth_login_sessions,
-    user_clip_progress,
-    user_read_progress,
-    user_scene_progress,
+    taxon_categories,
+    taxon_domains,
 );
