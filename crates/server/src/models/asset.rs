@@ -61,6 +61,8 @@ pub struct Context {
     pub icon_emoji: Option<String>,
     pub display_order: Option<i32>,
     pub difficulty: Option<i16>,
+    pub user_id: Option<i64>,
+    pub prompt: Option<String>,
     pub is_active: Option<bool>,
     pub created_at: DateTime<Utc>,
 }

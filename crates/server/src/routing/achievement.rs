@@ -94,29 +94,34 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
             .max(0);
 
         // Get recent completed achievements (last 5)
-        let recent_achievements: Vec<AchievementBadge> = archive_user_achievements::table
-            .inner_join(archive_achievement_definitions::table)
+        // Step 1: Get user's recent completed achievement records
+        let user_achievements: Vec<UserAchievementRecord> = archive_user_achievements::table
             .filter(archive_user_achievements::user_id.eq(user_id))
             .filter(archive_user_achievements::is_completed.eq(true))
             .order(archive_user_achievements::completed_at.desc())
             .limit(5)
-            .select((
-                archive_achievement_definitions::code,
-                archive_achievement_definitions::name_en,
-                archive_achievement_definitions::name_zh,
-                archive_achievement_definitions::icon,
-                archive_achievement_definitions::rarity,
-                archive_user_achievements::completed_at,
-            ))
-            .load::<(String, String, String, Option<String>, String, Option<chrono::DateTime<Utc>>)>(conn)?
+            .load::<UserAchievementRecord>(conn)?;
+
+        // Step 2: Get achievement definitions for those IDs
+        let achievement_ids: Vec<i64> = user_achievements.iter().map(|a| a.achievement_id).collect();
+        let definitions: Vec<AchievementDefinition> = archive_achievement_definitions::table
+            .filter(archive_achievement_definitions::id.eq_any(&achievement_ids))
+            .load::<AchievementDefinition>(conn)?;
+
+        // Step 3: Combine the results, preserving the order from user_achievements
+        let recent_achievements: Vec<AchievementBadge> = user_achievements
             .into_iter()
-            .map(|(code, name_en, name_zh, icon, rarity, completed_at)| AchievementBadge {
-                code,
-                name_en,
-                name_zh,
-                icon,
-                rarity,
-                completed_at,
+            .filter_map(|ua| {
+                definitions.iter().find(|d| d.id == ua.achievement_id).map(|def| {
+                    AchievementBadge {
+                        code: def.code.clone(),
+                        name_en: def.name_en.clone(),
+                        name_zh: def.name_zh.clone(),
+                        icon: def.icon.clone(),
+                        rarity: def.rarity.clone(),
+                        completed_at: ua.completed_at,
+                    }
+                })
             })
             .collect();
 

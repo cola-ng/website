@@ -141,6 +141,7 @@ async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError>
         let new_session = NewChatSession {
             user_id,
             title: "Chat Session".to_string(),
+            context_id: None,
             duration_ms: None,
             pause_count: None,
         };
