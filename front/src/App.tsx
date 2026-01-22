@@ -12,8 +12,8 @@ import { LandingPage } from './pages/LandingPage'
 import { ConversationPage } from './pages/ConversationPage'
 import { ReviewPage } from './pages/ReviewPage'
 import { ReviewSessionPage } from './pages/ReviewSessionPage'
-import { ScenesPage } from './pages/ScenesPage'
-import { SceneDetailPage } from './pages/SceneDetailPage'
+import { StagesPage } from './pages/StagesPage'
+import { StageDetailPage } from './pages/StageDetailPage'
 import { ReadingPage } from './pages/ReadingPage'
 
 function AppRoutes() {
@@ -25,8 +25,8 @@ function AppRoutes() {
       <Route path="/conversation" element={<ConversationPage />} />
       <Route path="/review" element={<ReviewPage />} />
       <Route path="/review/session" element={<ReviewSessionPage />} />
-      <Route path="/scenes" element={<ScenesPage />} />
-      <Route path="/scenes/:id" element={<SceneDetailPage />} />
+      <Route path="/stages" element={<StagesPage />} />
+      <Route path="/stages/:id" element={<StageDetailPage />} />
       <Route path="/reading" element={<ReadingPage />} />
       <Route path="/login" element={<HomePage />} />
       <Route path="/auth" element={<AuthorizePage />} />

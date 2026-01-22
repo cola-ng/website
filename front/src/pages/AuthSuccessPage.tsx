@@ -54,7 +54,7 @@ export function AuthSuccessPage() {
                 </div>
               </Link>
 
-              <Link to="/scenes" className="block">
+              <Link to="/stages" className="block">
                 <div className="flex flex-col items-center gap-2 rounded-lg border bg-white p-4 transition-all hover:border-orange-300 hover:shadow-md">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
                     <Theater className="h-5 w-5 text-purple-600" />

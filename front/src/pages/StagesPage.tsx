@@ -1,24 +1,24 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Play, Clock, ChevronRight, Film, Tv, Mic2 } from 'lucide-react'
+import { Search, Play, ChevronRight, Film, Tv, Mic2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
 
-interface Scene {
+// Stage matches backend asset_stages table
+interface Stage {
   id: number
   name_en: string
   name_zh: string
   description_en: string | null
   description_zh: string | null
   icon_emoji: string | null
-  difficulty: string | null
-  category: string | null
   display_order: number | null
-  duration_minutes?: number
-  is_featured?: boolean
+  difficulty: number | null
+  is_active: boolean | null
+  created_at: string
 }
 
 interface ClassicSource {
@@ -42,13 +42,23 @@ const categories = [
   { id: 'entertainment', label: '娱乐休闲' },
 ]
 
-function DifficultyBadge({ level }: { level: string | null }) {
-  const config: Record<string, { stars: number; color: string }> = {
-    beginner: { stars: 1, color: 'text-green-600 bg-green-50' },
-    intermediate: { stars: 2, color: 'text-amber-600 bg-amber-50' },
-    advanced: { stars: 3, color: 'text-red-600 bg-red-50' },
+function DifficultyBadge({ level }: { level: number | null }) {
+  // difficulty levels: 1-2 = beginner, 3 = intermediate, 4+ = advanced
+  let stars = 1
+  let color = 'text-green-600 bg-green-50'
+
+  if (level !== null) {
+    if (level <= 2) {
+      stars = 1
+      color = 'text-green-600 bg-green-50'
+    } else if (level <= 3) {
+      stars = 2
+      color = 'text-amber-600 bg-amber-50'
+    } else {
+      stars = 3
+      color = 'text-red-600 bg-red-50'
+    }
   }
-  const { stars, color } = config[level || 'beginner'] || config.beginner
 
   return (
     <span className={cn('text-xs px-2 py-0.5 rounded-full', color)}>
@@ -57,23 +67,17 @@ function DifficultyBadge({ level }: { level: string | null }) {
   )
 }
 
-function SceneCard({ scene }: { scene: Scene }) {
+function StageCard({ stage }: { stage: Stage }) {
   return (
     <Link
-      to={`/scenes/${scene.id}`}
+      to={`/stages/${stage.id}`}
       className="bg-white border rounded-xl p-4 hover:shadow-lg hover:border-orange-200 transition-all cursor-pointer group block"
     >
-      <div className="text-4xl mb-3">{scene.icon_emoji || '📚'}</div>
-      <h3 className="font-semibold text-gray-900">{scene.name_zh}</h3>
-      <p className="text-sm text-gray-500 mb-2">{scene.name_en}</p>
+      <div className="text-4xl mb-3">{stage.icon_emoji || '📚'}</div>
+      <h3 className="font-semibold text-gray-900">{stage.name_zh}</h3>
+      <p className="text-sm text-gray-500 mb-2">{stage.name_en}</p>
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <DifficultyBadge level={scene.difficulty} />
-          <span className="text-xs text-gray-400 flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {scene.duration_minutes || 5}分钟
-          </span>
-        </div>
+        <DifficultyBadge level={stage.difficulty} />
         <Button size="sm" variant="ghost" className="opacity-0 group-hover:opacity-100 transition-opacity">
           <Play className="h-4 w-4" />
         </Button>
@@ -109,10 +113,10 @@ function ClassicCard({ source }: { source: ClassicSource }) {
   )
 }
 
-export function ScenesPage() {
+export function StagesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
-  const [scenes, setScenes] = useState<Scene[]>([])
+  const [stages, setStages] = useState<Stage[]>([])
   const [classicSources, setClassicSources] = useState<ClassicSource[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -121,14 +125,14 @@ export function ScenesPage() {
     async function fetchData() {
       try {
         setLoading(true)
-        const [scenesRes, classicsRes] = await Promise.all([
-          fetch('/api/asset/scenes'),
+        const [stagesRes, classicsRes] = await Promise.all([
+          fetch('/api/asset/stages'),
           fetch('/api/asset/classic-sources'),
         ])
 
-        if (scenesRes.ok) {
-          const scenesData = await scenesRes.json()
-          setScenes(scenesData)
+        if (stagesRes.ok) {
+          const stagesData = await stagesRes.json()
+          setStages(stagesData)
         }
 
         if (classicsRes.ok) {
@@ -144,17 +148,16 @@ export function ScenesPage() {
     fetchData()
   }, [])
 
-  const filteredScenes = scenes.filter((scene) => {
+  const filteredStages = stages.filter((stage) => {
     const matchesSearch =
-      scene.name_zh.includes(searchQuery) ||
-      scene.name_en.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesCategory = selectedCategory === 'all' || scene.category === selectedCategory
-    return matchesSearch && matchesCategory
+      stage.name_zh.includes(searchQuery) ||
+      stage.name_en.toLowerCase().includes(searchQuery.toLowerCase())
+    // Note: category filtering removed as backend Stage model doesn't have category field
+    return matchesSearch && (selectedCategory === 'all')
   })
 
-  const featuredScenes = filteredScenes.filter((s) => s.is_featured)
-  const otherScenes = filteredScenes.filter((s) => !s.is_featured)
-  const displayScenes = featuredScenes.length > 0 ? featuredScenes : filteredScenes.slice(0, 8)
+  const displayStages = filteredStages.slice(0, 8)
+  const otherStages = filteredStages.slice(8)
 
   const featuredClassics = classicSources.filter((s) => s.is_featured)
   const displayClassics = featuredClassics.length > 0 ? featuredClassics : classicSources.slice(0, 4)
@@ -219,16 +222,16 @@ export function ScenesPage() {
             </div>
           </div>
 
-          {/* Row 2: Continue Learning (show first scene as suggestion) */}
-          {scenes.length > 0 && (
+          {/* Row 2: Continue Learning (show first stage as suggestion) */}
+          {stages.length > 0 && (
             <Link
-              to={`/scenes/${scenes[0].id}`}
+              to={`/stages/${stages[0].id}`}
               className="flex items-center gap-3 px-3 py-2 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg hover:from-orange-100 hover:to-amber-100 transition-colors"
             >
-              <div className="text-2xl">{scenes[0].icon_emoji || '📚'}</div>
+              <div className="text-2xl">{stages[0].icon_emoji || '📚'}</div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="font-medium text-sm text-gray-900">{scenes[0].name_zh}</span>
+                  <span className="font-medium text-sm text-gray-900">{stages[0].name_zh}</span>
                   <span className="text-xs text-gray-500">开始学习</span>
                 </div>
               </div>
@@ -245,10 +248,10 @@ export function ScenesPage() {
             <span className="mr-2">🌟</span>
             今日精选
           </h2>
-          {displayScenes.length > 0 ? (
+          {displayStages.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {displayScenes.map((scene) => (
-                <SceneCard key={scene.id} scene={scene} />
+              {displayStages.map((stage) => (
+                <StageCard key={stage.id} stage={stage} />
               ))}
             </div>
           ) : (
@@ -258,16 +261,16 @@ export function ScenesPage() {
           )}
         </div>
 
-        {/* All Scenes (if there are more) */}
-        {otherScenes.length > 0 && (
+        {/* All Stages (if there are more) */}
+        {otherStages.length > 0 && (
           <div className="mb-6">
             <h2 className="font-semibold text-gray-900 mb-4">
               <span className="mr-2">📚</span>
               更多场景
             </h2>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {otherScenes.map((scene) => (
-                <SceneCard key={scene.id} scene={scene} />
+              {otherStages.map((stage) => (
+                <StageCard key={stage.id} stage={stage} />
               ))}
             </div>
           </div>

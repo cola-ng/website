@@ -619,12 +619,33 @@ export function ConversationPage() {
       <head>
         <title>${activeConversation.title} - 对话记录</title>
         <style>
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; }
-          h1 { color: #111827; border-bottom: 2px solid #f97316; padding-bottom: 8px; }
-          .meta { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+          @page {
+            size: A4;
+            margin: 20mm 15mm 25mm 15mm;
+            @bottom-center {
+              content: counter(page);
+              font-size: 12px;
+              color: #6b7280;
+            }
+          }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
+          .pdf-header { display: flex; align-items: center; gap: 12px; margin-bottom: 24px; }
+          .pdf-header img { height: 36px; width: 36px; }
+          .pdf-header .brand-name { font-size: 20px; font-weight: bold; background: linear-gradient(to right, #ea580c, #f59e0b); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+          .pdf-header .pdf-url { color: #9ca3af; font-size: 12px; margin-left: 8px; }
+          h1 { color: #111827; border-bottom: 2px solid #f97316; padding-bottom: 8px; margin-top: 0; text-align: right; }
+          .meta { color: #6b7280; font-size: 14px; margin-bottom: 24px; text-align: right; }
+          @media print {
+            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          }
         </style>
       </head>
       <body>
+        <div class="pdf-header">
+          <img src="${window.location.origin}/colang-logo.svg" alt="Logo" />
+          <span class="brand-name">开朗英语</span>
+          <span class="pdf-url">https://cola.ng</span>
+        </div>
         <h1>${activeConversation.title}</h1>
         <div class="meta">导出时间: ${new Date().toLocaleString()}${reportMode ? ' | 报告模式' : ''}</div>
         ${messagesHtml}

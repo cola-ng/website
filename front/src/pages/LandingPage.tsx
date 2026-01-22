@@ -57,13 +57,13 @@ function TaskItem({ title, status }: TaskItemProps) {
   )
 }
 
-interface SceneCardProps {
+interface StageCardProps {
   icon: string
   title: string
   subtitle: string
 }
 
-function SceneCard({ icon, title, subtitle }: SceneCardProps) {
+function StageCard({ icon, title, subtitle }: StageCardProps) {
   return (
     <div className="bg-gray-50 rounded-lg p-4 text-center hover:bg-orange-50 cursor-pointer transition-colors">
       <div className="text-3xl mb-2">{icon}</div>
@@ -118,7 +118,7 @@ export function LandingPage() {
                       </Link>
                     </Button>
                     <Button variant="outline" asChild>
-                      <Link to="/scenes">选择场景</Link>
+                      <Link to="/stages">选择场景</Link>
                     </Button>
                   </div>
                 </div>
@@ -240,23 +240,23 @@ export function LandingPage() {
                 推荐场景
               </h2>
               <div className="grid grid-cols-3 gap-4">
-                <Link to="/scenes" className="block">
-                  <SceneCard icon="🏨" title="酒店入住" subtitle="继续上次" />
+                <Link to="/chat?context=hotel_checkin" className="block">
+                  <StageCard icon="🏨" title="酒店入住" subtitle="继续上次" />
                 </Link>
-                <Link to="/scenes" className="block">
-                  <SceneCard icon="🍽️" title="餐厅点餐" subtitle="新场景" />
+                <Link to="/chat?context=restaurant_order" className="block">
+                  <StageCard icon="🍽️" title="餐厅点餐" subtitle="新场景" />
                 </Link>
-                <Link to="/scenes" className="block">
-                  <SceneCard icon="💼" title="工作面试" subtitle="挑战" />
+                <Link to="/chat?context=job_interview" className="block">
+                  <StageCard icon="💼" title="工作面试" subtitle="挑战" />
                 </Link>
-                <Link to="/scenes" className="block">
-                  <SceneCard icon="✈️" title="机场出行" subtitle="实用场景" />
+                <Link to="/chat?context=airport_travel" className="block">
+                  <StageCard icon="✈️" title="机场出行" subtitle="实用场景" />
                 </Link>
-                <Link to="/scenes" className="block">
-                  <SceneCard icon="🛒" title="购物结账" subtitle="日常对话" />
+                <Link to="/chat?context=shopping_checkout" className="block">
+                  <StageCard icon="🛒" title="购物结账" subtitle="日常对话" />
                 </Link>
-                <Link to="/scenes" className="block">
-                  <SceneCard icon="🏥" title="医院就诊" subtitle="应急必备" />
+                <Link to="/chat?context=hospital_visit" className="block">
+                  <StageCard icon="🏥" title="医院就诊" subtitle="应急必备" />
                 </Link>
               </div>
             </div>
@@ -319,7 +319,7 @@ export function LandingPage() {
                     <span className="mr-1">💡</span>
                     尝试"餐厅点餐"场景，巩固已学的日常用语
                   </p>
-                  <Link to="/scenes" className="text-xs text-purple-600 mt-1 block hover:underline">
+                  <Link to="/chat" className="text-xs text-purple-600 mt-1 block hover:underline">
                     立即体验 →
                   </Link>
                 </div>
