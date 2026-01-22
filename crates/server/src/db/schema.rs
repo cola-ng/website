@@ -100,6 +100,8 @@ diesel::table! {
         icon_emoji -> Nullable<Text>,
         display_order -> Nullable<Int4>,
         difficulty -> Nullable<Int2>,
+        user_id -> Nullable<Int8>,
+        prompt -> Nullable<Text>,
         is_active -> Nullable<Bool>,
         created_at -> Timestamptz,
     }
@@ -571,6 +573,7 @@ diesel::table! {
         id -> Int8,
         user_id -> Int8,
         title -> Text,
+        context_id -> Nullable<Int8>,
         duration_ms -> Nullable<Int4>,
         pause_count -> Nullable<Int4>,
         created_at -> Timestamptz,
@@ -753,9 +756,6 @@ diesel::table! {
         created_at -> Timestamptz,
     }
 }
-
-// Join relationships for archive tables
-diesel::joinable!(archive_user_achievements -> archive_achievement_definitions (achievement_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     archive_achievement_definitions,

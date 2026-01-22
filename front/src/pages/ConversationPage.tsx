@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle, createChat } from '../lib/api'
 
 interface Correction {
   original: string
@@ -600,17 +600,23 @@ export function ConversationPage() {
   const handleNewContextChat = async (context: Context) => {
     setShowContextDialog(false)
 
-    // Clear server-side history when starting a new conversation
+    let serverId: number | undefined
+
     if (token) {
       try {
+        // Clear server-side history first
         await clearChatHistory(token)
+        // Create new chat on server with context_id
+        const chat = await createChat(token, context.name_zh, context.id)
+        serverId = chat.id
       } catch (err) {
-        console.error('Failed to clear history:', err)
+        console.error('Failed to create chat:', err)
       }
     }
 
     const newConversation: Conversation = {
       id: Date.now().toString(),
+      serverId,
       title: context.name_zh,
       contextId: context.id,
       lastMessage: '',

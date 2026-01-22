@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS asset_contexts (
     icon_emoji TEXT,
     display_order INTEGER DEFAULT 0,
     difficulty SMALLINT, -- 1-10,
+    user_id BIGINT, -- If null, it's a shared stage
+    prompt TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(name_en, name_zh)
@@ -53,8 +55,6 @@ CREATE TABLE IF NOT EXISTS asset_stages (
     icon_emoji TEXT,
     display_order INTEGER DEFAULT 0,
     difficulty SMALLINT, -- 1-10,
-    user_id BIGINT, -- If null, it's a shared stage
-    prompt TEXT,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE(name_en, name_zh)

@@ -11,6 +11,7 @@ use crate::{AppResult, DepotExt};
 #[derive(Deserialize, ToSchema)]
 pub struct CreateChatRequest {
     title: String,
+    context_id: Option<i64>,
     duration_ms: Option<i32>,
     pause_count: Option<i32>,
 }
@@ -64,6 +65,7 @@ pub async fn create_chat(
     let new_chat = NewChat {
         user_id,
         title: input.title,
+        context_id: input.context_id,
         duration_ms: input.duration_ms,
         pause_count: input.pause_count,
     };

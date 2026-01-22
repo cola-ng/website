@@ -624,9 +624,31 @@ export type LearnChat = {
   id: number
   user_id: number
   title: string
+  context_id: number | null
   duration_ms: number | null
   pause_count: number | null
   created_at: string
+}
+
+/**
+ * Create a new chat
+ * @param token Auth token
+ * @param title Chat title
+ * @param contextId Optional context ID for scenario-based chats
+ */
+export function createChat(
+  token: string,
+  title: string,
+  contextId?: number
+): Promise<LearnChat> {
+  return requestJson<LearnChat>('/api/learn/chats', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      title,
+      context_id: contextId,
+    }),
+  })
 }
 
 /**

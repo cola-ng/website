@@ -60,6 +60,7 @@ pub struct Chat {
     pub id: i64,
     pub user_id: i64,
     pub title: String,
+    pub context_id: Option<i64>,
     pub duration_ms: Option<i32>,
     pub pause_count: Option<i32>,
     pub created_at: DateTime<Utc>,
@@ -70,6 +71,7 @@ pub struct Chat {
 pub struct NewChat {
     pub user_id: i64,
     pub title: String,
+    pub context_id: Option<i64>,
     pub duration_ms: Option<i32>,
     pub pause_count: Option<i32>,
 }
