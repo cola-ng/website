@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, FileDown, ClipboardList, Loader2, Square } from 'lucide-react'
+import { Send, Mic, MicOff, MessageCircle, Map, Volume2, MessageSquare, FileDown, ClipboardList, Loader2, Square, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle } from '../lib/api'
 
 interface Correction {
   original: string
@@ -27,10 +27,26 @@ interface Message {
 
 interface Conversation {
   id: string
+  serverId?: number   // Server-side chat ID (if synced)
   title: string
+  contextId?: number  // Optional context ID for context-based conversations
   lastMessage: string
   timestamp: Date
   messages: Message[]
+}
+
+// Context matches backend asset_contexts table
+interface Context {
+  id: number
+  name_en: string
+  name_zh: string
+  description_en: string | null
+  description_zh: string | null
+  icon_emoji: string | null
+  display_order: number | null
+  difficulty: number | null
+  is_active: boolean | null
+  created_at: string
 }
 
 // Mock data for conversations
@@ -121,6 +137,16 @@ export function ConversationPage() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
+  // Context selection dialog state
+  const [showContextDialog, setShowContextDialog] = useState(false)
+  const [contexts, setContexts] = useState<Context[]>([])
+  const [contextsLoading, setContextsLoading] = useState(false)
+
+  // Conversation menu state
+  const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
+  const [renameDialogId, setRenameDialogId] = useState<string | null>(null)
+  const [renameValue, setRenameValue] = useState('')
+
   // Display settings - independent toggles for each language (persisted to localStorage)
   const [showBotEn, setShowBotEn] = useState(() => {
     const saved = localStorage.getItem('conv_showBotEn')
@@ -169,6 +195,18 @@ export function ConversationPage() {
     localStorage.setItem('conv_showUserEn', String(showUserEn))
     localStorage.setItem('conv_showUserZh', String(showUserZh))
   }, [showBotEn, showBotZh, showUserEn, showUserZh])
+
+  // Fetch contexts when dialog is opened
+  useEffect(() => {
+    if (showContextDialog && contexts.length === 0) {
+      setContextsLoading(true)
+      fetch('/api/asset/contexts')
+        .then(res => res.ok ? res.json() : Promise.reject('Failed to fetch contexts'))
+        .then((data: Context[]) => setContexts(data))
+        .catch(err => console.error('Failed to fetch contexts:', err))
+        .finally(() => setContextsLoading(false))
+    }
+  }, [showContextDialog, contexts.length])
 
   const activeConversation = conversations.find(c => c.id === activeConversationId)
   const messages = activeConversation?.messages || []
@@ -527,7 +565,8 @@ export function ConversationPage() {
     }
   }
 
-  const handleNewConversation = async () => {
+  // Handle free chat (随便聊)
+  const handleNewFreeChat = async () => {
     // Clear server-side history when starting a new conversation
     if (token) {
       try {
@@ -539,7 +578,7 @@ export function ConversationPage() {
 
     const newConversation: Conversation = {
       id: Date.now().toString(),
-      title: '新对话',
+      title: '随便聊',
       lastMessage: '',
       timestamp: new Date(),
       messages: [
@@ -555,6 +594,98 @@ export function ConversationPage() {
 
     setConversations(prev => [newConversation, ...prev])
     setActiveConversationId(newConversation.id)
+  }
+
+  // Handle context-based chat (选场景)
+  const handleNewContextChat = async (context: Context) => {
+    setShowContextDialog(false)
+
+    // Clear server-side history when starting a new conversation
+    if (token) {
+      try {
+        await clearChatHistory(token)
+      } catch (err) {
+        console.error('Failed to clear history:', err)
+      }
+    }
+
+    const newConversation: Conversation = {
+      id: Date.now().toString(),
+      title: context.name_zh,
+      contextId: context.id,
+      lastMessage: '',
+      timestamp: new Date(),
+      messages: [
+        {
+          id: Date.now().toString() + '-1',
+          role: 'assistant',
+          contentEn: `Hi! Let's practice a conversation about "${context.name_en}". I'll play a role in this scenario. Ready to start?`,
+          contentZh: `你好！让我们来练习关于"${context.name_zh}"的对话。我会在这个场景中扮演一个角色。准备好开始了吗？`,
+          timestamp: new Date(),
+        },
+      ],
+    }
+
+    setConversations(prev => [newConversation, ...prev])
+    setActiveConversationId(newConversation.id)
+  }
+
+  // Pin conversation to top
+  const handlePinConversation = (convId: string) => {
+    setMenuOpenId(null)
+    setConversations(prev => {
+      const conv = prev.find(c => c.id === convId)
+      if (!conv) return prev
+      const others = prev.filter(c => c.id !== convId)
+      return [conv, ...others]
+    })
+  }
+
+  // Open rename dialog
+  const handleOpenRename = (convId: string) => {
+    const conv = conversations.find(c => c.id === convId)
+    if (conv) {
+      setRenameValue(conv.title)
+      setRenameDialogId(convId)
+    }
+    setMenuOpenId(null)
+  }
+
+  // Confirm rename
+  const handleConfirmRename = async () => {
+    if (renameDialogId && renameValue.trim()) {
+      const newTitle = renameValue.trim()
+      const conv = conversations.find(c => c.id === renameDialogId)
+
+      // Update local state immediately
+      setConversations(prev => prev.map(c =>
+        c.id === renameDialogId ? { ...c, title: newTitle } : c
+      ))
+
+      // Sync to server if conversation has a server ID
+      if (conv?.serverId && token) {
+        try {
+          await updateChatTitle(token, conv.serverId, newTitle)
+        } catch (err) {
+          console.error('Failed to update chat title on server:', err)
+        }
+      }
+    }
+    setRenameDialogId(null)
+    setRenameValue('')
+  }
+
+  // Delete conversation
+  const handleDeleteConversation = (convId: string) => {
+    setMenuOpenId(null)
+    setConversations(prev => {
+      const filtered = prev.filter(c => c.id !== convId)
+      // If we deleted the active conversation, switch to the first one
+      if (activeConversationId === convId && filtered.length > 0) {
+        setActiveConversationId(filtered[0].id)
+      }
+      return filtered
+    })
   }
 
   const playAudio = (messageId: string) => {
@@ -679,7 +810,6 @@ export function ConversationPage() {
             </Button>
           </div>
         </div>
-        <Footer />
       </div>
     )
   }
@@ -688,15 +818,21 @@ export function ConversationPage() {
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       <Header />
 
-      <main className="flex-1 mx-auto w-full max-w-6xl p-4">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden h-[calc(100vh-180px)] flex">
+      <main className="mx-auto w-full max-w-6xl px-4 pt-4 pb-5">
+        <div className="bg-white rounded-xl shadow-lg overflow-hidden h-[calc(100vh-100px)] flex">
           {/* Left Sidebar - Conversation History */}
           <div className="w-72 border-r flex flex-col bg-gray-50">
-            <div className="p-4 border-b bg-white">
-              <Button onClick={handleNewConversation} className="w-full gap-2">
-                <Plus className="h-4 w-4" />
-                新对话
-              </Button>
+            <div className="p-3 border-b bg-white">
+              <div className="flex gap-2">
+                <Button onClick={handleNewFreeChat} variant="outline" size="sm" className="flex-1 gap-1 text-xs">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  随便聊
+                </Button>
+                <Button onClick={() => setShowContextDialog(true)} size="sm" className="flex-1 gap-1 text-xs">
+                  <Map className="h-3.5 w-3.5" />
+                  选场景
+                </Button>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto">
               {conversations.map((conv) => (
@@ -704,20 +840,69 @@ export function ConversationPage() {
                   key={conv.id}
                   onClick={() => setActiveConversationId(conv.id)}
                   className={cn(
-                    'p-4 border-b cursor-pointer hover:bg-white transition-colors',
+                    'px-3 py-2.5 border-b cursor-pointer hover:bg-white transition-colors relative group',
                     activeConversationId === conv.id && 'bg-white border-l-4 border-l-orange-500'
                   )}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="h-5 w-5 text-orange-600" />
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
+                      <MessageSquare className="h-4 w-4 text-orange-600" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <h3 className="font-medium text-gray-900 truncate">{conv.title}</h3>
-                      <p className="text-sm text-gray-500 truncate">{conv.lastMessage || '开始对话...'}</p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        {conv.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </p>
+                      <div className="flex items-center justify-between gap-2">
+                        <h3 className="font-medium text-gray-900 truncate text-sm">{conv.title}</h3>
+                        <span className="text-xs text-gray-400 flex-shrink-0">
+                          {conv.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-500 truncate">{conv.lastMessage || '开始对话...'}</p>
+                    </div>
+                    {/* Menu button */}
+                    <div className="relative">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          setMenuOpenId(menuOpenId === conv.id ? null : conv.id)
+                        }}
+                        className="p-1 rounded hover:bg-gray-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <MoreVertical className="h-4 w-4 text-gray-500" />
+                      </button>
+                      {/* Dropdown menu */}
+                      {menuOpenId === conv.id && (
+                        <div className="absolute right-0 top-full mt-1 bg-white rounded-lg shadow-lg border py-1 z-20 min-w-[100px]">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handlePinConversation(conv.id)
+                            }}
+                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                          >
+                            <Pin className="h-3.5 w-3.5" />
+                            置顶
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleOpenRename(conv.id)
+                            }}
+                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                            重命名
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleDeleteConversation(conv.id)
+                            }}
+                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            删除
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -992,6 +1177,99 @@ export function ConversationPage() {
           </div>
         </div>
       </main>
+
+      {/* Context Selection Dialog */}
+      {showContextDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          {/* Backdrop */}
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setShowContextDialog(false)}
+          />
+          {/* Dialog */}
+          <div className="relative bg-white rounded-xl shadow-xl max-w-lg w-full mx-4 max-h-[80vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b">
+              <h2 className="text-lg font-semibold text-gray-900">选择对话场景</h2>
+              <button
+                onClick={() => setShowContextDialog(false)}
+                className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
+              >
+                <X className="h-5 w-5 text-gray-500" />
+              </button>
+            </div>
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-4">
+              {contextsLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+                </div>
+              ) : contexts.length === 0 ? (
+                <div className="text-center py-12 text-gray-500">
+                  暂无可用场景
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3">
+                  {contexts.map((context) => (
+                    <button
+                      key={context.id}
+                      onClick={() => handleNewContextChat(context)}
+                      className="flex flex-col items-center gap-2 p-4 rounded-xl border hover:border-orange-300 hover:bg-orange-50 transition-all text-center"
+                    >
+                      <span className="text-3xl">{context.icon_emoji || '💬'}</span>
+                      <span className="font-medium text-gray-900">{context.name_zh}</span>
+                      <span className="text-xs text-gray-500">{context.name_en}</span>
+                      {context.description_zh && (
+                        <span className="text-xs text-gray-400 line-clamp-2">{context.description_zh}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Dialog */}
+      {renameDialogId && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => setRenameDialogId(null)}
+          />
+          <div className="relative bg-white rounded-xl shadow-xl max-w-sm w-full mx-4 p-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">重命名对话</h3>
+            <input
+              type="text"
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleConfirmRename()
+                if (e.key === 'Escape') setRenameDialogId(null)
+              }}
+              className="w-full px-3 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 mb-4"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" size="sm" onClick={() => setRenameDialogId(null)}>
+                取消
+              </Button>
+              <Button size="sm" onClick={handleConfirmRename}>
+                确定
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Click outside to close menu */}
+      {menuOpenId && (
+        <div
+          className="fixed inset-0"
+          onClick={() => setMenuOpenId(null)}
+        />
+      )}
 
       <Footer />
     </div>

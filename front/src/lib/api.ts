@@ -615,3 +615,30 @@ export function getChatHistory(token: string): Promise<{ messages: { role: strin
     token,
   })
 }
+
+// ============================================================================
+// Learn Chat API
+// ============================================================================
+
+export type LearnChat = {
+  id: number
+  user_id: number
+  title: string
+  duration_ms: number | null
+  pause_count: number | null
+  created_at: string
+}
+
+/**
+ * Update a chat's title
+ * @param token Auth token
+ * @param chatId Chat ID
+ * @param title New title
+ */
+export function updateChatTitle(token: string, chatId: number, title: string): Promise<LearnChat> {
+  return requestJson<LearnChat>(`/api/learn/chats/${chatId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify({ title }),
+  })
+}
