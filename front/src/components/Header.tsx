@@ -12,7 +12,7 @@ import {
 } from './ui/dropdown-menu'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { getUserProfileSummary, type UserProfileSummary } from '../lib/api'
+import { getUserProfileSummary, getAvatarUrl, type UserProfileSummary } from '../lib/api'
 
 interface NavItem {
   label: string
@@ -119,8 +119,12 @@ export function Header() {
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" className="gap-2 h-9 pl-1 pr-3 rounded-full border-gray-200 hover:border-orange-300 hover:bg-orange-50">
-                  <div className="h-7 w-7 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center ring-2 ring-white">
-                    <User className="h-4 w-4 text-white" />
+                  <div className="h-7 w-7 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center ring-2 ring-white overflow-hidden">
+                    {getAvatarUrl(user, 80) ? (
+                      <img src={getAvatarUrl(user, 80)!} alt="Avatar" className="h-full w-full object-cover" />
+                    ) : (
+                      <User className="h-4 w-4 text-white" />
+                    )}
                   </div>
                   <span className="max-w-[80px] truncate hidden sm:block text-sm font-medium text-gray-700">
                     {user?.name || user?.email}
@@ -131,8 +135,12 @@ export function Header() {
                 {/* User Info Header */}
                 <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 border-b">
                   <div className="flex items-center gap-3">
-                    <div className="h-14 w-14 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg ring-4 ring-white">
-                      <User className="h-7 w-7 text-white" />
+                    <div className="h-14 w-14 rounded-full bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center shadow-lg ring-4 ring-white overflow-hidden">
+                      {getAvatarUrl(user, 160) ? (
+                        <img src={getAvatarUrl(user, 160)!} alt="Avatar" className="h-full w-full object-cover" />
+                      ) : (
+                        <User className="h-7 w-7 text-white" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-base font-bold text-gray-900 truncate">

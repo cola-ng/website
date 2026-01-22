@@ -3,6 +3,7 @@ export type User = {
   email: string
   name: string | null
   phone: string | null
+  avatar: string | null
   created_at: string
   updated_at: string
 }
@@ -295,6 +296,41 @@ export function updateMe(
     token,
     body: JSON.stringify(input),
   })
+}
+
+export async function uploadAvatar(token: string, file: File): Promise<User> {
+  const formData = new FormData()
+  formData.append('image', file)
+
+  const response = await fetch('/api/avatar', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: formData,
+  })
+
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}))
+    throw new Error(errorData.message || `Upload failed: ${response.status}`)
+  }
+
+  return response.json()
+}
+
+export function deleteAvatar(token: string): Promise<User> {
+  return requestJson<User>('/api/avatar', {
+    method: 'DELETE',
+    token,
+  })
+}
+
+export function getAvatarUrl(user: User | null, size: number = 160): string | null {
+  if (!user) return null
+  if (user.avatar) {
+    return `/${user.avatar}/${size}x${size}.webp`
+  }
+  return null
 }
 
 export function listRecords(token: string, limit = 50): Promise<LearningRecord[]> {

@@ -1,16 +1,18 @@
 use chrono::Utc;
 use diesel::prelude::*;
-use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
+use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::db::schema::base_users::avatar;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::hoops::require_auth;
 use crate::models::*;
-use crate::{AppConfig, AppResult, DepotExt, JsonResult, json_ok};
+use crate::{AppConfig, AppResult, DepotExt, JsonResult, json_ok, utils};
 
+mod avatar;
 pub fn router() -> Router {
     Router::new()
         .push(Router::with_path("register").post(register))
@@ -19,7 +21,13 @@ pub fn router() -> Router {
             Router::with_path("me")
                 .hoop(require_auth)
                 .get(me)
-                .put(update_me),
+                .put(update_me)
+                .push(
+                    Router::with_path("avatar")
+                        .get(avatar::show)
+                        .post(avatar::upload_avatar)
+                        .delete(avatar::delete_avatar),
+                ),
         )
 }
 
@@ -220,10 +228,7 @@ pub struct UpdateUserProfile {
 
 /// Update current user profile
 #[endpoint(tags("Account"))]
-pub async fn update_me(
-    input: JsonBody<UpdateUserProfile>,
-    depot: &mut Depot,
-) -> JsonResult<User> {
+pub async fn update_me(input: JsonBody<UpdateUserProfile>, depot: &mut Depot) -> JsonResult<User> {
     let user_id = depot.user_id()?;
 
     let input_value = UpdateUserProfile {
@@ -238,6 +243,84 @@ pub async fn update_me(
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update profile"))?;
+
+    json_ok(User::from(updated))
+}
+
+/// Upload avatar for current user
+#[endpoint(tags("Account"))]
+pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<User> {
+    let user_id = depot.user_id()?;
+
+    let Some(file) = req.file("image").await else {
+        return Err(StatusError::bad_request()
+            .brief("image file is required")
+            .into());
+    };
+
+    // Validate file is an image
+    let ext = utils::fs::get_file_ext(file.path());
+    if !utils::fs::is_image_ext(&ext) {
+        return Err(StatusError::bad_request()
+            .brief("unsupported image format")
+            .into());
+    }
+
+    // Generate unique avatar name
+    let uuid_name = utils::uuid_string();
+    let avatar_dir = format!("uploads/avatars/{}", user_id);
+    let store_dir = join_path!(&avatar_dir, &uuid_name);
+
+    // Create directory and copy file
+    std::fs::create_dir_all(&store_dir)?;
+    let origin_file = join_path!(&store_dir, format!("origin.{}", ext));
+    std::fs::copy(file.path(), &origin_file)?;
+
+    // Resize to standard sizes
+    if let Ok(metadata) = utils::media::get_image_info(&origin_file).await {
+        for size in [320, 160, 80] {
+            if metadata.width >= size && metadata.height >= size {
+                let resized_file = join_path!(&store_dir, format!("{}x{}.webp", size, size));
+                if let Err(e) =
+                    utils::media::resize_image(Some(size), Some(size), &origin_file, &resized_file)
+                        .await
+                {
+                    tracing::error!(error = ?e, "resize avatar failed");
+                }
+            }
+        }
+    }
+
+    // Update user avatar in database
+    let avatar_value = format!("{}/{}", avatar_dir, uuid_name);
+    let updated: User = with_conn(move |conn| {
+        diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
+            .set(base_users::avatar.eq(&avatar_value))
+            .get_result::<User>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to update avatar"))?;
+
+    json_ok(User::from(updated))
+}
+
+/// Delete avatar for current user
+#[endpoint(tags("Account"))]
+pub async fn delete_avatar(depot: &mut Depot) -> JsonResult<User> {
+    let user_id = depot.user_id()?;
+
+    // Remove avatar directory
+    let avatar_dir = format!("uploads/avatars/{}", user_id);
+    std::fs::remove_dir_all(&avatar_dir).ok();
+
+    // Clear avatar in database
+    let updated: User = with_conn(move |conn| {
+        diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
+            .set(base_users::avatar.eq::<Option<String>>(None))
+            .get_result::<User>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete avatar"))?;
 
     json_ok(User::from(updated))
 }

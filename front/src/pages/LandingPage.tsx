@@ -170,8 +170,8 @@ export function LandingPage() {
                   />
                 </div>
                 {/* Right: Time Distribution Chart */}
-                <div className="sm:col-span-3 bg-gray-50 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-3">
+                <div className="sm:col-span-3 bg-gray-50 rounded-lg p-4 flex flex-col h-full">
+                  <div className="flex items-center justify-between mb-2">
                     <span className="text-xs text-gray-500">学习时长分布</span>
                     <div className="flex gap-1">
                       {(['day', 'week', 'month'] as const).map((period) => (
@@ -189,17 +189,17 @@ export function LandingPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="relative flex">
+                  <div className="relative flex flex-1">
                     {/* Y轴标注 */}
-                    <div className="w-6 flex flex-col justify-between text-xs text-gray-400 h-16">
+                    <div className="w-6 flex flex-col justify-between text-xs text-gray-400">
                       <span>60</span>
                       <span>30</span>
                       <span>0</span>
                     </div>
                     {/* 图表区域 */}
-                    <div className="flex-1">
+                    <div className="flex-1 flex flex-col">
                       {/* 柱状图 */}
-                      <div className="flex items-end gap-1 h-16 border-b border-gray-300">
+                      <div className="flex items-end gap-1 flex-1 border-b border-gray-300">
                         {(chartPeriod === 'day'
                           ? (learnSummary?.weekly_minutes ?? Array(7).fill({ minutes: 0 }))
                           : chartPeriod === 'week'
@@ -209,7 +209,7 @@ export function LandingPage() {
                           <div key={i} className="flex-1 flex flex-col justify-end items-center h-full">
                             <div
                               className="w-full bg-orange-400 rounded-sm transition-all"
-                              style={{ height: `${Math.min((item.minutes / 60) * 64, 64)}px` }}
+                              style={{ height: `${Math.min((item.minutes / 60) * 100, 100)}%` }}
                             />
                           </div>
                         ))}

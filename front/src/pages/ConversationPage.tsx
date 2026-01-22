@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Mic, MicOff, MessageCircle, Map, Volume2, MessageSquare, FileDown, ClipboardList, Loader2, Square, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
+import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, Square, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -30,6 +30,7 @@ interface Conversation {
   serverId?: number   // Server-side chat ID (if synced)
   title: string
   contextId?: number  // Optional context ID for context-based conversations
+  icon?: string       // Emoji icon for context-based conversations
   lastMessage: string
   timestamp: Date
   messages: Message[]
@@ -619,6 +620,7 @@ export function ConversationPage() {
       serverId,
       title: context.name_zh,
       contextId: context.id,
+      icon: context.icon_emoji || undefined,
       lastMessage: '',
       timestamp: new Date(),
       messages: [
@@ -852,7 +854,11 @@ export function ConversationPage() {
                 >
                   <div className="flex items-center gap-2.5">
                     <div className="w-8 h-8 rounded-full bg-orange-100 flex items-center justify-center flex-shrink-0">
-                      <MessageSquare className="h-4 w-4 text-orange-600" />
+                      {conv.icon ? (
+                        <span className="text-base">{conv.icon}</span>
+                      ) : (
+                        <MessageCircle className="h-4 w-4 text-orange-600" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2">
