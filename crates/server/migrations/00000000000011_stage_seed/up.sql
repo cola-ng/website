@@ -2,8 +2,8 @@
 -- SEED DATA FOR SCENES AND READING
 -- ============================================================================
 
--- Insert scenes into asset_scenes
-INSERT INTO asset_scenes (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, category, display_order, is_active, duration_minutes, is_featured) VALUES
+-- Insert scenes into asset_contexts
+INSERT INTO asset_contexts (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, category, display_order, is_active, duration_minutes, is_featured) VALUES
 ('Restaurant Ordering', '餐厅点餐', 'Learn common English expressions for ordering at a restaurant', '学习在餐厅点餐的常用英语表达', '🍽️', 'beginner', 'daily', 1, true, 5, true),
 ('Hotel Check-in', '酒店入住', 'Master English conversations for hotel front desk check-in', '掌握酒店前台办理入住的英语对话', '🏨', 'beginner', 'travel', 2, true, 8, true),
 ('Airport Travel', '机场出行', 'Learn common English for airport security and boarding', '学习机场安检、登机等常用英语', '✈️', 'intermediate', 'travel', 3, true, 10, true),
@@ -26,81 +26,81 @@ ON CONFLICT (name_en) DO UPDATE SET
     duration_minutes = EXCLUDED.duration_minutes,
     is_featured = EXCLUDED.is_featured;
 
--- Insert dialogues for asset_dialogues (need scene_id from asset_scenes)
-INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
+-- Insert dialogues for asset_scripts (need scene_id from asset_contexts)
+INSERT INTO asset_scripts (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
 SELECT s.id, '餐厅点餐完整对话', 'Restaurant Ordering Full Dialogue', 'Complete dialogue practice for restaurant ordering', '餐厅点餐完整对话练习', 12, 300, 'beginner'
-FROM asset_scenes s WHERE s.name_en = 'Restaurant Ordering'
+FROM asset_contexts s WHERE s.name_en = 'Restaurant Ordering'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
+INSERT INTO asset_scripts (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
 SELECT s.id, '酒店入住完整对话', 'Hotel Check-in Full Dialogue', 'Complete dialogue practice for hotel check-in', '酒店入住完整对话练习', 13, 480, 'beginner'
-FROM asset_scenes s WHERE s.name_en = 'Hotel Check-in'
+FROM asset_contexts s WHERE s.name_en = 'Hotel Check-in'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO asset_dialogues (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
+INSERT INTO asset_scripts (scene_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
 SELECT s.id, '机场出行完整对话', 'Airport Travel Full Dialogue', 'Complete dialogue practice for airport travel', '机场出行完整对话练习', 12, 600, 'intermediate'
-FROM asset_scenes s WHERE s.name_en = 'Airport Travel'
+FROM asset_contexts s WHERE s.name_en = 'Airport Travel'
 ON CONFLICT DO NOTHING;
 
 -- Insert dialogue turns for restaurant ordering
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 1, 'assistant', 'Good evening! Welcome to The Garden Restaurant. Do you have a reservation?', '晚上好！欢迎来到花园餐厅。请问您有预订吗？', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 2, 'user', 'Yes, I have a reservation under the name Smith for two people.', '是的，我有预订，史密斯，两位。', '提示: 说出你的姓名和人数'
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 3, 'assistant', 'Perfect, Mr. Smith. Please follow me. Here is your table.', '好的，史密斯先生。请跟我来。这是您的座位。', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 4, 'assistant', 'Here are your menus. Can I get you something to drink while you decide?', '这是菜单。您在看菜单时，要先喝点什么吗？', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 5, 'user', 'Could I have a glass of water and a cup of coffee, please?', '请给我一杯水和一杯咖啡。', '提示: 点一些饮料'
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 6, 'assistant', 'Certainly. Still or sparkling water?', '好的。是矿泉水还是苏打水？', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 7, 'user', 'Still water, please.', '矿泉水，谢谢。', '提示: 选择水的类型'
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 8, 'assistant', 'Are you ready to order, or do you need a few more minutes?', '您准备好点餐了吗，还是需要再看一下？', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 9, 'user', 'I would like the grilled salmon with vegetables, please.', '我想要烤三文鱼配蔬菜。', '提示: 点一道主菜'
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 10, 'assistant', 'Excellent choice! How would you like your salmon cooked?', '很好的选择！您希望三文鱼怎么烹饪？', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 11, 'user', 'Medium, please.', '五分熟，谢谢。', '提示: 说出烹饪程度'
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
-INSERT INTO asset_dialogue_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
+INSERT INTO asset_script_turns (dialogue_id, turn_number, speaker_role, content_en, content_zh, notes)
 SELECT d.id, 12, 'assistant', 'Perfect. Your order will be ready in about 15 minutes. Enjoy your meal!', '好的。您的餐大约15分钟后准备好。祝您用餐愉快！', NULL
-FROM asset_dialogues d JOIN asset_scenes s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
+FROM asset_scripts d JOIN asset_contexts s ON d.scene_id = s.id WHERE s.name_en = 'Restaurant Ordering' AND d.title_en = '餐厅点餐完整对话'
 ON CONFLICT (dialogue_id, turn_number) DO NOTHING;
 
 -- Insert classic sources

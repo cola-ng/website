@@ -1,59 +1,77 @@
--- Table: taxon_spheres - spheres and classifications
-CREATE TABLE IF NOT EXISTS taxon_spheres (
+-- Table: taxon_domains - domains and classifications
+CREATE TABLE IF NOT EXISTS taxon_domains (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    name TEXT NOT NULL,                               -- 领域名称
+    name_en TEXT NOT NULL,                               -- 领域名称
+    name_zh TEXT NOT NULL,                               -- 领域名称
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_taxon_spheres_name ON taxon_spheres(name);
+CREATE INDEX IF NOT EXISTS idx_taxon_domains_name ON taxon_domains(name_en, name_zh);
 
 -- Table: taxon_categories - categories and classifications
 CREATE TABLE IF NOT EXISTS taxon_categories (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    name TEXT NOT NULL,                               -- 分类名称
-    sphere_id BIGINT NOT NULL,                        -- 关联领域 ID
+    name_en TEXT NOT NULL,                               -- 分类名称
+    name_zh TEXT NOT NULL,                               -- 分类名称
+    domain_id BIGINT NOT NULL,                        -- 关联领域 ID
     parent_id BIGINT,                                  -- 父分类 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_taxon_categories_name ON taxon_categories(name);
+CREATE INDEX IF NOT EXISTS idx_taxon_categories_name ON taxon_categories(name_en, name_zh);
 
-CREATE TABLE IF NOT EXISTS asset_scenes (
+CREATE TABLE IF NOT EXISTS asset_contexts (
     id BIGSERIAL PRIMARY KEY,
-    name TEXT NOT NULL,
-    description TEXT,
+    name_en TEXT NOT NULL,
+    name_zh TEXT NOT NULL,
+    description_en TEXT,
+    description_zh TEXT,
     icon_emoji TEXT,
     display_order INTEGER DEFAULT 0,
+    difficulty SMALLINT, -- 1-10,
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(name_en)
+    UNIQUE(name_en, name_zh)
 );
-CREATE INDEX IF NOT EXISTS idx_asset_scenes_active ON asset_scenes(is_active, display_order);
+CREATE INDEX IF NOT EXISTS idx_asset_contexts_active ON asset_contexts(is_active, display_order);
 
--- Table: dict_scene_categories - Scene categories and classifications
-CREATE TABLE IF NOT EXISTS dict_scene_categories (
+-- Table: asset_context_categories - Context categories and classifications
+CREATE TABLE IF NOT EXISTS asset_context_categories (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    scene_id BIGINT NOT NULL,                            -- 关联场景 ID
+    context_id BIGINT NOT NULL,                            -- 关联场景 ID
     category_id BIGINT NOT NULL,                        -- 分类 ID
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
-    UNIQUE(scene_id, category_id)
+    UNIQUE(context_id, category_id)
 );
-CREATE INDEX IF NOT EXISTS idx_dict_scene_categories_scene ON dict_scene_categories(scene_id);
-CREATE INDEX IF NOT EXISTS idx_dict_scene_categories_id ON dict_scene_categories(category_id);
+CREATE INDEX IF NOT EXISTS idx_asset_context_categories_context ON asset_context_categories(context_id);
+CREATE INDEX IF NOT EXISTS idx_asset_context_categories_id ON asset_context_categories(category_id);
 
-
+CREATE TABLE IF NOT EXISTS asset_stages (
+    id BIGSERIAL PRIMARY KEY,
+    name_en TEXT NOT NULL,
+    name_zh TEXT NOT NULL,
+    description_en TEXT,
+    description_zh TEXT,
+    icon_emoji TEXT,
+    display_order INTEGER DEFAULT 0,
+    difficulty SMALLINT, -- 1-10,
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(name_en, name_zh)
+);
+CREATE INDEX IF NOT EXISTS idx_asset_stages_active ON asset_stages(is_active, display_order);
 CREATE TABLE IF NOT EXISTS asset_scripts (
     id BIGSERIAL PRIMARY KEY,
-    scene_id BIGINT NOT NULL,
+    stage_id BIGINT NOT NULL,
     title_en TEXT NOT NULL,
     title_zh TEXT NOT NULL,
     description_en TEXT,
     description_zh TEXT,
     total_turns INTEGER DEFAULT 0,
     estimated_duration_seconds INTEGER,
-    difficulty TEXT CHECK(difficulty IN ('beginner', 'intermediate', 'advanced')),
+    difficulty SMALLINT,-- 1-10,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_scripts_scene ON asset_scripts(scene_id);
+CREATE INDEX IF NOT EXISTS idx_asset_scripts_stage ON asset_scripts(stage_id);
 
 CREATE TABLE IF NOT EXISTS asset_script_turns (
     id BIGSERIAL PRIMARY KEY,
@@ -67,10 +85,10 @@ CREATE TABLE IF NOT EXISTS asset_script_turns (
     phonetic_transcription TEXT,
     asset_phrases JSONB,
     notes TEXT,
-    UNIQUE(dialogue_id, turn_number)
+    UNIQUE(script_id, turn_number)
 );
 
-CREATE INDEX IF NOT EXISTS idx_asset_dialogue_turns_scene ON asset_dialogue_turns(dialogue_id, turn_number);
+CREATE INDEX IF NOT EXISTS idx_asset_script_turns_stage ON asset_script_turns(script_id, turn_number);
 
 -- ============================================================================
 -- READING SUBJECT (Shared content - no user_id)
@@ -81,7 +99,7 @@ CREATE TABLE IF NOT EXISTS asset_read_subjects (
     title_zh TEXT NOT NULL,
     description_en TEXT,
     description_zh TEXT,
-    difficulty TEXT,
+    difficulty SMALLINT, -- 1-10,
     subject_type TEXT DEFAULT 'sentence',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -94,11 +112,11 @@ CREATE TABLE IF NOT EXISTS asset_read_sentences (
     content_zh TEXT NOT NULL,
     phonetic_transcription TEXT,
     native_audio_path TEXT,
+    difficulty SMALLINT, -- 1-10,
     focus_sounds JSONB,
     common_mistakes JSONB,
     UNIQUE(subject_id, sentence_order)
 );
-
 CREATE INDEX IF NOT EXISTS idx_asset_read_sentences_subject ON asset_read_sentences(subject_id, sentence_order);
 
 CREATE TABLE IF NOT EXISTS asset_word_sentences (

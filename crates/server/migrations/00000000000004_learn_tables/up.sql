@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS learn_chats (
     pause_count INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_learn_chats_user_session ON learn_chats(user_id, session_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_learn_chats_user ON learn_chats(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_learn_chats_created ON learn_chats(created_at);
 
 
@@ -87,20 +87,20 @@ CREATE TABLE IF NOT EXISTS learn_practices (
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_write_practices(user_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_practices(user_id);
 
 CREATE TABLE IF NOT EXISTS learn_write_practices (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     word_id BIGINT NOT NULL,
-    session_id TEXT NOT NULL,
+    practice_id TEXT NOT NULL,
     success_level INTEGER CHECK(success_level BETWEEN 1 AND 5),
     notes TEXT,
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_learn_practices_word ON learn_write_practices(word_id, updated_at);
-CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_write_practices(user_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_learn_practices_user_session ON learn_write_practices(user_id, practice_id);
 
 
 -- Table: learn_read_practices - Log of user's reading practice attempts
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS learn_read_practices (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     sentence_id BIGINT,
-    session_id TEXT,
+    practice_id TEXT NOT NULL,
     user_audio_path TEXT,
     pronunciation_score INTEGER CHECK(pronunciation_score BETWEEN 0 AND 100),
     fluency_score INTEGER CHECK(fluency_score BETWEEN 0 AND 100),
@@ -121,7 +121,7 @@ CREATE TABLE IF NOT EXISTS learn_read_practices (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_read_practices_sentence ON learn_read_practices(sentence_id, created_at);
-CREATE INDEX IF NOT EXISTS idx_read_practices_user_session ON learn_read_practices(user_id, session_id);
+CREATE INDEX IF NOT EXISTS idx_read_practices_user_session ON learn_read_practices(user_id, practice_id);
 
 -- Table: learn_achievements - Track user achievements and milestones
 CREATE TABLE IF NOT EXISTS learn_achievements (
@@ -178,3 +178,43 @@ CREATE TABLE IF NOT EXISTS learn_suggestions (
     was_accepted BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+
+
+-- Table: learn_script_progress - Track user learn progress in scripts
+CREATE TABLE IF NOT EXISTS learn_script_progress (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    stage_id BIGINT NOT NULL,
+    script_id BIGINT NOT NULL,
+    progress_percent INTEGER DEFAULT 0 CHECK(progress_percent BETWEEN 0 AND 100),
+    completed_at TIMESTAMPTZ,
+    last_practiced_at TIMESTAMPTZ,
+    practice_count INTEGER DEFAULT 0,
+    best_score INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, script_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_learn_script_progress_user ON learn_script_progress(user_id);
+CREATE INDEX IF NOT EXISTS idx_learn_script_progress_stage ON learn_script_progress(stage_id, script_id);
+
+-- Table: learn_read_progress - Track user progress in reading exercises
+CREATE TABLE IF NOT EXISTS learn_read_progress (
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    exercise_id BIGINT NOT NULL,
+    current_sentence_order INTEGER DEFAULT 0,
+    progress_percent INTEGER DEFAULT 0 CHECK(progress_percent BETWEEN 0 AND 100),
+    completed_at TIMESTAMPTZ,
+    last_practiced_at TIMESTAMPTZ,
+    practice_count INTEGER DEFAULT 0,
+    average_score INTEGER,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, exercise_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_learn_read_progress_user ON learn_read_progress(user_id);
+CREATE INDEX IF NOT EXISTS idx_learn_read_progress_exercise ON learn_read_progress(exercise_id);

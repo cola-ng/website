@@ -107,9 +107,9 @@ pub async fn get_dialogue_turns(req: &mut Request, res: &mut Response) -> AppRes
         .ok_or_else(|| StatusError::bad_request().brief("missing dialogue_id"))?;
 
     let turns: Vec<DialogueTurn> = with_conn(move |conn| {
-        asset_dialogue_turns::table
-            .filter(asset_dialogue_turns::dialogue_id.eq(dialogue_id))
-            .order(asset_dialogue_turns::turn_number.asc())
+        asset_script_turns::table
+            .filter(asset_script_turns::dialogue_id.eq(dialogue_id))
+            .order(asset_script_turns::turn_number.asc())
             .load::<DialogueTurn>(conn)
     })
     .await

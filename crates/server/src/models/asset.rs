@@ -72,7 +72,7 @@ pub struct NewDialogue {
 }
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = asset_dialogue_turns)]
+#[diesel(table_name = asset_script_turns)]
 pub struct DialogueTurn {
     pub id: i64,
     pub dialogue_id: i64,
@@ -88,7 +88,7 @@ pub struct DialogueTurn {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = asset_dialogue_turns)]
+#[diesel(table_name = asset_script_turns)]
 pub struct NewDialogueTurn {
     pub dialogue_id: i64,
     pub turn_number: i32,

@@ -122,7 +122,7 @@ diesel::table! {
 }
 
 diesel::table! {
-    asset_dialogue_turns (id) {
+    asset_script_turns (id) {
         id -> Int8,
         dialogue_id -> Int8,
         turn_number -> Int4,
@@ -818,7 +818,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     archive_user_xp_history,
     asset_classic_clips,
     asset_classic_sources,
-    asset_dialogue_turns,
+    asset_script_turns,
     asset_dialogues,
     asset_phrases,
     asset_read_exercises,
