@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS learn_chats (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     title TEXT NOT NULL,
+    context_id BIGINT,
     duration_ms INTEGER,
     pause_count INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

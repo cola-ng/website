@@ -121,13 +121,7 @@ pub async fn update_chat(
             Ok(existing)
         }
     })
-    .await
-    .map_err(|e| match e {
-        diesel::result::Error::NotFound => {
-            StatusError::not_found().brief("chat not found")
-        }
-        _ => StatusError::internal_server_error().brief("failed to update chat"),
-    })?;
+    .await?;
 
     res.render(Json(chat));
     Ok(())
