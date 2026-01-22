@@ -47,7 +47,7 @@ pub struct NewTaxonCategory {
 }
 
 // ============================================================================
-// Context models (scenarios/scenes)
+// Context models
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]

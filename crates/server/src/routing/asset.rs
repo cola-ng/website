@@ -19,7 +19,7 @@ pub fn router() -> Router {
                 .get(list_categories)
                 .push(Router::with_path("{domain_id}").get(get_categories_by_domain)),
         )
-        // Contexts (scenes)
+        // Contexts
         .push(
             Router::with_path("contexts")
                 .get(list_contexts)

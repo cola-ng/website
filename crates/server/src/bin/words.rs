@@ -9,7 +9,8 @@ use std::time::Duration;
 use futures_util::stream::{self, StreamExt};
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_WORDS_FILE: &str = "../words-all.txt";
+const DEFAULT_ALL_WORDS_FILE: &str = "../words.all.txt";
+const DEFAULT_QUEUE_FILE: &str = "../words.queue.txt";
 const DEFAULT_OUTPUT_DIR: &str = "../words";
 const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_RETRY_COUNT: usize = 3;
@@ -222,20 +223,29 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
-    let mut words_file = PathBuf::from(DEFAULT_WORDS_FILE);
+    let mut all_words_file = PathBuf::from(DEFAULT_ALL_WORDS_FILE);
+    let mut queue_file = PathBuf::from(DEFAULT_QUEUE_FILE);
     let mut output_dir = PathBuf::from(DEFAULT_OUTPUT_DIR);
-    let mut start_from: Option<String> = None;
     let mut limit: Option<usize> = None;
 
     let mut i = 1;
     while i < args.len() {
         match args[i].as_str() {
-            "--words-file" => {
+            "--all-words-file" => {
                 if i + 1 < args.len() {
-                    words_file = PathBuf::from(&args[i + 1]);
+                    all_words_file = PathBuf::from(&args[i + 1]);
                     i += 2;
                 } else {
-                    eprintln!("Error: --words-file requires a path argument");
+                    eprintln!("Error: --all-words-file requires a path argument");
+                    std::process::exit(1);
+                }
+            }
+            "--queue-file" => {
+                if i + 1 < args.len() {
+                    queue_file = PathBuf::from(&args[i + 1]);
+                    i += 2;
+                } else {
+                    eprintln!("Error: --queue-file requires a path argument");
                     std::process::exit(1);
                 }
             }
@@ -245,15 +255,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     i += 2;
                 } else {
                     eprintln!("Error: --output-dir requires a path argument");
-                    std::process::exit(1);
-                }
-            }
-            "--start-from" => {
-                if i + 1 < args.len() {
-                    start_from = Some(args[i + 1].clone());
-                    i += 2;
-                } else {
-                    eprintln!("Error: --start-from requires a word argument");
                     std::process::exit(1);
                 }
             }
@@ -286,11 +287,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Dictionary Generator using BigModel AI");
     println!("(Multi-Model Load Balancing Mode)");
     println!("===============================================");
-    println!("Words file: {}", words_file.display());
+    println!("All words file: {}", all_words_file.display());
+    println!("Queue file: {}", queue_file.display());
     println!("Output directory: {}", output_dir.display());
-    if let Some(ref start) = start_from {
-        println!("Starting from: {}", start);
-    }
     if let Some(l) = limit {
         println!("Limit: {} words", l);
     }
@@ -299,16 +298,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     fs::create_dir_all(&output_dir)?;
 
+    // 加载已存在的有效单词文件
     let existing_words = load_existing_valid_words(&output_dir)?;
     println!("\nFound {} existing valid word files", existing_words.len());
 
-    let words = load_words(&words_file, &existing_words, start_from.as_deref())?;
-    println!("Found {} words to process", words.len());
+    // 从 all words 文件过滤已下载的单词，生成 queue 文件
+    let queue_words = build_queue_file(&all_words_file, &queue_file, &existing_words)?;
+    println!("Built queue file with {} words to process", queue_words.len());
 
     let words_to_process: Vec<String> = if let Some(l) = limit {
-        words.into_iter().take(l).collect()
+        queue_words.into_iter().take(l).collect()
     } else {
-        words
+        queue_words
     };
 
     if words_to_process.is_empty() {
@@ -380,16 +381,16 @@ fn load_existing_valid_words(
     Ok(existing)
 }
 
-fn load_words(
-    words_file: &Path,
+/// 从 all words 文件读取所有单词，过滤已下载的，生成 queue 文件
+fn build_queue_file(
+    all_words_file: &Path,
+    queue_file: &Path,
     existing: &HashSet<String>,
-    start_from: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn std::error::Error>> {
-    let file = File::open(words_file)?;
+    let file = File::open(all_words_file)?;
     let reader = BufReader::new(file);
 
     let mut words = Vec::new();
-    let mut started = start_from.is_none();
 
     for line in reader.lines() {
         let line = line?;
@@ -403,22 +404,23 @@ fn load_words(
             continue;
         }
 
-        if !started {
-            if let Some(start) = start_from {
-                if word.eq_ignore_ascii_case(start) {
-                    started = true;
-                } else {
-                    continue;
-                }
-            }
-        }
-
         let word_lower = word.to_lowercase();
         if existing.contains(&word_lower) {
             continue;
         }
 
         words.push(word);
+    }
+
+    // 删除旧的 queue 文件并创建新的
+    if queue_file.exists() {
+        fs::remove_file(queue_file)?;
+    }
+
+    // 写入 queue 文件
+    let mut file = File::create(queue_file)?;
+    for word in &words {
+        writeln!(file, "{}", word)?;
     }
 
     Ok(words)
@@ -808,16 +810,24 @@ fn print_usage() {
     println!();
     println!("Options:");
     println!(
-        "  --words-file <PATH>   Path to words file (default: {})",
-        DEFAULT_WORDS_FILE
+        "  --all-words-file <PATH>   Path to all words file (default: {})",
+        DEFAULT_ALL_WORDS_FILE
     );
     println!(
-        "  --output-dir <PATH>   Output directory for JSON files (default: {})",
+        "  --queue-file <PATH>       Path to queue file (default: {})",
+        DEFAULT_QUEUE_FILE
+    );
+    println!(
+        "  --output-dir <PATH>       Output directory for JSON files (default: {})",
         DEFAULT_OUTPUT_DIR
     );
-    println!("  --start-from <WORD>   Start processing from this word");
-    println!("  --limit <N>           Limit number of words to process");
-    println!("  --help                Show this help message");
+    println!("  --limit <N>               Limit number of words to process");
+    println!("  --help                    Show this help message");
+    println!();
+    println!("Queue System:");
+    println!("  On startup, the script reads all words from --all-words-file,");
+    println!("  filters out words that already exist in --output-dir,");
+    println!("  and writes the remaining words to --queue-file.");
     println!();
     println!("Batch Processing:");
     println!(
@@ -845,5 +855,5 @@ fn print_usage() {
     println!();
     println!("Examples:");
     println!("  cargo run --bin words --limit 10");
-    println!("  cargo run --bin words --start-from apple --limit 100");
+    println!("  cargo run --bin words --all-words-file ../my-words.txt --limit 100");
 }

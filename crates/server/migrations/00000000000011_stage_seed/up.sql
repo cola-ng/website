@@ -1,8 +1,8 @@
 -- ============================================================================
--- SEED DATA FOR SCENES AND READING
+-- SEED DATA FOR STAGE AND READING
 -- ============================================================================
 
--- Insert additional scenes into asset_contexts
+-- Insert additional stages into asset_contexts
 INSERT INTO asset_contexts (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
 ('Grocery Shopping', '超市购物', 'English communication skills for grocery shopping', '超市购物时的英语交流技巧', '🛒', 2, 11, true),
 ('Banking', '银行业务', 'English expressions for banking services', '银行业务办理的英语表达', '🏦', 4, 12, true),

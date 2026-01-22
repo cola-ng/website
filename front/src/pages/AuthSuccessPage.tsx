@@ -59,7 +59,7 @@ export function AuthSuccessPage() {
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-purple-100">
                     <Theater className="h-5 w-5 text-purple-600" />
                   </div>
-                  <span className="text-sm font-medium text-gray-700">场景中心</span>
+                  <span className="text-sm font-medium text-gray-700">角色扮演</span>
                 </div>
               </Link>
 

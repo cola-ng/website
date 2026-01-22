@@ -201,7 +201,7 @@ export function SceneDetailPage() {
             <h1 className="text-2xl font-bold text-gray-900 mb-2">场景未找到</h1>
             <p className="text-gray-600 mb-6">{error || '无法加载场景内容'}</p>
             <Button asChild>
-              <Link to="/scenes">返回场景中心</Link>
+              <Link to="/scenes">返回角色扮演</Link>
             </Button>
           </div>
         </main>
@@ -222,7 +222,7 @@ export function SceneDetailPage() {
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span>返回场景中心</span>
+            <span>返回角色扮演</span>
           </button>
 
           <div className="bg-white rounded-xl shadow-lg p-6">

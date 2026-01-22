@@ -182,7 +182,7 @@ export function ScenesPage() {
         <div className="flex items-baseline gap-3 mb-6">
           <h1 className="text-2xl font-bold text-gray-900">
             <span className="mr-2">🎭</span>
-            场景中心
+            角色扮演
           </h1>
           <p className="text-gray-500">沉浸式场景模拟 · AI智能推荐 · 经典对白学习</p>
         </div>
