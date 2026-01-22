@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, Settings2, ChevronDown, FileDown, ClipboardList, Loader2, Square } from 'lucide-react'
+import { Send, Mic, MicOff, Plus, Volume2, MessageSquare, FileDown, ClipboardList, Loader2, Square } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -110,16 +110,12 @@ export function ConversationPage() {
   const [activeConversationId, setActiveConversationId] = useState<string>(mockConversations[0].id)
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
-  const [showAudioSettings, setShowAudioSettings] = useState(false)
-  const [selectedMic, setSelectedMic] = useState('default')
-  const [selectedSpeaker, setSelectedSpeaker] = useState('default')
   const [reportMode, setReportMode] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
-  const audioSettingsRef = useRef<HTMLDivElement>(null)
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const audioChunksRef = useRef<Blob[]>([])
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -198,19 +194,6 @@ export function ConversationPage() {
       }
     }
   }, [input])
-
-  // Close audio settings when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (audioSettingsRef.current && !audioSettingsRef.current.contains(event.target as Node)) {
-        setShowAudioSettings(false)
-      }
-    }
-    if (showAudioSettings) {
-      document.addEventListener('mousedown', handleClickOutside)
-    }
-    return () => document.removeEventListener('mousedown', handleClickOutside)
-  }, [showAudioSettings])
 
   // Helper function to play audio from base64
   const playAudioFromBase64 = useCallback((base64: string, messageId: string) => {
@@ -731,63 +714,6 @@ export function ConversationPage() {
                 </h2>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3 text-sm">
-                    {/* Audio Settings Button with Popover */}
-                    <div className="relative" ref={audioSettingsRef}>
-                      <button
-                        onClick={() => setShowAudioSettings(!showAudioSettings)}
-                        className={cn(
-                          'p-1.5 rounded-md transition-all',
-                          showAudioSettings
-                            ? 'bg-orange-100 text-orange-600'
-                            : 'text-gray-400 hover:bg-gray-100 hover:text-gray-600'
-                        )}
-                        title="音频设置"
-                      >
-                        <Settings2 className="h-4 w-4" />
-                      </button>
-
-                      {/* Audio Settings Popover */}
-                      {showAudioSettings && (
-                        <div className="absolute top-full right-0 mt-2 w-64 bg-white rounded-xl shadow-lg border p-4 z-10">
-                          <div className="text-sm font-medium text-gray-900 mb-3">音频设置</div>
-
-                          {/* Microphone Selection */}
-                          <div className="mb-3">
-                            <label className="text-xs text-gray-500 mb-1 block">麦克风</label>
-                            <div className="relative">
-                              <select
-                                value={selectedMic}
-                                onChange={(e) => setSelectedMic(e.target.value)}
-                                className="w-full px-3 py-2 pr-8 text-sm border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none"
-                              >
-                                <option value="default">默认麦克风</option>
-                                <option value="mic1">内置麦克风</option>
-                                <option value="mic2">外接麦克风</option>
-                              </select>
-                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                            </div>
-                          </div>
-
-                          {/* Speaker Selection */}
-                          <div>
-                            <label className="text-xs text-gray-500 mb-1 block">扬声器</label>
-                            <div className="relative">
-                              <select
-                                value={selectedSpeaker}
-                                onChange={(e) => setSelectedSpeaker(e.target.value)}
-                                className="w-full px-3 py-2 pr-8 text-sm border rounded-lg bg-gray-50 focus:outline-none focus:ring-2 focus:ring-orange-500 appearance-none"
-                              >
-                                <option value="default">默认扬声器</option>
-                                <option value="speaker1">内置扬声器</option>
-                                <option value="speaker2">外接音响</option>
-                              </select>
-                              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400 pointer-events-none" />
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
                     {/* Report Mode Toggle Button */}
                     <button
                       onClick={() => setReportMode(!reportMode)}
