@@ -1,7 +1,19 @@
 import { useState, useCallback } from 'react'
-import Cropper, { Area, Point } from 'react-easy-crop'
+import Cropper from 'react-easy-crop'
 import { X, ZoomIn, ZoomOut, RotateCw } from 'lucide-react'
 import { Button } from './ui/button'
+
+interface Point {
+  x: number
+  y: number
+}
+
+interface Area {
+  x: number
+  y: number
+  width: number
+  height: number
+}
 
 interface AvatarCropDialogProps {
   imageUrl: string

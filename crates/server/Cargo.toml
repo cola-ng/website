@@ -37,7 +37,7 @@ salvo = { workspace = true, features = ["cors", "logging", "oapi", "compression"
 scheduled-thread-pool = { workspace = true }
 tokio = { workspace = true }
 url = { workspace = true }
-uuid = { workspace = true, features = ["serde", "v4"] }
+uuid = { workspace = true, features = ["serde", "v4", "v7"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 byteorder = { workspace = true }

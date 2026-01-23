@@ -1,7 +1,8 @@
 use std::path::{Path, PathBuf};
 
+use chrono::Utc;
 use diesel::prelude::*;
-use image::{GenericImageView, ImageFormat, ImageReader};
+use image::{GenericImageView, ImageFormat};
 use salvo::prelude::*;
 
 use crate::db::schema::*;
@@ -44,9 +45,9 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(
 
                 match format {
                     "webp" => {
-                        // Use lossy webp for smaller file size
+                        // Use lossless webp (image crate doesn't support lossy quality settings)
                         let file = std::fs::File::create(&output_file)?;
-                        let encoder = image::codecs::webp::WebPEncoder::new_lossy(file, 85.0);
+                        let encoder = image::codecs::webp::WebPEncoder::new_lossless(file);
                         resized.write_with_encoder(encoder)?;
                     }
                     "png" => {
@@ -68,7 +69,7 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(
                 match format {
                     "webp" => {
                         let file = std::fs::File::create(&output_file)?;
-                        let encoder = image::codecs::webp::WebPEncoder::new_lossy(file, 85.0);
+                        let encoder = image::codecs::webp::WebPEncoder::new_lossless(file);
                         resized.write_with_encoder(encoder)?;
                     }
                     _ => {
@@ -83,8 +84,12 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(
     .await
     .map_err(|e| {
         StatusError::internal_server_error()
+            .brief(format!("image processing task failed: {}", e))
+    })?
+    .map_err(|e| {
+        StatusError::internal_server_error()
             .brief(format!("image processing failed: {}", e))
-    })??;
+    })?;
 
     Ok(())
 }
@@ -163,10 +168,10 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
             .into());
     }
 
-    // Generate unique avatar directory
-    let uuid_name = uuid::Uuid::new_v4().to_string();
+    // Generate unique avatar directory using UTC timestamp
+    let timestamp = Utc::now().timestamp();
     let avatar_dir = format!("uploads/avatars/{}", user_id);
-    let store_dir = format!("{}/{}", avatar_dir, uuid_name);
+    let store_dir = format!("{}/{}", avatar_dir, timestamp);
 
     // Create directory and copy original file
     std::fs::create_dir_all(&store_dir)?;
