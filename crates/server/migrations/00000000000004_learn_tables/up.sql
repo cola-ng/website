@@ -52,10 +52,17 @@ CREATE TABLE IF NOT EXISTS learn_chat_turns (
     words_per_minute REAL,
     pause_count INTEGER,
     hesitation_count INTEGER,
+    replied_id BIGINT,
+    status TEXT NOT NULL DEFAULT 'completed', -- 'pending', 'processing', 'completed', 'error'
+    error TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_learn_chat_turns_user_chat ON learn_chat_turns(user_id, chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_learn_chat_turns_created ON learn_chat_turns(created_at);
+CREATE INDEX idx_learn_chat_turns_parent_status
+    ON learn_chat_turns(replied_id, status)
+    WHERE replied_id IS NOT NULL;
+
 
 -- Table: learn_chat_annotations - Stores annotations and issues found in learn_chats
 CREATE TABLE IF NOT EXISTS learn_chat_annotations (

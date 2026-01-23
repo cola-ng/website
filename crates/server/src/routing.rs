@@ -14,7 +14,6 @@ mod account;
 mod achievement;
 mod asset;
 mod auth;
-mod chat;
 mod dict;
 mod learn;
 
@@ -45,7 +44,6 @@ pub fn router() -> Router {
             .push(achievement::router())
             .push(auth::router())
             .push(asset::router())
-            .push(chat::router())
             .push(dict::router())
             .push(learn::router()),
     )

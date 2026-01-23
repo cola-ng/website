@@ -318,6 +318,7 @@ impl ChatService for BigModelClient {
             max_tokens,
         };
 
+        println!("BigModel Chat: sending request with {} messages", request.messages.len());
         tracing::info!("BigModel Chat: sending request with {} messages", request.messages.len());
 
         let response = self

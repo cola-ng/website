@@ -95,6 +95,9 @@ pub struct ChatTurn {
     pub words_per_minute: Option<f32>,
     pub pause_count: Option<i32>,
     pub hesitation_count: Option<i32>,
+    pub replied_id: Option<i64>,
+    pub status: String,
+    pub error: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -112,6 +115,8 @@ pub struct NewChatTurn {
     pub words_per_minute: Option<f32>,
     pub pause_count: Option<i32>,
     pub hesitation_count: Option<i32>,
+    pub replied_id: Option<i64>,
+    pub status: String,
 }
 
 // ============================================================================

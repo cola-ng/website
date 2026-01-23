@@ -30,7 +30,9 @@ pub fn router() -> Router {
                 .push(
                     Router::with_path("{id}")
                         .put(chat::update_chat)
-                        .push(Router::with_path("annotations").get(chat::list_chat_annotations)),
+                        .push(Router::with_path("send").post(chat::chat_send))
+                        .push(Router::with_path("annotations").get(chat::list_chat_annotations))
+                        .push(Router::with_path("turns").get(chat::list_chat_turns)),
                 )
                 .push(Router::with_path("turns").get(chat::list_chat_turns)),
         )

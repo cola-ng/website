@@ -564,6 +564,9 @@ diesel::table! {
         words_per_minute -> Nullable<Float4>,
         pause_count -> Nullable<Int4>,
         hesitation_count -> Nullable<Int4>,
+        replied_id -> Nullable<Int8>,
+        status -> Text,
+        error -> Nullable<Text>,
         created_at -> Timestamptz,
     }
 }

@@ -6,7 +6,7 @@
 //! - Ark Chat: Chat completion (对话生成)
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use std::time::Duration;
@@ -165,7 +165,9 @@ impl DoubaoClient {
 
     /// Get client from environment variables
     pub fn from_env() -> Option<Self> {
-        let app_id = std::env::var("DOUBAO_APP_ID").ok().filter(|s| !s.is_empty())?;
+        let app_id = std::env::var("DOUBAO_APP_ID")
+            .ok()
+            .filter(|s| !s.is_empty())?;
         let access_token = std::env::var("DOUBAO_ACCESS_TOKEN")
             .ok()
             .filter(|s| !s.is_empty())?;
@@ -174,7 +176,12 @@ impl DoubaoClient {
             .filter(|s| !s.is_empty())?;
         let chat_model = std::env::var("DOUBAO_CHAT_MODEL").ok();
 
-        Some(Self::with_model(app_id, access_token, chat_api_key, chat_model))
+        Some(Self::with_model(
+            app_id,
+            access_token,
+            chat_api_key,
+            chat_model,
+        ))
     }
 
     /// Create speech API app info
@@ -276,10 +283,7 @@ impl AsrService for DoubaoClient {
             .map_err(|e| AiProviderError::Parse(e.to_string()))?;
 
         // Parse Doubao response format
-        let text = result["result"]["text"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let text = result["result"]["text"].as_str().unwrap_or("").to_string();
 
         let confidence = result["result"]["confidence"].as_f64().map(|c| c as f32);
 
@@ -324,7 +328,9 @@ impl TtsService for DoubaoClient {
             app: self.speech_app_info(),
             user: Self::speech_user_info(),
             audio: TtsAudioConfig {
-                voice_type: voice.unwrap_or("zh_female_shuangkuaisisi_moon_bigtts").to_string(),
+                voice_type: voice
+                    .unwrap_or("zh_female_shuangkuaisisi_moon_bigtts")
+                    .to_string(),
                 encoding: "wav".to_string(),
                 speed_ratio: speed.unwrap_or(1.0),
                 volume_ratio: 1.0,
@@ -418,6 +424,10 @@ impl ChatService for DoubaoClient {
             stream: false,
         };
 
+        println!(
+            "Doubao Chat: sending request with {} messages",
+            request.messages.len()
+        );
         tracing::info!(
             "Doubao Chat: sending request with {} messages",
             request.messages.len()
@@ -613,29 +623,18 @@ impl ChatService for DoubaoClient {
         tracing::debug!("Doubao Chat Structured response: {}", content);
 
         // Parse structured JSON response
-        let structured: serde_json::Value = serde_json::from_str(content)
-            .map_err(|e| AiProviderError::Parse(format!("Failed to parse structured response: {}", e)))?;
+        let structured: serde_json::Value = serde_json::from_str(content).map_err(|e| {
+            AiProviderError::Parse(format!("Failed to parse structured response: {}", e))
+        })?;
 
-        let use_lang = structured["use_lang"]
-            .as_str()
-            .unwrap_or("en")
-            .to_string();
+        let use_lang = structured["use_lang"].as_str().unwrap_or("en").to_string();
         let original_en = structured["original_en"]
             .as_str()
             .unwrap_or(user_text)
             .to_string();
-        let original_zh = structured["original_zh"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let reply_en = structured["reply_en"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
-        let reply_zh = structured["reply_zh"]
-            .as_str()
-            .unwrap_or("")
-            .to_string();
+        let original_zh = structured["original_zh"].as_str().unwrap_or("").to_string();
+        let reply_en = structured["reply_en"].as_str().unwrap_or("").to_string();
+        let reply_zh = structured["reply_zh"].as_str().unwrap_or("").to_string();
 
         let issues: Vec<TextIssue> =
             serde_json::from_value(structured["issues"].clone()).unwrap_or_default();
@@ -713,12 +712,8 @@ impl PronunciationService for DoubaoClient {
             .await
             .map_err(|e| AiProviderError::Parse(e.to_string()))?;
 
-        let overall_score = result["result"]["overall_score"]
-            .as_f64()
-            .unwrap_or(0.0) as f32;
-        let fluency_score = result["result"]["fluency_score"]
-            .as_f64()
-            .unwrap_or(0.0) as f32;
+        let overall_score = result["result"]["overall_score"].as_f64().unwrap_or(0.0) as f32;
+        let fluency_score = result["result"]["fluency_score"].as_f64().unwrap_or(0.0) as f32;
         let pronunciation_score = result["result"]["pronunciation_score"]
             .as_f64()
             .unwrap_or(0.0) as f32;
@@ -742,10 +737,7 @@ impl PronunciationService for DoubaoClient {
             })
             .unwrap_or_default();
 
-        tracing::info!(
-            "Doubao Pronunciation: overall score {}",
-            overall_score
-        );
+        tracing::info!("Doubao Pronunciation: overall score {}", overall_score);
 
         Ok(PronunciationAnalysis {
             overall_score,
