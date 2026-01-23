@@ -205,7 +205,7 @@ impl AsrService for BigModelClient {
             let body = response.text().await.unwrap_or_default();
             tracing::error!("BigModel ASR error {}: {}", status, body);
             return Err(AiProviderError::Api(format!(
-                "ASR API error {}: {}",
+                "BigModel ASR API error {}: {}",
                 status, body
             )));
         }

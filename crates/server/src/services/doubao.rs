@@ -256,7 +256,7 @@ impl AsrService for DoubaoClient {
             },
         };
 
-        tracing::info!("Doubao ASR: sending request to {}", url);
+        tracing::info!("Doubao ASR: sending request to {}  {request:#?}", url);
 
         let response = self
             .client
@@ -272,7 +272,7 @@ impl AsrService for DoubaoClient {
             let body = response.text().await.unwrap_or_default();
             tracing::error!("Doubao ASR error {}: {}", status, body);
             return Err(AiProviderError::Api(format!(
-                "ASR API error {}: {}",
+                "Doubao ASR API error {}: {}",
                 status, body
             )));
         }
