@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle, createChat, listChats, type TextIssue } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, type TextIssue } from '../lib/api'
 
 interface Message {
   id: string
@@ -529,7 +529,7 @@ export function ConversationPage() {
     if (token) {
       try {
         // Clear server-side history when starting a new conversation
-        await clearChatHistory(token)
+        await clearAllChats(token)
         // Create new chat on server
         const chat = await createChat(token, '随便聊')
         serverId = chat.id
@@ -568,7 +568,7 @@ export function ConversationPage() {
     if (token) {
       try {
         // Clear server-side history first
-        await clearChatHistory(token)
+        await clearAllChats(token)
         // Create new chat on server with context_id
         const chat = await createChat(token, context.name_zh, context.id)
         serverId = chat.id
