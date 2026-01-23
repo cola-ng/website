@@ -83,43 +83,6 @@ fn simple_corrections(message: &str) -> Vec<String> {
     out
 }
 
-/// Simple chat endpoint (deprecated, use /api/chat/send instead)
-#[endpoint(tags("Chat"))]
-pub async fn send_chat(
-    input: JsonBody<ChatSendRequest>,
-    depot: &mut Depot,
-) -> Result<Json<ChatSendResponse>, StatusError> {
-    if input.message.trim().is_empty() {
-        return Err(StatusError::bad_request().brief("message is required"));
-    }
-
-    let corrections = simple_corrections(&input.message);
-    let suggestions = vec![
-        "Try answering with one more detail.".to_string(),
-        "Ask me a follow-up question to keep the conversation going.".to_string(),
-    ];
-    let reply = format!(
-        "Let's continue. Tell me more about: {}",
-        input.message.trim()
-    );
-
-    let _user_id = depot
-        .user_id()
-        .map_err(|e| StatusError::unauthorized().brief(e.to_string()))?;
-    let _content = json!({
-        "user_message": input.message,
-        "assistant_reply": reply,
-        "corrections": corrections,
-        "suggestions": suggestions
-    });
-
-    Ok(Json(ChatSendResponse {
-        reply,
-        corrections,
-        suggestions,
-    }))
-}
-
 // #[handler]
 // async fn admin_delete_user(
 //     req: &mut Request,

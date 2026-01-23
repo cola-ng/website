@@ -1,18 +1,18 @@
 use std::path::PathBuf;
 
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use chrono::Utc;
 use diesel::prelude::*;
-use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
+use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::services::{create_provider_from_env, AiProviderError, ChatMessage};
-use crate::{json_ok, AppResult, DepotExt, JsonResult, OkResponse};
+use crate::services::{AiProviderError, ChatMessage, create_provider_from_env};
+use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
 // Type aliases for backward compatibility
 type ChatSession = Chat;
@@ -49,11 +49,7 @@ pub struct UpdateChatRequest {
 }
 
 #[handler]
-pub async fn list_chats(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn list_chats(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
@@ -84,9 +80,7 @@ pub async fn create_chat(
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
     if input.title.trim().is_empty() {
-        return Err(StatusError::bad_request()
-            .brief("title is required")
-            .into());
+        return Err(StatusError::bad_request().brief("title is required").into());
     }
 
     let new_chat = NewChat {
@@ -204,7 +198,6 @@ pub async fn list_chat_turns(
     Ok(())
 }
 
-
 /// Request for chat - supports both audio and text input
 #[derive(Debug, Deserialize, ToSchema)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -218,14 +211,7 @@ pub enum ChatSendRequest {
     Text {
         /// User's text message
         message: String,
-        /// Whether to generate audio response (default: true)
-        #[serde(default = "default_true")]
-        generate_audio: bool,
     },
-}
-
-fn default_true() -> bool {
-    true
 }
 
 /// Text issue (grammar, word choice, or suggestion)
@@ -513,7 +499,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     let chat_id = format!("chat_{}", session.id);
 
     // Process based on input type - transcribe audio if needed
-    let (user_text, user_audio_data, generate_audio) = match &input {
+    let (user_text, user_audio_data) = match &input {
         ChatSendRequest::Audio { audio_base64 } => {
             // Decode audio
             let audio_data = BASE64
@@ -527,8 +513,9 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             }
 
             // Get AI provider for ASR
-            let provider = create_provider_from_env()
-                .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
+            let provider = create_provider_from_env().ok_or_else(|| {
+                StatusError::internal_server_error().brief("AI provider not configured")
+            })?;
 
             // Transcribe audio to text using ASR
             let asr = provider.asr().ok_or_else(|| {
@@ -554,12 +541,10 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             (
                 asr_result.text,
                 Some(audio_data),
-                true, // Always generate audio for audio input
             )
         }
         ChatSendRequest::Text {
             message,
-            generate_audio,
         } => {
             if message.trim().is_empty() {
                 return Err(StatusError::bad_request()
@@ -567,7 +552,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
                     .into());
             }
 
-            (message.clone(), None, *generate_audio)
+            (message.clone(), None)
         }
     };
 
@@ -675,7 +660,10 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         };
 
         // Generate AI response with structured output
-        tracing::info!("Background: Calling {} chat_structured API...", provider.name());
+        tracing::info!(
+            "Background: Calling {} chat_structured API...",
+            provider.name()
+        );
         let structured_response = match chat_service
             .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
             .await
@@ -703,18 +691,17 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         );
 
         // Generate TTS for AI response if needed
-        let ai_audio_path = if generate_audio {
-            if let Some(tts) = provider.tts() {
-                tracing::info!("Background: Generating TTS for AI response...");
-                match tts.synthesize(&structured_response.reply_en, None, None).await {
-                    Ok(tts_response) => save_audio_file(user_id, &tts_response.audio_data, "ai").await,
-                    Err(e) => {
-                        tracing::warn!("AI TTS failed: {}", e);
-                        None
-                    }
+        let ai_audio_path = if let Some(tts) = provider.tts() {
+            tracing::info!("Background: Generating TTS for AI response...");
+            match tts
+                .synthesize(&structured_response.reply_en, None, None)
+                .await
+            {
+                Ok(tts_response) => save_audio_file(user_id, &tts_response.audio_data, "ai").await,
+                Err(e) => {
+                    tracing::warn!("AI TTS failed: {}", e);
+                    None
                 }
-            } else {
-                None
             }
         } else {
             None
@@ -794,7 +781,6 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
 
     json_ok(HistoryResponse { messages })
 }
-
 
 // ============================================================================
 // Chat Annotations API

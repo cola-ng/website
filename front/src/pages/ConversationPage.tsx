@@ -252,41 +252,55 @@ export function ConversationPage() {
 
     try {
       // Call API for text chat (history is managed server-side)
-      const response = await textChatSend(token, messageText, true)
+      const chatId = activeConversation.serverId
+      if (!chatId) {
+        throw new Error('Chat not synced with server')
+      }
+      const sendResponse = await textChatSend(token, chatId, messageText, true)
+
+      // Update user message with content from server
+      setConversations(prev => prev.map(c => {
+        if (c.id === activeConversationId) {
+          return {
+            ...c,
+            messages: c.messages.map(m =>
+              m.id === userMessage.id
+                ? {
+                    ...m,
+                    contentEn: sendResponse.user_turn.content_en || messageText,
+                    contentZh: sendResponse.user_turn.content_zh || messageText,
+                  }
+                : m
+            ),
+          }
+        }
+        return c
+      }))
+
+      // Poll for AI turn completion
+      const completedAiTurn = await pollChatTurn(token, chatId, sendResponse.ai_turn.id, 1000, 60)
 
       // Add AI response
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        contentEn: response.ai_text_en,
-        contentZh: response.ai_text_zh || response.ai_text_en,
-        hasAudio: !!response.ai_audio_base64,
-        audioBase64: response.ai_audio_base64 || undefined,
+        contentEn: completedAiTurn.content_en,
+        contentZh: completedAiTurn.content_zh || completedAiTurn.content_en,
+        hasAudio: !!completedAiTurn.audio_path,
         timestamp: new Date(),
       }
 
       setConversations(prev => prev.map(c => {
         if (c.id === activeConversationId) {
-          // Also update user message with issues if any
-          const updatedMessages = c.messages.map(m =>
-            m.id === userMessage.id && response.issues.length > 0
-              ? { ...m, issues: response.issues }
-              : m
-          )
           return {
             ...c,
-            messages: [...updatedMessages, aiMessage],
+            messages: [...c.messages, aiMessage],
             lastMessage: aiMessage.contentEn,
             timestamp: new Date(),
           }
         }
         return c
       }))
-
-      // Auto-play AI response
-      if (response.ai_audio_base64) {
-        playAudioFromBase64(response.ai_audio_base64, aiMessage.id)
-      }
     } catch (err) {
       console.error('Chat error:', err)
       // Add error message
@@ -426,28 +440,23 @@ export function ConversationPage() {
           // Convert to WAV format for BigModel ASR API
           const wavBlob = await convertToWav(audioBlob)
           const audioBase64 = await blobToBase64(wavBlob)
-          // History is managed server-side
-          const response = await voiceChatSend(token, audioBase64)
+
+          // Get chat ID from active conversation
+          const chatId = activeConversation?.serverId
+          if (!chatId || !token) {
+            throw new Error('Chat not synced with server')
+          }
+
+          // Send voice chat
+          const sendResponse = await voiceChatSend(token, chatId, audioBase64)
 
           // Add user message with transcribed text
           const userMessage: Message = {
             id: Date.now().toString(),
             role: 'user',
-            contentEn: response.user_text_en || '(Audio message)',
-            contentZh: response.user_text_zh || '(语音消息)',
+            contentEn: sendResponse.user_turn.content_en || '(Audio message)',
+            contentZh: sendResponse.user_turn.content_zh || '(语音消息)',
             hasAudio: true,
-            timestamp: new Date(),
-            issues: response.issues,
-          }
-
-          // Add AI response
-          const aiMessage: Message = {
-            id: (Date.now() + 1).toString(),
-            role: 'assistant',
-            contentEn: response.ai_text_en,
-            contentZh: response.ai_text_zh || response.ai_text_en,
-            hasAudio: !!response.ai_audio_base64,
-            audioBase64: response.ai_audio_base64 || undefined,
             timestamp: new Date(),
           }
 
@@ -455,18 +464,38 @@ export function ConversationPage() {
             if (c.id === activeConversationId) {
               return {
                 ...c,
-                messages: [...c.messages, userMessage, aiMessage],
-                lastMessage: aiMessage.contentEn,
+                messages: [...c.messages, userMessage],
+                lastMessage: userMessage.contentEn,
                 timestamp: new Date(),
               }
             }
             return c
           }))
 
-          // Auto-play AI response
-          if (response.ai_audio_base64) {
-            playAudioFromBase64(response.ai_audio_base64, aiMessage.id)
+          // Poll for AI turn completion
+          const completedAiTurn = await pollChatTurn(token, chatId, sendResponse.ai_turn.id, 1000, 60)
+
+          // Add AI response
+          const aiMessage: Message = {
+            id: (Date.now() + 1).toString(),
+            role: 'assistant',
+            contentEn: completedAiTurn.content_en,
+            contentZh: completedAiTurn.content_zh || completedAiTurn.content_en,
+            hasAudio: !!completedAiTurn.audio_path,
+            timestamp: new Date(),
           }
+
+          setConversations(prev => prev.map(c => {
+            if (c.id === activeConversationId) {
+              return {
+                ...c,
+                messages: [...c.messages, aiMessage],
+                lastMessage: aiMessage.contentEn,
+                timestamp: new Date(),
+              }
+            }
+            return c
+          }))
         } catch (err) {
           console.error('Voice chat error:', err)
           const errorMessage: Message = {

@@ -101,6 +101,7 @@ pub async fn show(
     depot: &mut Depot,
     res: &mut Response,
 ) -> AppResult<()> {
+    println!("Serving avatar request");
     let user_id = depot.user_id()?;
 
     // Get user's avatar from database

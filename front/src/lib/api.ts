@@ -646,7 +646,6 @@ export function textChatSend(
     body: JSON.stringify({
       type: 'text',
       message,
-      generate_audio: generateAudio,
     }),
   })
 }
