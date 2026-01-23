@@ -720,9 +720,22 @@ export function createChat(
  * @param title New title
  */
 export function updateChatTitle(token: string, chatId: number, title: string): Promise<LearnChat> {
+  console.log('Updating chat title:', chatId, title)
   return requestJson<LearnChat>(`/api/learn/chats/${chatId}`, {
     method: 'PUT',
     token,
     body: JSON.stringify({ title }),
+  })
+}
+
+/**
+ * List user's chats
+ * @param token Auth token
+ * @param limit Max number of chats to return
+ */
+export function listChats(token: string, limit = 50): Promise<LearnChat[]> {
+  return requestJson<LearnChat[]>(`/api/learn/chats?limit=${limit}`, {
+    method: 'GET',
+    token,
   })
 }

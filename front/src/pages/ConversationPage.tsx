@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle, createChat } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle, createChat, listChats } from '../lib/api'
 
 interface Correction {
   original: string
@@ -50,81 +50,11 @@ interface Context {
   created_at: string
 }
 
-// Mock data for conversations
-const mockConversations: Conversation[] = [
-  {
-    id: '1',
-    title: '旅行计划讨论',
-    lastMessage: "That sounds like a great trip!",
-    timestamp: new Date(Date.now() - 1000 * 60 * 30),
-    messages: [
-      {
-        id: '1-1',
-        role: 'assistant',
-        contentEn: "Hi! I heard you're planning a trip. Where are you thinking of going?",
-        contentZh: "嗨！我听说你在计划旅行。你打算去哪里？",
-        timestamp: new Date(Date.now() - 1000 * 60 * 35),
-      },
-      {
-        id: '1-2',
-        role: 'user',
-        contentEn: "I want to visit Japan next month.",
-        contentZh: "我想下个月去日本。",
-        hasAudio: true,
-        timestamp: new Date(Date.now() - 1000 * 60 * 33),
-        corrections: [
-          {
-            original: "I want to visit",
-            corrected: "I'm planning to visit",
-            explanation: "使用 'planning to' 表达计划更自然，比 'want to' 更正式"
-          }
-        ]
-      },
-      {
-        id: '1-3',
-        role: 'assistant',
-        contentEn: "That sounds like a great trip! Japan is beautiful in spring.",
-        contentZh: "听起来是个很棒的旅行！日本的春天很美。",
-        timestamp: new Date(Date.now() - 1000 * 60 * 30),
-      },
-    ],
-  },
-  {
-    id: '2',
-    title: '工作面试准备',
-    lastMessage: "Let's practice some common questions.",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-    messages: [
-      {
-        id: '2-1',
-        role: 'assistant',
-        contentEn: "Hello! I understand you have a job interview coming up. How can I help you prepare?",
-        contentZh: "你好！我了解到你即将有一场工作面试。我能帮你准备什么？",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2),
-      },
-    ],
-  },
-  {
-    id: '3',
-    title: '餐厅点餐练习',
-    lastMessage: "Would you like to see the menu?",
-    timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
-    messages: [
-      {
-        id: '3-1',
-        role: 'assistant',
-        contentEn: "Welcome to our restaurant! Would you like to see the menu?",
-        contentZh: "欢迎来到我们的餐厅！您想看看菜单吗？",
-        timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24),
-      },
-    ],
-  },
-]
-
 export function ConversationPage() {
   const { token } = useAuth()
-  const [conversations, setConversations] = useState<Conversation[]>(mockConversations)
-  const [activeConversationId, setActiveConversationId] = useState<string>(mockConversations[0].id)
+  const [conversations, setConversations] = useState<Conversation[]>([])
+  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
+  const [conversationsLoading, setConversationsLoading] = useState(true)
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [reportMode, setReportMode] = useState(false)
@@ -196,6 +126,38 @@ export function ConversationPage() {
     localStorage.setItem('conv_showUserEn', String(showUserEn))
     localStorage.setItem('conv_showUserZh', String(showUserZh))
   }, [showBotEn, showBotZh, showUserEn, showUserZh])
+
+  // Load conversations from server on mount
+  useEffect(() => {
+    if (!token) {
+      setConversationsLoading(false)
+      return
+    }
+
+    setConversationsLoading(true)
+    listChats(token)
+      .then((chats) => {
+        const loadedConversations: Conversation[] = chats.map((chat) => ({
+          id: chat.id.toString(),
+          serverId: chat.id,
+          title: chat.title,
+          contextId: chat.context_id ?? undefined,
+          lastMessage: '',
+          timestamp: new Date(chat.created_at),
+          messages: [],
+        }))
+        setConversations(loadedConversations)
+        if (loadedConversations.length > 0) {
+          setActiveConversationId(loadedConversations[0].id)
+        }
+      })
+      .catch((err) => {
+        console.error('Failed to load chats:', err)
+      })
+      .finally(() => {
+        setConversationsLoading(false)
+      })
+  }, [token])
 
   // Fetch contexts when dialog is opened
   useEffect(() => {
@@ -671,32 +633,22 @@ export function ConversationPage() {
       const newTitle = renameValue.trim()
       const conv = conversations.find(c => c.id === renameDialogId)
 
-      // Sync to server
-      if (token && conv) {
-        try {
-          if (conv.serverId) {
-            // Update existing chat
-            await updateChatTitle(token, conv.serverId, newTitle)
-          } else {
-            // Create new chat on server for conversations without serverId
-            const chat = await createChat(token, newTitle, conv.contextId)
-            // Update local state with serverId
-            setConversations(prev => prev.map(c =>
-              c.id === renameDialogId ? { ...c, title: newTitle, serverId: chat.id } : c
-            ))
-            setRenameDialogId(null)
-            setRenameValue('')
-            return
-          }
-        } catch (err) {
-          console.error('Failed to sync chat title to server:', err)
-        }
-      }
-
       // Update local state
       setConversations(prev => prev.map(c =>
         c.id === renameDialogId ? { ...c, title: newTitle } : c
       ))
+
+      // Sync to server if conversation has a server ID
+      if (token && conv?.serverId) {
+        try {
+          console.log('Updating chat title on server:', conv.serverId, newTitle)
+          await updateChatTitle(token, conv.serverId, newTitle)
+        } catch (err) {
+          console.error('Failed to update chat title on server:', err)
+        }
+      } else {
+        console.log('No serverId for conversation, skipping server sync:', conv?.id)
+      }
     }
     setRenameDialogId(null)
     setRenameValue('')
@@ -898,7 +850,15 @@ export function ConversationPage() {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {conversations.map((conv) => (
+              {conversationsLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                </div>
+              ) : conversations.length === 0 ? (
+                <div className="text-center py-8 text-gray-500 text-sm">
+                  暂无对话，点击上方按钮开始
+                </div>
+              ) : conversations.map((conv) => (
                 <div
                   key={conv.id}
                   onClick={() => setActiveConversationId(conv.id)}
