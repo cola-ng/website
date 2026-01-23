@@ -5,6 +5,7 @@ use diesel::prelude::*;
 use image::{GenericImageView, ImageFormat};
 use salvo::prelude::*;
 
+use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::User;
@@ -116,24 +117,26 @@ pub async fn show(
     .flatten();
 
     // Find the best available avatar file (prefer webp, then png)
+    let space_path = &AppConfig::get().space_path;
     let file_path = if let Some(avatar_dir) = avatar {
+        let base = PathBuf::from(space_path).join(&avatar_dir);
         let candidates = [
-            format!("{}/160x160.webp", avatar_dir),
-            format!("{}/160x160.png", avatar_dir),
-            format!("{}/320x320.webp", avatar_dir),
-            format!("{}/320x320.png", avatar_dir),
+            base.join("160x160.webp"),
+            base.join("160x160.png"),
+            base.join("320x320.webp"),
+            base.join("320x320.png"),
         ];
 
         candidates
             .into_iter()
-            .find(|p| PathBuf::from(p).exists())
-            .unwrap_or_else(|| format!("{}/160x160.webp", avatar_dir))
+            .find(|p| p.exists())
+            .unwrap_or_else(|| base.join("160x160.webp"))
     } else {
-        "avatars/defaults/160x160.webp".to_string()
+        PathBuf::from(space_path).join("avatars/defaults/160x160.webp")
     };
 
     // Try to send the file
-    let path = PathBuf::from(&file_path);
+    let path = file_path;
     if path.exists() {
         res.send_file(&path, req.headers()).await;
     } else {
@@ -171,12 +174,15 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
 
     // Generate unique avatar directory using UTC timestamp
     let timestamp = Utc::now().timestamp();
-    let avatar_dir = format!("uploads/avatars/{}", user_id);
-    let store_dir = format!("{}/{}", avatar_dir, timestamp);
+    let space_path = &AppConfig::get().space_path;
+    // Relative path for database storage
+    let avatar_rel_path = format!("uploads/avatars/{}/{}", user_id, timestamp);
+    // Full path for file operations
+    let store_dir = PathBuf::from(space_path).join(&avatar_rel_path);
 
     // Create directory and copy original file
     std::fs::create_dir_all(&store_dir)?;
-    let origin_file = format!("{}/origin.{}", store_dir, ext);
+    let origin_file = store_dir.join(format!("origin.{}", ext));
     std::fs::copy(file.path(), &origin_file)?;
 
     // Generate all avatar sizes (webp and png)
@@ -186,8 +192,8 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
         return Err(e.into());
     }
 
-    // Update user avatar in database (store the directory path)
-    let avatar_value = store_dir.clone();
+    // Update user avatar in database (store the relative path)
+    let avatar_value = avatar_rel_path;
     let updated: User = with_conn(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
             .set(base_users::avatar.eq(&avatar_value))
@@ -216,8 +222,9 @@ pub async fn delete_avatar(depot: &mut Depot) -> JsonResult<User> {
     .flatten();
 
     // Remove avatar directory if exists
-    if let Some(avatar_dir) = avatar {
-        std::fs::remove_dir_all(&avatar_dir).ok();
+    if let Some(avatar_rel_path) = avatar {
+        let full_path = PathBuf::from(&AppConfig::get().space_path).join(&avatar_rel_path);
+        std::fs::remove_dir_all(&full_path).ok();
     }
 
     // Clear avatar in database

@@ -9,6 +9,7 @@ use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
+use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
@@ -553,8 +554,7 @@ async fn save_message(params: SaveMessageParams, status: &str) -> Result<ChatTur
 
 /// Get the audio storage directory for a user
 fn get_audio_dir(user_id: i64) -> PathBuf {
-    let base = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
-    PathBuf::from(base)
+    PathBuf::from(&AppConfig::get().space_path)
         .join("learn/audios")
         .join(user_id.to_string())
 }
@@ -1067,8 +1067,7 @@ pub async fn serve_audio(req: &mut Request, depot: &mut Depot, res: &mut Respons
     }
 
     // Build the file path
-    let base_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
-    let file_path = PathBuf::from(base_dir)
+    let file_path = PathBuf::from(&AppConfig::get().space_path)
         .join("learn/audios")
         .join(path_user_id.to_string())
         .join(&filename);
