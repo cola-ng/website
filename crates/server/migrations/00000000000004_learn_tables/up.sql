@@ -42,7 +42,7 @@ CREATE INDEX IF NOT EXISTS idx_learn_chats_created ON learn_chats(created_at);
 CREATE TABLE IF NOT EXISTS learn_chat_turns (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
-    chat_id TEXT NOT NULL,
+    chat_id BIGINT NOT NULL,
     speaker TEXT NOT NULL,
     use_lang TEXT NOT NULL CHECK(use_lang IN ('en', 'zh')),
     content_en TEXT NOT NULL,

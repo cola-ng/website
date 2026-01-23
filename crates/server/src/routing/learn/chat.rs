@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use chrono::Utc;
@@ -11,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::services::{AiProviderError, ChatMessage, create_provider_from_env};
+use crate::services::{AiProviderError, ChatMessage, UserInputAnalysis, create_provider_from_env};
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
 // Type aliases for backward compatibility
@@ -156,7 +157,7 @@ pub async fn update_chat(
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateChatTurnRequest {
-    chat_id: String,
+    chat_id: i64,
     speaker: String,
     use_lang: String,
     content_en: String,
@@ -175,7 +176,7 @@ pub async fn list_chat_turns(
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let chat_id_param = req.query::<String>("chat_id");
+    let chat_id_param = req.query::<i64>("chat_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
     let turns: Vec<ChatTurn> = with_conn(move |conn| {
@@ -196,6 +197,55 @@ pub async fn list_chat_turns(
 
     res.render(Json(turns));
     Ok(())
+}
+
+/// Get a single chat turn by ID with long-polling support
+///
+/// If the turn status is "processing", the server will block for up to 30 seconds,
+/// polling periodically until the turn is completed or timeout is reached.
+#[endpoint(tags("Chat"))]
+pub async fn get_chat_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTurn> {
+    let user_id = depot.user_id()?;
+    let turn_id = req
+        .param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
+
+    // Long-polling settings
+    const MAX_WAIT_SECS: u64 = 30;
+    const POLL_INTERVAL_MS: u64 = 500;
+
+    let start_time = std::time::Instant::now();
+    let max_wait = Duration::from_secs(MAX_WAIT_SECS);
+    let poll_interval = Duration::from_millis(POLL_INTERVAL_MS);
+
+    loop {
+        // Fetch the turn from database
+        let turn: ChatTurn = with_conn(move |conn| {
+            learn_chat_turns::table
+                .filter(learn_chat_turns::id.eq(turn_id))
+                .filter(learn_chat_turns::user_id.eq(user_id))
+                .first::<ChatTurn>(conn)
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get chat turn: {:?}", e);
+            StatusError::not_found().brief("chat turn not found")
+        })?;
+
+        // If not processing, return immediately
+        if turn.status != "processing" {
+            return json_ok(turn);
+        }
+
+        // Check if we've exceeded the max wait time
+        if start_time.elapsed() >= max_wait {
+            // Return the current state (still processing)
+            return json_ok(turn);
+        }
+
+        // Wait before next poll
+        tokio::time::sleep(poll_interval).await;
+    }
 }
 
 /// Request for chat - supports both audio and text input
@@ -323,7 +373,7 @@ async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError>
 }
 
 /// Get chat history for a session (last 20 messages)
-async fn get_session_history(chat_id: String) -> Result<Vec<HistoryMessage>, StatusError> {
+async fn get_session_history(chat_id: i64) -> Result<Vec<HistoryMessage>, StatusError> {
     with_conn(move |conn| {
         let messages = learn_chat_turns::table
             .filter(learn_chat_turns::chat_id.eq(chat_id))
@@ -343,7 +393,7 @@ async fn get_session_history(chat_id: String) -> Result<Vec<HistoryMessage>, Sta
 /// Parameters for saving a chat message
 struct SaveMessageParams {
     user_id: i64,
-    chat_id: String,
+    chat_id: i64,
     speaker: String,
     use_lang: String,
     content_en: String,
@@ -469,7 +519,7 @@ async fn update_ai_turn(
 /// Send audio or text chat message
 ///
 /// Returns two chat turns immediately:
-/// - User turn (status: completed)
+/// - User turn (status: completed) - enriched with language detection and translation
 /// - AI turn (status: processing) - will be updated async
 ///
 /// Accepts either audio or text input:
@@ -494,9 +544,14 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         StatusError::bad_request().brief("invalid json")
     })?;
 
+    // Get AI provider early - needed for both ASR and user input analysis
+    let provider = create_provider_from_env().ok_or_else(|| {
+        StatusError::internal_server_error().brief("AI provider not configured")
+    })?;
+
     // Get or create session
     let session = get_or_create_session(user_id).await?;
-    let chat_id = format!("chat_{}", session.id);
+    let chat_id = session.id;
 
     // Process based on input type - transcribe audio if needed
     let (user_text, user_audio_data) = match &input {
@@ -511,11 +566,6 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
                     .brief("audio data is empty")
                     .into());
             }
-
-            // Get AI provider for ASR
-            let provider = create_provider_from_env().ok_or_else(|| {
-                StatusError::internal_server_error().brief("AI provider not configured")
-            })?;
 
             // Transcribe audio to text using ASR
             let asr = provider.asr().ok_or_else(|| {
@@ -538,14 +588,9 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
                     .into());
             }
 
-            (
-                asr_result.text,
-                Some(audio_data),
-            )
+            (asr_result.text, Some(audio_data))
         }
-        ChatSendRequest::Text {
-            message,
-        } => {
+        ChatSendRequest::Text { message } => {
             if message.trim().is_empty() {
                 return Err(StatusError::bad_request()
                     .brief("message is required")
@@ -563,15 +608,39 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         None
     };
 
-    // Create user turn (status: completed)
+    // Call AI service to analyze user input (language detection, translation)
+    let chat_service = provider.chat_service().ok_or_else(|| {
+        StatusError::internal_server_error().brief("Chat service not available")
+    })?;
+
+    tracing::info!("Calling {} analyze_user_input API...", provider.name());
+    let user_analysis = chat_service
+        .analyze_user_input(&user_text)
+        .await
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to analyze user input: {}, using defaults", e);
+            // Fallback: assume English, use original text
+            UserInputAnalysis {
+                use_lang: "en".to_string(),
+                content_en: user_text.clone(),
+                content_zh: String::new(),
+            }
+        });
+    tracing::info!(
+        "{} analyze_user_input completed: use_lang={}",
+        provider.name(),
+        user_analysis.use_lang
+    );
+
+    // Create user turn with enriched info (status: completed)
     let user_turn = save_message(
         SaveMessageParams {
             user_id,
-            chat_id: chat_id.clone(),
+            chat_id,
             speaker: "user".to_string(),
-            use_lang: "en".to_string(), // Will be determined by AI later
-            content_en: user_text.clone(),
-            content_zh: String::new(), // Will be translated by AI
+            use_lang: user_analysis.use_lang,
+            content_en: user_analysis.content_en.clone(),
+            content_zh: user_analysis.content_zh,
             audio_path: user_audio_path,
         },
         "completed",
@@ -582,7 +651,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     let ai_turn = save_message(
         SaveMessageParams {
             user_id,
-            chat_id: chat_id.clone(),
+            chat_id,
             speaker: "assistant".to_string(),
             use_lang: "en".to_string(),
             content_en: String::new(),
@@ -593,8 +662,9 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     )
     .await?;
 
-    // Spawn background task for AI processing
+    // Spawn background task for AI response generation
     let ai_turn_id = ai_turn.id;
+    let user_content_en = user_analysis.content_en;
     tokio::spawn(async move {
         // Get AI provider
         let provider = match create_provider_from_env() {
@@ -615,7 +685,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         };
 
         // Get history from database
-        let history_messages = match get_session_history(chat_id.clone()).await {
+        let history_messages = match get_session_history(chat_id).await {
             Ok(msgs) => msgs,
             Err(e) => {
                 tracing::error!("Failed to get history: {:?}", e);
@@ -665,7 +735,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             provider.name()
         );
         let structured_response = match chat_service
-            .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
+            .chat_structured(history, &user_content_en, DEFAULT_SYSTEM_PROMPT)
             .await
         {
             Ok(resp) => resp,
@@ -776,8 +846,7 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
     let user_id = depot.user_id()?;
 
     let session = get_or_create_session(user_id).await?;
-    let chat_id = format!("chat_{}", session.id);
-    let messages = get_session_history(chat_id).await?;
+    let messages = get_session_history(session.id).await?;
 
     json_ok(HistoryResponse { messages })
 }

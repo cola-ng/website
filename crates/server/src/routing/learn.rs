@@ -34,7 +34,8 @@ pub fn router() -> Router {
                         .push(Router::with_path("annotations").get(chat::list_chat_annotations))
                         .push(Router::with_path("turns").get(chat::list_chat_turns)),
                 )
-                .push(Router::with_path("turns").get(chat::list_chat_turns)),
+                .push(Router::with_path("turns").get(chat::list_chat_turns))
+                .push(Router::with_path("turns/{id}").get(chat::get_chat_turn)),
         )
         .push(
             Router::with_path("write-practices")

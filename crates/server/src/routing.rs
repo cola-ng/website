@@ -55,22 +55,6 @@ pub async fn health() -> Json<OkResponse> {
     Json(OkResponse::default())
 }
 
-#[derive(Deserialize, ToSchema)]
-pub struct ChatSendRequest {
-    /// User message content
-    message: String,
-}
-
-#[derive(Serialize, ToSchema)]
-pub struct ChatSendResponse {
-    /// AI reply message
-    reply: String,
-    /// Grammar corrections
-    corrections: Vec<String>,
-    /// Chat suggestions
-    suggestions: Vec<String>,
-}
-
 fn simple_corrections(message: &str) -> Vec<String> {
     let mut out = Vec::new();
     let lower = message.to_lowercase();

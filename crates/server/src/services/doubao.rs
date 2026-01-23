@@ -477,6 +477,10 @@ impl ChatService for DoubaoClient {
     ) -> Result<StructuredChatResponse, AiProviderError> {
         let url = format!("{}/chat/completions", DOUBAO_CHAT_API_BASE);
 
+        println!(
+            "Doubao Chat Structured: preparing request for user text: {}",
+            user_text
+        );
         // Build messages with system prompt
         let mut all_messages: Vec<serde_json::Value> = vec![serde_json::json!({
             "role": "system",

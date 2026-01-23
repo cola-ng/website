@@ -40,7 +40,7 @@ pub struct NewChatSession {
 pub struct ChatMessage {
     pub id: i64,
     pub user_id: i64,
-    pub chat_id: String,
+    pub chat_id: i64,
     pub speaker: String,
     pub use_lang: String,
     pub content_en: String,
@@ -59,7 +59,7 @@ pub struct ChatMessage {
 #[diesel(table_name = learn_chat_turns)]
 pub struct NewChatMessage {
     pub user_id: i64,
-    pub chat_id: String,
+    pub chat_id: i64,
     pub speaker: String,
     pub use_lang: String,
     pub content_en: String,

@@ -85,7 +85,7 @@ pub struct NewChat {
 pub struct ChatTurn {
     pub id: i64,
     pub user_id: i64,
-    pub chat_id: String,
+    pub chat_id: i64,
     pub speaker: String,
     pub use_lang: String,
     pub content_en: String,
@@ -104,7 +104,7 @@ pub struct ChatTurn {
 #[diesel(table_name = learn_chat_turns)]
 pub struct NewChatTurn {
     pub user_id: i64,
-    pub chat_id: String,
+    pub chat_id: i64,
     pub speaker: String,
     pub use_lang: String,
     pub content_en: String,

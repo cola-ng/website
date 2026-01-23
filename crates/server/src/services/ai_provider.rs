@@ -4,7 +4,7 @@
 //! by different providers (BigModel, Doubao, etc.)
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -134,6 +134,17 @@ pub trait TtsService: Send + Sync {
     }
 }
 
+/// User input analysis result
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserInputAnalysis {
+    /// Language of user input: "en" | "zh" | "mix"
+    pub use_lang: String,
+    /// User text in English (original or translated)
+    pub content_en: String,
+    /// User text in Chinese (original or translated)
+    pub content_zh: String,
+}
+
 /// Structured AI response for English teaching
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructuredChatResponse {
@@ -190,6 +201,49 @@ pub trait ChatService: Send + Sync {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, AiProviderError>;
+
+    /// Analyze user input: detect language and translate
+    ///
+    /// # Arguments
+    /// * `user_text` - The user's message text to analyze
+    async fn analyze_user_input(
+        &self,
+        user_text: &str,
+    ) -> Result<UserInputAnalysis, AiProviderError> {
+        // Default implementation: use LLM to detect language and translate
+        let prompt = format!(
+            r#"Analyze the following user input and respond in JSON format only:
+{{
+  "use_lang": "<en|zh|mix>",
+  "content_en": "<text in English, translate if needed>",
+  "content_zh": "<text in Chinese, translate if needed>"
+}}
+
+User input: {}"#,
+            user_text
+        );
+
+        let messages = vec![ChatMessage {
+            role: "user".to_string(),
+            content: prompt,
+        }];
+
+        let response = self.chat(messages, Some(0.3), Some(500)).await?;
+
+        // Try to parse JSON from response
+        let json_str = response
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        serde_json::from_str(json_str).map_err(|e| {
+            tracing::warn!("Failed to parse user input analysis: {}, response: {}", e, response);
+            // Fallback: assume English
+            AiProviderError::Parse(format!("Failed to parse analysis: {}", e))
+        })
+    }
 
     /// Send chat completion with structured output (for English teaching)
     ///
@@ -289,23 +343,11 @@ pub enum ProviderConfig {
 impl ProviderConfig {
     /// Load from environment variables
     pub fn from_env() -> Option<Self> {
-        // Try BigModel first
-        if let Ok(api_key) = std::env::var("BIGMODEL_API_KEY") {
-            if !api_key.is_empty() {
-                return Some(ProviderConfig::BigModel {
-                    api_key,
-                    asr_model: std::env::var("BIGMODEL_ASR_MODEL").ok(),
-                    tts_model: std::env::var("BIGMODEL_TTS_MODEL").ok(),
-                    chat_model: std::env::var("BIGMODEL_CHAT_MODEL").ok(),
-                });
-            }
-        }
-
         // Try Doubao
         if let (Ok(app_id), Ok(access_token), Ok(chat_api_key)) = (
             std::env::var("DOUBAO_APP_ID"),
             std::env::var("DOUBAO_ACCESS_TOKEN"),
-            std::env::var("DOUBAO_CHAT_API_KEY"),
+            std::env::var("DOUBAO_API_KEY"),
         ) {
             if !app_id.is_empty() && !access_token.is_empty() && !chat_api_key.is_empty() {
                 return Some(ProviderConfig::Doubao {
@@ -313,6 +355,18 @@ impl ProviderConfig {
                     access_token,
                     chat_api_key,
                     chat_model: std::env::var("DOUBAO_CHAT_MODEL").ok(),
+                });
+            }
+        }
+
+        // Try BigModel
+        if let Ok(api_key) = std::env::var("BIGMODEL_API_KEY") {
+            if !api_key.is_empty() {
+                return Some(ProviderConfig::BigModel {
+                    api_key,
+                    asr_model: std::env::var("BIGMODEL_ASR_MODEL").ok(),
+                    tts_model: std::env::var("BIGMODEL_TTS_MODEL").ok(),
+                    chat_model: std::env::var("BIGMODEL_CHAT_MODEL").ok(),
                 });
             }
         }

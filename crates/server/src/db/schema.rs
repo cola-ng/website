@@ -554,7 +554,7 @@ diesel::table! {
     learn_chat_turns (id) {
         id -> Int8,
         user_id -> Int8,
-        chat_id -> Text,
+        chat_id -> Int8,
         speaker -> Text,
         use_lang -> Text,
         content_en -> Text,
