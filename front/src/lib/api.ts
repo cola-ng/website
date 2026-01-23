@@ -638,7 +638,7 @@ export function textChatSend(
   token: string,
   chatId: number,
   message: string,
-  generateAudio: boolean = true
+  _generateAudio: boolean = true
 ): Promise<ChatSendResponse> {
   return requestJson<ChatSendResponse>(`/api/learn/chats/${chatId}/send`, {
     method: 'POST',

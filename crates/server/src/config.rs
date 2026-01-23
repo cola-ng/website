@@ -7,6 +7,7 @@ pub struct AppConfig {
     pub jwt_secret: String,
     pub jwt_ttl: Duration,
     pub database: DbConfig,
+    pub space_path: String,
 }
 
 #[derive(Clone, Debug)]
@@ -61,6 +62,7 @@ impl AppConfig {
                 },
                 jwt_secret,
                 jwt_ttl: Duration::from_secs(jwt_ttl_seconds),
+                space_path: std::env::var("SPACE_PATH").unwrap_or_else(|_| "./space".into()),
             })
             .expect("config should be set once");
     }

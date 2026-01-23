@@ -17,6 +17,10 @@ pub fn router() -> Router {
         .hoop(hoops::require_auth)
         .push(Router::with_path("summary").get(summary::get_learn_summary))
         .push(
+            Router::with_path("audios/{user_id}/{filename}")
+                .get(chat::serve_audio),
+        )
+        .push(
             Router::with_path("issue-words")
                 .get(issue_word::list_issue_words)
                 .post(issue_word::create_issue_word)

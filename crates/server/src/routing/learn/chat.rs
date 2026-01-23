@@ -555,7 +555,7 @@ async fn save_message(params: SaveMessageParams, status: &str) -> Result<ChatTur
 fn get_audio_dir(user_id: i64) -> PathBuf {
     let base = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
     PathBuf::from(base)
-        .join("chat_audio")
+        .join("learn/audios")
         .join(user_id.to_string())
 }
 
@@ -581,7 +581,7 @@ async fn save_audio_file(user_id: i64, audio_data: &[u8], prefix: &str) -> Optio
     }
 
     // Return relative path for database storage
-    let relative_path = format!("chat_audio/{}/{}", user_id, filename);
+    let relative_path = format!("learn/audios/{}/{}", user_id, filename);
     tracing::info!("Saved audio file: {}", relative_path);
     Some(relative_path)
 }
@@ -754,6 +754,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         user_analysis.use_lang
     );
 
+    println!("======user_audio_path: {:?}", user_audio_path);
     // Create user turn with enriched info (status: completed)
     let user_turn = save_message(
         SaveMessageParams {
@@ -1026,5 +1027,87 @@ pub async fn list_chat_annotations(
     .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
 
     res.render(Json(annotations));
+    Ok(())
+}
+
+// ============================================================================
+// Audio File Serving API
+// ============================================================================
+
+/// Serve audio file for a user
+///
+/// Users can only access their own audio files.
+/// Path: /learn/audios/{user_id}/{filename}
+#[handler]
+pub async fn serve_audio(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+    let auth_user_id = depot.user_id()?;
+
+    // Get user_id from path parameter
+    let path_user_id = req
+        .param::<i64>("user_id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing user_id"))?;
+
+    // Verify the authenticated user can only access their own files
+    if auth_user_id != path_user_id {
+        return Err(StatusError::forbidden()
+            .brief("cannot access other user's audio files")
+            .into());
+    }
+
+    // Get filename from path parameter
+    let filename = req
+        .param::<String>("filename")
+        .ok_or_else(|| StatusError::bad_request().brief("missing filename"))?;
+
+    // Sanitize filename to prevent directory traversal
+    if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
+        return Err(StatusError::bad_request()
+            .brief("invalid filename")
+            .into());
+    }
+
+    // Build the file path
+    let base_dir = std::env::var("UPLOAD_DIR").unwrap_or_else(|_| "uploads".to_string());
+    let file_path = PathBuf::from(base_dir)
+        .join("learn/audios")
+        .join(path_user_id.to_string())
+        .join(&filename);
+
+    // Check if file exists
+    if !file_path.exists() {
+        tracing::warn!("Audio file not found: {:?}", file_path);
+        return Err(StatusError::not_found()
+            .brief("audio file not found")
+            .into());
+    }
+
+    // Read the file
+    let audio_data = tokio::fs::read(&file_path).await.map_err(|e| {
+        tracing::error!("Failed to read audio file {:?}: {:?}", file_path, e);
+        StatusError::internal_server_error().brief("failed to read audio file")
+    })?;
+
+    // Determine content type based on file extension
+    let content_type = if filename.ends_with(".wav") {
+        "audio/wav"
+    } else if filename.ends_with(".mp3") {
+        "audio/mpeg"
+    } else {
+        "application/octet-stream"
+    };
+
+    // Set response headers and body
+    res.headers_mut()
+        .insert(salvo::http::header::CONTENT_TYPE, content_type.parse().unwrap());
+    res.headers_mut().insert(
+        salvo::http::header::CONTENT_LENGTH,
+        audio_data.len().to_string().parse().unwrap(),
+    );
+    res.headers_mut().insert(
+        salvo::http::header::CACHE_CONTROL,
+        "private, max-age=3600".parse().unwrap(),
+    );
+
+    res.write_body(audio_data).ok();
     Ok(())
 }

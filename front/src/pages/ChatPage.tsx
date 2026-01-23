@@ -14,6 +14,7 @@ interface Message {
   contentEn: string
   contentZh: string
   hasAudio?: boolean
+  audioPath?: string  // Server path for audio file (e.g., "learn/audios/123/ai_xxx.wav")
   audioBase64?: string
   timestamp: Date
   issues?: TextIssue[]
@@ -164,6 +165,7 @@ export function ChatPage() {
                   contentEn: turn.content_en || '',
                   contentZh: turn.content_zh || '',
                   hasAudio: !!turn.audio_path,
+                  audioPath: turn.audio_path || undefined,
                   timestamp: new Date(turn.created_at),
                 }))
 
@@ -329,6 +331,7 @@ export function ChatPage() {
         contentEn: completedAiTurn.content_en,
         contentZh: completedAiTurn.content_zh || completedAiTurn.content_en,
         hasAudio: !!completedAiTurn.audio_path,
+        audioPath: completedAiTurn.audio_path || undefined,
         timestamp: new Date(),
       }
 
@@ -524,6 +527,7 @@ export function ChatPage() {
             contentEn: completedAiTurn.content_en,
             contentZh: completedAiTurn.content_zh || completedAiTurn.content_en,
             hasAudio: !!completedAiTurn.audio_path,
+            audioPath: completedAiTurn.audio_path || undefined,
             timestamp: new Date(),
           }
 
@@ -760,6 +764,7 @@ export function ChatPage() {
           contentEn: turn.content_en || '',
           contentZh: turn.content_zh || '',
           hasAudio: !!turn.audio_path,
+          audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
         }))
 
@@ -804,6 +809,7 @@ export function ChatPage() {
           contentEn: turn.content_en || '',
           contentZh: turn.content_zh || '',
           hasAudio: !!turn.audio_path,
+          audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
         }))
 
@@ -824,7 +830,7 @@ export function ChatPage() {
     }
   }, [token, activeChat])
 
-  const playAudio = (messageId: string) => {
+  const playAudio = async (messageId: string) => {
     // If already playing this message, stop it
     if (isPlayingAudio === messageId) {
       stopAudio()
@@ -835,8 +841,57 @@ export function ChatPage() {
     const message = activeChat?.messages.find(m => m.id === messageId)
     if (message?.audioBase64) {
       playAudioFromBase64(message.audioBase64, messageId)
-    } else if (message?.hasAudio && token) {
-      // If message has audio but no base64, try to get TTS for the text
+    } else if (message?.audioPath && token) {
+      // Fetch audio from server endpoint
+      // audioPath format: "learn/audios/{user_id}/{filename}"
+      try {
+        setIsPlayingAudio(messageId) // Show loading state
+        const response = await fetch(`/api/${message.audioPath}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        })
+        if (!response.ok) {
+          throw new Error(`Failed to fetch audio: ${response.status}`)
+        }
+        const blob = await response.blob()
+        const audioUrl = URL.createObjectURL(blob)
+
+        if (audioElementRef.current) {
+          audioElementRef.current.pause()
+        }
+
+        const audio = new Audio(audioUrl)
+        audioElementRef.current = audio
+
+        audio.onended = () => {
+          setIsPlayingAudio(null)
+          URL.revokeObjectURL(audioUrl)
+        }
+        audio.onerror = () => {
+          setIsPlayingAudio(null)
+          URL.revokeObjectURL(audioUrl)
+          console.error('Audio playback failed')
+        }
+        audio.play().catch(err => {
+          console.error('Failed to play audio:', err)
+          setIsPlayingAudio(null)
+          URL.revokeObjectURL(audioUrl)
+        })
+      } catch (err) {
+        console.error('Failed to fetch audio:', err)
+        setIsPlayingAudio(null)
+        // Fall back to TTS if audio fetch fails
+        textToSpeech(token, message.contentEn)
+          .then(response => {
+            playAudioFromBase64(response.audio_base64, messageId)
+          })
+          .catch(ttsErr => {
+            console.error('Failed to get TTS:', ttsErr)
+          })
+      }
+    } else if (message && token) {
+      // Fall back to TTS for messages without saved audio
       textToSpeech(token, message.contentEn)
         .then(response => {
           playAudioFromBase64(response.audio_base64, messageId)
