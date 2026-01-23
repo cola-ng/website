@@ -62,7 +62,7 @@ diesel::table! {
         last_activity_date -> Nullable<Date>,
         total_study_minutes -> Int4,
         total_words_mastered -> Int4,
-        total_conversations -> Int4,
+        total_stages -> Int4,
         total_sessions -> Int4,
         joined_at -> Timestamptz,
         updated_at -> Timestamptz,

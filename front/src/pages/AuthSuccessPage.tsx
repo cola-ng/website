@@ -36,7 +36,7 @@ export function AuthSuccessPage() {
                 </div>
               </Link>
 
-              <Link to="/conversation" className="block">
+              <Link to="/chat" className="block">
                 <div className="flex flex-col items-center gap-2 rounded-lg border bg-white p-4 transition-all hover:border-orange-300 hover:shadow-md">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                     <MessageSquare className="h-5 w-5 text-blue-600" />

@@ -67,7 +67,7 @@ pub struct UserProfile {
     pub last_activity_date: Option<NaiveDate>,
     pub total_study_minutes: i32,
     pub total_words_mastered: i32,
-    pub total_conversations: i32,
+    pub total_stages: i32,
     pub total_sessions: i32,
     pub joined_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -89,7 +89,7 @@ pub struct UpdateUserProfile {
     pub last_activity_date: Option<NaiveDate>,
     pub total_study_minutes: Option<i32>,
     pub total_words_mastered: Option<i32>,
-    pub total_conversations: Option<i32>,
+    pub total_stages: Option<i32>,
     pub total_sessions: Option<i32>,
     pub updated_at: Option<DateTime<Utc>>,
 }

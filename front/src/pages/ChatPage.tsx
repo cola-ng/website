@@ -826,7 +826,7 @@ export function ChatPage() {
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === 'Enter' && !e.ctrlKey) {
       e.preventDefault()
       handleSend()
     }
@@ -1206,7 +1206,7 @@ export function ChatPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="输入文字消息... (Shift+Enter 换行)"
+                  placeholder="输入文字消息... (Ctrl+Enter 换行)"
                   rows={1}
                   className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none overflow-y-auto text-sm"
                   style={{ height: '36px', maxHeight: '120px' }}

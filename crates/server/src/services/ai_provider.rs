@@ -260,63 +260,6 @@ pub trait AiProvider: Send + Sync {
     fn pronunciation(&self) -> Option<Arc<dyn PronunciationService>> {
         None
     }
-
-    /// Convenience method: Complete voice chat pipeline
-    async fn voice_chat(
-        &self,
-        audio_data: Vec<u8>,
-        conversation_history: Vec<ChatMessage>,
-        system_prompt: Option<String>,
-    ) -> Result<VoiceChatResponse, AiProviderError> {
-        let asr = self.asr().ok_or_else(|| {
-            AiProviderError::NotSupported("ASR not available for this provider".to_string())
-        })?;
-        let chat = self.chat_service().ok_or_else(|| {
-            AiProviderError::NotSupported("Chat not available for this provider".to_string())
-        })?;
-        let tts = self.tts().ok_or_else(|| {
-            AiProviderError::NotSupported("TTS not available for this provider".to_string())
-        })?;
-
-        // Step 1: Transcribe user audio
-        let asr_result = asr.transcribe(audio_data, Some("auto")).await?;
-        let user_text = asr_result.text.clone();
-
-        if user_text.trim().is_empty() {
-            return Err(AiProviderError::Api(
-                "Could not transcribe audio - no speech detected".to_string(),
-            ));
-        }
-
-        // Step 2: Build messages for chat
-        let mut messages = Vec::new();
-
-        if let Some(system) = system_prompt {
-            messages.push(ChatMessage {
-                role: "system".to_string(),
-                content: system,
-            });
-        }
-
-        messages.extend(conversation_history);
-        messages.push(ChatMessage {
-            role: "user".to_string(),
-            content: user_text.clone(),
-        });
-
-        // Generate AI response
-        let ai_text = chat.chat(messages, Some(0.7), None).await?;
-
-        // Step 3: Synthesize AI response to audio
-        let tts_result = tts.synthesize(&ai_text, None, None).await?;
-        let ai_audio_base64 = BASE64.encode(&tts_result.audio_data);
-
-        Ok(VoiceChatResponse {
-            user_text,
-            ai_text,
-            ai_audio_base64,
-        })
-    }
 }
 
 /// Provider configuration

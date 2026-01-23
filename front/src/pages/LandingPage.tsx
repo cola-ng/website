@@ -113,7 +113,7 @@ export function LandingPage() {
                   </p>
                   <div className="flex gap-2 mt-4">
                     <Button asChild>
-                      <Link to="/conversation">
+                      <Link to="/chat">
                         开始对话 <ChevronRight className="h-4 w-4 ml-1" />
                       </Link>
                     </Button>
@@ -149,7 +149,7 @@ export function LandingPage() {
                 {/* Left: Stats Cards - 2x2 grid */}
                 <div className="sm:col-span-2 grid grid-cols-2 gap-3">
                   <StatCard
-                    value={String(learnSummary?.weekly_conversation_minutes ?? 0)}
+                    value={String(learnSummary?.weekly_chat_minutes ?? 0)}
                     label="本周对话(分钟)"
                     color="orange"
                   />

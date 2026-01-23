@@ -23,7 +23,7 @@ pub struct LearnSummary {
     /// Whether the user has any learning data
     pub has_data: bool,
     /// Total conversation minutes this week
-    pub weekly_conversation_minutes: i32,
+    pub weekly_chat_minutes: i32,
     /// Number of mastered vocabulary words (mastery_level >= 4)
     pub mastered_vocabulary_count: i64,
     /// Number of words due for review
@@ -52,7 +52,7 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .filter(learn_daily_stats::stat_date.le(week_end))
             .load::<DailyStat>(conn)?;
 
-        let weekly_conversation_minutes: i32 = weekly_stats
+        let weekly_chat_minutes: i32 = weekly_stats
             .iter()
             .map(|s| s.minutes_studied.unwrap_or(0))
             .sum();
@@ -102,11 +102,11 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .count()
             .get_result(conn)?;
 
-        let has_data = has_chats > 0 || has_vocab > 0 || weekly_conversation_minutes > 0;
+        let has_data = has_chats > 0 || has_vocab > 0 || weekly_chat_minutes > 0;
 
         Ok::<_, diesel::result::Error>(LearnSummary {
             has_data,
-            weekly_conversation_minutes,
+            weekly_chat_minutes,
             mastered_vocabulary_count,
             pending_review_count,
             weekly_minutes,

@@ -56,7 +56,7 @@ CREATE TABLE IF NOT EXISTS archive_user_profiles (
     last_activity_date DATE,                                -- Last day user was active
     total_study_minutes INTEGER NOT NULL DEFAULT 0,         -- Total minutes studied
     total_words_mastered INTEGER NOT NULL DEFAULT 0,        -- Total words mastered
-    total_conversations INTEGER NOT NULL DEFAULT 0,         -- Total conversations completed
+    total_stages INTEGER NOT NULL DEFAULT 0,         -- Total stages completed
     total_sessions INTEGER NOT NULL DEFAULT 0,              -- Total learning sessions
     joined_at TIMESTAMPTZ NOT NULL DEFAULT now(),           -- When user started learning
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
@@ -101,10 +101,10 @@ CREATE INDEX IF NOT EXISTS idx_archive_user_xp_history_user ON archive_user_xp_h
 
 INSERT INTO archive_achievement_definitions (code, name_en, name_zh, description_en, description_zh, icon, category, rarity, xp_reward, requirement_type, requirement_value, requirement_field, sort_order) VALUES
 -- Learning Milestones
-('first_conversation', 'First Chat', '初次对话', 'Complete your first conversation', '完成你的第一次对话', 'message-circle', 'milestone', 'common', 10, 'count', 1, 'total_conversations', 1),
-('conversations_10', 'Chatty Learner', '健谈学者', 'Complete 10 conversations', '完成10次对话', 'message-circle', 'milestone', 'common', 50, 'count', 10, 'total_conversations', 2),
-('conversations_50', 'Social Butterfly', '社交达人', 'Complete 50 conversations', '完成50次对话', 'messages', 'milestone', 'uncommon', 150, 'count', 50, 'total_conversations', 3),
-('conversations_100', 'Chat Master', '对话大师', 'Complete 100 conversations', '完成100次对话', 'crown', 'milestone', 'rare', 300, 'count', 100, 'total_conversations', 4),
+('first_conversation', 'First Chat', '初次对话', 'Complete your first conversation', '完成你的第一次对话', 'message-circle', 'milestone', 'common', 10, 'count', 1, 'total_stages', 1),
+('conversations_10', 'Chatty Learner', '健谈学者', 'Complete 10 conversations', '完成10次对话', 'message-circle', 'milestone', 'common', 50, 'count', 10, 'total_stages', 2),
+('conversations_50', 'Social Butterfly', '社交达人', 'Complete 50 conversations', '完成50次对话', 'messages', 'milestone', 'uncommon', 150, 'count', 50, 'total_stages', 3),
+('conversations_100', 'Chat Master', '对话大师', 'Complete 100 conversations', '完成100次对话', 'crown', 'milestone', 'rare', 300, 'count', 100, 'total_stages', 4),
 
 -- Vocabulary Achievements
 ('vocab_first', 'First Word', '首个单词', 'Learn your first word', '学会你的第一个单词', 'book-open', 'learning', 'common', 10, 'count', 1, 'total_words_mastered', 10),

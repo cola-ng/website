@@ -471,7 +471,7 @@ export type WeeklyMinutes = {
 
 export type LearnSummary = {
   has_data: boolean
-  weekly_conversation_minutes: number
+  weekly_chat_minutes: number
   mastered_vocabulary_count: number
   pending_review_count: number
   weekly_minutes: WeeklyMinutes[]
