@@ -8,7 +8,8 @@ import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
-import { me, updateMe, uploadAvatar, deleteAvatar, getAvatarUrl } from '../lib/api'
+import { AvatarCropDialog } from '../components/AvatarCropDialog'
+import { me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 function formatDate(value?: string | null) {
@@ -37,6 +38,8 @@ export function MePage() {
   // Avatar state
   const [avatarUploading, setAvatarUploading] = useState(false)
   const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [cropDialogImage, setCropDialogImage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -69,6 +72,25 @@ export function MePage() {
     setPhone(user?.phone || '')
   }, [user?.name, user?.phone])
 
+  // Fetch avatar URL when user has avatar
+  useEffect(() => {
+    if (!token || !user?.avatar) {
+      setAvatarUrl(null)
+      return
+    }
+
+    let cancelled = false
+    fetchAvatarUrl(token).then((url) => {
+      if (!cancelled) {
+        setAvatarUrl(url)
+      }
+    })
+
+    return () => {
+      cancelled = true
+    }
+  }, [token, user?.avatar])
+
   const saveProfile = async () => {
     if (!token || !user) return
     setSaving(true)
@@ -93,7 +115,7 @@ export function MePage() {
     fileInputRef.current?.click()
   }
 
-  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file || !token) return
 
@@ -103,27 +125,53 @@ export function MePage() {
       return
     }
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setAvatarError('图片大小不能超过 5MB')
+    // Validate file size (max 10MB for cropping - final will be smaller)
+    if (file.size > 10 * 1024 * 1024) {
+      setAvatarError('图片大小不能超过 10MB')
       return
     }
+
+    setAvatarError(null)
+
+    // Create object URL for cropping preview
+    const imageUrl = URL.createObjectURL(file)
+    setCropDialogImage(imageUrl)
+
+    // Reset file input
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ''
+    }
+  }
+
+  const handleCroppedImage = async (croppedBlob: Blob) => {
+    if (!token) return
+
+    // Clean up the preview URL
+    if (cropDialogImage) {
+      URL.revokeObjectURL(cropDialogImage)
+    }
+    setCropDialogImage(null)
 
     setAvatarUploading(true)
     setAvatarError(null)
 
     try {
-      const updatedUser = await uploadAvatar(token, file)
+      // Convert blob to file
+      const croppedFile = new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' })
+      const updatedUser = await uploadAvatar(token, croppedFile)
       setAuth(token, updatedUser)
     } catch (e: unknown) {
       setAvatarError(e instanceof Error ? e.message : '上传失败')
     } finally {
       setAvatarUploading(false)
-      // Reset file input
-      if (fileInputRef.current) {
-        fileInputRef.current.value = ''
-      }
     }
+  }
+
+  const handleCropCancel = () => {
+    if (cropDialogImage) {
+      URL.revokeObjectURL(cropDialogImage)
+    }
+    setCropDialogImage(null)
   }
 
   const handleDeleteAvatar = async () => {
@@ -145,8 +193,6 @@ export function MePage() {
   if (!token) {
     return <Navigate to="/" replace />
   }
-
-  const avatarUrl = getAvatarUrl(user, 320)
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-100">
@@ -350,6 +396,15 @@ export function MePage() {
       </main>
 
       <Footer />
+
+      {/* Avatar Crop Dialog */}
+      {cropDialogImage && (
+        <AvatarCropDialog
+          imageUrl={cropDialogImage}
+          onCrop={handleCroppedImage}
+          onCancel={handleCropCancel}
+        />
+      )}
     </div>
   )
 }

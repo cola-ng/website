@@ -325,12 +325,36 @@ export function deleteAvatar(token: string): Promise<User> {
   })
 }
 
+/**
+ * Fetch avatar with authentication and return blob URL
+ * @param token Auth token
+ * @returns Promise resolving to blob URL or null if no avatar
+ */
+export async function fetchAvatarUrl(token: string): Promise<string | null> {
+  try {
+    const response = await fetch('/api/me/avatar', {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    })
+    if (!response.ok) {
+      return null
+    }
+    const blob = await response.blob()
+    return URL.createObjectURL(blob)
+  } catch {
+    return null
+  }
+}
+
+/**
+ * @deprecated Use fetchAvatarUrl instead for authenticated avatar access
+ */
 export function getAvatarUrl(user: User | null, _size: number = 160): string | null {
   if (!user) return null
   if (user.avatar) {
-    // Use the avatar API endpoint with cache buster based on avatar path
-    const cacheBuster = encodeURIComponent(user.avatar)
-    return `/api/me/avatar?v=${cacheBuster}`
+    // This won't work with authenticated endpoints - use fetchAvatarUrl instead
+    return `/api/me/avatar`
   }
   return null
 }

@@ -44,3 +44,4 @@ byteorder = { workspace = true }
 regex = { workspace = true }
 reqwest = { workspace = true }
 futures-util = { workspace = true }
+image = { workspace = true }
