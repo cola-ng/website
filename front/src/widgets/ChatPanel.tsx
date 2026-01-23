@@ -3,14 +3,14 @@ import { useState } from 'react'
 import { Button } from '../components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../components/ui/card'
 import { Textarea } from '../components/ui/textarea'
-import { chatSend } from '../lib/api'
+import { textChatSend, type TextIssue } from '../lib/api'
 import { useAuth } from '../lib/auth'
 
 type Turn = {
   user: string
   assistant: string
-  corrections: string[]
-  suggestions: string[]
+  assistantZh: string
+  issues: TextIssue[]
 }
 
 export function ChatPanel() {
@@ -28,14 +28,14 @@ export function ChatPanel() {
     setError(null)
     setMessage('')
     try {
-      const resp = await chatSend(token, trimmed)
+      const resp = await textChatSend(token, trimmed, false)
       setTurns((prev) => [
         ...prev,
         {
           user: trimmed,
-          assistant: resp.reply,
-          corrections: resp.corrections,
-          suggestions: resp.suggestions,
+          assistant: resp.ai_text_en,
+          assistantZh: resp.ai_text_zh,
+          issues: resp.issues,
         },
       ])
     } catch (e: unknown) {
@@ -111,28 +111,23 @@ export function ChatPanel() {
               return (
                 <div className="space-y-3">
                   <div className="space-y-2">
-                    <div className="text-xs font-medium">修正</div>
-                    {last.corrections.length === 0 ? (
+                    <div className="text-xs font-medium">改进建议</div>
+                    {last.issues.length === 0 ? (
                       <div className="text-xs text-muted-foreground">没有发现问题。</div>
                     ) : (
                       <ul className="space-y-1 text-xs">
-                        {last.corrections.map((c, i) => (
-                          <li key={i} className="rounded-md bg-muted p-2">
-                            {c}
+                        {last.issues.map((issue, i) => (
+                          <li key={i} className="rounded-md bg-muted p-2 space-y-1">
+                            <div>
+                              <span className="text-red-500 line-through">{issue.original}</span>
+                              <span className="mx-1">→</span>
+                              <span className="text-green-600 font-medium">{issue.suggested}</span>
+                            </div>
+                            <div className="text-muted-foreground">{issue.description_zh}</div>
                           </li>
                         ))}
                       </ul>
                     )}
-                  </div>
-                  <div className="space-y-2">
-                    <div className="text-xs font-medium">建议</div>
-                    <ul className="space-y-1 text-xs">
-                      {last.suggestions.map((s, i) => (
-                        <li key={i} className="rounded-md border p-2">
-                          {s}
-                        </li>
-                      ))}
-                    </ul>
                   </div>
                 </div>
               )

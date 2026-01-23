@@ -27,18 +27,12 @@ pub fn router() -> Router {
                 .get(chat::list_chats)
                 .post(chat::create_chat)
                 .delete(reset::reset_chats)
-                .push(Router::with_path("{id}").put(chat::update_chat)),
-        )
-        .push(
-            Router::with_path("chat-turns")
-                .get(chat::list_chat_turns)
-                .post(chat::create_chat_turn)
-                .delete(reset::reset_chat_turns),
-        )
-        .push(
-            Router::with_path("chat-annotations")
-                .get(chat::list_chat_annotations)
-                .delete(reset::reset_chat_annotations),
+                .push(
+                    Router::with_path("{id}")
+                        .put(chat::update_chat)
+                        .push(Router::with_path("annotations").get(chat::list_chat_annotations)),
+                )
+                .push(Router::with_path("turns").get(chat::list_chat_turns)),
         )
         .push(
             Router::with_path("write-practices")
@@ -75,5 +69,4 @@ pub fn router() -> Router {
                 .post(suggestion::create_suggestion)
                 .delete(reset::reset_suggestions),
         )
-        .push(Router::with_path("reset-all").delete(reset::reset_all_learn_data))
 }

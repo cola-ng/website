@@ -332,11 +332,8 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
         .collect();
 
     // Process based on input type
-    let (user_text, user_audio_data, system_prompt, generate_audio) = match &input {
-        ChatSendRequest::Audio {
-            audio_base64,
-            system_prompt,
-        } => {
+    let (user_text, user_audio_data, generate_audio) = match &input {
+        ChatSendRequest::Audio { audio_base64 } => {
             // Decode audio
             let audio_data = BASE64
                 .decode(audio_base64)
@@ -372,13 +369,11 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
             (
                 asr_result.text,
                 Some(audio_data),
-                system_prompt.clone().unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string()),
                 true, // Always generate audio for audio input
             )
         }
         ChatSendRequest::Text {
             message,
-            system_prompt,
             generate_audio,
         } => {
             if message.trim().is_empty() {
@@ -387,12 +382,7 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
                     .into());
             }
 
-            (
-                message.clone(),
-                None,
-                system_prompt.clone().unwrap_or_else(|| DEFAULT_SYSTEM_PROMPT.to_string()),
-                *generate_audio,
-            )
+            (message.clone(), None, *generate_audio)
         }
     };
 
@@ -404,7 +394,7 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
     // Generate AI response with structured output
     tracing::info!("Calling {} chat_structured API...", provider.name());
     let structured_response = chat_service
-        .chat_structured(history, &user_text, &system_prompt)
+        .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
         .await
         .map_err(|e: AiProviderError| {
             tracing::error!("{} chat_structured error: {:?}", provider.name(), e);

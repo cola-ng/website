@@ -176,46 +176,6 @@ pub async fn list_chat_turns(
     res.render(Json(turns));
     Ok(())
 }
-
-#[handler]
-pub async fn create_chat_turn(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let user_id = depot.user_id()?;
-    let input: CreateChatTurnRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-
-    let new_turn = NewChatTurn {
-        user_id,
-        chat_id: input.chat_id,
-        speaker: input.speaker,
-        use_lang: input.use_lang,
-        content_en: input.content_en,
-        content_zh: input.content_zh,
-        audio_path: input.audio_path,
-        duration_ms: input.duration_ms,
-        words_per_minute: input.words_per_minute,
-        pause_count: input.pause_count,
-        hesitation_count: input.hesitation_count,
-    };
-
-    let turn: ChatTurn = with_conn(move |conn| {
-        diesel::insert_into(learn_chat_turns::table)
-            .values(&new_turn)
-            .get_result::<ChatTurn>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create chat turn"))?;
-
-    res.status_code(StatusCode::CREATED);
-    res.render(Json(turn));
-    Ok(())
-}
-
 // ============================================================================
 // Chat Annotations API
 // ============================================================================

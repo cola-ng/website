@@ -6,13 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle, createChat, listChats } from '../lib/api'
-
-interface Correction {
-  original: string
-  corrected: string
-  explanation: string
-}
+import { voiceChatSend, textChatSend, textToSpeech, clearChatHistory, updateChatTitle, createChat, listChats, type TextIssue } from '../lib/api'
 
 interface Message {
   id: string
@@ -22,7 +16,7 @@ interface Message {
   hasAudio?: boolean
   audioBase64?: string
   timestamp: Date
-  corrections?: Correction[]
+  issues?: TextIssue[]
 }
 
 interface Conversation {
@@ -264,8 +258,8 @@ export function ConversationPage() {
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        contentEn: response.ai_text,
-        contentZh: response.ai_text_zh || response.ai_text,
+        contentEn: response.ai_text_en,
+        contentZh: response.ai_text_zh || response.ai_text_en,
         hasAudio: !!response.ai_audio_base64,
         audioBase64: response.ai_audio_base64 || undefined,
         timestamp: new Date(),
@@ -273,10 +267,10 @@ export function ConversationPage() {
 
       setConversations(prev => prev.map(c => {
         if (c.id === activeConversationId) {
-          // Also update user message with corrections if any
+          // Also update user message with issues if any
           const updatedMessages = c.messages.map(m =>
-            m.id === userMessage.id && response.corrections.length > 0
-              ? { ...m, corrections: response.corrections }
+            m.id === userMessage.id && response.issues.length > 0
+              ? { ...m, issues: response.issues }
               : m
           )
           return {
@@ -439,19 +433,19 @@ export function ConversationPage() {
           const userMessage: Message = {
             id: Date.now().toString(),
             role: 'user',
-            contentEn: response.user_text || '(Audio message)',
-            contentZh: response.user_text || '(语音消息)',
+            contentEn: response.user_text_en || '(Audio message)',
+            contentZh: response.user_text_zh || '(语音消息)',
             hasAudio: true,
             timestamp: new Date(),
-            corrections: response.corrections,
+            issues: response.issues,
           }
 
           // Add AI response
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
-            contentEn: response.ai_text,
-            contentZh: response.ai_text_zh || response.ai_text,
+            contentEn: response.ai_text_en,
+            contentZh: response.ai_text_zh || response.ai_text_en,
             hasAudio: !!response.ai_audio_base64,
             audioBase64: response.ai_audio_base64 || undefined,
             timestamp: new Date(),
@@ -695,16 +689,16 @@ export function ConversationPage() {
 
     const messagesHtml = activeConversation.messages.map(msg => {
       const isUser = msg.role === 'user'
-      let correctionsHtml = ''
-      if (reportMode && isUser && msg.corrections && msg.corrections.length > 0) {
-        correctionsHtml = `
+      let issuesHtml = ''
+      if (reportMode && isUser && msg.issues && msg.issues.length > 0) {
+        issuesHtml = `
           <div style="margin-top: 8px; padding: 8px 12px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
             <div style="font-weight: 600; color: #92400e; margin-bottom: 4px;">改进建议:</div>
-            ${msg.corrections.map(c => `
+            ${msg.issues.map((issue: TextIssue) => `
               <div style="margin-bottom: 4px;">
-                <span style="color: #dc2626; text-decoration: line-through;">${c.original}</span>
-                → <span style="color: #16a34a; font-weight: 500;">${c.corrected}</span>
-                <div style="color: #78716c; font-size: 12px; margin-top: 2px;">${c.explanation}</div>
+                <span style="color: #dc2626; text-decoration: line-through;">${issue.original}</span>
+                → <span style="color: #16a34a; font-weight: 500;">${issue.suggested}</span>
+                <div style="color: #78716c; font-size: 12px; margin-top: 2px;">${issue.description_zh}</div>
               </div>
             `).join('')}
           </div>
@@ -716,7 +710,7 @@ export function ConversationPage() {
             <p style="margin: 0;">${msg.contentEn}</p>
             <p style="margin: 8px 0 0 0; opacity: 0.8; font-size: 14px;">${msg.contentZh}</p>
           </div>
-          ${correctionsHtml}
+          ${issuesHtml}
         </div>
       `
     }).join('')
@@ -1103,19 +1097,19 @@ export function ConversationPage() {
                         )}
                       </div>
                     </div>
-                    {/* Corrections display in report mode */}
-                    {reportMode && isUser && message.corrections && message.corrections.length > 0 && (
+                    {/* Issues display in report mode */}
+                    {reportMode && isUser && message.issues && message.issues.length > 0 && (
                       <div className="max-w-[70%] mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl">
                         <div className="text-xs font-medium text-amber-700 mb-1.5 flex items-center gap-1">
                           <ClipboardList className="h-3 w-3" />
                           改进建议
                         </div>
-                        {message.corrections.map((correction, idx) => (
+                        {message.issues.map((issue, idx) => (
                           <div key={idx} className="text-sm mb-1.5 last:mb-0">
-                            <span className="text-red-500 line-through">{correction.original}</span>
+                            <span className="text-red-500 line-through">{issue.original}</span>
                             <span className="text-gray-400 mx-1">→</span>
-                            <span className="text-green-600 font-medium">{correction.corrected}</span>
-                            <p className="text-xs text-gray-500 mt-0.5">{correction.explanation}</p>
+                            <span className="text-green-600 font-medium">{issue.suggested}</span>
+                            <p className="text-xs text-gray-500 mt-0.5">{issue.description_zh}</p>
                           </div>
                         ))}
                       </div>

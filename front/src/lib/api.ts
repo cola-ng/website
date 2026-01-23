@@ -22,11 +22,6 @@ export type OauthLoginResponse =
       email: string | null
     }
 
-export type ChatSendResponse = {
-  reply: string
-  corrections: string[]
-  suggestions: string[]
-}
 
 export type LearningRecord = {
   id: string
@@ -377,14 +372,6 @@ export function createRecord(token: string, input: {
   })
 }
 
-export function chatSend(token: string, message: string): Promise<ChatSendResponse> {
-  return requestJson<ChatSendResponse>('/api/chat/send', {
-    method: 'POST',
-    token,
-    body: JSON.stringify({ message }),
-  })
-}
-
 export function desktopCreateCode(
   token: string,
   input: { redirect_uri: string; state: string }
@@ -573,18 +560,44 @@ export function getRankDefinitions(): Promise<RankInfo[]> {
 // Voice Chat Types and Functions
 // ============================================================================
 
-export type Correction = {
+/** Text issue (grammar, word choice, or suggestion) */
+export type TextIssue = {
+  /** Type of issue: grammar | word_choice | suggestion */
+  type: string
+  /** Original problematic text */
   original: string
-  corrected: string
-  explanation: string
+  /** Suggested correction */
+  suggested: string
+  /** Explanation in English */
+  description_en: string
+  /** Explanation in Chinese */
+  description_zh: string
+  /** Severity: low | medium | high */
+  severity: string
+  /** Start position in text (optional) */
+  start_position: number | null
+  /** End position in text (optional) */
+  end_position: number | null
 }
 
-export type VoiceChatResponse = {
-  user_text: string | null
-  ai_text: string
-  ai_text_zh: string | null
+/** Response for voice/text chat */
+export type ChatResponse = {
+  /** Language of user input: "en" | "zh" | "mix" */
+  use_lang: string
+  /** User text in English (original or transcribed) */
+  user_text_en: string
+  /** User text in Chinese */
+  user_text_zh: string
+  /** AI's text response in English */
+  ai_text_en: string
+  /** AI's text response in Chinese */
+  ai_text_zh: string
+  /** Base64 encoded audio of user's message (if audio input or TTS generated) */
+  user_audio_base64: string | null
+  /** Base64 encoded audio of AI response */
   ai_audio_base64: string | null
-  corrections: Correction[]
+  /** Grammar/word choice issues found in user's text */
+  issues: TextIssue[]
 }
 
 export type TtsResponse = {
@@ -595,19 +608,17 @@ export type TtsResponse = {
  * Send audio for voice chat
  * @param token Auth token
  * @param audioBase64 Base64 encoded audio (WAV format)
- * @param systemPrompt Optional custom system prompt
  */
 export function voiceChatSend(
   token: string,
-  audioBase64: string,
-  systemPrompt?: string
-): Promise<VoiceChatResponse> {
-  return requestJson<VoiceChatResponse>('/api/chat/send', {
+  audioBase64: string
+): Promise<ChatResponse> {
+  return requestJson<ChatResponse>('/api/chat/send', {
     method: 'POST',
     token,
     body: JSON.stringify({
+      type: 'audio',
       audio_base64: audioBase64,
-      system_prompt: systemPrompt,
     }),
   })
 }
@@ -617,21 +628,19 @@ export function voiceChatSend(
  * @param token Auth token
  * @param message Text message
  * @param generateAudio Whether to generate audio response
- * @param systemPrompt Optional custom system prompt
  */
 export function textChatSend(
   token: string,
   message: string,
-  generateAudio: boolean = true,
-  systemPrompt?: string
-): Promise<VoiceChatResponse> {
-  return requestJson<VoiceChatResponse>('/api/chat/text-send', {
+  generateAudio: boolean = true
+): Promise<ChatResponse> {
+  return requestJson<ChatResponse>('/api/chat/send', {
     method: 'POST',
     token,
     body: JSON.stringify({
+      type: 'text',
       message,
       generate_audio: generateAudio,
-      system_prompt: systemPrompt,
     }),
   })
 }
