@@ -33,6 +33,7 @@ pub async fn show(
     } else {
         "avatars/defaults/160x160.webp".to_string()
     };
+    println!("Serving avatar file: {}", file_path);
 
     // Try to send the file
     let path = PathBuf::from(&file_path);
@@ -81,12 +82,12 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
     let origin_file = format!("{}/origin.{}", store_dir, ext);
     std::fs::copy(file.path(), &origin_file)?;
 
-    // Create a simple copy as 160x160.webp (in production, would resize with image library)
-    let resized_file = format!("{}/160x160.webp", store_dir);
+    // Create a simple copy with original extension (in production, would resize with image library)
+    let resized_file = format!("{}/160x160.{}", store_dir, ext);
     std::fs::copy(&origin_file, &resized_file).ok();
 
-    // Update user avatar in database
-    let avatar_value = store_dir;
+    // Update user avatar in database (store full path to resized file)
+    let avatar_value = resized_file;
     let updated: User = with_conn(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
             .set(base_users::avatar.eq(&avatar_value))
@@ -114,9 +115,11 @@ pub async fn delete_avatar(depot: &mut Depot) -> JsonResult<User> {
     .ok()
     .flatten();
 
-    // Remove avatar directory if exists
+    // Remove avatar directory if exists (avatar_path is full file path, get parent dir)
     if let Some(avatar_path) = avatar {
-        std::fs::remove_dir_all(&avatar_path).ok();
+        if let Some(parent) = PathBuf::from(&avatar_path).parent() {
+            std::fs::remove_dir_all(parent).ok();
+        }
     }
 
     // Clear avatar in database

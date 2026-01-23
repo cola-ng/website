@@ -720,9 +720,7 @@ export function ConversationPage() {
   }
 
   const exportToPdf = () => {
-    // Simple PDF export using print dialog
-    const printWindow = window.open('', '_blank')
-    if (!printWindow || !activeConversation) return
+    if (!activeConversation) return
 
     const messagesHtml = activeConversation.messages.map(msg => {
       const isUser = msg.role === 'user'
@@ -752,15 +750,14 @@ export function ConversationPage() {
       `
     }).join('')
 
-    printWindow.document.write(`
-      <!DOCTYPE html>
+    const htmlContent = `<!DOCTYPE html>
       <html>
       <head>
         <title>${activeConversation.title} - 对话记录</title>
         <style>
           @page {
             size: A4;
-            margin: 20mm 15mm 25mm 15mm;
+            margin: 15mm 15mm 15mm 15mm;
             @bottom-center {
               content: counter(page);
               font-size: 12px;
@@ -768,13 +765,15 @@ export function ConversationPage() {
             }
           }
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
-          .pdf-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-          .pdf-header .brand { display: flex; align-items: center; gap: 10px; }
+          .pdf-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; padding-bottom: 3px; border-bottom: 2px solid #f97316; }
+          .pdf-header .brand { display: flex; flex-direction: column; gap: 4px; }
+          .pdf-header .brand-row { display: flex; align-items: center; gap: 10px; }
           .pdf-header .logo { height: 32px; width: 32px; }
           .pdf-header .brand-name { font-size: 18px; font-weight: bold; color: #ea580c; }
+          .pdf-header .pdf-url { color: #9ca3af; font-size: 12px; }
+          .pdf-header .title-section { text-align: right; }
           .pdf-header .title { font-size: 18px; font-weight: bold; color: #111827; }
-          .pdf-url { color: #9ca3af; font-size: 12px; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #f97316; }
-          .meta { color: #6b7280; font-size: 14px; margin-bottom: 24px; }
+          .pdf-header .meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
           @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
@@ -783,27 +782,53 @@ export function ConversationPage() {
       <body>
         <div class="pdf-header">
           <div class="brand">
-            <img class="logo" src="${window.location.origin}/colang-logo.svg" alt="Logo" onload="window.logoLoaded=true" onerror="window.logoLoaded=true" />
-            <span class="brand-name">开朗英语</span>
+            <div class="brand-row">
+              <img class="logo" src="${window.location.origin}/colang-logo.svg" alt="Logo" id="logo-img" />
+              <span class="brand-name">开朗英语</span>
+            </div>
+            <span class="pdf-url">https://cola.ng</span>
           </div>
-          <span class="title">${activeConversation.title}</span>
+          <div class="title-section">
+            <div class="title">${activeConversation.title}</div>
+            <div class="meta">导出时间: ${new Date().toLocaleString()}${reportMode ? ' | 报告模式' : ''}</div>
+          </div>
         </div>
-        <div class="pdf-url">https://cola.ng</div>
-        <div class="meta">导出时间: ${new Date().toLocaleString()}${reportMode ? ' | 报告模式' : ''}</div>
         ${messagesHtml}
+        <script>
+          var logoImg = document.getElementById('logo-img');
+          var printTriggered = false;
+          function triggerPrint() {
+            if (!printTriggered) {
+              printTriggered = true;
+              window.print();
+            }
+          }
+          if (logoImg.complete) {
+            triggerPrint();
+          } else {
+            logoImg.onload = triggerPrint;
+            logoImg.onerror = triggerPrint;
+          }
+          // Fallback timeout
+          setTimeout(triggerPrint, 1000);
+        </script>
       </body>
-      </html>
-    `)
-    printWindow.document.close()
-    // Wait for logo to load before printing
-    const checkAndPrint = () => {
-      if ((printWindow as any).logoLoaded) {
-        printWindow.print()
-      } else {
-        setTimeout(checkAndPrint, 50)
-      }
+      </html>`
+
+    // Create Blob URL and open in new window
+    const blob = new Blob([htmlContent], { type: 'text/html' })
+    const url = URL.createObjectURL(blob)
+    const printWindow = window.open(url, '_blank')
+
+    // Clean up Blob URL after window is closed or after timeout
+    if (printWindow) {
+      const cleanup = () => URL.revokeObjectURL(url)
+      printWindow.onafterprint = cleanup
+      // Fallback cleanup after 60 seconds
+      setTimeout(cleanup, 60000)
+    } else {
+      URL.revokeObjectURL(url)
     }
-    setTimeout(checkAndPrint, 100)
   }
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {

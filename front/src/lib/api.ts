@@ -325,10 +325,12 @@ export function deleteAvatar(token: string): Promise<User> {
   })
 }
 
-export function getAvatarUrl(user: User | null, size: number = 160): string | null {
+export function getAvatarUrl(user: User | null, _size: number = 160): string | null {
   if (!user) return null
   if (user.avatar) {
-    return `/${user.avatar}/${size}x${size}.webp`
+    // Use the avatar API endpoint with cache buster based on avatar path
+    const cacheBuster = encodeURIComponent(user.avatar)
+    return `/api/me/avatar?v=${cacheBuster}`
   }
   return null
 }
