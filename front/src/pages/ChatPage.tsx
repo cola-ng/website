@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, Square, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
+import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -1318,7 +1318,11 @@ export function ChatPage() {
                             title={isPlayingAudio === message.id ? '停止播放' : '播放语音'}
                           >
                             {isPlayingAudio === message.id ? (
-                              <Square className="h-4 w-4" />
+                              <div className="h-4 w-4 flex items-center justify-center gap-[2px]">
+                                <span className="w-[3px] h-2 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '0ms' }} />
+                                <span className="w-[3px] h-3 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '150ms' }} />
+                                <span className="w-[3px] h-2 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '300ms' }} />
+                              </div>
                             ) : (
                               <Volume2 className="h-4 w-4" />
                             )}
