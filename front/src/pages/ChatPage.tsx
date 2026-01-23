@@ -28,6 +28,11 @@ interface Chat {
   lastMessage: string
   timestamp: Date
   messages: Message[]
+  // Pagination state
+  hasMorePrev?: boolean  // Has older messages to load
+  hasMoreNext?: boolean  // Has newer messages to load
+  firstId?: number       // First message ID (for loading older)
+  lastId?: number        // Last message ID (for loading newer)
 }
 
 // Context matches backend asset_contexts table
@@ -150,10 +155,9 @@ export function ChatPage() {
           // Fetch turns for the first chat
           if (firstChat.serverId) {
             try {
-              const turns = await getChatTurns(token, firstChat.serverId, 100)
-              const messages: Message[] = turns
+              const response = await getChatTurns(token, firstChat.serverId, { limit: 50 })
+              const messages: Message[] = response.items
                 .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
-                .sort((a: ChatTurn, b: ChatTurn) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
                 .map((turn: ChatTurn) => ({
                   id: turn.id.toString(),
                   role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
@@ -169,6 +173,10 @@ export function ChatPage() {
                     ...c,
                     messages,
                     lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
+                    hasMorePrev: response.has_prev,
+                    hasMoreNext: response.has_next,
+                    firstId: response.first_id ?? undefined,
+                    lastId: response.last_id ?? undefined,
                   }
                 }
                 return c
@@ -740,13 +748,12 @@ export function ChatPage() {
     }
 
     try {
-      // Fetch turns from server
-      const turns = await getChatTurns(token, chat.serverId, 100)
+      // Fetch turns from server with pagination
+      const response = await getChatTurns(token, chat.serverId, { limit: 50 })
 
       // Convert ChatTurn to Message format and update chat
-      const messages: Message[] = turns
+      const messages: Message[] = response.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
-        .sort((a: ChatTurn, b: ChatTurn) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
         .map((turn: ChatTurn) => ({
           id: turn.id.toString(),
           role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
@@ -762,6 +769,10 @@ export function ChatPage() {
             ...c,
             messages,
             lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
+            hasMorePrev: response.has_prev,
+            hasMoreNext: response.has_next,
+            firstId: response.first_id ?? undefined,
+            lastId: response.last_id ?? undefined,
           }
         }
         return c
@@ -770,6 +781,48 @@ export function ChatPage() {
       console.error('Failed to fetch chat turns:', err)
     }
   }, [token, chats])
+
+  // Load more (older) messages for the active chat
+  const handleLoadMoreMessages = useCallback(async () => {
+    if (!activeChat?.serverId || !token || !activeChat.hasMorePrev || !activeChat.firstId) {
+      return
+    }
+
+    try {
+      // Fetch older turns (before the first message we have)
+      const response = await getChatTurns(token, activeChat.serverId, {
+        limit: 50,
+        beforeId: activeChat.firstId,
+      })
+
+      // Convert ChatTurn to Message format
+      const olderMessages: Message[] = response.items
+        .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
+        .map((turn: ChatTurn) => ({
+          id: turn.id.toString(),
+          role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
+          contentEn: turn.content_en || '',
+          contentZh: turn.content_zh || '',
+          hasAudio: !!turn.audio_path,
+          timestamp: new Date(turn.created_at),
+        }))
+
+      // Prepend older messages to existing messages
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChat.id) {
+          return {
+            ...c,
+            messages: [...olderMessages, ...c.messages],
+            hasMorePrev: response.has_prev,
+            firstId: response.first_id ?? c.firstId,
+          }
+        }
+        return c
+      }))
+    } catch (err) {
+      console.error('Failed to load more messages:', err)
+    }
+  }, [token, activeChat])
 
   const playAudio = (messageId: string) => {
     // If already playing this message, stop it
@@ -1134,6 +1187,17 @@ export function ChatPage() {
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {/* Load more button at top */}
+              {activeChat?.hasMorePrev && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={handleLoadMoreMessages}
+                    className="px-4 py-2 text-sm text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+                  >
+                    加载更多历史消息...
+                  </button>
+                </div>
+              )}
               {messages.map((message) => {
                 const isUser = message.role === 'user'
                 const showEn = isUser ? showUserEn : showBotEn
