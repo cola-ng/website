@@ -688,7 +688,7 @@ export type ChatTurnStatus = 'processing' | 'completed' | 'error'
 export type ChatTurn = {
   id: number
   user_id: number
-  chat_id: string
+  chat_id: number
   speaker: string
   use_lang: string
   content_en: string
@@ -703,6 +703,24 @@ export type ChatTurn = {
   created_at: string
 }
 
+/** Paginated response with cursor-based pagination */
+export type PaginatedResponse<T> = {
+  /** Items in this page */
+  items: T[]
+  /** Total count of items matching the query */
+  total: number
+  /** Number of items requested */
+  limit: number
+  /** Whether there are more items before this page */
+  has_prev: boolean
+  /** Whether there are more items after this page */
+  has_next: boolean
+  /** ID of the first item (use as before_id for previous page) */
+  first_id: number | null
+  /** ID of the last item (use as after_id for next page) */
+  last_id: number | null
+}
+
 /** Response from send_chat - returns two turns */
 export type ChatSendResponse = {
   /** User's chat turn (status: completed) */
@@ -711,60 +729,103 @@ export type ChatSendResponse = {
   ai_turn: ChatTurn
 }
 
+/** Options for fetching chat turns with cursor-based pagination */
+export type GetChatTurnsOptions = {
+  /** Max number of turns to return (default 50, max 500) */
+  limit?: number
+  /** Load items after this ID (for loading newer messages) */
+  afterId?: number
+  /** Load items before this ID (for loading older messages) */
+  beforeId?: number
+}
+
 /**
- * Get chat turns for a specific chat
+ * Get chat turns for a specific chat with cursor-based pagination
  * @param token Auth token
  * @param chatId Chat ID
- * @param limit Max number of turns to return
+ * @param options Pagination options
  */
-export function getChatTurns(token: string, chatId: number, limit = 100): Promise<ChatTurn[]> {
-  return requestJson<ChatTurn[]>(`/api/learn/chats/${chatId}/turns?limit=${limit}`, {
+export function getChatTurns(
+  token: string,
+  chatId: number,
+  options: GetChatTurnsOptions = {}
+): Promise<PaginatedResponse<ChatTurn>> {
+  const params = new URLSearchParams()
+  if (options.limit) params.set('limit', options.limit.toString())
+  if (options.afterId) params.set('after_id', options.afterId.toString())
+  if (options.beforeId) params.set('before_id', options.beforeId.toString())
+
+  const queryString = params.toString()
+  const url = `/api/learn/chats/${chatId}/turns${queryString ? `?${queryString}` : ''}`
+
+  return requestJson<PaginatedResponse<ChatTurn>>(url, {
     method: 'GET',
     token,
   })
 }
 
 /**
- * Get all chat turns for current user
+ * Get all chat turns for current user with cursor-based pagination
  * @param token Auth token
- * @param limit Max number of turns to return
+ * @param options Pagination options
  */
-export function getAllChatTurns(token: string, limit = 100): Promise<ChatTurn[]> {
-  return requestJson<ChatTurn[]>(`/api/learn/chats/turns?limit=${limit}`, {
+export function getAllChatTurns(
+  token: string,
+  options: GetChatTurnsOptions = {}
+): Promise<PaginatedResponse<ChatTurn>> {
+  const params = new URLSearchParams()
+  if (options.limit) params.set('limit', options.limit.toString())
+  if (options.afterId) params.set('after_id', options.afterId.toString())
+  if (options.beforeId) params.set('before_id', options.beforeId.toString())
+
+  const queryString = params.toString()
+  const url = `/api/learn/chats/turns${queryString ? `?${queryString}` : ''}`
+
+  return requestJson<PaginatedResponse<ChatTurn>>(url, {
     method: 'GET',
     token,
   })
 }
 
 /**
- * Poll for a chat turn to complete
+ * Get a single chat turn by ID with long-polling support
+ * Server will block for up to 30s if turn is still processing
  * @param token Auth token
- * @param chatId Chat ID
+ * @param turnId Turn ID
+ * @returns The turn (may still be processing if server timeout)
+ */
+export function getChatTurn(token: string, turnId: number): Promise<ChatTurn> {
+  return requestJson<ChatTurn>(`/api/learn/chats/turns/${turnId}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Poll for a chat turn to complete using long-polling endpoint
+ * @param token Auth token
+ * @param chatId Chat ID (unused, kept for backward compatibility)
  * @param turnId Turn ID to poll
- * @param intervalMs Polling interval in ms (default 1000)
+ * @param intervalMs Polling interval in ms (default 1000) - used as fallback
  * @param maxAttempts Max polling attempts (default 60)
  * @returns The completed or errored turn
  */
 export async function pollChatTurn(
   token: string,
-  chatId: number,
+  _chatId: number,
   turnId: number,
   intervalMs = 1000,
   maxAttempts = 60
 ): Promise<ChatTurn> {
   for (let i = 0; i < maxAttempts; i++) {
-    const turns = await getChatTurns(token, chatId, 10)
-    const turn = turns.find((t) => t.id === turnId)
-
-    if (!turn) {
-      throw new Error('Turn not found')
-    }
+    // Use long-polling endpoint - server will block for up to 30s if processing
+    const turn = await getChatTurn(token, turnId)
 
     if (turn.status === 'completed' || turn.status === 'error') {
       return turn
     }
 
-    // Wait before next poll
+    // If still processing after server timeout, wait a bit and retry
     await new Promise((resolve) => setTimeout(resolve, intervalMs))
   }
 

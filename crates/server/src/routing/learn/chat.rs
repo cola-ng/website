@@ -155,6 +155,25 @@ pub async fn update_chat(
 // Chat Turns API
 // ============================================================================
 
+/// Paginated response for list endpoints using cursor-based pagination
+#[derive(Debug, Serialize, ToSchema)]
+pub struct PaginatedResponse<T> {
+    /// The items in this page
+    pub items: Vec<T>,
+    /// Total count of items matching the query
+    pub total: i64,
+    /// Number of items requested
+    pub limit: i64,
+    /// Whether there are more items before this page
+    pub has_prev: bool,
+    /// Whether there are more items after this page
+    pub has_next: bool,
+    /// ID of the first item in this page (use as `before_id` to load previous page)
+    pub first_id: Option<i64>,
+    /// ID of the last item in this page (use as `after_id` to load next page)
+    pub last_id: Option<i64>,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct CreateChatTurnRequest {
     chat_id: i64,
@@ -169,6 +188,13 @@ pub struct CreateChatTurnRequest {
     hesitation_count: Option<i32>,
 }
 
+/// List chat turns with cursor-based pagination
+///
+/// Query parameters:
+/// - `chat_id`: Filter by chat ID (required for /chats/{id}/turns, optional for /chats/turns)
+/// - `limit`: Max items to return (default 50, max 500)
+/// - `after_id`: Load items after this ID (for loading older messages)
+/// - `before_id`: Load items before this ID (for loading newer messages)
 #[handler]
 pub async fn list_chat_turns(
     req: &mut Request,
@@ -177,25 +203,121 @@ pub async fn list_chat_turns(
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
     let chat_id_param = req.query::<i64>("chat_id");
-    let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
+    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 500);
+    let after_id = req.query::<i64>("after_id");
+    let before_id = req.query::<i64>("before_id");
 
-    let turns: Vec<ChatTurn> = with_conn(move |conn| {
-        let mut query = learn_chat_turns::table
-            .filter(learn_chat_turns::user_id.eq(user_id))
-            .order(learn_chat_turns::created_at.desc())
-            .limit(limit)
-            .into_boxed();
+    // Get total count for this query
+    let total: i64 = with_conn({
+        let chat_id_param = chat_id_param;
+        move |conn| {
+            let mut query = learn_chat_turns::table
+                .filter(learn_chat_turns::user_id.eq(user_id))
+                .into_boxed();
 
-        if let Some(cid) = chat_id_param {
-            query = query.filter(learn_chat_turns::chat_id.eq(cid));
+            if let Some(cid) = chat_id_param {
+                query = query.filter(learn_chat_turns::chat_id.eq(cid));
+            }
+
+            query.count().get_result::<i64>(conn)
         }
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to count chat turns"))?;
 
-        query.load::<ChatTurn>(conn)
+    // Get turns with cursor-based pagination
+    // Order by created_at ASC (oldest first) so messages display correctly in chat
+    let turns: Vec<ChatTurn> = with_conn({
+        let chat_id_param = chat_id_param;
+        move |conn| {
+            let mut query = learn_chat_turns::table
+                .filter(learn_chat_turns::user_id.eq(user_id))
+                .into_boxed();
+
+            if let Some(cid) = chat_id_param {
+                query = query.filter(learn_chat_turns::chat_id.eq(cid));
+            }
+
+            // Cursor-based filtering
+            if let Some(aid) = after_id {
+                // Load items with ID > after_id (older messages in chronological order)
+                query = query.filter(learn_chat_turns::id.gt(aid));
+            }
+            if let Some(bid) = before_id {
+                // Load items with ID < before_id (newer messages)
+                query = query.filter(learn_chat_turns::id.lt(bid));
+            }
+
+            query
+                .order(learn_chat_turns::created_at.asc())
+                .limit(limit)
+                .load::<ChatTurn>(conn)
+        }
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list chat turns"))?;
 
-    res.render(Json(turns));
+    // Determine if there are more items
+    let first_id = turns.first().map(|t| t.id);
+    let last_id = turns.last().map(|t| t.id);
+
+    // Check if there are items before the first item
+    let has_prev: bool = if let Some(fid) = first_id {
+        with_conn({
+            let chat_id_param = chat_id_param;
+            move |conn| {
+                let mut query = learn_chat_turns::table
+                    .filter(learn_chat_turns::user_id.eq(user_id))
+                    .filter(learn_chat_turns::id.lt(fid))
+                    .into_boxed();
+
+                if let Some(cid) = chat_id_param {
+                    query = query.filter(learn_chat_turns::chat_id.eq(cid));
+                }
+
+                query.count().get_result::<i64>(conn).map(|c| c > 0)
+            }
+        })
+        .await
+        .unwrap_or(false)
+    } else {
+        false
+    };
+
+    // Check if there are items after the last item
+    let has_next: bool = if let Some(lid) = last_id {
+        with_conn({
+            let chat_id_param = chat_id_param;
+            move |conn| {
+                let mut query = learn_chat_turns::table
+                    .filter(learn_chat_turns::user_id.eq(user_id))
+                    .filter(learn_chat_turns::id.gt(lid))
+                    .into_boxed();
+
+                if let Some(cid) = chat_id_param {
+                    query = query.filter(learn_chat_turns::chat_id.eq(cid));
+                }
+
+                query.count().get_result::<i64>(conn).map(|c| c > 0)
+            }
+        })
+        .await
+        .unwrap_or(false)
+    } else {
+        false
+    };
+
+    let response = PaginatedResponse {
+        items: turns,
+        total,
+        limit,
+        has_prev,
+        has_next,
+        first_id,
+        last_id,
+    };
+
+    res.render(Json(response));
     Ok(())
 }
 

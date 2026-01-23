@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, type TextIssue } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, type TextIssue, type ChatTurn } from '../lib/api'
 
 interface Message {
   id: string
@@ -130,8 +130,8 @@ export function ChatPage() {
 
     setChatsLoading(true)
     listChats(token)
-      .then((chats) => {
-        const loadedChats: Chat[] = chats.map((chat) => ({
+      .then(async (serverChats) => {
+        const loadedChats: Chat[] = serverChats.map((chat) => ({
           id: chat.id.toString(),
           serverId: chat.id,
           title: chat.title,
@@ -141,8 +141,42 @@ export function ChatPage() {
           messages: [],
         }))
         setChats(loadedChats)
+
+        // Auto-load turns for the first chat
         if (loadedChats.length > 0) {
-          setActiveChatId(loadedChats[0].id)
+          const firstChat = loadedChats[0]
+          setActiveChatId(firstChat.id)
+
+          // Fetch turns for the first chat
+          if (firstChat.serverId) {
+            try {
+              const turns = await getChatTurns(token, firstChat.serverId, 100)
+              const messages: Message[] = turns
+                .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
+                .sort((a: ChatTurn, b: ChatTurn) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+                .map((turn: ChatTurn) => ({
+                  id: turn.id.toString(),
+                  role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
+                  contentEn: turn.content_en || '',
+                  contentZh: turn.content_zh || '',
+                  hasAudio: !!turn.audio_path,
+                  timestamp: new Date(turn.created_at),
+                }))
+
+              setChats(prev => prev.map(c => {
+                if (c.id === firstChat.id) {
+                  return {
+                    ...c,
+                    messages,
+                    lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
+                  }
+                }
+                return c
+              }))
+            } catch (err) {
+              console.error('Failed to fetch initial chat turns:', err)
+            }
+          }
         }
       })
       .catch((err) => {
@@ -690,6 +724,53 @@ export function ChatPage() {
     })
   }
 
+  // Handle chat selection - fetch turns from server
+  const handleSelectChat = useCallback(async (chat: Chat) => {
+    setActiveChatId(chat.id)
+
+    // If chat has no server ID or already has messages loaded, skip fetching
+    if (!chat.serverId || !token) {
+      return
+    }
+
+    // Check if messages are already loaded for this chat
+    const existingChat = chats.find(c => c.id === chat.id)
+    if (existingChat && existingChat.messages.length > 0) {
+      return
+    }
+
+    try {
+      // Fetch turns from server
+      const turns = await getChatTurns(token, chat.serverId, 100)
+
+      // Convert ChatTurn to Message format and update chat
+      const messages: Message[] = turns
+        .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
+        .sort((a: ChatTurn, b: ChatTurn) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime())
+        .map((turn: ChatTurn) => ({
+          id: turn.id.toString(),
+          role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
+          contentEn: turn.content_en || '',
+          contentZh: turn.content_zh || '',
+          hasAudio: !!turn.audio_path,
+          timestamp: new Date(turn.created_at),
+        }))
+
+      setChats(prev => prev.map(c => {
+        if (c.id === chat.id) {
+          return {
+            ...c,
+            messages,
+            lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
+          }
+        }
+        return c
+      }))
+    } catch (err) {
+      console.error('Failed to fetch chat turns:', err)
+    }
+  }, [token, chats])
+
   const playAudio = (messageId: string) => {
     // If already playing this message, stop it
     if (isPlayingAudio === messageId) {
@@ -884,7 +965,7 @@ export function ChatPage() {
               ) : chats.map((conv) => (
                 <div
                   key={conv.id}
-                  onClick={() => setActiveChatId(conv.id)}
+                  onClick={() => handleSelectChat(conv)}
                   className={cn(
                     'px-3 py-2.5 border-b cursor-pointer hover:bg-white transition-colors relative group',
                     activeChatId === conv.id && 'bg-white border-l-4 border-l-orange-500'
