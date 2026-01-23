@@ -13,8 +13,8 @@ use std::time::Duration;
 
 use super::ai_provider::{
     AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService,
-    PronunciationAnalysis, PronunciationService, TtsResponse, TtsService, WordPronunciationScore,
-    WordTiming,
+    PronunciationAnalysis, PronunciationService, StructuredChatResponse, TextIssue, TtsResponse,
+    TtsService, WordPronunciationScore, WordTiming,
 };
 
 const DOUBAO_SPEECH_API_BASE: &str = "https://openspeech.bytedance.com/api/v1";
@@ -457,6 +457,203 @@ impl ChatService for DoubaoClient {
         tracing::info!("Doubao Chat: received {} chars response", reply.len());
 
         Ok(reply)
+    }
+
+    async fn chat_structured(
+        &self,
+        messages: Vec<ChatMessage>,
+        user_text: &str,
+        system_prompt: &str,
+    ) -> Result<StructuredChatResponse, AiProviderError> {
+        let url = format!("{}/chat/completions", DOUBAO_CHAT_API_BASE);
+
+        // Build messages with system prompt
+        let mut all_messages: Vec<serde_json::Value> = vec![serde_json::json!({
+            "role": "system",
+            "content": format!(
+                "{}\n\nIMPORTANT: You must respond with a JSON object containing:\n\
+                1. A natural conversational reply to the user\n\
+                2. Grammar/vocabulary analysis of the user's last message",
+                system_prompt
+            )
+        })];
+
+        // Add conversation history
+        for msg in messages {
+            all_messages.push(serde_json::json!({
+                "role": msg.role,
+                "content": msg.content,
+            }));
+        }
+
+        // JSON Schema for structured output (matching dora-english-teacher format)
+        let response_schema = serde_json::json!({
+            "type": "object",
+            "properties": {
+                "use_lang": {
+                    "type": "string",
+                    "description": "The language of the original text, either 'en' for English, 'zh' for Chinese, or 'mix' for mixed."
+                },
+                "original_en": {
+                    "type": "string",
+                    "description": "The original user text in English. If the user wrote in Chinese or mixed language, translate it to English here."
+                },
+                "original_zh": {
+                    "type": "string",
+                    "description": "The original user text in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
+                },
+                "reply_en": {
+                    "type": "string",
+                    "description": "Your natural conversational response to the user in English. Keep it concise and encouraging."
+                },
+                "reply_zh": {
+                    "type": "string",
+                    "description": "Translation of your reply_en into Chinese."
+                },
+                "issues": {
+                    "type": "array",
+                    "description": "Grammar, word choice, or phrasing issues found in the user's last message. Empty array if no issues.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["grammar", "word_choice", "suggestion"],
+                                "description": "Type of issue"
+                            },
+                            "original": {
+                                "type": "string",
+                                "description": "The problematic text from user's message"
+                            },
+                            "suggested": {
+                                "type": "string",
+                                "description": "The corrected or better alternative"
+                            },
+                            "description_en": {
+                                "type": "string",
+                                "description": "Explanation of the issue using simple English"
+                            },
+                            "description_zh": {
+                                "type": "string",
+                                "description": "Explanation of the issue using simple Chinese"
+                            },
+                            "severity": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high"],
+                                "description": "Severity level of the issue"
+                            },
+                            "start_position": {
+                                "type": ["integer", "null"],
+                                "description": "0-based character offset where issue starts (null if unknown)"
+                            },
+                            "end_position": {
+                                "type": ["integer", "null"],
+                                "description": "0-based character offset where issue ends, exclusive (null if unknown)"
+                            }
+                        },
+                        "required": ["type", "original", "suggested", "description_en", "description_zh", "severity"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": ["use_lang", "original_en", "original_zh", "reply_en", "reply_zh", "issues"],
+            "additionalProperties": false
+        });
+
+        let payload = serde_json::json!({
+            "model": self.chat_model,
+            "messages": all_messages,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "english_teacher_response",
+                    "strict": true,
+                    "schema": response_schema
+                }
+            },
+            "temperature": 0.7,
+            "max_tokens": 2000
+        });
+
+        tracing::info!(
+            "Doubao Chat Structured: sending request for user text: {}",
+            user_text
+        );
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.chat_api_key))
+            .header("Content-Type", "application/json")
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| AiProviderError::Request(e.to_string()))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            tracing::error!("Doubao Chat Structured error {}: {}", status, body);
+            return Err(AiProviderError::Api(format!(
+                "Chat API error {}: {}",
+                status, body
+            )));
+        }
+
+        let result: serde_json::Value = response
+            .json()
+            .await
+            .map_err(|e| AiProviderError::Parse(e.to_string()))?;
+
+        // Extract content from Chat Completions response
+        let content = result["choices"][0]["message"]["content"]
+            .as_str()
+            .ok_or_else(|| AiProviderError::Parse("No content in response".to_string()))?;
+
+        tracing::debug!("Doubao Chat Structured response: {}", content);
+
+        // Parse structured JSON response
+        let structured: serde_json::Value = serde_json::from_str(content)
+            .map_err(|e| AiProviderError::Parse(format!("Failed to parse structured response: {}", e)))?;
+
+        let use_lang = structured["use_lang"]
+            .as_str()
+            .unwrap_or("en")
+            .to_string();
+        let original_en = structured["original_en"]
+            .as_str()
+            .unwrap_or(user_text)
+            .to_string();
+        let original_zh = structured["original_zh"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let reply_en = structured["reply_en"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+        let reply_zh = structured["reply_zh"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        let issues: Vec<TextIssue> =
+            serde_json::from_value(structured["issues"].clone()).unwrap_or_default();
+
+        tracing::info!(
+            "Doubao Chat Structured: reply_en={}, issues={}",
+            reply_en.len(),
+            issues.len()
+        );
+
+        Ok(StructuredChatResponse {
+            use_lang,
+            original_en,
+            original_zh,
+            reply_en,
+            reply_zh,
+            issues,
+        })
     }
 }
 

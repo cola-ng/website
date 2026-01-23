@@ -134,6 +134,47 @@ pub trait TtsService: Send + Sync {
     }
 }
 
+/// Structured AI response for English teaching
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct StructuredChatResponse {
+    /// Language of user input: "en" | "zh" | "mix"
+    pub use_lang: String,
+    /// User text in English (original or translated)
+    pub original_en: String,
+    /// User text in Chinese (original or translated)
+    pub original_zh: String,
+    /// AI reply in English
+    pub reply_en: String,
+    /// AI reply in Chinese
+    pub reply_zh: String,
+    /// Grammar/word choice issues found
+    pub issues: Vec<TextIssue>,
+}
+
+/// Text issue (grammar, word choice, or suggestion)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TextIssue {
+    /// Type of issue: grammar | word_choice | suggestion
+    #[serde(rename = "type")]
+    pub issue_type: String,
+    /// Original problematic text
+    pub original: String,
+    /// Suggested correction
+    pub suggested: String,
+    /// Explanation in English
+    pub description_en: String,
+    /// Explanation in Chinese
+    pub description_zh: String,
+    /// Severity: low | medium | high
+    pub severity: String,
+    /// Start position in text (optional)
+    #[serde(default)]
+    pub start_position: Option<i32>,
+    /// End position in text (optional)
+    #[serde(default)]
+    pub end_position: Option<i32>,
+}
+
 /// Chat (LLM) Service Trait
 #[async_trait]
 pub trait ChatService: Send + Sync {
@@ -149,6 +190,38 @@ pub trait ChatService: Send + Sync {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, AiProviderError>;
+
+    /// Send chat completion with structured output (for English teaching)
+    ///
+    /// # Arguments
+    /// * `messages` - Conversation history
+    /// * `user_text` - The user's latest message text
+    /// * `system_prompt` - System prompt for the AI
+    async fn chat_structured(
+        &self,
+        messages: Vec<ChatMessage>,
+        user_text: &str,
+        system_prompt: &str,
+    ) -> Result<StructuredChatResponse, AiProviderError> {
+        // Default implementation falls back to regular chat
+        let _ = user_text;
+        let mut all_messages = vec![ChatMessage {
+            role: "system".to_string(),
+            content: system_prompt.to_string(),
+        }];
+        all_messages.extend(messages);
+
+        let reply = self.chat(all_messages, Some(0.7), None).await?;
+
+        Ok(StructuredChatResponse {
+            use_lang: "en".to_string(),
+            original_en: user_text.to_string(),
+            original_zh: String::new(),
+            reply_en: reply,
+            reply_zh: String::new(),
+            issues: vec![],
+        })
+    }
 }
 
 /// Pronunciation Assessment Service Trait (optional capability)
