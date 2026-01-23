@@ -341,36 +341,68 @@ pub enum ProviderConfig {
 }
 
 impl ProviderConfig {
+    /// Try to load Doubao configuration from environment variables
+    fn try_doubao() -> Option<Self> {
+        let app_id = std::env::var("DOUBAO_APP_ID").ok().filter(|s| !s.is_empty())?;
+        let access_token = std::env::var("DOUBAO_ACCESS_TOKEN")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+        let chat_api_key = std::env::var("DOUBAO_API_KEY")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+
+        Some(ProviderConfig::Doubao {
+            app_id,
+            access_token,
+            chat_api_key,
+            chat_model: std::env::var("DOUBAO_CHAT_MODEL").ok(),
+        })
+    }
+
+    /// Try to load BigModel configuration from environment variables
+    fn try_bigmodel() -> Option<Self> {
+        let api_key = std::env::var("BIGMODEL_API_KEY")
+            .ok()
+            .filter(|s| !s.is_empty())?;
+
+        Some(ProviderConfig::BigModel {
+            api_key,
+            asr_model: std::env::var("BIGMODEL_ASR_MODEL").ok(),
+            tts_model: std::env::var("BIGMODEL_TTS_MODEL").ok(),
+            chat_model: std::env::var("BIGMODEL_CHAT_MODEL").ok(),
+        })
+    }
+
     /// Load from environment variables
+    ///
+    /// Uses `AI_PROVIDER_DEFAULT` env var to determine which provider to use.
+    /// Valid values: "doubao", "bigmodel"
+    /// If not set or invalid, tries Doubao first, then BigModel.
     pub fn from_env() -> Option<Self> {
-        // Try Doubao
-        if let (Ok(app_id), Ok(access_token), Ok(chat_api_key)) = (
-            std::env::var("DOUBAO_APP_ID"),
-            std::env::var("DOUBAO_ACCESS_TOKEN"),
-            std::env::var("DOUBAO_API_KEY"),
-        ) {
-            if !app_id.is_empty() && !access_token.is_empty() && !chat_api_key.is_empty() {
-                return Some(ProviderConfig::Doubao {
-                    app_id,
-                    access_token,
-                    chat_api_key,
-                    chat_model: std::env::var("DOUBAO_CHAT_MODEL").ok(),
-                });
+        let default_provider = std::env::var("AI_PROVIDER_DEFAULT")
+            .ok()
+            .map(|s| s.to_lowercase());
+
+        match default_provider.as_deref() {
+            Some("bigmodel") => {
+                tracing::info!("AI_PROVIDER_DEFAULT=bigmodel, trying BigModel first");
+                Self::try_bigmodel().or_else(Self::try_doubao)
+            }
+            Some("doubao") => {
+                tracing::info!("AI_PROVIDER_DEFAULT=doubao, trying Doubao first");
+                Self::try_doubao().or_else(Self::try_bigmodel)
+            }
+            Some(other) => {
+                tracing::warn!(
+                    "Unknown AI_PROVIDER_DEFAULT='{}', using default order (doubao first)",
+                    other
+                );
+                Self::try_doubao().or_else(Self::try_bigmodel)
+            }
+            None => {
+                // Default: try Doubao first, then BigModel
+                Self::try_doubao().or_else(Self::try_bigmodel)
             }
         }
-
-        // Try BigModel
-        if let Ok(api_key) = std::env::var("BIGMODEL_API_KEY") {
-            if !api_key.is_empty() {
-                return Some(ProviderConfig::BigModel {
-                    api_key,
-                    asr_model: std::env::var("BIGMODEL_ASR_MODEL").ok(),
-                    tts_model: std::env::var("BIGMODEL_TTS_MODEL").ok(),
-                    chat_model: std::env::var("BIGMODEL_CHAT_MODEL").ok(),
-                });
-            }
-        }
-
-        None
     }
 }
