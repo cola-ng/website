@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 const DEFAULT_ALL_WORDS_FILE: &str = "../words.all.txt";
 const DEFAULT_QUEUE_FILE: &str = "../words.queue.txt";
 const DEFAULT_OUTPUT_DIR: &str = "../words";
-const BIGMODEL_API_URL: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
+const ZHIPU_API_KEY: &str = "https://open.bigmodel.cn/api/paas/v4/chat/completions";
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
 const DEFAULT_BATCH_SIZE: usize = 5;
@@ -279,7 +279,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let api_key = std::env::var("BIGMODEL_API_KEY").expect("BIGMODEL_API_KEY must be set");
+    let api_key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
 
     let model_pool = Arc::new(ModelPool::new());
 
@@ -746,7 +746,7 @@ CRITICAL REQUIREMENTS:
         }
 
         match client
-            .post(BIGMODEL_API_URL)
+            .post(ZHIPU_API_URL)
             .header("Authorization", format!("Bearer {}", api_key))
             .header("Content-Type", "application/json")
             .json(&request)
@@ -851,7 +851,7 @@ fn print_usage() {
     );
     println!();
     println!("Environment:");
-    println!("  BIGMODEL_API_KEY      BigModel API key (required)");
+    println!("  ZHIPU_API_KEY      BigModel API key (required)");
     println!();
     println!("Examples:");
     println!("  cargo run --bin words --limit 10");

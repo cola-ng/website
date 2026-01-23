@@ -10,17 +10,20 @@ use std::sync::Arc;
 
 /// Create an AI provider from configuration
 pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
+    println!("Creating provider with config: {:#?}", config);
     match config {
         ProviderConfig::Doubao {
             app_id,
             access_token,
-            chat_api_key,
+            api_key,
             chat_model,
-        } => Arc::new(DoubaoClient::with_model(
+            tts_resource_id,
+        } => Arc::new(DoubaoClient::with_options(
             app_id.clone(),
             access_token.clone(),
-            chat_api_key.clone(),
+            api_key.clone(),
             chat_model.clone(),
+            tts_resource_id.clone(),
         )),
         ProviderConfig::Zhipu {
             api_key,

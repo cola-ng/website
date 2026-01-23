@@ -36,6 +36,7 @@ sha2 = { workspace = true }
 salvo = { workspace = true, features = ["cors", "logging", "oapi", "compression", "rustls"] }
 scheduled-thread-pool = { workspace = true }
 tokio = { workspace = true }
+tokio-tungstenite = { workspace = true }
 url = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4", "v7"] }
 thiserror = { workspace = true }

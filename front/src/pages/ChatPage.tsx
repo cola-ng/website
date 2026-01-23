@@ -581,12 +581,34 @@ export function ChatPage() {
     }
   }
 
-  // Stop recording
+  // Stop recording (will process audio)
   const stopRecording = () => {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       mediaRecorderRef.current.stop()
     }
     setIsRecording(false)
+  }
+
+  // Cancel recording (discard audio without processing)
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      // Remove the onstop handler to prevent processing
+      mediaRecorderRef.current.onstop = () => {
+        // Just stop the tracks without processing
+        if (mediaRecorderRef.current?.stream) {
+          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop())
+        }
+      }
+      mediaRecorderRef.current.stop()
+    }
+    // Clear recording timer
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+    setRecordingDuration(0)
+    setIsRecording(false)
+    audioChunksRef.current = []
   }
 
   const toggleRecording = () => {
@@ -596,6 +618,34 @@ export function ChatPage() {
       stopRecording()
     }
   }
+
+  // Keyboard shortcuts for voice recording
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if processing or if user is typing in an input
+      if (isProcessing) return
+
+      const activeElement = document.activeElement
+      const isInputFocused = activeElement instanceof HTMLTextAreaElement ||
+                            activeElement instanceof HTMLInputElement ||
+                            activeElement?.getAttribute('contenteditable') === 'true'
+
+      // Space key toggles recording when input is not focused
+      if (e.code === 'Space' && !isInputFocused) {
+        e.preventDefault()
+        toggleRecording()
+      }
+
+      // ESC key cancels recording
+      if (e.code === 'Escape' && isRecording) {
+        e.preventDefault()
+        cancelRecording()
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isRecording, isProcessing])
 
   // Handle free chat (随便聊)
   const handleNewFreeChat = async () => {
@@ -1356,7 +1406,7 @@ export function ChatPage() {
             {/* Input Area */}
             <div className="border-t p-4 bg-white">
               {/* Row 1: Mic button */}
-              <div className="flex items-center justify-center mb-4">
+              <div className="flex flex-col items-center justify-center mb-4">
                 {/* Large Mic Button */}
                 <button
                   onClick={toggleRecording}
@@ -1369,7 +1419,7 @@ export function ChatPage() {
                         ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
                         : 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200'
                   )}
-                  title={isProcessing ? '处理中...' : isRecording ? '停止录音' : '开始录音'}
+                  title={isProcessing ? '处理中...' : isRecording ? '停止录音 (空格键)' : '开始录音 (空格键)'}
                 >
                   {isProcessing ? (
                     <Loader2 className="h-7 w-7 animate-spin" />
@@ -1379,6 +1429,14 @@ export function ChatPage() {
                     <Mic className="h-7 w-7" />
                   )}
                 </button>
+                {/* Keyboard shortcut hints */}
+                <div className="mt-2 text-xs text-gray-400 text-center">
+                  {isRecording ? (
+                    <span>按 <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">ESC</kbd> 取消</span>
+                  ) : (
+                    <span>按 <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">空格</kbd> 开始录音</span>
+                  )}
+                </div>
               </div>
 
               {/* Recording/Processing indicator */}
@@ -1396,7 +1454,7 @@ export function ChatPage() {
                     <>
                       <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
                       <span className="text-sm">
-                        正在录音 {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')} - 点击话筒停止
+                        正在录音 {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')} - 空格键停止
                       </span>
                     </>
                   )}

@@ -94,6 +94,7 @@ textnonce = "1.0.0"
 thiserror = "2.0.17"
 tokio = { version = "1.49.0", features = ["macros", "rt-multi-thread"] }
 tokio-stream = { version = "0.1.9", features = ["sync"] }
+tokio-tungstenite = { version = "0.26", features = ["native-tls"] }
 tokio-util = { version = "0.7.17", features = ["io"] }
 toml = { version = "0.9.8", default-features = false }
 tracing = { version = "0.1.44", features = [

@@ -239,7 +239,11 @@ User input: {}"#,
             .trim();
 
         serde_json::from_str(json_str).map_err(|e| {
-            tracing::warn!("Failed to parse user input analysis: {}, response: {}", e, response);
+            tracing::warn!(
+                "Failed to parse user input analysis: {}, response: {}",
+                e,
+                response
+            );
             // Fallback: assume English
             AiProviderError::Parse(format!("Failed to parse analysis: {}", e))
         })
@@ -334,28 +338,33 @@ pub enum ProviderConfig {
     Doubao {
         app_id: String,
         access_token: String,
-        chat_api_key: String,
+        api_key: String, // For WebSocket TTS authorization
         #[serde(default)]
         chat_model: Option<String>,
+        #[serde(default)]
+        tts_resource_id: Option<String>,
     },
 }
 
 impl ProviderConfig {
     /// Try to load Doubao configuration from environment variables
     fn try_doubao() -> Option<Self> {
-        let app_id = std::env::var("DOUBAO_APP_ID").ok().filter(|s| !s.is_empty())?;
+        let app_id = std::env::var("DOUBAO_APP_ID")
+            .ok()
+            .filter(|s| !s.is_empty())?;
         let access_token = std::env::var("DOUBAO_ACCESS_TOKEN")
             .ok()
             .filter(|s| !s.is_empty())?;
-        let chat_api_key = std::env::var("DOUBAO_API_KEY")
+        let api_key = std::env::var("DOUBAO_API_KEY")
             .ok()
             .filter(|s| !s.is_empty())?;
 
         Some(ProviderConfig::Doubao {
             app_id,
             access_token,
-            chat_api_key,
+            api_key,
             chat_model: std::env::var("DOUBAO_CHAT_MODEL").ok(),
+            tts_resource_id: std::env::var("DOUBAO_RESOURCE_ID").ok(),
         })
     }
 
@@ -383,14 +392,15 @@ impl ProviderConfig {
             .ok()
             .map(|s| s.to_lowercase());
 
+        println!("Default provider from env: {:?}", default_provider);
         match default_provider.as_deref() {
             Some("zhipu") => {
                 tracing::info!("AI_PROVIDER_DEFAULT=zhipu, trying Zhipu first");
-                Self::try_zhipu().or_else(Self::try_doubao)
+                Self::try_zhipu()
             }
             Some("doubao") => {
                 tracing::info!("AI_PROVIDER_DEFAULT=doubao, trying Doubao first");
-                Self::try_doubao().or_else(Self::try_zhipu)
+                Self::try_doubao()
             }
             Some(other) => {
                 tracing::warn!(
