@@ -67,7 +67,7 @@ pub struct ChatSendResponse {
     reply: String,
     /// Grammar corrections
     corrections: Vec<String>,
-    /// Conversation suggestions
+    /// Chat suggestions
     suggestions: Vec<String>,
 }
 

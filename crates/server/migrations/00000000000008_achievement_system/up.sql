@@ -104,7 +104,7 @@ INSERT INTO archive_achievement_definitions (code, name_en, name_zh, description
 ('first_conversation', 'First Chat', '初次对话', 'Complete your first conversation', '完成你的第一次对话', 'message-circle', 'milestone', 'common', 10, 'count', 1, 'total_conversations', 1),
 ('conversations_10', 'Chatty Learner', '健谈学者', 'Complete 10 conversations', '完成10次对话', 'message-circle', 'milestone', 'common', 50, 'count', 10, 'total_conversations', 2),
 ('conversations_50', 'Social Butterfly', '社交达人', 'Complete 50 conversations', '完成50次对话', 'messages', 'milestone', 'uncommon', 150, 'count', 50, 'total_conversations', 3),
-('conversations_100', 'Conversation Master', '对话大师', 'Complete 100 conversations', '完成100次对话', 'crown', 'milestone', 'rare', 300, 'count', 100, 'total_conversations', 4),
+('conversations_100', 'Chat Master', '对话大师', 'Complete 100 conversations', '完成100次对话', 'crown', 'milestone', 'rare', 300, 'count', 100, 'total_conversations', 4),
 
 -- Vocabulary Achievements
 ('vocab_first', 'First Word', '首个单词', 'Learn your first word', '学会你的第一个单词', 'book-open', 'learning', 'common', 10, 'count', 1, 'total_words_mastered', 10),

@@ -181,7 +181,7 @@ pub trait ChatService: Send + Sync {
     /// Send chat completion request
     ///
     /// # Arguments
-    /// * `messages` - Conversation history
+    /// * `messages` - Chat history
     /// * `temperature` - Optional temperature (0.0 - 1.0)
     /// * `max_tokens` - Optional max tokens limit
     async fn chat(
@@ -194,7 +194,7 @@ pub trait ChatService: Send + Sync {
     /// Send chat completion with structured output (for English teaching)
     ///
     /// # Arguments
-    /// * `messages` - Conversation history
+    /// * `messages` - Chat history
     /// * `user_text` - The user's latest message text
     /// * `system_prompt` - System prompt for the AI
     async fn chat_structured(

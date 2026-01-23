@@ -1,10 +1,10 @@
 -- Remove seed data
 
 -- Remove reading sentences first (references subjects)
-DELETE FROM asset_read_sentences WHERE subject_id IN (SELECT id FROM asset_read_subjects WHERE title_en IN ('Daily Conversations', 'Business English', 'Advanced Expressions'));
+DELETE FROM asset_read_sentences WHERE subject_id IN (SELECT id FROM asset_read_subjects WHERE title_en IN ('Daily Chat', 'Business English', 'Advanced Expressions'));
 
 -- Remove reading subjects
-DELETE FROM asset_read_subjects WHERE title_en IN ('Daily Conversations', 'Business English', 'Advanced Expressions');
+DELETE FROM asset_read_subjects WHERE title_en IN ('Daily Chat', 'Business English', 'Advanced Expressions');
 
 -- Remove script turns first (references scripts)
 DELETE FROM asset_script_turns WHERE script_id IN (SELECT id FROM asset_scripts WHERE title_en IN ('Restaurant Ordering Full Dialogue', 'Hotel Check-in Full Dialogue', 'Airport Travel Full Dialogue'));

@@ -111,35 +111,35 @@ ON CONFLICT (script_id, turn_number) DO NOTHING;
 
 -- Insert additional reading subjects
 INSERT INTO asset_read_subjects (title_en, title_zh, description_en, description_zh, difficulty, subject_type) VALUES
-('Daily Conversations', '日常对话', 'Common phrases for everyday situations', '日常情境中的常用表达', 3, 'sentence'),
+('Daily Chat', '日常对话', 'Common phrases for everyday situations', '日常情境中的常用表达', 3, 'sentence'),
 ('Business English', '商务英语', 'Professional expressions for the workplace', '职场专业表达', 5, 'sentence'),
 ('Advanced Expressions', '高级表达', 'Sophisticated phrases for fluent communication', '流利交流的高级表达', 7, 'sentence')
 ON CONFLICT DO NOTHING;
 
--- Insert reading sentences for Daily Conversations
+-- Insert reading sentences for Daily Chat
 INSERT INTO asset_read_sentences (subject_id, sentence_order, content_en, content_zh, focus_sounds, common_mistakes)
 SELECT e.id, 1, 'Could you please help me with this?', '你能帮我一下吗？', '["Could you"]', '["Could you liaison sound"]'
-FROM asset_read_subjects e WHERE e.title_en = 'Daily Conversations'
+FROM asset_read_subjects e WHERE e.title_en = 'Daily Chat'
 ON CONFLICT (subject_id, sentence_order) DO NOTHING;
 
 INSERT INTO asset_read_sentences (subject_id, sentence_order, content_en, content_zh, focus_sounds, common_mistakes)
 SELECT e.id, 2, 'I would like to make a reservation.', '我想预订一下。', '["would like"]', '["would like weak sound"]'
-FROM asset_read_subjects e WHERE e.title_en = 'Daily Conversations'
+FROM asset_read_subjects e WHERE e.title_en = 'Daily Chat'
 ON CONFLICT (subject_id, sentence_order) DO NOTHING;
 
 INSERT INTO asset_read_sentences (subject_id, sentence_order, content_en, content_zh, focus_sounds, common_mistakes)
 SELECT e.id, 3, 'Thank you for your patience.', '感谢您的耐心等待。', '["thank you"]', '["thank you liaison"]'
-FROM asset_read_subjects e WHERE e.title_en = 'Daily Conversations'
+FROM asset_read_subjects e WHERE e.title_en = 'Daily Chat'
 ON CONFLICT (subject_id, sentence_order) DO NOTHING;
 
 INSERT INTO asset_read_sentences (subject_id, sentence_order, content_en, content_zh, focus_sounds, common_mistakes)
 SELECT e.id, 4, 'Could you repeat that more slowly?', '你能说慢一点吗？', '["that"]', '["that weak sound"]'
-FROM asset_read_subjects e WHERE e.title_en = 'Daily Conversations'
+FROM asset_read_subjects e WHERE e.title_en = 'Daily Chat'
 ON CONFLICT (subject_id, sentence_order) DO NOTHING;
 
 INSERT INTO asset_read_sentences (subject_id, sentence_order, content_en, content_zh, focus_sounds, common_mistakes)
 SELECT e.id, 5, 'I completely agree with you.', '我完全同意你的看法。', '["completely"]', '["completely stress on second syllable"]'
-FROM asset_read_subjects e WHERE e.title_en = 'Daily Conversations'
+FROM asset_read_subjects e WHERE e.title_en = 'Daily Chat'
 ON CONFLICT (subject_id, sentence_order) DO NOTHING;
 
 -- Insert reading sentences for Business English

@@ -19,12 +19,12 @@ interface Message {
   issues?: TextIssue[]
 }
 
-interface Conversation {
+interface Chat {
   id: string
   serverId?: number   // Server-side chat ID (if synced)
   title: string
-  contextId?: number  // Optional context ID for context-based conversations
-  icon?: string       // Emoji icon for context-based conversations
+  contextId?: number  // Optional context ID for context-based chats
+  icon?: string       // Emoji icon for context-based chats
   lastMessage: string
   timestamp: Date
   messages: Message[]
@@ -44,11 +44,11 @@ interface Context {
   created_at: string
 }
 
-export function ConversationPage() {
+export function ChatPage() {
   const { token } = useAuth()
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null)
-  const [conversationsLoading, setConversationsLoading] = useState(true)
+  const [chats, setChats] = useState<Chat[]>([])
+  const [activeChatId, setActiveChatId] = useState<string | null>(null)
+  const [chatsLoading, setChatsLoading] = useState(true)
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [reportMode, setReportMode] = useState(false)
@@ -67,7 +67,7 @@ export function ConversationPage() {
   const [contexts, setContexts] = useState<Context[]>([])
   const [contextsLoading, setContextsLoading] = useState(false)
 
-  // Conversation menu state
+  // Chat menu state
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null)
   const [renameDialogId, setRenameDialogId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
@@ -121,17 +121,17 @@ export function ConversationPage() {
     localStorage.setItem('conv_showUserZh', String(showUserZh))
   }, [showBotEn, showBotZh, showUserEn, showUserZh])
 
-  // Load conversations from server on mount
+  // Load chats from server on mount
   useEffect(() => {
     if (!token) {
-      setConversationsLoading(false)
+      setChatsLoading(false)
       return
     }
 
-    setConversationsLoading(true)
+    setChatsLoading(true)
     listChats(token)
       .then((chats) => {
-        const loadedConversations: Conversation[] = chats.map((chat) => ({
+        const loadedChats: Chat[] = chats.map((chat) => ({
           id: chat.id.toString(),
           serverId: chat.id,
           title: chat.title,
@@ -140,16 +140,16 @@ export function ConversationPage() {
           timestamp: new Date(chat.created_at),
           messages: [],
         }))
-        setConversations(loadedConversations)
-        if (loadedConversations.length > 0) {
-          setActiveConversationId(loadedConversations[0].id)
+        setChats(loadedChats)
+        if (loadedChats.length > 0) {
+          setActiveChatId(loadedChats[0].id)
         }
       })
       .catch((err) => {
         console.error('Failed to load chats:', err)
       })
       .finally(() => {
-        setConversationsLoading(false)
+        setChatsLoading(false)
       })
   }, [token])
 
@@ -165,8 +165,8 @@ export function ConversationPage() {
     }
   }, [showContextDialog, contexts.length])
 
-  const activeConversation = conversations.find(c => c.id === activeConversationId)
-  const messages = activeConversation?.messages || []
+  const activeChat = chats.find(c => c.id === activeChatId)
+  const messages = activeChat?.messages || []
   const prevMessagesLengthRef = useRef(messages.length)
 
   // Only scroll when new messages are added, not on initial load
@@ -223,7 +223,7 @@ export function ConversationPage() {
   }, [])
 
   const handleSend = async () => {
-    if (!input.trim() || !activeConversation || !token || isProcessing) return
+    if (!input.trim() || !activeChat || !token || isProcessing) return
 
     const messageText = input.trim()
     setInput('')
@@ -238,8 +238,8 @@ export function ConversationPage() {
       timestamp: new Date(),
     }
 
-    setConversations(prev => prev.map(c => {
-      if (c.id === activeConversationId) {
+    setChats(prev => prev.map(c => {
+      if (c.id === activeChatId) {
         return {
           ...c,
           messages: [...c.messages, userMessage],
@@ -252,15 +252,15 @@ export function ConversationPage() {
 
     try {
       // Call API for text chat (history is managed server-side)
-      const chatId = activeConversation.serverId
+      const chatId = activeChat.serverId
       if (!chatId) {
         throw new Error('Chat not synced with server')
       }
       const sendResponse = await textChatSend(token, chatId, messageText, true)
 
       // Update user message with content from server
-      setConversations(prev => prev.map(c => {
-        if (c.id === activeConversationId) {
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChatId) {
           return {
             ...c,
             messages: c.messages.map(m =>
@@ -290,8 +290,8 @@ export function ConversationPage() {
         timestamp: new Date(),
       }
 
-      setConversations(prev => prev.map(c => {
-        if (c.id === activeConversationId) {
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChatId) {
           return {
             ...c,
             messages: [...c.messages, aiMessage],
@@ -311,8 +311,8 @@ export function ConversationPage() {
         contentZh: '抱歉，发生了错误。请重试。',
         timestamp: new Date(),
       }
-      setConversations(prev => prev.map(c => {
-        if (c.id === activeConversationId) {
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChatId) {
           return {
             ...c,
             messages: [...c.messages, errorMessage],
@@ -399,7 +399,7 @@ export function ConversationPage() {
 
   // Start recording
   const startRecording = async () => {
-    if (!token || !activeConversation) return
+    if (!token || !activeChat) return
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -441,8 +441,8 @@ export function ConversationPage() {
           const wavBlob = await convertToWav(audioBlob)
           const audioBase64 = await blobToBase64(wavBlob)
 
-          // Get chat ID from active conversation
-          const chatId = activeConversation?.serverId
+          // Get chat ID from active chat
+          const chatId = activeChat?.serverId
           if (!chatId || !token) {
             throw new Error('Chat not synced with server')
           }
@@ -460,8 +460,8 @@ export function ConversationPage() {
             timestamp: new Date(),
           }
 
-          setConversations(prev => prev.map(c => {
-            if (c.id === activeConversationId) {
+          setChats(prev => prev.map(c => {
+            if (c.id === activeChatId) {
               return {
                 ...c,
                 messages: [...c.messages, userMessage],
@@ -485,8 +485,8 @@ export function ConversationPage() {
             timestamp: new Date(),
           }
 
-          setConversations(prev => prev.map(c => {
-            if (c.id === activeConversationId) {
+          setChats(prev => prev.map(c => {
+            if (c.id === activeChatId) {
               return {
                 ...c,
                 messages: [...c.messages, aiMessage],
@@ -505,8 +505,8 @@ export function ConversationPage() {
             contentZh: '抱歉，无法处理您的语音消息。请重试。',
             timestamp: new Date(),
           }
-          setConversations(prev => prev.map(c => {
-            if (c.id === activeConversationId) {
+          setChats(prev => prev.map(c => {
+            if (c.id === activeChatId) {
               return {
                 ...c,
                 messages: [...c.messages, errorMessage],
@@ -557,7 +557,7 @@ export function ConversationPage() {
 
     if (token) {
       try {
-        // Clear server-side history when starting a new conversation
+        // Clear server-side history when starting a new chat
         await clearAllChats(token)
         // Create new chat on server
         const chat = await createChat(token, '随便聊')
@@ -567,7 +567,7 @@ export function ConversationPage() {
       }
     }
 
-    const newConversation: Conversation = {
+    const newChat: Chat = {
       id: Date.now().toString(),
       serverId,
       title: '随便聊',
@@ -584,8 +584,8 @@ export function ConversationPage() {
       ],
     }
 
-    setConversations(prev => [newConversation, ...prev])
-    setActiveConversationId(newConversation.id)
+    setChats(prev => [newChat, ...prev])
+    setActiveChatId(newChat.id)
   }
 
   // Handle context-based chat (选场景)
@@ -606,7 +606,7 @@ export function ConversationPage() {
       }
     }
 
-    const newConversation: Conversation = {
+    const newChat: Chat = {
       id: Date.now().toString(),
       serverId,
       title: context.name_zh,
@@ -625,14 +625,14 @@ export function ConversationPage() {
       ],
     }
 
-    setConversations(prev => [newConversation, ...prev])
-    setActiveConversationId(newConversation.id)
+    setChats(prev => [newChat, ...prev])
+    setActiveChatId(newChat.id)
   }
 
-  // Pin conversation to top
-  const handlePinConversation = (convId: string) => {
+  // Pin chat to top
+  const handlePinChat = (convId: string) => {
     setMenuOpenId(null)
-    setConversations(prev => {
+    setChats(prev => {
       const conv = prev.find(c => c.id === convId)
       if (!conv) return prev
       const others = prev.filter(c => c.id !== convId)
@@ -642,7 +642,7 @@ export function ConversationPage() {
 
   // Open rename dialog
   const handleOpenRename = (convId: string) => {
-    const conv = conversations.find(c => c.id === convId)
+    const conv = chats.find(c => c.id === convId)
     if (conv) {
       setRenameValue(conv.title)
       setRenameDialogId(convId)
@@ -654,14 +654,14 @@ export function ConversationPage() {
   const handleConfirmRename = async () => {
     if (renameDialogId && renameValue.trim()) {
       const newTitle = renameValue.trim()
-      const conv = conversations.find(c => c.id === renameDialogId)
+      const conv = chats.find(c => c.id === renameDialogId)
 
       // Update local state
-      setConversations(prev => prev.map(c =>
+      setChats(prev => prev.map(c =>
         c.id === renameDialogId ? { ...c, title: newTitle } : c
       ))
 
-      // Sync to server if conversation has a server ID
+      // Sync to server if chat has a server ID
       if (token && conv?.serverId) {
         try {
           console.log('Updating chat title on server:', conv.serverId, newTitle)
@@ -670,21 +670,21 @@ export function ConversationPage() {
           console.error('Failed to update chat title on server:', err)
         }
       } else {
-        console.log('No serverId for conversation, skipping server sync:', conv?.id)
+        console.log('No serverId for chat, skipping server sync:', conv?.id)
       }
     }
     setRenameDialogId(null)
     setRenameValue('')
   }
 
-  // Delete conversation
-  const handleDeleteConversation = (convId: string) => {
+  // Delete chat
+  const handleDeleteChat = (convId: string) => {
     setMenuOpenId(null)
-    setConversations(prev => {
+    setChats(prev => {
       const filtered = prev.filter(c => c.id !== convId)
-      // If we deleted the active conversation, switch to the first one
-      if (activeConversationId === convId && filtered.length > 0) {
-        setActiveConversationId(filtered[0].id)
+      // If we deleted the active chat, switch to the first one
+      if (activeChatId === convId && filtered.length > 0) {
+        setActiveChatId(filtered[0].id)
       }
       return filtered
     })
@@ -698,7 +698,7 @@ export function ConversationPage() {
     }
 
     // Find the message and play its audio
-    const message = activeConversation?.messages.find(m => m.id === messageId)
+    const message = activeChat?.messages.find(m => m.id === messageId)
     if (message?.audioBase64) {
       playAudioFromBase64(message.audioBase64, messageId)
     } else if (message?.hasAudio && token) {
@@ -714,9 +714,9 @@ export function ConversationPage() {
   }
 
   const exportToPdf = () => {
-    if (!activeConversation) return
+    if (!activeChat) return
 
-    const messagesHtml = activeConversation.messages.map(msg => {
+    const messagesHtml = activeChat.messages.map(msg => {
       const isUser = msg.role === 'user'
       let issuesHtml = ''
       if (reportMode && isUser && msg.issues && msg.issues.length > 0) {
@@ -747,7 +747,7 @@ export function ConversationPage() {
     const htmlContent = `<!DOCTYPE html>
       <html>
       <head>
-        <title>${activeConversation.title} - 对话记录</title>
+        <title>${activeChat.title} - 对话记录</title>
         <style>
           @page {
             size: A4;
@@ -783,7 +783,7 @@ export function ConversationPage() {
             <span class="pdf-url">https://cola.ng</span>
           </div>
           <div class="title-section">
-            <div class="title">${activeConversation.title}</div>
+            <div class="title">${activeChat.title}</div>
             <div class="meta">导出时间: ${new Date().toLocaleString()}${reportMode ? ' | 报告模式' : ''}</div>
           </div>
         </div>
@@ -844,7 +844,7 @@ export function ConversationPage() {
               与 AI 进行真实的英语对话练习，提升口语表达能力
             </p>
             <Button asChild>
-              <a href="/login?redirectTo=/conversation">登录开始对话</a>
+              <a href="/login?redirectTo=/chat">登录开始对话</a>
             </Button>
           </div>
         </div>
@@ -858,7 +858,7 @@ export function ConversationPage() {
 
       <main className="mx-auto w-full max-w-6xl px-4 pt-4 pb-5">
         <div className="bg-white rounded-xl shadow-lg overflow-hidden h-[calc(100vh-100px)] flex">
-          {/* Left Sidebar - Conversation History */}
+          {/* Left Sidebar - Chat History */}
           <div className="w-72 border-r flex flex-col bg-gray-50">
             <div className="p-3 border-b bg-white">
               <div className="flex gap-2">
@@ -873,21 +873,21 @@ export function ConversationPage() {
               </div>
             </div>
             <div className="flex-1 overflow-y-auto">
-              {conversationsLoading ? (
+              {chatsLoading ? (
                 <div className="flex items-center justify-center py-8">
                   <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
                 </div>
-              ) : conversations.length === 0 ? (
+              ) : chats.length === 0 ? (
                 <div className="text-center py-8 text-gray-500 text-sm">
                   暂无对话，点击上方按钮开始
                 </div>
-              ) : conversations.map((conv) => (
+              ) : chats.map((conv) => (
                 <div
                   key={conv.id}
-                  onClick={() => setActiveConversationId(conv.id)}
+                  onClick={() => setActiveChatId(conv.id)}
                   className={cn(
                     'px-3 py-2.5 border-b cursor-pointer hover:bg-white transition-colors relative group',
-                    activeConversationId === conv.id && 'bg-white border-l-4 border-l-orange-500'
+                    activeChatId === conv.id && 'bg-white border-l-4 border-l-orange-500'
                   )}
                 >
                   <div className="flex items-center gap-2.5">
@@ -924,7 +924,7 @@ export function ConversationPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handlePinConversation(conv.id)
+                              handlePinChat(conv.id)
                             }}
                             className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2"
                           >
@@ -944,7 +944,7 @@ export function ConversationPage() {
                           <button
                             onClick={(e) => {
                               e.stopPropagation()
-                              handleDeleteConversation(conv.id)
+                              handleDeleteChat(conv.id)
                             }}
                             className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-red-600"
                           >
@@ -966,7 +966,7 @@ export function ConversationPage() {
             <div className="border-b px-6 py-3 bg-white">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900">
-                  {activeConversation?.title || '日常唠嗑'}
+                  {activeChat?.title || '日常唠嗑'}
                 </h2>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3 text-sm">
