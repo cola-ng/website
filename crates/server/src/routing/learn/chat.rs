@@ -884,33 +884,55 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
 
         // Generate TTS for AI response if needed
         let ai_audio_path = if let Some(tts) = provider.tts() {
-            tracing::info!("Background: Generating TTS for AI response...");
+            tracing::info!(
+                "Background: Generating TTS for AI response ({} chars)...",
+                structured_response.reply_en.len()
+            );
+            // Use English voice for English response text
             match tts
-                .synthesize(&structured_response.reply_en, None, None)
+                .synthesize(
+                    &structured_response.reply_en,
+                    Some("en_female_amanda_moon_bigtts"),
+                    None,
+                )
                 .await
             {
-                Ok(tts_response) => save_audio_file(user_id, &tts_response.audio_data, "ai").await,
+                Ok(tts_response) => {
+                    tracing::info!(
+                        "Background: TTS succeeded, saving {} bytes audio...",
+                        tts_response.audio_data.len()
+                    );
+                    save_audio_file(user_id, &tts_response.audio_data, "ai").await
+                }
                 Err(e) => {
-                    tracing::warn!("AI TTS failed: {}", e);
+                    tracing::error!("Background: AI TTS failed: {}", e);
                     None
                 }
             }
         } else {
+            tracing::warn!("Background: TTS service not available");
             None
         };
 
         // Update AI turn with response
+        tracing::info!(
+            "Background: Updating AI turn {} with audio_path={:?}",
+            ai_turn_id,
+            ai_audio_path
+        );
         if let Err(e) = update_ai_turn(
             ai_turn_id,
             structured_response.reply_en,
             structured_response.reply_zh,
-            ai_audio_path,
+            ai_audio_path.clone(),
             "completed".to_string(),
             None,
         )
         .await
         {
             tracing::error!("Failed to update AI turn: {:?}", e);
+        } else {
+            tracing::info!("Background: AI turn {} updated successfully", ai_turn_id);
         }
     });
 

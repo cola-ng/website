@@ -21,6 +21,23 @@ use crate::config::AppConfig;
 #[tokio::main]
 async fn main() {
     dotenvy::dotenv().ok();
+
+    // Initialize tracing subscriber with env filter
+    // Default to info level, can be overridden with RUST_LOG env var
+    // Example: RUST_LOG=debug or RUST_LOG=colang=debug,tower_http=debug
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
+        )
+        .with_target(true)
+        .with_thread_ids(false)
+        .with_file(true)
+        .with_line_number(true)
+        .init();
+
+    tracing::info!("Starting server...");
+
     AppConfig::init();
     let app_config = AppConfig::get();
     let bind_addr = app_config.bind_addr.clone();
