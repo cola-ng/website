@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, getChatAnnotations, type TextIssue, type ChatTurn } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, getChatIssues, type TextIssue, type ChatTurn } from '../lib/api'
 
 interface Message {
   id: string
@@ -154,23 +154,23 @@ export function ChatPage() {
           const firstChat = loadedChats[0]
           setActiveChatId(firstChat.id)
 
-          // Fetch turns and annotations for the first chat
+          // Fetch turns and issues for the first chat
           if (firstChat.serverId) {
             try {
-              const [turnsResponse, annotations] = await Promise.all([
+              const [turnsResponse, issues] = await Promise.all([
                 getChatTurns(token, firstChat.serverId, { limit: 50 }),
-                getChatAnnotations(token, firstChat.serverId),
+                getChatIssues(token, firstChat.serverId),
               ])
 
               // Create a map of turn_id -> issues for quick lookup
-              const annotationsByTurnId: Record<number, TextIssue[]> = {}
-              for (const ann of annotations) {
+              const issuesByTurnId: Record<number, TextIssue[]> = {}
+              for (const ann of issues) {
                 const turnId = ann.chat_turn_id
-                if (!annotationsByTurnId[turnId]) {
-                  annotationsByTurnId[turnId] = []
+                if (!issuesByTurnId[turnId]) {
+                  issuesByTurnId[turnId] = []
                 }
-                annotationsByTurnId[turnId].push({
-                  type: ann.annotation_type,
+                issuesByTurnId[turnId].push({
+                  type: ann.issue_type,
                   original: ann.original_text || '',
                   suggested: ann.suggested_text || '',
                   description_en: ann.description_en || '',
@@ -191,7 +191,7 @@ export function ChatPage() {
                   hasAudio: !!turn.audio_path,
                   audioPath: turn.audio_path || undefined,
                   timestamp: new Date(turn.created_at),
-                  issues: annotationsByTurnId[turn.id],
+                  issues: issuesByTurnId[turn.id],
                 }))
 
               setChats(prev => prev.map(c => {
@@ -837,21 +837,21 @@ export function ChatPage() {
     }
 
     try {
-      // Fetch turns and annotations from server with pagination
-      const [turnsResponse, annotations] = await Promise.all([
+      // Fetch turns and issues from server with pagination
+      const [turnsResponse, issues] = await Promise.all([
         getChatTurns(token, chat.serverId, { limit: 50 }),
-        getChatAnnotations(token, chat.serverId),
+        getChatIssues(token, chat.serverId),
       ])
 
       // Create a map of turn_id -> issues for quick lookup
-      const annotationsByTurnId: Record<number, TextIssue[]> = {}
-      for (const ann of annotations) {
+      const issuesByTurnId: Record<number, TextIssue[]> = {}
+      for (const ann of issues) {
         const turnId = ann.chat_turn_id
-        if (!annotationsByTurnId[turnId]) {
-          annotationsByTurnId[turnId] = []
+        if (!issuesByTurnId[turnId]) {
+          issuesByTurnId[turnId] = []
         }
-        annotationsByTurnId[turnId].push({
-          type: ann.annotation_type,
+        issuesByTurnId[turnId].push({
+          type: ann.issue_type,
           original: ann.original_text || '',
           suggested: ann.suggested_text || '',
           description_en: ann.description_en || '',
@@ -873,7 +873,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
-          issues: annotationsByTurnId[turn.id],
+          issues: issuesByTurnId[turn.id],
         }))
 
       setChats(prev => prev.map(c => {

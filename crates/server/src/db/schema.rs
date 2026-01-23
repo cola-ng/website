@@ -533,12 +533,12 @@ diesel::table! {
 }
 
 diesel::table! {
-    learn_chat_annotations (id) {
+    learn_chat_issues (id) {
         id -> Int8,
         user_id -> Int8,
         chat_id -> Int8,
         chat_turn_id -> Int8,
-        annotation_type -> Text,
+        issue_type -> Text,
         start_position -> Nullable<Int4>,
         end_position -> Nullable<Int4>,
         original_text -> Nullable<Text>,
@@ -798,7 +798,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     dict_word_sentences,
     dict_words,
     learn_achievements,
-    learn_chat_annotations,
+    learn_chat_issues,
     learn_chat_turns,
     learn_chats,
     learn_daily_stats,

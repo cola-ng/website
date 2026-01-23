@@ -118,17 +118,17 @@ pub struct NewChatTurn {
 }
 
 // ============================================================================
-// Chat Annotations (feedback on chat turns)
+// Chat Issues (feedback on chat turns)
 // ============================================================================
 
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
-#[diesel(table_name = learn_chat_annotations)]
-pub struct ChatAnnotation {
+#[diesel(table_name = learn_chat_issues)]
+pub struct ChatIssue {
     pub id: i64,
     pub user_id: i64,
     pub chat_id: i64,
     pub chat_turn_id: i64,
-    pub annotation_type: String,
+    pub issue_type: String,
     pub start_position: Option<i32>,
     pub end_position: Option<i32>,
     pub original_text: Option<String>,
@@ -140,12 +140,12 @@ pub struct ChatAnnotation {
 }
 
 #[derive(Insertable, Deserialize)]
-#[diesel(table_name = learn_chat_annotations)]
-pub struct NewChatAnnotation {
+#[diesel(table_name = learn_chat_issues)]
+pub struct NewChatIssue {
     pub user_id: i64,
     pub chat_id: i64,
     pub chat_turn_id: i64,
-    pub annotation_type: String,
+    pub issue_type: String,
     pub start_position: Option<i32>,
     pub end_position: Option<i32>,
     pub original_text: Option<String>,

@@ -897,16 +897,16 @@ export function listChats(token: string, limit = 50): Promise<LearnChat[]> {
 }
 
 // ============================================================================
-// Chat Annotations API
+// Chat Issues API
 // ============================================================================
 
-/** Chat annotation (grammar/vocabulary feedback) */
-export type ChatAnnotation = {
+/** Chat issue (grammar/vocabulary feedback) */
+export type ChatIssue = {
   id: number
   user_id: number
   chat_id: number
   chat_turn_id: number
-  annotation_type: string
+  issue_type: string
   start_position: number | null
   end_position: number | null
   original_text: string | null
@@ -918,24 +918,24 @@ export type ChatAnnotation = {
 }
 
 /**
- * Get annotations for a specific chat
+ * Get issues for a specific chat
  * @param token Auth token
  * @param chatId Chat ID
  */
-export function getChatAnnotations(token: string, chatId: number): Promise<ChatAnnotation[]> {
-  return requestJson<ChatAnnotation[]>(`/api/learn/chats/${chatId}/annotations`, {
+export function getChatIssues(token: string, chatId: number): Promise<ChatIssue[]> {
+  return requestJson<ChatIssue[]>(`/api/learn/chats/${chatId}/issues`, {
     method: 'GET',
     token,
   })
 }
 
 /**
- * Get annotations for a specific chat turn
+ * Get issues for a specific chat turn
  * @param token Auth token
  * @param turnId Turn ID
  */
-export function getTurnAnnotations(token: string, turnId: number): Promise<ChatAnnotation[]> {
-  return requestJson<ChatAnnotation[]>(`/api/learn/chats/turns/${turnId}/annotations`, {
+export function getTurnIssues(token: string, turnId: number): Promise<ChatIssue[]> {
+  return requestJson<ChatIssue[]>(`/api/learn/chats/turns/${turnId}/issues`, {
     method: 'GET',
     token,
   })

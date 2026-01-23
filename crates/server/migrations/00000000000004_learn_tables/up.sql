@@ -59,14 +59,14 @@ CREATE TABLE IF NOT EXISTS learn_chat_turns (
 CREATE INDEX IF NOT EXISTS idx_learn_chat_turns_user_chat ON learn_chat_turns(user_id, chat_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_learn_chat_turns_created ON learn_chat_turns(created_at);
 
--- Table: learn_chat_annotations - Stores annotations and issues found in learn_chats
-CREATE TABLE IF NOT EXISTS learn_chat_annotations (
+-- Table: learn_chat_issues - Stores issues and issues found in learn_chats
+CREATE TABLE IF NOT EXISTS learn_chat_issues (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
     chat_id BIGINT NOT NULL,
     chat_turn_id BIGINT NOT NULL,
-    annotation_type TEXT NOT NULL CHECK(
-        annotation_type IN ('pronunciation_error', 'grammar_error', 'word_choice',
+    issue_type TEXT NOT NULL CHECK(
+        issue_type IN ('pronunciation_error', 'grammar_error', 'word_choice',
                            'fluency_issue', 'suggestion', 'correction')
     ),
     start_position INTEGER,
@@ -78,8 +78,8 @@ CREATE TABLE IF NOT EXISTS learn_chat_annotations (
     severity TEXT CHECK(severity IN ('low', 'medium', 'high')) DEFAULT 'medium',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS idx_annotations_chat ON learn_chat_annotations(chat_id, chat_turn_id);
-CREATE INDEX IF NOT EXISTS idx_annotations_user ON learn_chat_annotations(user_id, annotation_type);
+CREATE INDEX IF NOT EXISTS idx_issues_chat ON learn_chat_issues(chat_id, chat_turn_id);
+CREATE INDEX IF NOT EXISTS idx_issues_user ON learn_chat_issues(user_id, issue_type);
 
 -- Table: learn_word_practices - Logs each time a word is practiced
 CREATE TABLE IF NOT EXISTS learn_practices (

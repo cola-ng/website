@@ -13,7 +13,7 @@ use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::{
-    Chat, ChatAnnotation, ChatTurn, NewChat, NewChatAnnotation, NewChatTurn,
+    Chat, ChatIssue, ChatTurn, NewChat, NewChatIssue, NewChatTurn,
 };
 use crate::services::{AiProviderError, ChatMessage, TextIssue, UserInputAnalysis, create_provider_from_env};
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
@@ -775,23 +775,23 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     )
     .await?;
 
-    // Save chat annotations if any issues were found in user input
+    // Save chat issues if any issues were found in user input
     if !user_analysis.issues.is_empty() {
         tracing::info!(
-            "Saving {} chat annotations for user turn {}",
+            "Saving {} chat issues for user turn {}",
             user_analysis.issues.len(),
             user_turn.id
         );
 
         let user_turn_id = user_turn.id;
-        let annotations: Vec<NewChatAnnotation> = user_analysis
+        let issues: Vec<NewChatIssue> = user_analysis
             .issues
             .iter()
-            .map(|issue| NewChatAnnotation {
+            .map(|issue| NewChatIssue {
                 user_id,
                 chat_id,
                 chat_turn_id: user_turn_id,
-                annotation_type: issue.issue_type.clone(),
+                issue_type: issue.issue_type.clone(),
                 start_position: issue.start_position,
                 end_position: issue.end_position,
                 original_text: Some(issue.original.clone()),
@@ -803,16 +803,16 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             .collect();
 
         if let Err(e) = with_conn(move |conn| {
-            diesel::insert_into(learn_chat_annotations::table)
-                .values(&annotations)
+            diesel::insert_into(learn_chat_issues::table)
+                .values(&issues)
                 .execute(conn)
         })
         .await
         {
-            tracing::error!("Failed to save chat annotations: {:?}", e);
+            tracing::error!("Failed to save chat issues: {:?}", e);
         } else {
             tracing::info!(
-                "Saved {} annotations successfully",
+                "Saved {} issues successfully",
                 user_analysis.issues.len()
             );
         }
@@ -1048,14 +1048,14 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
 }
 
 // ============================================================================
-// Chat Annotations API
+// Chat Issues API
 // ============================================================================
 
-/// List annotations for a specific chat
+/// List issues for a specific chat
 ///
-/// Path: /learn/chats/{id}/annotations
+/// Path: /learn/chats/{id}/issues
 #[handler]
-pub async fn list_chat_annotations(
+pub async fn list_chat_issues(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
@@ -1081,26 +1081,26 @@ pub async fn list_chat_annotations(
         return Err(StatusError::not_found().brief("chat not found").into());
     }
 
-    // Get all annotations for this chat
-    let annotations: Vec<ChatAnnotation> = with_conn(move |conn| {
-        learn_chat_annotations::table
-            .filter(learn_chat_annotations::chat_id.eq(chat_id))
-            .filter(learn_chat_annotations::user_id.eq(user_id))
-            .order(learn_chat_annotations::created_at.asc())
-            .load::<ChatAnnotation>(conn)
+    // Get all issues for this chat
+    let issues: Vec<ChatIssue> = with_conn(move |conn| {
+        learn_chat_issues::table
+            .filter(learn_chat_issues::chat_id.eq(chat_id))
+            .filter(learn_chat_issues::user_id.eq(user_id))
+            .order(learn_chat_issues::created_at.asc())
+            .load::<ChatIssue>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list issues"))?;
 
-    res.render(Json(annotations));
+    res.render(Json(issues));
     Ok(())
 }
 
-/// List annotations for a specific chat turn
+/// List issues for a specific chat turn
 ///
-/// Path: /learn/chats/turns/{id}/annotations
+/// Path: /learn/chats/turns/{id}/issues
 #[handler]
-pub async fn list_turn_annotations(
+pub async fn list_turn_issues(
     req: &mut Request,
     depot: &mut Depot,
     res: &mut Response,
@@ -1128,18 +1128,18 @@ pub async fn list_turn_annotations(
             .into());
     }
 
-    // Get annotations for this turn
-    let annotations: Vec<ChatAnnotation> = with_conn(move |conn| {
-        learn_chat_annotations::table
-            .filter(learn_chat_annotations::chat_turn_id.eq(turn_id))
-            .filter(learn_chat_annotations::user_id.eq(user_id))
-            .order(learn_chat_annotations::created_at.asc())
-            .load::<ChatAnnotation>(conn)
+    // Get issues for this turn
+    let issues: Vec<ChatIssue> = with_conn(move |conn| {
+        learn_chat_issues::table
+            .filter(learn_chat_issues::chat_turn_id.eq(turn_id))
+            .filter(learn_chat_issues::user_id.eq(user_id))
+            .order(learn_chat_issues::created_at.asc())
+            .load::<ChatIssue>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list issues"))?;
 
-    res.render(Json(annotations));
+    res.render(Json(issues));
     Ok(())
 }
 
