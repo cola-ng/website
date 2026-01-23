@@ -1,12 +1,39 @@
+use std::path::PathBuf;
+
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
+use chrono::Utc;
 use diesel::prelude::*;
+use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::{AppResult, DepotExt};
+use crate::services::{create_provider_from_env, AiProviderError, ChatMessage};
+use crate::{json_ok, AppResult, DepotExt, JsonResult, OkResponse};
+
+// Type aliases for backward compatibility
+type ChatSession = Chat;
+type NewChatSession = NewChat;
+type DbChatMessage = ChatTurn;
+
+/// History message for API response
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct HistoryMessage {
+    pub role: String,
+    pub content: String,
+}
+
+impl From<ChatTurn> for HistoryMessage {
+    fn from(msg: ChatTurn) -> Self {
+        HistoryMessage {
+            role: msg.speaker,
+            content: msg.content_en,
+        }
+    }
+}
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateChatRequest {
@@ -236,25 +263,13 @@ pub struct TtsRequest {
     pub speed: Option<f32>,
 }
 
-/// Response for voice/text chat
+/// Response for voice/text chat - returns two chat turns
 #[derive(Debug, Serialize, ToSchema)]
-pub struct ChatResponse {
-    /// Language of user input: "en" | "zh" | "mix"
-    pub use_lang: String,
-    /// User text in English (original or transcribed)
-    pub user_text_en: String,
-    /// User text in Chinese
-    pub user_text_zh: String,
-    /// AI's text response in English
-    pub ai_text_en: String,
-    /// AI's text response in Chinese
-    pub ai_text_zh: String,
-    /// Base64 encoded audio of user's message (if audio input or TTS generated)
-    pub user_audio_base64: Option<String>,
-    /// Base64 encoded audio of AI response
-    pub ai_audio_base64: Option<String>,
-    /// Grammar/word choice issues found in user's text
-    pub issues: Vec<TextIssue>,
+pub struct ChatSendResponse {
+    /// User's chat turn (status: completed)
+    pub user_turn: ChatTurn,
+    /// AI's chat turn (status: processing, will be updated async)
+    pub ai_turn: ChatTurn,
 }
 
 /// Response for TTS only
@@ -350,11 +365,12 @@ struct SaveMessageParams {
     audio_path: Option<String>,
 }
 
-/// Save a single message to database
-async fn save_message(params: SaveMessageParams) -> Result<(), StatusError> {
+/// Save a single message to database and return the created turn
+async fn save_message(params: SaveMessageParams, status: &str) -> Result<ChatTurn, StatusError> {
+    let status = status.to_string();
     with_conn(move |conn| {
         diesel::insert_into(learn_chat_turns::table)
-            .values(&NewChatMessage {
+            .values(&NewChatTurn {
                 user_id: params.user_id,
                 chat_id: params.chat_id,
                 speaker: params.speaker,
@@ -366,9 +382,9 @@ async fn save_message(params: SaveMessageParams) -> Result<(), StatusError> {
                 words_per_minute: None,
                 pause_count: None,
                 hesitation_count: None,
+                status,
             })
-            .execute(conn)?;
-        Ok(())
+            .get_result::<ChatTurn>(conn)
     })
     .await
     .map_err(|e| {
@@ -436,15 +452,45 @@ async fn clear_user_session(user_id: i64) -> Result<(), StatusError> {
 // API Handlers
 // ============================================================================
 
-/// Send audio or text and receive AI response with audio
+/// Update AI turn with response content
+async fn update_ai_turn(
+    turn_id: i64,
+    content_en: String,
+    content_zh: String,
+    audio_path: Option<String>,
+    status: String,
+    error: Option<String>,
+) -> Result<(), StatusError> {
+    with_conn(move |conn| {
+        diesel::update(learn_chat_turns::table.find(turn_id))
+            .set((
+                learn_chat_turns::content_en.eq(content_en),
+                learn_chat_turns::content_zh.eq(content_zh),
+                learn_chat_turns::audio_path.eq(audio_path),
+                learn_chat_turns::status.eq(status),
+                learn_chat_turns::error.eq(error),
+            ))
+            .execute(conn)?;
+        Ok(())
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to update AI turn: {:?}", e);
+        StatusError::internal_server_error().brief("database error")
+    })
+}
+
+/// Send audio or text chat message
+///
+/// Returns two chat turns immediately:
+/// - User turn (status: completed)
+/// - AI turn (status: processing) - will be updated async
 ///
 /// Accepts either audio or text input:
 /// - Audio input: Transcribed to text using ASR, audio file is saved
 /// - Text input: Optionally converted to audio using TTS
-///
-/// Uses structured output from AI (Doubao) to get bilingual response and grammar analysis
 #[endpoint(tags("Chat"))]
-pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatResponse> {
+pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatSendResponse> {
     let user_id = depot.user_id()?;
 
     // Read body with larger size limit for audio (50MB)
@@ -452,35 +498,21 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
         .payload_with_max_size(50 * 1024 * 1024)
         .await
         .map_err(|e| {
-            tracing::error!("chat_send: failed to read body: {:?}", e);
+            tracing::error!("send_chat: failed to read body: {:?}", e);
             StatusError::bad_request().brief("failed to read body")
         })?;
 
     // Parse JSON
     let input: ChatSendRequest = serde_json::from_slice(&body_bytes).map_err(|e| {
-        tracing::error!("chat_send: parse_json error: {:?}", e);
+        tracing::error!("send_chat: parse_json error: {:?}", e);
         StatusError::bad_request().brief("invalid json")
     })?;
-
-    // Get AI provider
-    let provider = create_provider_from_env()
-        .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
 
     // Get or create session
     let session = get_or_create_session(user_id).await?;
     let chat_id = format!("chat_{}", session.id);
 
-    // Get history from database
-    let history_messages = get_session_history(chat_id.clone()).await?;
-    let history: Vec<ChatMessage> = history_messages
-        .into_iter()
-        .map(|m| ChatMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect();
-
-    // Process based on input type
+    // Process based on input type - transcribe audio if needed
     let (user_text, user_audio_data, generate_audio) = match &input {
         ChatSendRequest::Audio { audio_base64 } => {
             // Decode audio
@@ -493,6 +525,10 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
                     .brief("audio data is empty")
                     .into());
             }
+
+            // Get AI provider for ASR
+            let provider = create_provider_from_env()
+                .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
 
             // Transcribe audio to text using ASR
             let asr = provider.asr().ok_or_else(|| {
@@ -535,28 +571,6 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
         }
     };
 
-    // Get chat service for structured output
-    let chat_service = provider
-        .chat_service()
-        .ok_or_else(|| StatusError::internal_server_error().brief("Chat service not available"))?;
-
-    // Generate AI response with structured output
-    tracing::info!("Calling {} chat_structured API...", provider.name());
-    let structured_response = chat_service
-        .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
-        .await
-        .map_err(|e: AiProviderError| {
-            tracing::error!("{} chat_structured error: {:?}", provider.name(), e);
-            StatusError::internal_server_error().brief(e.to_string())
-        })?;
-    tracing::info!(
-        "{} chat_structured API completed: use_lang={}, reply_en_len={}, issues={}",
-        provider.name(),
-        structured_response.use_lang,
-        structured_response.reply_en.len(),
-        structured_response.issues.len()
-    );
-
     // Save user's audio file if provided
     let user_audio_path = if let Some(audio_data) = &user_audio_data {
         save_audio_file(user_id, audio_data, "user").await
@@ -564,125 +578,164 @@ pub async fn chat_send(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatR
         None
     };
 
-    // Generate TTS for user's text input if no audio was provided
-    let (user_audio_base64, user_tts_audio_data) = if user_audio_data.is_some() {
-        // User provided audio, encode it for response
-        (user_audio_data.as_ref().map(|d| BASE64.encode(d)), None)
-    } else if generate_audio {
-        // Generate TTS for user's text
-        if let Some(tts) = provider.tts() {
-            tracing::info!("Generating TTS for user text...");
-            match tts.synthesize(&user_text, None, None).await {
-                Ok(tts_response) => {
-                    let audio_base64 = BASE64.encode(&tts_response.audio_data);
-                    (Some(audio_base64), Some(tts_response.audio_data))
-                }
-                Err(e) => {
-                    tracing::warn!("User TTS failed: {}", e);
-                    (None, None)
-                }
-            }
-        } else {
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
-
-    // Save user's TTS audio if generated
-    let final_user_audio_path = if user_audio_path.is_some() {
-        user_audio_path
-    } else if let Some(tts_audio) = &user_tts_audio_data {
-        save_audio_file(user_id, tts_audio, "user_tts").await
-    } else {
-        None
-    };
-
-    // Generate TTS for AI response
-    let (ai_audio_base64, ai_audio_data) = if generate_audio {
-        if let Some(tts) = provider.tts() {
-            tracing::info!("Calling {} TTS API for AI response...", provider.name());
-            match tts
-                .synthesize(&structured_response.reply_en, None, None)
-                .await
-            {
-                Ok(tts_response) => {
-                    tracing::info!("{} TTS API completed successfully", provider.name());
-                    (
-                        Some(BASE64.encode(&tts_response.audio_data)),
-                        Some(tts_response.audio_data),
-                    )
-                }
-                Err(e) => {
-                    tracing::warn!("AI TTS failed: {}", e);
-                    (None, None)
-                }
-            }
-        } else {
-            tracing::warn!("TTS not available for provider {}", provider.name());
-            (None, None)
-        }
-    } else {
-        (None, None)
-    };
-
-    // Save AI's audio file if generated
-    let ai_audio_path = if let Some(audio_data) = &ai_audio_data {
-        save_audio_file(user_id, audio_data, "ai").await
-    } else {
-        None
-    };
-
-    // Save user message to database
-    save_message(SaveMessageParams {
-        user_id,
-        chat_id: chat_id.clone(),
-        speaker: "user".to_string(),
-        use_lang: structured_response.use_lang.clone(),
-        content_en: structured_response.original_en.clone(),
-        content_zh: structured_response.original_zh.clone(),
-        audio_path: final_user_audio_path,
-    })
+    // Create user turn (status: completed)
+    let user_turn = save_message(
+        SaveMessageParams {
+            user_id,
+            chat_id: chat_id.clone(),
+            speaker: "user".to_string(),
+            use_lang: "en".to_string(), // Will be determined by AI later
+            content_en: user_text.clone(),
+            content_zh: String::new(), // Will be translated by AI
+            audio_path: user_audio_path,
+        },
+        "completed",
+    )
     .await?;
 
-    // Save AI message to database
-    save_message(SaveMessageParams {
-        user_id,
-        chat_id,
-        speaker: "assistant".to_string(),
-        use_lang: "en".to_string(),
-        content_en: structured_response.reply_en.clone(),
-        content_zh: structured_response.reply_zh.clone(),
-        audio_path: ai_audio_path,
-    })
+    // Create AI turn placeholder (status: processing)
+    let ai_turn = save_message(
+        SaveMessageParams {
+            user_id,
+            chat_id: chat_id.clone(),
+            speaker: "assistant".to_string(),
+            use_lang: "en".to_string(),
+            content_en: String::new(),
+            content_zh: String::new(),
+            audio_path: None,
+        },
+        "processing",
+    )
     .await?;
 
-    // Convert issues to response format
-    let issues: Vec<TextIssue> = structured_response
-        .issues
-        .into_iter()
-        .map(|issue| TextIssue {
-            issue_type: issue.issue_type,
-            original: issue.original,
-            suggested: issue.suggested,
-            description_en: issue.description_en,
-            description_zh: issue.description_zh,
-            severity: issue.severity,
-            start_position: issue.start_position,
-            end_position: issue.end_position,
-        })
-        .collect();
+    // Spawn background task for AI processing
+    let ai_turn_id = ai_turn.id;
+    tokio::spawn(async move {
+        // Get AI provider
+        let provider = match create_provider_from_env() {
+            Some(p) => p,
+            None => {
+                tracing::error!("AI provider not configured for background task");
+                let _ = update_ai_turn(
+                    ai_turn_id,
+                    String::new(),
+                    String::new(),
+                    None,
+                    "error".to_string(),
+                    Some("AI provider not configured".to_string()),
+                )
+                .await;
+                return;
+            }
+        };
 
-    json_ok(ChatResponse {
-        use_lang: structured_response.use_lang,
-        user_text_en: structured_response.original_en,
-        user_text_zh: structured_response.original_zh,
-        ai_text_en: structured_response.reply_en,
-        ai_text_zh: structured_response.reply_zh,
-        user_audio_base64,
-        ai_audio_base64,
-        issues,
-    })
+        // Get history from database
+        let history_messages = match get_session_history(chat_id.clone()).await {
+            Ok(msgs) => msgs,
+            Err(e) => {
+                tracing::error!("Failed to get history: {:?}", e);
+                let _ = update_ai_turn(
+                    ai_turn_id,
+                    String::new(),
+                    String::new(),
+                    None,
+                    "error".to_string(),
+                    Some("Failed to get chat history".to_string()),
+                )
+                .await;
+                return;
+            }
+        };
+
+        let history: Vec<ChatMessage> = history_messages
+            .into_iter()
+            .filter(|m| m.role != "assistant" || !m.content.is_empty()) // Skip empty AI turns
+            .map(|m| ChatMessage {
+                role: m.role,
+                content: m.content,
+            })
+            .collect();
+
+        // Get chat service for structured output
+        let chat_service = match provider.chat_service() {
+            Some(s) => s,
+            None => {
+                tracing::error!("Chat service not available");
+                let _ = update_ai_turn(
+                    ai_turn_id,
+                    String::new(),
+                    String::new(),
+                    None,
+                    "error".to_string(),
+                    Some("Chat service not available".to_string()),
+                )
+                .await;
+                return;
+            }
+        };
+
+        // Generate AI response with structured output
+        tracing::info!("Background: Calling {} chat_structured API...", provider.name());
+        let structured_response = match chat_service
+            .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
+            .await
+        {
+            Ok(resp) => resp,
+            Err(e) => {
+                tracing::error!("{} chat_structured error: {:?}", provider.name(), e);
+                let _ = update_ai_turn(
+                    ai_turn_id,
+                    String::new(),
+                    String::new(),
+                    None,
+                    "error".to_string(),
+                    Some(format!("AI error: {}", e)),
+                )
+                .await;
+                return;
+            }
+        };
+
+        tracing::info!(
+            "Background: {} chat_structured API completed: reply_en_len={}",
+            provider.name(),
+            structured_response.reply_en.len()
+        );
+
+        // Generate TTS for AI response if needed
+        let ai_audio_path = if generate_audio {
+            if let Some(tts) = provider.tts() {
+                tracing::info!("Background: Generating TTS for AI response...");
+                match tts.synthesize(&structured_response.reply_en, None, None).await {
+                    Ok(tts_response) => save_audio_file(user_id, &tts_response.audio_data, "ai").await,
+                    Err(e) => {
+                        tracing::warn!("AI TTS failed: {}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Update AI turn with response
+        if let Err(e) = update_ai_turn(
+            ai_turn_id,
+            structured_response.reply_en,
+            structured_response.reply_zh,
+            ai_audio_path,
+            "completed".to_string(),
+            None,
+        )
+        .await
+        {
+            tracing::error!("Failed to update AI turn: {:?}", e);
+        }
+    });
+
+    json_ok(ChatSendResponse { user_turn, ai_turn })
 }
 
 /// Convert text to speech only

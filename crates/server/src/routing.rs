@@ -85,7 +85,7 @@ fn simple_corrections(message: &str) -> Vec<String> {
 
 /// Simple chat endpoint (deprecated, use /api/chat/send instead)
 #[endpoint(tags("Chat"))]
-pub async fn chat_send(
+pub async fn send_chat(
     input: JsonBody<ChatSendRequest>,
     depot: &mut Depot,
 ) -> Result<Json<ChatSendResponse>, StatusError> {
@@ -118,16 +118,6 @@ pub async fn chat_send(
         corrections,
         suggestions,
     }))
-}
-
-fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {
-    let raw = req
-        .params()
-        .get(key)
-        .cloned()
-        .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
-    raw.parse()
-        .map_err(|_| StatusError::bad_request().brief("invalid id"))
 }
 
 // #[handler]

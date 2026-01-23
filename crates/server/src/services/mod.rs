@@ -2,11 +2,7 @@ pub mod ai_provider;
 pub mod bigmodel;
 pub mod doubao;
 
-pub use ai_provider::{
-    AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService,
-    PronunciationAnalysis, PronunciationService, ProviderConfig, StructuredChatResponse,
-    TextIssue, TtsResponse, TtsService, VoiceChatResponse, WordPronunciationScore, WordTiming,
-};
+pub use ai_provider::{AiProvider, AiProviderError, ChatMessage, ProviderConfig};
 pub use bigmodel::BigModelClient;
 pub use doubao::DoubaoClient;
 

@@ -580,40 +580,7 @@ export type TextIssue = {
   end_position: number | null
 }
 
-/** Response for chat_send - returns immediately with user turn info */
-export type ChatSendResponse = {
-  /** User's chat turn ID (for polling AI response) */
-  turn_id: number
-  /** Language of user input: "en" | "zh" | "mix" */
-  use_lang: string
-  /** User text in English (original or transcribed) */
-  user_text_en: string
-  /** User text in Chinese */
-  user_text_zh: string
-  /** Base64 encoded audio of user's message (if audio input) */
-  user_audio_base64: string | null
-}
-
-/** Response status for AI response polling */
-export type ResponseStatus = 'pending' | 'processing' | 'completed' | 'error' | 'timeout'
-
-/** Response for /chat/resp/{id} endpoint */
-export type ChatResponsePoll = {
-  /** Status of the AI response */
-  status: ResponseStatus
-  /** AI's text response in English (if completed) */
-  ai_text_en: string | null
-  /** AI's text response in Chinese (if completed) */
-  ai_text_zh: string | null
-  /** Base64 encoded audio of AI response (if completed) */
-  ai_audio_base64: string | null
-  /** Grammar/word choice issues (if completed) */
-  issues: TextIssue[] | null
-  /** Error message (if error status) */
-  error_message: string | null
-}
-
-/** Full chat response (combined user message and AI response) */
+/** Chat response */
 export type ChatResponse = {
   /** Language of user input: "en" | "zh" | "mix" */
   use_lang: string
@@ -639,16 +606,17 @@ export type TtsResponse = {
 
 /**
  * Send audio for voice chat
+ * Returns two turns: user (completed) and AI (processing)
  * @param token Auth token
  * @param chatId Chat ID
  * @param audioBase64 Base64 encoded audio (WAV format)
  */
-export function voiceChatSendAsync(
+export function voiceChatSend(
   token: string,
   chatId: number,
   audioBase64: string
-): Promise<ChatResponse> {
-  return requestJson<ChatResponse>(`/api/learn/chats/${chatId}/send`, {
+): Promise<ChatSendResponse> {
+  return requestJson<ChatSendResponse>(`/api/learn/chats/${chatId}/send`, {
     method: 'POST',
     token,
     body: JSON.stringify({
@@ -660,18 +628,19 @@ export function voiceChatSendAsync(
 
 /**
  * Send text for chat
+ * Returns two turns: user (completed) and AI (processing)
  * @param token Auth token
  * @param chatId Chat ID
  * @param message Text message
  * @param generateAudio Whether to generate audio response
  */
-export function textChatSendAsync(
+export function textChatSend(
   token: string,
   chatId: number,
   message: string,
   generateAudio: boolean = true
-): Promise<ChatResponse> {
-  return requestJson<ChatResponse>(`/api/learn/chats/${chatId}/send`, {
+): Promise<ChatSendResponse> {
+  return requestJson<ChatSendResponse>(`/api/learn/chats/${chatId}/send`, {
     method: 'POST',
     token,
     body: JSON.stringify({
@@ -680,78 +649,6 @@ export function textChatSendAsync(
       generate_audio: generateAudio,
     }),
   })
-}
-
-/**
- * Send audio for voice chat and wait for complete response
- * @param token Auth token
- * @param audioBase64 Base64 encoded audio (WAV format)
- * @param onUserMessage Callback when user message is ready (before AI response)
- */
-export async function voiceChatSend(
-  token: string,
-  audioBase64: string,
-  onUserMessage?: (msg: ChatSendResponse) => void
-): Promise<ChatResponse> {
-  const sendResp = await voiceChatSendAsync(token, audioBase64)
-  onUserMessage?.(sendResp)
-
-  const pollResp = await pollChatResponse(token, sendResp.turn_id)
-
-  if (pollResp.status === 'error') {
-    throw new Error(pollResp.error_message || 'AI response failed')
-  }
-  if (pollResp.status === 'timeout') {
-    throw new Error(pollResp.error_message || 'Server response too slow')
-  }
-
-  return {
-    use_lang: sendResp.use_lang,
-    user_text_en: sendResp.user_text_en,
-    user_text_zh: sendResp.user_text_zh,
-    ai_text_en: pollResp.ai_text_en || '',
-    ai_text_zh: pollResp.ai_text_zh || '',
-    user_audio_base64: sendResp.user_audio_base64,
-    ai_audio_base64: pollResp.ai_audio_base64,
-    issues: pollResp.issues || [],
-  }
-}
-
-/**
- * Send text for chat and wait for complete response
- * @param token Auth token
- * @param message Text message
- * @param generateAudio Whether to generate audio response
- * @param onUserMessage Callback when user message is ready (before AI response)
- */
-export async function textChatSend(
-  token: string,
-  message: string,
-  generateAudio: boolean = true,
-  onUserMessage?: (msg: ChatSendResponse) => void
-): Promise<ChatResponse> {
-  const sendResp = await textChatSendAsync(token, message, generateAudio)
-  onUserMessage?.(sendResp)
-
-  const pollResp = await pollChatResponse(token, sendResp.turn_id)
-
-  if (pollResp.status === 'error') {
-    throw new Error(pollResp.error_message || 'AI response failed')
-  }
-  if (pollResp.status === 'timeout') {
-    throw new Error(pollResp.error_message || 'Server response too slow')
-  }
-
-  return {
-    use_lang: sendResp.use_lang,
-    user_text_en: sendResp.user_text_en,
-    user_text_zh: sendResp.user_text_zh,
-    ai_text_en: pollResp.ai_text_en || '',
-    ai_text_zh: pollResp.ai_text_zh || '',
-    user_audio_base64: sendResp.user_audio_base64,
-    ai_audio_base64: pollResp.ai_audio_base64,
-    issues: pollResp.issues || [],
-  }
 }
 
 /**
@@ -775,25 +672,104 @@ export function textToSpeech(
 }
 
 /**
- * Clear chat history on server
+ * Delete all chats for current user
  * @param token Auth token
  */
-export function clearChatHistory(token: string): Promise<{ ok: boolean }> {
-  return requestJson<{ ok: boolean }>('/api/chat/clear', {
-    method: 'POST',
+export function clearAllChats(token: string): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>('/api/learn/chats', {
+    method: 'DELETE',
+    token,
+  })
+}
+
+/** Chat turn status */
+export type ChatTurnStatus = 'processing' | 'completed' | 'error'
+
+/** Chat turn from history */
+export type ChatTurn = {
+  id: number
+  user_id: number
+  chat_id: string
+  speaker: string
+  use_lang: string
+  content_en: string
+  content_zh: string
+  audio_path: string | null
+  duration_ms: number | null
+  words_per_minute: number | null
+  pause_count: number | null
+  hesitation_count: number | null
+  status: ChatTurnStatus
+  error: string | null
+  created_at: string
+}
+
+/** Response from send_chat - returns two turns */
+export type ChatSendResponse = {
+  /** User's chat turn (status: completed) */
+  user_turn: ChatTurn
+  /** AI's chat turn (status: processing, will be updated async) */
+  ai_turn: ChatTurn
+}
+
+/**
+ * Get chat turns for a specific chat
+ * @param token Auth token
+ * @param chatId Chat ID
+ * @param limit Max number of turns to return
+ */
+export function getChatTurns(token: string, chatId: number, limit = 100): Promise<ChatTurn[]> {
+  return requestJson<ChatTurn[]>(`/api/learn/chats/${chatId}/turns?limit=${limit}`, {
+    method: 'GET',
     token,
   })
 }
 
 /**
- * Get chat history from server
+ * Get all chat turns for current user
  * @param token Auth token
+ * @param limit Max number of turns to return
  */
-export function getChatHistory(token: string): Promise<{ messages: { role: string; content: string }[] }> {
-  return requestJson<{ messages: { role: string; content: string }[] }>('/api/chat/history', {
+export function getAllChatTurns(token: string, limit = 100): Promise<ChatTurn[]> {
+  return requestJson<ChatTurn[]>(`/api/learn/chats/turns?limit=${limit}`, {
     method: 'GET',
     token,
   })
+}
+
+/**
+ * Poll for a chat turn to complete
+ * @param token Auth token
+ * @param chatId Chat ID
+ * @param turnId Turn ID to poll
+ * @param intervalMs Polling interval in ms (default 1000)
+ * @param maxAttempts Max polling attempts (default 60)
+ * @returns The completed or errored turn
+ */
+export async function pollChatTurn(
+  token: string,
+  chatId: number,
+  turnId: number,
+  intervalMs = 1000,
+  maxAttempts = 60
+): Promise<ChatTurn> {
+  for (let i = 0; i < maxAttempts; i++) {
+    const turns = await getChatTurns(token, chatId, 10)
+    const turn = turns.find((t) => t.id === turnId)
+
+    if (!turn) {
+      throw new Error('Turn not found')
+    }
+
+    if (turn.status === 'completed' || turn.status === 'error') {
+      return turn
+    }
+
+    // Wait before next poll
+    await new Promise((resolve) => setTimeout(resolve, intervalMs))
+  }
+
+  throw new Error('Polling timeout')
 }
 
 // ============================================================================
