@@ -38,7 +38,6 @@ pub fn router() -> Router {
         .push(
             Router::with_path("chat-annotations")
                 .get(chat::list_chat_annotations)
-                .post(chat::create_chat_annotation)
                 .delete(reset::reset_chat_annotations),
         )
         .push(

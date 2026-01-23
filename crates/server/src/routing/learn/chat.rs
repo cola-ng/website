@@ -220,20 +220,6 @@ pub async fn create_chat_turn(
 // Chat Annotations API
 // ============================================================================
 
-#[derive(Deserialize, ToSchema)]
-pub struct CreateChatAnnotationRequest {
-    chat_id: i64,
-    chat_turn_id: i64,
-    annotation_type: String,
-    start_position: Option<i32>,
-    end_position: Option<i32>,
-    original_text: Option<String>,
-    suggested_text: Option<String>,
-    description_en: Option<String>,
-    description_zh: Option<String>,
-    severity: Option<String>,
-}
-
 #[handler]
 pub async fn list_chat_annotations(
     req: &mut Request,
@@ -261,44 +247,5 @@ pub async fn list_chat_annotations(
     .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
 
     res.render(Json(annotations));
-    Ok(())
-}
-
-#[handler]
-pub async fn create_chat_annotation(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
-    let user_id = depot.user_id()?;
-    let input: CreateChatAnnotationRequest = req
-        .parse_json()
-        .await
-        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
-
-    let new_annotation = NewChatAnnotation {
-        user_id,
-        chat_id: input.chat_id,
-        chat_turn_id: input.chat_turn_id,
-        annotation_type: input.annotation_type,
-        start_position: input.start_position,
-        end_position: input.end_position,
-        original_text: input.original_text,
-        suggested_text: input.suggested_text,
-        description_en: input.description_en,
-        description_zh: input.description_zh,
-        severity: input.severity,
-    };
-
-    let annotation: ChatAnnotation = with_conn(move |conn| {
-        diesel::insert_into(learn_chat_annotations::table)
-            .values(&new_annotation)
-            .get_result::<ChatAnnotation>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to create annotation"))?;
-
-    res.status_code(StatusCode::CREATED);
-    res.render(Json(annotation));
     Ok(())
 }
