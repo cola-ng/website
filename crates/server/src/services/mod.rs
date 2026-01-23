@@ -1,10 +1,10 @@
 pub mod ai_provider;
-pub mod bigmodel;
 pub mod doubao;
+pub mod zhipu;
 
 pub use ai_provider::{AiProvider, AiProviderError, ChatMessage, ProviderConfig, UserInputAnalysis};
-pub use bigmodel::BigModelClient;
 pub use doubao::DoubaoClient;
+pub use zhipu::ZhipuClient;
 
 use std::sync::Arc;
 
@@ -22,12 +22,12 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
             chat_api_key.clone(),
             chat_model.clone(),
         )),
-        ProviderConfig::BigModel {
+        ProviderConfig::Zhipu {
             api_key,
             asr_model,
             tts_model,
             chat_model,
-        } => Arc::new(BigModelClient::with_models(
+        } => Arc::new(ZhipuClient::with_models(
             api_key.clone(),
             asr_model.clone(),
             tts_model.clone(),
@@ -37,10 +37,9 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
 }
 
 /// Create an AI provider from environment variables
-/// Tries BigModel first, then Doubao
 pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
     ProviderConfig::from_env().map(|config| create_provider(&config))
 }
 
 /// Legacy exports for backward compatibility
-pub use bigmodel::BigModelError;
+pub use zhipu::ZhipuError;

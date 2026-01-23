@@ -298,7 +298,7 @@ pub trait PronunciationService: Send + Sync {
 /// Combined AI Provider with all capabilities
 #[async_trait]
 pub trait AiProvider: Send + Sync {
-    /// Provider name (e.g., "bigmodel", "doubao")
+    /// Provider name (e.g., "zhipu", "doubao")
     fn name(&self) -> &'static str;
 
     /// Get ASR service
@@ -320,8 +320,8 @@ pub trait AiProvider: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "provider")]
 pub enum ProviderConfig {
-    #[serde(rename = "bigmodel")]
-    BigModel {
+    #[serde(rename = "zhipu")]
+    Zhipu {
         api_key: String,
         #[serde(default)]
         asr_model: Option<String>,
@@ -359,49 +359,49 @@ impl ProviderConfig {
         })
     }
 
-    /// Try to load BigModel configuration from environment variables
-    fn try_bigmodel() -> Option<Self> {
-        let api_key = std::env::var("BIGMODEL_API_KEY")
+    /// Try to load Zhipu (智谱) configuration from environment variables
+    fn try_zhipu() -> Option<Self> {
+        let api_key = std::env::var("ZHIPU_API_KEY")
             .ok()
             .filter(|s| !s.is_empty())?;
 
-        Some(ProviderConfig::BigModel {
+        Some(ProviderConfig::Zhipu {
             api_key,
-            asr_model: std::env::var("BIGMODEL_ASR_MODEL").ok(),
-            tts_model: std::env::var("BIGMODEL_TTS_MODEL").ok(),
-            chat_model: std::env::var("BIGMODEL_CHAT_MODEL").ok(),
+            asr_model: std::env::var("ZHIPU_ASR_MODEL").ok(),
+            tts_model: std::env::var("ZHIPU_TTS_MODEL").ok(),
+            chat_model: std::env::var("ZHIPU_CHAT_MODEL").ok(),
         })
     }
 
     /// Load from environment variables
     ///
     /// Uses `AI_PROVIDER_DEFAULT` env var to determine which provider to use.
-    /// Valid values: "doubao", "bigmodel"
-    /// If not set or invalid, tries Doubao first, then BigModel.
+    /// Valid values: "doubao", "zhipu"
+    /// If not set or invalid, tries Doubao first, then Zhipu.
     pub fn from_env() -> Option<Self> {
         let default_provider = std::env::var("AI_PROVIDER_DEFAULT")
             .ok()
             .map(|s| s.to_lowercase());
 
         match default_provider.as_deref() {
-            Some("bigmodel") => {
-                tracing::info!("AI_PROVIDER_DEFAULT=bigmodel, trying BigModel first");
-                Self::try_bigmodel().or_else(Self::try_doubao)
+            Some("zhipu") => {
+                tracing::info!("AI_PROVIDER_DEFAULT=zhipu, trying Zhipu first");
+                Self::try_zhipu().or_else(Self::try_doubao)
             }
             Some("doubao") => {
                 tracing::info!("AI_PROVIDER_DEFAULT=doubao, trying Doubao first");
-                Self::try_doubao().or_else(Self::try_bigmodel)
+                Self::try_doubao().or_else(Self::try_zhipu)
             }
             Some(other) => {
                 tracing::warn!(
                     "Unknown AI_PROVIDER_DEFAULT='{}', using default order (doubao first)",
                     other
                 );
-                Self::try_doubao().or_else(Self::try_bigmodel)
+                Self::try_doubao().or_else(Self::try_zhipu)
             }
             None => {
-                // Default: try Doubao first, then BigModel
-                Self::try_doubao().or_else(Self::try_bigmodel)
+                // Default: try Doubao first, then Zhipu
+                Self::try_doubao().or_else(Self::try_zhipu)
             }
         }
     }

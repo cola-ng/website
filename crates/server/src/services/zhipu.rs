@@ -1,4 +1,4 @@
-//! BigModel (智谱) AI Provider Implementation
+//! Zhipu (智谱) AI Provider Implementation
 //!
 //! Integrates with 智谱 BigModel APIs:
 //! - GLM-ASR: Speech-to-Text (语音识别)
@@ -16,14 +16,14 @@ use super::ai_provider::{
     TtsService,
 };
 
-const BIGMODEL_API_BASE: &str = "https://open.bigmodel.cn/api/paas/v4";
+const ZHIPU_API_BASE: &str = "https://open.bigmodel.cn/api/paas/v4";
 const DEFAULT_ASR_MODEL: &str = "glm-asr";
 const DEFAULT_TTS_MODEL: &str = "glm-tts";
 const DEFAULT_CHAT_MODEL: &str = "glm-4-flash";
 
-/// BigModel API Client
+/// Zhipu (智谱) API Client
 #[derive(Debug, Clone)]
-pub struct BigModelClient {
+pub struct ZhipuClient {
     api_key: String,
     client: reqwest::Client,
     asr_model: String,
@@ -31,7 +31,7 @@ pub struct BigModelClient {
     chat_model: String,
 }
 
-// Internal request/response types for BigModel API
+// Internal request/response types for Zhipu API
 #[derive(Debug, Serialize)]
 struct ChatRequest {
     model: String,
@@ -108,7 +108,7 @@ struct AsrApiMessage {
     content: String,
 }
 
-impl BigModelClient {
+impl ZhipuClient {
     pub fn new(api_key: String) -> Self {
         Self::with_models(api_key, None, None, None)
     }
@@ -135,15 +135,15 @@ impl BigModelClient {
 
     /// Get API key from environment
     pub fn from_env() -> Option<Self> {
-        std::env::var("BIGMODEL_API_KEY")
+        std::env::var("ZHIPU_API_KEY")
             .ok()
             .filter(|k| !k.is_empty())
             .map(|api_key| {
                 Self::with_models(
                     api_key,
-                    std::env::var("BIGMODEL_ASR_MODEL").ok(),
-                    std::env::var("BIGMODEL_TTS_MODEL").ok(),
-                    std::env::var("BIGMODEL_CHAT_MODEL").ok(),
+                    std::env::var("ZHIPU_ASR_MODEL").ok(),
+                    std::env::var("ZHIPU_TTS_MODEL").ok(),
+                    std::env::var("ZHIPU_CHAT_MODEL").ok(),
                 )
             })
     }
@@ -164,13 +164,13 @@ impl BigModelClient {
 }
 
 #[async_trait]
-impl AsrService for BigModelClient {
+impl AsrService for ZhipuClient {
     async fn transcribe(
         &self,
         audio_data: Vec<u8>,
         _language: Option<&str>,
     ) -> Result<AsrResponse, AiProviderError> {
-        let url = format!("{}/chat/completions", BIGMODEL_API_BASE);
+        let url = format!("{}/chat/completions", ZHIPU_API_BASE);
 
         let audio_base64 = BASE64.encode(&audio_data);
         let format = Self::detect_format(&audio_data);
@@ -188,7 +188,7 @@ impl AsrService for BigModelClient {
             }],
         };
 
-        tracing::info!("BigModel ASR: sending request to {}", url);
+        tracing::info!("Zhipu ASR: sending request to {}", url);
 
         let response = self
             .client
@@ -203,9 +203,9 @@ impl AsrService for BigModelClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            tracing::error!("BigModel ASR error {}: {}", status, body);
+            tracing::error!("Zhipu ASR error {}: {}", status, body);
             return Err(AiProviderError::Api(format!(
-                "BigModel ASR API error {}: {}",
+                "Zhipu ASR API error {}: {}",
                 status, body
             )));
         }
@@ -221,7 +221,7 @@ impl AsrService for BigModelClient {
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
 
-        tracing::info!("BigModel ASR: transcribed text: {}", text);
+        tracing::info!("Zhipu ASR: transcribed text: {}", text);
 
         Ok(AsrResponse {
             text,
@@ -236,14 +236,14 @@ impl AsrService for BigModelClient {
 }
 
 #[async_trait]
-impl TtsService for BigModelClient {
+impl TtsService for ZhipuClient {
     async fn synthesize(
         &self,
         text: &str,
         voice: Option<&str>,
         speed: Option<f32>,
     ) -> Result<TtsResponse, AiProviderError> {
-        let url = format!("{}/audio/speech", BIGMODEL_API_BASE);
+        let url = format!("{}/audio/speech", ZHIPU_API_BASE);
 
         let request = TtsRequest {
             model: self.tts_model.clone(),
@@ -254,7 +254,7 @@ impl TtsService for BigModelClient {
             response_format: "wav".to_string(),
         };
 
-        tracing::info!("BigModel TTS: synthesizing {} chars", text.len());
+        tracing::info!("Zhipu TTS: synthesizing {} chars", text.len());
 
         let response = self
             .client
@@ -269,9 +269,9 @@ impl TtsService for BigModelClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            tracing::error!("BigModel TTS error {}: {}", status, body);
+            tracing::error!("Zhipu TTS error {}: {}", status, body);
             return Err(AiProviderError::Api(format!(
-                "TTS API error {}: {}",
+                "Zhipu TTS API error {}: {}",
                 status, body
             )));
         }
@@ -281,7 +281,7 @@ impl TtsService for BigModelClient {
             .await
             .map_err(|e| AiProviderError::Request(e.to_string()))?;
 
-        tracing::info!("BigModel TTS: generated {} bytes", audio_bytes.len());
+        tracing::info!("Zhipu TTS: generated {} bytes", audio_bytes.len());
 
         Ok(TtsResponse {
             audio_data: audio_bytes.to_vec(),
@@ -296,14 +296,14 @@ impl TtsService for BigModelClient {
 }
 
 #[async_trait]
-impl ChatService for BigModelClient {
+impl ChatService for ZhipuClient {
     async fn chat(
         &self,
         messages: Vec<ChatMessage>,
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, AiProviderError> {
-        let url = format!("{}/chat/completions", BIGMODEL_API_BASE);
+        let url = format!("{}/chat/completions", ZHIPU_API_BASE);
 
         let request = ChatRequest {
             model: self.chat_model.clone(),
@@ -318,8 +318,10 @@ impl ChatService for BigModelClient {
             max_tokens,
         };
 
-        println!("BigModel Chat: sending request with {} messages", request.messages.len());
-        tracing::info!("BigModel Chat: sending request with {} messages", request.messages.len());
+        tracing::info!(
+            "Zhipu Chat: sending request with {} messages",
+            request.messages.len()
+        );
 
         let response = self
             .client
@@ -334,9 +336,9 @@ impl ChatService for BigModelClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            tracing::error!("BigModel Chat error {}: {}", status, body);
+            tracing::error!("Zhipu Chat error {}: {}", status, body);
             return Err(AiProviderError::Api(format!(
-                "Chat API error {}: {}",
+                "Zhipu Chat API error {}: {}",
                 status, body
             )));
         }
@@ -352,16 +354,16 @@ impl ChatService for BigModelClient {
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
 
-        tracing::info!("BigModel Chat: received {} chars response", reply.len());
+        tracing::info!("Zhipu Chat: received {} chars response", reply.len());
 
         Ok(reply)
     }
 }
 
 #[async_trait]
-impl AiProvider for BigModelClient {
+impl AiProvider for ZhipuClient {
     fn name(&self) -> &'static str {
-        "bigmodel"
+        "zhipu"
     }
 
     fn asr(&self) -> Option<Arc<dyn AsrService>> {
@@ -378,4 +380,4 @@ impl AiProvider for BigModelClient {
 }
 
 /// Legacy error type alias
-pub type BigModelError = AiProviderError;
+pub type ZhipuError = AiProviderError;

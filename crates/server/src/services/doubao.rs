@@ -18,6 +18,9 @@ use super::ai_provider::{
 };
 
 const DOUBAO_SPEECH_API_BASE: &str = "https://openspeech.bytedance.com/api/v1";
+/// 大模型录音文件极速版识别API endpoint
+const DOUBAO_BIGMODEL_ASR_URL: &str =
+    "https://openspeech.bytedance.com/api/v3/auc/bigmodel/recognize/flash";
 const DOUBAO_CHAT_API_BASE: &str = "https://ark.cn-beijing.volces.com/api/v3";
 const DEFAULT_CHAT_MODEL: &str = "doubao-seed-1-8-251228";
 
@@ -44,19 +47,31 @@ struct SpeechUserInfo {
     uid: String,
 }
 
+// ============================================================================
+// BigModel ASR (大模型录音文件极速版识别API) request/response types
+// ============================================================================
+
 #[derive(Debug, Serialize)]
-struct AsrAudioInfo {
-    format: String,
-    rate: u32,
-    language: String,
+struct BigModelAsrUser {
+    uid: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BigModelAsrAudio {
+    /// Base64 encoded audio data
     data: String,
 }
 
 #[derive(Debug, Serialize)]
-struct AsrApiRequest {
-    app: SpeechAppInfo,
-    user: SpeechUserInfo,
-    audio: AsrAudioInfo,
+struct BigModelAsrRequest {
+    model_name: String,
+}
+
+#[derive(Debug, Serialize)]
+struct BigModelAsrApiRequest {
+    user: BigModelAsrUser,
+    audio: BigModelAsrAudio,
+    request: BigModelAsrRequest,
 }
 
 #[derive(Debug, Serialize)]
@@ -232,36 +247,45 @@ impl DoubaoClient {
     }
 }
 
+/// 大模型录音文件极速版识别API (BigModel ASR)
+/// Documentation: https://www.volcengine.com/docs/6561/1631584
 #[async_trait]
 impl AsrService for DoubaoClient {
     async fn transcribe(
         &self,
         audio_data: Vec<u8>,
-        language: Option<&str>,
+        _language: Option<&str>,
     ) -> Result<AsrResponse, AiProviderError> {
-        let url = format!("{}/asr", DOUBAO_SPEECH_API_BASE);
-
         let audio_base64 = BASE64.encode(&audio_data);
-        let format = Self::detect_format(&audio_data);
-        let sample_rate = Self::detect_sample_rate(&audio_data);
 
-        let request = AsrApiRequest {
-            app: self.speech_app_info(),
-            user: Self::speech_user_info(),
-            audio: AsrAudioInfo {
-                format: format.to_string(),
-                rate: sample_rate,
-                language: language.unwrap_or("auto").to_string(),
-                data: audio_base64,
+        let request = BigModelAsrApiRequest {
+            user: BigModelAsrUser {
+                uid: self.app_id.clone(),
+            },
+            audio: BigModelAsrAudio { data: audio_base64 },
+            request: BigModelAsrRequest {
+                model_name: "bigmodel".to_string(),
             },
         };
 
-        tracing::info!("Doubao ASR: sending request to {}  {request:#?}", url);
+        // Generate UUID for request ID
+        let request_id = uuid::Uuid::new_v4().to_string();
+
+        tracing::info!(
+            "Doubao ASR: sending request to {}, audio_size={}",
+            DOUBAO_BIGMODEL_ASR_URL,
+            audio_data.len()
+        );
 
         let response = self
             .client
-            .post(&url)
+            .post(DOUBAO_BIGMODEL_ASR_URL)
             .header("Content-Type", "application/json")
+            .header("X-Api-App-Key", &self.app_id)
+            .header("X-Api-Access-Key", &self.access_token)
+            .header("X-Api-Resource-Id", "volc.bigasr.auc_turbo")
+            .header("X-Api-Request-Id", &request_id)
+            .header("X-Api-Sequence", "-1")
             .json(&request)
             .send()
             .await
@@ -270,7 +294,7 @@ impl AsrService for DoubaoClient {
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            tracing::error!("Doubao ASR error {}: {}", status, body);
+            tracing::error!("Doubao BigModel ASR error {}: {}", status, body);
             return Err(AiProviderError::Api(format!(
                 "Doubao ASR API error {}: {}",
                 status, body
@@ -282,35 +306,53 @@ impl AsrService for DoubaoClient {
             .await
             .map_err(|e| AiProviderError::Parse(e.to_string()))?;
 
-        // Parse Doubao response format
-        let text = result["result"]["text"].as_str().unwrap_or("").to_string();
+        tracing::debug!("Doubao ASR response: {}", result);
 
-        let confidence = result["result"]["confidence"].as_f64().map(|c| c as f32);
+        // Parse Doubao ASR response format
+        // Response: { "result": { "text": "...", "utterances": [...] }, "audio_info": { "duration": ... } }
+        let text = result["result"]["text"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
 
-        let words = result["result"]["words"].as_array().map(|arr| {
-            arr.iter()
-                .filter_map(|w| {
-                    Some(WordTiming {
-                        word: w["word"].as_str()?.to_string(),
-                        start_time: w["start_time"].as_f64()?,
-                        end_time: w["end_time"].as_f64()?,
-                        confidence: w["confidence"].as_f64().map(|c| c as f32),
+        // Extract word timings from utterances
+        let words = result["result"]["utterances"]
+            .as_array()
+            .map(|utterances| {
+                utterances
+                    .iter()
+                    .flat_map(|u| {
+                        u["words"].as_array().map(|words| {
+                            words
+                                .iter()
+                                .filter_map(|w| {
+                                    Some(WordTiming {
+                                        word: w["text"].as_str()?.to_string(),
+                                        // Convert milliseconds to seconds
+                                        start_time: w["start_time"].as_f64()? / 1000.0,
+                                        end_time: w["end_time"].as_f64()? / 1000.0,
+                                        confidence: w["confidence"].as_f64().map(|c| c as f32),
+                                    })
+                                })
+                                .collect::<Vec<_>>()
+                        })
                     })
-                })
-                .collect()
-        });
+                    .flatten()
+                    .collect::<Vec<_>>()
+            });
 
-        tracing::info!("Doubao ASR: transcribed text: {}", text);
+        tracing::info!("Doubao BigModel ASR: transcribed text: {}", text);
 
         Ok(AsrResponse {
             text,
-            confidence,
+            confidence: None, // BigModel ASR doesn't provide overall confidence
             words,
         })
     }
 
     fn supported_formats(&self) -> Vec<&'static str> {
-        vec!["wav", "mp3", "pcm"]
+        // BigModel ASR supports WAV, MP3, OGG OPUS
+        vec!["wav", "mp3", "ogg"]
     }
 }
 
