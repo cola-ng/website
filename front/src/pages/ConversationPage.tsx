@@ -568,17 +568,23 @@ export function ConversationPage() {
 
   // Handle free chat (随便聊)
   const handleNewFreeChat = async () => {
-    // Clear server-side history when starting a new conversation
+    let serverId: number | undefined
+
     if (token) {
       try {
+        // Clear server-side history when starting a new conversation
         await clearChatHistory(token)
+        // Create new chat on server
+        const chat = await createChat(token, '随便聊')
+        serverId = chat.id
       } catch (err) {
-        console.error('Failed to clear history:', err)
+        console.error('Failed to create chat:', err)
       }
     }
 
     const newConversation: Conversation = {
       id: Date.now().toString(),
+      serverId,
       title: '随便聊',
       lastMessage: '',
       timestamp: new Date(),
@@ -665,19 +671,32 @@ export function ConversationPage() {
       const newTitle = renameValue.trim()
       const conv = conversations.find(c => c.id === renameDialogId)
 
-      // Update local state immediately
+      // Sync to server
+      if (token && conv) {
+        try {
+          if (conv.serverId) {
+            // Update existing chat
+            await updateChatTitle(token, conv.serverId, newTitle)
+          } else {
+            // Create new chat on server for conversations without serverId
+            const chat = await createChat(token, newTitle, conv.contextId)
+            // Update local state with serverId
+            setConversations(prev => prev.map(c =>
+              c.id === renameDialogId ? { ...c, title: newTitle, serverId: chat.id } : c
+            ))
+            setRenameDialogId(null)
+            setRenameValue('')
+            return
+          }
+        } catch (err) {
+          console.error('Failed to sync chat title to server:', err)
+        }
+      }
+
+      // Update local state
       setConversations(prev => prev.map(c =>
         c.id === renameDialogId ? { ...c, title: newTitle } : c
       ))
-
-      // Sync to server if conversation has a server ID
-      if (conv?.serverId && token) {
-        try {
-          await updateChatTitle(token, conv.serverId, newTitle)
-        } catch (err) {
-          console.error('Failed to update chat title on server:', err)
-        }
-      }
     }
     setRenameDialogId(null)
     setRenameValue('')
