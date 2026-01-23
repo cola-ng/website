@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, type TextIssue, type ChatTurn } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, getChatAnnotations, type TextIssue, type ChatTurn } from '../lib/api'
 
 interface Message {
   id: string
@@ -58,7 +58,8 @@ export function ChatPage() {
   const [input, setInput] = useState('')
   const [isRecording, setIsRecording] = useState(false)
   const [reportMode, setReportMode] = useState(false)
-  const [isProcessing, setIsProcessing] = useState(false)
+  const [isVoiceProcessing, setIsVoiceProcessing] = useState(false)
+  const [isTextProcessing, setIsTextProcessing] = useState(false)
   const [isPlayingAudio, setIsPlayingAudio] = useState<string | null>(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const messagesEndRef = useRef<HTMLDivElement>(null)
@@ -153,11 +154,34 @@ export function ChatPage() {
           const firstChat = loadedChats[0]
           setActiveChatId(firstChat.id)
 
-          // Fetch turns for the first chat
+          // Fetch turns and annotations for the first chat
           if (firstChat.serverId) {
             try {
-              const response = await getChatTurns(token, firstChat.serverId, { limit: 50 })
-              const messages: Message[] = response.items
+              const [turnsResponse, annotations] = await Promise.all([
+                getChatTurns(token, firstChat.serverId, { limit: 50 }),
+                getChatAnnotations(token, firstChat.serverId),
+              ])
+
+              // Create a map of turn_id -> issues for quick lookup
+              const annotationsByTurnId: Record<number, TextIssue[]> = {}
+              for (const ann of annotations) {
+                const turnId = ann.chat_turn_id
+                if (!annotationsByTurnId[turnId]) {
+                  annotationsByTurnId[turnId] = []
+                }
+                annotationsByTurnId[turnId].push({
+                  type: ann.annotation_type,
+                  original: ann.original_text || '',
+                  suggested: ann.suggested_text || '',
+                  description_en: ann.description_en || '',
+                  description_zh: ann.description_zh || '',
+                  severity: ann.severity || 'low',
+                  start_position: ann.start_position,
+                  end_position: ann.end_position,
+                })
+              }
+
+              const messages: Message[] = turnsResponse.items
                 .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
                 .map((turn: ChatTurn) => ({
                   id: turn.id.toString(),
@@ -167,6 +191,7 @@ export function ChatPage() {
                   hasAudio: !!turn.audio_path,
                   audioPath: turn.audio_path || undefined,
                   timestamp: new Date(turn.created_at),
+                  issues: annotationsByTurnId[turn.id],
                 }))
 
               setChats(prev => prev.map(c => {
@@ -175,10 +200,10 @@ export function ChatPage() {
                     ...c,
                     messages,
                     lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
-                    hasMorePrev: response.has_prev,
-                    hasMoreNext: response.has_next,
-                    firstId: response.first_id ?? undefined,
-                    lastId: response.last_id ?? undefined,
+                    hasMorePrev: turnsResponse.has_prev,
+                    hasMoreNext: turnsResponse.has_next,
+                    firstId: turnsResponse.first_id ?? undefined,
+                    lastId: turnsResponse.last_id ?? undefined,
                   }
                 }
                 return c
@@ -267,11 +292,11 @@ export function ChatPage() {
   }, [])
 
   const handleSend = async () => {
-    if (!input.trim() || !activeChat || !token || isProcessing) return
+    if (!input.trim() || !activeChat || !token || isTextProcessing) return
 
     const messageText = input.trim()
     setInput('')
-    setIsProcessing(true)
+    setIsTextProcessing(true)
 
     // Add user message immediately
     const userMessage: Message = {
@@ -324,7 +349,10 @@ export function ChatPage() {
       // Poll for AI turn completion
       const completedAiTurn = await pollChatTurn(token, chatId, sendResponse.ai_turn.id, 1000, 60)
 
-      // Add AI response
+      // Use issues directly from send response
+      const userIssues = sendResponse.issues
+
+      // Add AI response and update user message with issues
       const aiMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -339,7 +367,9 @@ export function ChatPage() {
         if (c.id === activeChatId) {
           return {
             ...c,
-            messages: [...c.messages, aiMessage],
+            messages: c.messages
+              .map(m => m.id === userMessage.id ? { ...m, issues: userIssues.length > 0 ? userIssues : undefined } : m)
+              .concat([aiMessage]),
             lastMessage: aiMessage.contentEn,
             timestamp: new Date(),
           }
@@ -368,7 +398,7 @@ export function ChatPage() {
         return c
       }))
     } finally {
-      setIsProcessing(false)
+      setIsTextProcessing(false)
     }
   }
 
@@ -479,7 +509,7 @@ export function ChatPage() {
           return
         }
 
-        setIsProcessing(true)
+        setIsVoiceProcessing(true)
 
         try {
           // Convert to WAV format for BigModel ASR API
@@ -520,7 +550,10 @@ export function ChatPage() {
           // Poll for AI turn completion
           const completedAiTurn = await pollChatTurn(token, chatId, sendResponse.ai_turn.id, 1000, 60)
 
-          // Add AI response
+          // Use issues directly from send response
+          const userIssues = sendResponse.issues
+
+          // Add AI response and update user message with issues
           const aiMessage: Message = {
             id: (Date.now() + 1).toString(),
             role: 'assistant',
@@ -535,7 +568,9 @@ export function ChatPage() {
             if (c.id === activeChatId) {
               return {
                 ...c,
-                messages: [...c.messages, aiMessage],
+                messages: c.messages
+                  .map(m => m.id === userMessage.id ? { ...m, issues: userIssues.length > 0 ? userIssues : undefined } : m)
+                  .concat([aiMessage]),
                 lastMessage: aiMessage.contentEn,
                 timestamp: new Date(),
               }
@@ -563,7 +598,7 @@ export function ChatPage() {
             return c
           }))
         } finally {
-          setIsProcessing(false)
+          setIsVoiceProcessing(false)
         }
       }
 
@@ -623,7 +658,7 @@ export function ChatPage() {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if processing or if user is typing in an input
-      if (isProcessing) return
+      if (isVoiceProcessing || isTextProcessing) return
 
       const activeElement = document.activeElement
       const isInputFocused = activeElement instanceof HTMLTextAreaElement ||
@@ -645,7 +680,7 @@ export function ChatPage() {
 
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [isRecording, isProcessing])
+  }, [isRecording, isVoiceProcessing, isTextProcessing])
 
   // Handle free chat (随便聊)
   const handleNewFreeChat = async () => {
@@ -802,11 +837,33 @@ export function ChatPage() {
     }
 
     try {
-      // Fetch turns from server with pagination
-      const response = await getChatTurns(token, chat.serverId, { limit: 50 })
+      // Fetch turns and annotations from server with pagination
+      const [turnsResponse, annotations] = await Promise.all([
+        getChatTurns(token, chat.serverId, { limit: 50 }),
+        getChatAnnotations(token, chat.serverId),
+      ])
+
+      // Create a map of turn_id -> issues for quick lookup
+      const annotationsByTurnId: Record<number, TextIssue[]> = {}
+      for (const ann of annotations) {
+        const turnId = ann.chat_turn_id
+        if (!annotationsByTurnId[turnId]) {
+          annotationsByTurnId[turnId] = []
+        }
+        annotationsByTurnId[turnId].push({
+          type: ann.annotation_type,
+          original: ann.original_text || '',
+          suggested: ann.suggested_text || '',
+          description_en: ann.description_en || '',
+          description_zh: ann.description_zh || '',
+          severity: ann.severity || 'low',
+          start_position: ann.start_position,
+          end_position: ann.end_position,
+        })
+      }
 
       // Convert ChatTurn to Message format and update chat
-      const messages: Message[] = response.items
+      const messages: Message[] = turnsResponse.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
         .map((turn: ChatTurn) => ({
           id: turn.id.toString(),
@@ -816,6 +873,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
+          issues: annotationsByTurnId[turn.id],
         }))
 
       setChats(prev => prev.map(c => {
@@ -824,10 +882,10 @@ export function ChatPage() {
             ...c,
             messages,
             lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
-            hasMorePrev: response.has_prev,
-            hasMoreNext: response.has_next,
-            firstId: response.first_id ?? undefined,
-            lastId: response.last_id ?? undefined,
+            hasMorePrev: turnsResponse.has_prev,
+            hasMoreNext: turnsResponse.has_next,
+            firstId: turnsResponse.first_id ?? undefined,
+            lastId: turnsResponse.last_id ?? undefined,
           }
         }
         return c
@@ -1410,18 +1468,18 @@ export function ChatPage() {
                 {/* Large Mic Button */}
                 <button
                   onClick={toggleRecording}
-                  disabled={isProcessing}
+                  disabled={isVoiceProcessing}
                   className={cn(
                     'h-16 w-16 rounded-full flex items-center justify-center transition-all flex-shrink-0',
-                    isProcessing
+                    isVoiceProcessing
                       ? 'bg-gray-400 text-white cursor-not-allowed'
                       : isRecording
                         ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
                         : 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200'
                   )}
-                  title={isProcessing ? '处理中...' : isRecording ? '停止录音 (空格键)' : '开始录音 (空格键)'}
+                  title={isVoiceProcessing ? '处理中...' : isRecording ? '停止录音 (空格键)' : '开始录音 (空格键)'}
                 >
-                  {isProcessing ? (
+                  {isVoiceProcessing ? (
                     <Loader2 className="h-7 w-7 animate-spin" />
                   ) : isRecording ? (
                     <MicOff className="h-7 w-7" />
@@ -1429,37 +1487,27 @@ export function ChatPage() {
                     <Mic className="h-7 w-7" />
                   )}
                 </button>
-                {/* Keyboard shortcut hints */}
-                <div className="mt-2 text-xs text-gray-400 text-center">
-                  {isRecording ? (
-                    <span>按 <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">ESC</kbd> 取消</span>
+                {/* Unified recording status hint */}
+                <div className={cn(
+                  'mt-2 text-xs text-center',
+                  isVoiceProcessing ? 'text-gray-500' : isRecording ? 'text-red-500' : 'text-gray-400'
+                )}>
+                  {isVoiceProcessing ? (
+                    <span className="flex items-center justify-center gap-1.5">
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                      正在处理语音...
+                    </span>
+                  ) : isRecording ? (
+                    <span className="flex items-center justify-center gap-1.5">
+                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
+                      {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                      <span className="text-gray-400 ml-1">按 <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">ESC</kbd> 取消</span>
+                    </span>
                   ) : (
                     <span>按 <kbd className="px-1 py-0.5 bg-gray-100 rounded text-gray-500">空格</kbd> 开始录音</span>
                   )}
                 </div>
               </div>
-
-              {/* Recording/Processing indicator */}
-              {(isRecording || isProcessing) && (
-                <div className={cn(
-                  'mb-3 flex items-center justify-center gap-2',
-                  isProcessing ? 'text-gray-500' : 'text-red-500'
-                )}>
-                  {isProcessing ? (
-                    <>
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      <span className="text-sm">正在处理语音...</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                      <span className="text-sm">
-                        正在录音 {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')} - 空格键停止
-                      </span>
-                    </>
-                  )}
-                </div>
-              )}
 
               {/* Row 2: Text input and send button */}
               <div className="flex items-center gap-2">
@@ -1475,10 +1523,10 @@ export function ChatPage() {
                 />
                 <Button
                   onClick={handleSend}
-                  disabled={!input.trim() || isProcessing}
+                  disabled={!input.trim() || isTextProcessing}
                   className="h-9 px-4"
                 >
-                  {isProcessing ? (
+                  {isTextProcessing ? (
                     <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Send className="h-4 w-4" />

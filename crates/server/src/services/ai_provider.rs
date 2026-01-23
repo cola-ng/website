@@ -143,6 +143,9 @@ pub struct UserInputAnalysis {
     pub content_en: String,
     /// User text in Chinese (original or translated)
     pub content_zh: String,
+    /// Grammar/word choice issues found in user input
+    #[serde(default)]
+    pub issues: Vec<TextIssue>,
 }
 
 /// Structured AI response for English teaching
@@ -210,14 +213,36 @@ pub trait ChatService: Send + Sync {
         &self,
         user_text: &str,
     ) -> Result<UserInputAnalysis, AiProviderError> {
-        // Default implementation: use LLM to detect language and translate
+        // Default implementation: use LLM to detect language and translate, and analyze grammar
         let prompt = format!(
-            r#"Analyze the following user input and respond in JSON format only:
+            r#"You are an English teaching assistant. Analyze the following user input and respond in JSON format only.
+
+Tasks:
+1. Detect language (en/zh/mix)
+2. Translate to both English and Chinese
+3. Find grammar mistakes, word choice issues, or suggestions for improvement in the English text
+
+Response format:
 {{
   "use_lang": "<en|zh|mix>",
   "content_en": "<text in English, translate if needed>",
-  "content_zh": "<text in Chinese, translate if needed>"
+  "content_zh": "<text in Chinese, translate if needed>",
+  "issues": [
+    {{
+      "type": "<grammar|word_choice|suggestion>",
+      "original": "<the problematic text>",
+      "suggested": "<the corrected text>",
+      "description_en": "<explanation in English>",
+      "description_zh": "<explanation in Chinese>",
+      "severity": "<low|medium|high>"
+    }}
+  ]
 }}
+
+Notes:
+- Only include issues if the user writes in English (use_lang is "en" or "mix")
+- If the English is perfect, return an empty issues array
+- Focus on common grammar mistakes, awkward phrasing, or unnatural expressions
 
 User input: {}"#,
             user_text
@@ -228,7 +253,7 @@ User input: {}"#,
             content: prompt,
         }];
 
-        let response = self.chat(messages, Some(0.3), Some(500)).await?;
+        let response = self.chat(messages, Some(0.3), Some(1500)).await?;
 
         // Try to parse JSON from response
         let json_str = response

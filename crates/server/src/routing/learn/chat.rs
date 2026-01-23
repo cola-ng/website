@@ -12,8 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
-use crate::models::learn::*;
-use crate::services::{AiProviderError, ChatMessage, UserInputAnalysis, create_provider_from_env};
+use crate::models::learn::{
+    Chat, ChatAnnotation, ChatTurn, NewChat, NewChatAnnotation, NewChatTurn,
+};
+use crate::services::{AiProviderError, ChatMessage, TextIssue, UserInputAnalysis, create_provider_from_env};
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
 // Type aliases for backward compatibility
@@ -429,6 +431,8 @@ pub struct ChatSendResponse {
     pub user_turn: ChatTurn,
     /// AI's chat turn (status: processing, will be updated async)
     pub ai_turn: ChatTurn,
+    /// Grammar/word choice issues found in user input
+    pub issues: Vec<TextIssue>,
 }
 
 /// Response for TTS only
@@ -746,6 +750,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
                 use_lang: "en".to_string(),
                 content_en: user_text.clone(),
                 content_zh: String::new(),
+                issues: vec![],
             }
         });
     tracing::info!(
@@ -761,14 +766,57 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             user_id,
             chat_id,
             speaker: "user".to_string(),
-            use_lang: user_analysis.use_lang,
+            use_lang: user_analysis.use_lang.clone(),
             content_en: user_analysis.content_en.clone(),
-            content_zh: user_analysis.content_zh,
+            content_zh: user_analysis.content_zh.clone(),
             audio_path: user_audio_path,
         },
         "completed",
     )
     .await?;
+
+    // Save chat annotations if any issues were found in user input
+    if !user_analysis.issues.is_empty() {
+        tracing::info!(
+            "Saving {} chat annotations for user turn {}",
+            user_analysis.issues.len(),
+            user_turn.id
+        );
+
+        let user_turn_id = user_turn.id;
+        let annotations: Vec<NewChatAnnotation> = user_analysis
+            .issues
+            .iter()
+            .map(|issue| NewChatAnnotation {
+                user_id,
+                chat_id,
+                chat_turn_id: user_turn_id,
+                annotation_type: issue.issue_type.clone(),
+                start_position: issue.start_position,
+                end_position: issue.end_position,
+                original_text: Some(issue.original.clone()),
+                suggested_text: Some(issue.suggested.clone()),
+                description_en: Some(issue.description_en.clone()),
+                description_zh: Some(issue.description_zh.clone()),
+                severity: Some(issue.severity.clone()),
+            })
+            .collect();
+
+        if let Err(e) = with_conn(move |conn| {
+            diesel::insert_into(learn_chat_annotations::table)
+                .values(&annotations)
+                .execute(conn)
+        })
+        .await
+        {
+            tracing::error!("Failed to save chat annotations: {:?}", e);
+        } else {
+            tracing::info!(
+                "Saved {} annotations successfully",
+                user_analysis.issues.len()
+            );
+        }
+    }
 
     // Create AI turn placeholder (status: processing)
     let ai_turn = save_message(
@@ -784,6 +832,9 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         "processing",
     )
     .await?;
+
+    // Capture issues for the response before moving content_en
+    let user_issues = user_analysis.issues;
 
     // Spawn background task for AI response generation
     let ai_turn_id = ai_turn.id;
@@ -937,7 +988,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         }
     });
 
-    json_ok(ChatSendResponse { user_turn, ai_turn })
+    json_ok(ChatSendResponse { user_turn, ai_turn, issues: user_issues })
 }
 
 /// Convert text to speech only
@@ -1000,6 +1051,9 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
 // Chat Annotations API
 // ============================================================================
 
+/// List annotations for a specific chat
+///
+/// Path: /learn/chats/{id}/annotations
 #[handler]
 pub async fn list_chat_annotations(
     req: &mut Request,
@@ -1007,21 +1061,80 @@ pub async fn list_chat_annotations(
     res: &mut Response,
 ) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let chat_id_param = req.query::<i64>("chat_id");
-    let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
+    let chat_id = req
+        .param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing chat id"))?;
 
+    // Verify the chat belongs to this user
+    let chat_exists: bool = with_conn(move |conn| {
+        learn_chats::table
+            .filter(learn_chats::id.eq(chat_id))
+            .filter(learn_chats::user_id.eq(user_id))
+            .count()
+            .get_result::<i64>(conn)
+            .map(|c| c > 0)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("database error"))?;
+
+    if !chat_exists {
+        return Err(StatusError::not_found().brief("chat not found").into());
+    }
+
+    // Get all annotations for this chat
     let annotations: Vec<ChatAnnotation> = with_conn(move |conn| {
-        let mut query = learn_chat_annotations::table
+        learn_chat_annotations::table
+            .filter(learn_chat_annotations::chat_id.eq(chat_id))
             .filter(learn_chat_annotations::user_id.eq(user_id))
-            .order(learn_chat_annotations::created_at.desc())
-            .limit(limit)
-            .into_boxed();
+            .order(learn_chat_annotations::created_at.asc())
+            .load::<ChatAnnotation>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;
 
-        if let Some(cid) = chat_id_param {
-            query = query.filter(learn_chat_annotations::chat_id.eq(cid));
-        }
+    res.render(Json(annotations));
+    Ok(())
+}
 
-        query.load::<ChatAnnotation>(conn)
+/// List annotations for a specific chat turn
+///
+/// Path: /learn/chats/turns/{id}/annotations
+#[handler]
+pub async fn list_turn_annotations(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
+    let turn_id = req
+        .param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
+
+    // Verify the turn belongs to this user
+    let turn_exists: bool = with_conn(move |conn| {
+        learn_chat_turns::table
+            .filter(learn_chat_turns::id.eq(turn_id))
+            .filter(learn_chat_turns::user_id.eq(user_id))
+            .count()
+            .get_result::<i64>(conn)
+            .map(|c| c > 0)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("database error"))?;
+
+    if !turn_exists {
+        return Err(StatusError::not_found()
+            .brief("chat turn not found")
+            .into());
+    }
+
+    // Get annotations for this turn
+    let annotations: Vec<ChatAnnotation> = with_conn(move |conn| {
+        learn_chat_annotations::table
+            .filter(learn_chat_annotations::chat_turn_id.eq(turn_id))
+            .filter(learn_chat_annotations::user_id.eq(user_id))
+            .order(learn_chat_annotations::created_at.asc())
+            .load::<ChatAnnotation>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list annotations"))?;

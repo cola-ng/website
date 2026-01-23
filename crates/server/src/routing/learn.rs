@@ -16,10 +16,7 @@ pub fn router() -> Router {
     Router::with_path("learn")
         .hoop(hoops::require_auth)
         .push(Router::with_path("summary").get(summary::get_learn_summary))
-        .push(
-            Router::with_path("audios/{user_id}/{filename}")
-                .get(chat::serve_audio),
-        )
+        .push(Router::with_path("audios/{user_id}/{filename}").get(chat::serve_audio))
         .push(
             Router::with_path("issue-words")
                 .get(issue_word::list_issue_words)
@@ -39,7 +36,11 @@ pub fn router() -> Router {
                         .push(Router::with_path("turns").get(chat::list_chat_turns)),
                 )
                 .push(Router::with_path("turns").get(chat::list_chat_turns))
-                .push(Router::with_path("turns/{id}").get(chat::get_chat_turn)),
+                .push(
+                    Router::with_path("turns/{id}")
+                        .get(chat::get_chat_turn)
+                        .push(Router::with_path("annotations").get(chat::list_turn_annotations)),
+                ),
         )
         .push(
             Router::with_path("write-practices")

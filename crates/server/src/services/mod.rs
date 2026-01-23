@@ -2,7 +2,7 @@ pub mod ai_provider;
 pub mod doubao;
 pub mod zhipu;
 
-pub use ai_provider::{AiProvider, AiProviderError, ChatMessage, ProviderConfig, UserInputAnalysis};
+pub use ai_provider::{AiProvider, AiProviderError, ChatMessage, ProviderConfig, TextIssue, UserInputAnalysis};
 pub use doubao::DoubaoClient;
 pub use zhipu::ZhipuClient;
 

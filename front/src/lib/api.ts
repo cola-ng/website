@@ -727,6 +727,8 @@ export type ChatSendResponse = {
   user_turn: ChatTurn
   /** AI's chat turn (status: processing, will be updated async) */
   ai_turn: ChatTurn
+  /** Grammar/word choice issues found in user input */
+  issues: TextIssue[]
 }
 
 /** Options for fetching chat turns with cursor-based pagination */
@@ -889,6 +891,51 @@ export function updateChatTitle(token: string, chatId: number, title: string): P
  */
 export function listChats(token: string, limit = 50): Promise<LearnChat[]> {
   return requestJson<LearnChat[]>(`/api/learn/chats?limit=${limit}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+// ============================================================================
+// Chat Annotations API
+// ============================================================================
+
+/** Chat annotation (grammar/vocabulary feedback) */
+export type ChatAnnotation = {
+  id: number
+  user_id: number
+  chat_id: number
+  chat_turn_id: number
+  annotation_type: string
+  start_position: number | null
+  end_position: number | null
+  original_text: string | null
+  suggested_text: string | null
+  description_en: string | null
+  description_zh: string | null
+  severity: string | null
+  created_at: string
+}
+
+/**
+ * Get annotations for a specific chat
+ * @param token Auth token
+ * @param chatId Chat ID
+ */
+export function getChatAnnotations(token: string, chatId: number): Promise<ChatAnnotation[]> {
+  return requestJson<ChatAnnotation[]>(`/api/learn/chats/${chatId}/annotations`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get annotations for a specific chat turn
+ * @param token Auth token
+ * @param turnId Turn ID
+ */
+export function getTurnAnnotations(token: string, turnId: number): Promise<ChatAnnotation[]> {
+  return requestJson<ChatAnnotation[]>(`/api/learn/chats/turns/${turnId}/annotations`, {
     method: 'GET',
     token,
   })
