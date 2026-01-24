@@ -285,6 +285,8 @@ impl ChatService for ZhipuClient {
             .trim_end_matches("```")
             .trim();
 
+        println!("Parsed JSON string: {}", json_str);
+
         let structured: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
             tracing::warn!(
                 "Failed to parse structured response: {}, content: {}",

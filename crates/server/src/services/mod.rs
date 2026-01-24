@@ -1,7 +1,7 @@
 //! AI Services module
 //!
 //! This module provides AI services using outfox crates:
-//! - outfox-doubao for ASR and TTS (Bytedance Doubao)
+//! - outfox-doubao for ASR, TTS, and Chat (Bytedance Doubao)
 //! - outfox-zhipu for ASR, TTS, and Chat (Zhipu AI GLM models)
 //!
 //! Both providers now offer full ASR/TTS/Chat capabilities.
@@ -79,28 +79,19 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
             app_id,
             access_token,
             api_key,
-            chat_model: _,
+            chat_model,
             tts_resource_id,
         } => {
-            // Create Doubao client for ASR/TTS
+            // Doubao now provides full ASR/TTS/Chat capabilities
             let doubao = DoubaoClient::with_options(
                 app_id.clone(),
                 access_token.clone(),
                 api_key.clone(),
                 tts_resource_id.clone(),
+                chat_model.clone(),
             );
-
-            // Try to create Zhipu client for Chat from environment
-            if let Some(zhipu) = ZhipuClient::from_env() {
-                tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
-                Arc::new(CombinedProvider::new(doubao, zhipu))
-            } else {
-                tracing::warn!(
-                    "Zhipu API key not found, chat service will be unavailable. \
-                     Set ZHIPU_API_KEY environment variable to enable chat."
-                );
-                Arc::new(doubao)
-            }
+            tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
+            Arc::new(doubao)
         }
         ProviderConfig::Zhipu {
             api_key,
@@ -135,9 +126,9 @@ pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
         return Some(Arc::new(zhipu));
     }
 
-    // Try Doubao alone (missing Chat)
+    // Try Doubao alone (has full capabilities)
     if let Some(doubao) = DoubaoClient::from_env() {
-        tracing::warn!("Created Doubao provider (Chat unavailable without Zhipu)");
+        tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
         return Some(Arc::new(doubao));
     }
 
