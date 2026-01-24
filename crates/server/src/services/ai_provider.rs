@@ -395,6 +395,7 @@ impl ProviderConfig {
 
     /// Try to load Zhipu (智谱) configuration from environment variables
     fn try_zhipu() -> Option<Self> {
+        panic!("zzzzzzzzzzzipu");
         let api_key = std::env::var("ZHIPU_API_KEY")
             .ok()
             .filter(|s| !s.is_empty())?;

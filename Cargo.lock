@@ -562,7 +562,7 @@ dependencies = [
  "outfox-zhipu",
  "rand 0.9.2",
  "regex",
- "reqwest 0.13.1",
+ "reqwest",
  "salvo",
  "scheduled-thread-pool",
  "serde",
@@ -1057,8 +1057,7 @@ dependencies = [
 [[package]]
 name = "eventsource-stream"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "74fef4569247a5f429d9156b9d0a2599914385dd189c539334c625d8099d90ab"
+source = "git+https://github.com/chrislearn/eventsource-stream.git?branch=next#bab35d7d572564b6a531c4c11f33df977ff964cf"
 dependencies = [
  "futures-core",
  "nom 7.1.3",
@@ -2353,7 +2352,7 @@ dependencies = [
  "bytes",
  "derive_builder",
  "futures-util",
- "reqwest 0.12.28",
+ "reqwest",
  "reqwest-eventsource",
  "secrecy",
  "serde",
@@ -2375,7 +2374,7 @@ dependencies = [
  "derive_builder",
  "futures-util",
  "hex",
- "reqwest 0.12.28",
+ "reqwest",
  "reqwest-eventsource",
  "secrecy",
  "serde",
@@ -2966,48 +2965,6 @@ dependencies = [
 
 [[package]]
 name = "reqwest"
-version = "0.12.28"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eddd3ca559203180a307f12d114c268abf583f59b03cb906fd0b3ff8646c1147"
-dependencies = [
- "base64",
- "bytes",
- "futures-core",
- "futures-util",
- "http",
- "http-body",
- "http-body-util",
- "hyper",
- "hyper-rustls",
- "hyper-util",
- "js-sys",
- "log",
- "mime_guess",
- "percent-encoding",
- "pin-project-lite",
- "quinn",
- "rustls",
- "rustls-native-certs",
- "rustls-pki-types",
- "serde",
- "serde_json",
- "serde_urlencoded",
- "sync_wrapper",
- "tokio",
- "tokio-rustls",
- "tokio-util",
- "tower",
- "tower-http",
- "tower-service",
- "url",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "wasm-streams",
- "web-sys",
-]
-
-[[package]]
-name = "reqwest"
 version = "0.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "04e9018c9d814e5f30cc16a0f03271aeab3571e609612d9fe78c1aa8d11c2f62"
@@ -3027,10 +2984,12 @@ dependencies = [
  "js-sys",
  "log",
  "mime",
+ "mime_guess",
  "percent-encoding",
  "pin-project-lite",
  "quinn",
  "rustls",
+ "rustls-native-certs",
  "rustls-pki-types",
  "rustls-platform-verifier",
  "serde",
@@ -3052,8 +3011,7 @@ dependencies = [
 [[package]]
 name = "reqwest-eventsource"
 version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "632c55746dbb44275691640e7b40c907c16a2dc1a5842aa98aaec90da6ec6bde"
+source = "git+https://github.com/chrislearn/reqwest-eventsource?branch=next#c1765e95f5dcd3677fd5ea12c806f1098a228b0c"
 dependencies = [
  "eventsource-stream",
  "futures-core",
@@ -3061,7 +3019,7 @@ dependencies = [
  "mime",
  "nom 7.1.3",
  "pin-project-lite",
- "reqwest 0.12.28",
+ "reqwest",
  "thiserror 1.0.69",
 ]
 
@@ -3432,7 +3390,7 @@ dependencies = [
  "hyper-util",
  "local-ip-address",
  "percent-encoding",
- "reqwest 0.13.1",
+ "reqwest",
  "salvo_core",
  "tokio",
  "tracing",

@@ -114,22 +114,31 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
 /// 2. Zhipu-only provider if only Zhipu is configured
 /// 3. Doubao-only provider if only Doubao is configured
 pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
-    // Try to create combined provider first (for best experience)
-    if let Some(combined) = CombinedProvider::from_env() {
-        tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
-        return Some(Arc::new(combined));
-    }
+    // // Try to create combined provider first (for best experience)
+    // if let Some(combined) = CombinedProvider::from_env() {
+    //     tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
+    //     return Some(Arc::new(combined));
+    // }
+    let default_provider = std::env::var("AI_PROVIDER_DEFAULT")
+        .ok()
+        .map(|s| s.to_lowercase());
 
-    // Try Zhipu alone (has full capabilities)
-    if let Some(zhipu) = ZhipuClient::from_env() {
-        tracing::info!("Created Zhipu provider with full ASR/TTS/Chat capabilities");
-        return Some(Arc::new(zhipu));
-    }
-
-    // Try Doubao alone (has full capabilities)
-    if let Some(doubao) = DoubaoClient::from_env() {
-        tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
-        return Some(Arc::new(doubao));
+    println!("Default provider from env: {:?}", default_provider);
+    match default_provider.as_deref() {
+        Some("zhipu") => {
+            // Try Zhipu alone (has full capabilities)
+            if let Some(zhipu) = ZhipuClient::from_env() {
+                tracing::info!("Created Zhipu provider with full ASR/TTS/Chat capabilities");
+                return Some(Arc::new(zhipu));
+            }
+        }
+        Some("doubao") => {
+            if let Some(doubao) = DoubaoClient::from_env() {
+                tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
+                return Some(Arc::new(doubao));
+            }
+        }
+        _ => {}
     }
 
     tracing::error!("No AI provider configured. Set ZHIPU_API_KEY or DOUBAO_* env vars.");
