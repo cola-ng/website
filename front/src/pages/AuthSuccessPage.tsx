@@ -41,7 +41,7 @@ export function AuthSuccessPage() {
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100">
                     <MessageSquare className="h-5 w-5 text-blue-600" />
                   </div>
-                  <span className="text-sm font-medium text-gray-700">日常唠嗑</span>
+                  <span className="text-sm font-medium text-gray-700">天天唠嗑</span>
                 </div>
               </Link>
 

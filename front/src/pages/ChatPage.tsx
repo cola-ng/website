@@ -531,7 +531,8 @@ export function ChatPage() {
             role: 'user',
             contentEn: sendResponse.user_turn.content_en || '(Audio message)',
             contentZh: sendResponse.user_turn.content_zh || '(语音消息)',
-            hasAudio: true,
+            hasAudio: !!sendResponse.user_turn.audio_path,
+            audioPath: sendResponse.user_turn.audio_path || undefined,
             timestamp: new Date(),
           }
 
@@ -1136,7 +1137,7 @@ export function ChatPage() {
         <div className="mx-auto max-w-6xl p-4">
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">💬</div>
-            <h1 className="text-2xl font-bold text-gray-900 mb-2">日常唠嗑</h1>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">天天唠嗑</h1>
             <p className="text-gray-600 mb-6">
               与 AI 进行真实的英语对话练习，提升口语表达能力
             </p>
@@ -1263,7 +1264,7 @@ export function ChatPage() {
             <div className="border-b px-6 py-3 bg-white">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900">
-                  {activeChat?.title || '日常唠嗑'}
+                  {activeChat?.title || '天天唠嗑'}
                 </h2>
                 <div className="flex items-center gap-4">
                   <div className="flex items-center gap-3 text-sm">
