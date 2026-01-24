@@ -4,7 +4,7 @@
 //! by different providers (BigModel, Doubao, etc.)
 
 use async_trait::async_trait;
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -166,7 +166,7 @@ pub struct StructuredChatResponse {
 }
 
 /// Text issue (grammar, word choice, or suggestion)
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
 pub struct TextIssue {
     /// Type of issue: grammar | word_choice | suggestion
     #[serde(rename = "type")]

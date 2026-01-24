@@ -389,30 +389,6 @@ pub enum ChatSendRequest {
     },
 }
 
-/// Text issue (grammar, word choice, or suggestion)
-#[derive(Debug, Clone, Serialize, Deserialize, ToSchema)]
-pub struct TextIssue {
-    /// Type of issue: grammar | word_choice | suggestion
-    #[serde(rename = "type")]
-    pub issue_type: String,
-    /// Original problematic text
-    pub original: String,
-    /// Suggested correction
-    pub suggested: String,
-    /// Explanation in English
-    pub description_en: String,
-    /// Explanation in Chinese
-    pub description_zh: String,
-    /// Severity: low | medium | high
-    pub severity: String,
-    /// Start position in text (optional)
-    #[serde(default)]
-    pub start_position: Option<i32>,
-    /// End position in text (optional)
-    #[serde(default)]
-    pub end_position: Option<i32>,
-}
-
 /// Request for TTS only
 #[derive(Debug, Deserialize, ToSchema)]
 pub struct TtsRequest {
