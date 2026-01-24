@@ -1,164 +1,72 @@
-//! Zhipu (智谱) AI Provider Implementation
+//! Zhipu (智谱) Provider - wraps outfox-zhipu crate
 //!
-//! Integrates with 智谱 BigModel APIs:
-//! - GLM-ASR: Speech-to-Text (语音识别)
-//! - GLM-TTS: Text-to-Speech (语音合成)
-//! - GLM-4-Flash: Chat completion (对话生成)
+//! Uses the outfox-zhipu crate for:
+//! - Chat completions via GLM models
+//! - ASR (Speech-to-Text) via GLM-ASR
+//! - TTS (Text-to-Speech) via GLM-TTS
 
 use async_trait::async_trait;
-use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
-use serde::{Deserialize, Serialize};
 use std::sync::Arc;
-use std::time::Duration;
 
-use super::ai_provider::{
-    AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService, TtsResponse,
-    TtsService,
+use outfox_zhipu::{
+    config::ZhipuConfig,
+    spec::{
+        asr::AudioInput,
+        chat::{
+            ChatMessage as ZhipuChatMessage, CreateChatCompletionRequestArgs, ResponseFormat,
+        },
+        tts::CreateSpeechRequest,
+    },
+    Client as ZhipuSdkClient,
 };
 
-const ZHIPU_API_BASE: &str = "https://open.bigmodel.cn/api/paas/v4";
-const DEFAULT_ASR_MODEL: &str = "glm-asr";
-const DEFAULT_TTS_MODEL: &str = "glm-tts";
+use super::ai_provider::{
+    AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService,
+    StructuredChatResponse, TextIssue, TtsResponse, TtsService,
+};
+
 const DEFAULT_CHAT_MODEL: &str = "glm-4-flash";
 
-/// Zhipu (智谱) API Client
+/// Zhipu client wrapper around outfox-zhipu crate
 #[derive(Debug, Clone)]
 pub struct ZhipuClient {
-    api_key: String,
-    client: reqwest::Client,
-    asr_model: String,
-    tts_model: String,
+    client: ZhipuSdkClient,
     chat_model: String,
 }
 
-// Internal request/response types for Zhipu API
-#[derive(Debug, Serialize)]
-struct ChatRequest {
-    model: String,
-    messages: Vec<ChatMessageInternal>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f32>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-struct ChatMessageInternal {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponseChoice {
-    message: ChatMessageInternal,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponseBody {
-    choices: Vec<ChatResponseChoice>,
-}
-
-#[derive(Debug, Serialize)]
-struct TtsRequest {
-    model: String,
-    input: String,
-    voice: String,
-    speed: f32,
-    volume: f32,
-    response_format: String,
-}
-
-#[derive(Debug, Serialize)]
-struct AsrChatRequest {
-    model: String,
-    messages: Vec<AsrChatMessage>,
-}
-
-#[derive(Debug, Serialize)]
-struct AsrChatMessage {
-    role: String,
-    content: Vec<AsrContent>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(tag = "type")]
-enum AsrContent {
-    #[serde(rename = "input_audio")]
-    InputAudio { input_audio: AudioData },
-}
-
-#[derive(Debug, Serialize)]
-struct AudioData {
-    data: String,
-    format: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct AsrApiResponse {
-    choices: Vec<AsrApiChoice>,
-}
-
-#[derive(Debug, Deserialize)]
-struct AsrApiChoice {
-    message: AsrApiMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct AsrApiMessage {
-    content: String,
-}
-
 impl ZhipuClient {
+    /// Create a new Zhipu client with API key
     pub fn new(api_key: String) -> Self {
-        Self::with_models(api_key, None, None, None)
+        Self::with_models(api_key, None)
     }
 
-    pub fn with_models(
-        api_key: String,
-        asr_model: Option<String>,
-        tts_model: Option<String>,
-        chat_model: Option<String>,
-    ) -> Self {
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(60))
-            .build()
-            .expect("Failed to create HTTP client");
+    /// Create a new Zhipu client with custom model
+    pub fn with_models(api_key: String, chat_model: Option<String>) -> Self {
+        let config = ZhipuConfig::new().with_api_key(&api_key);
 
         Self {
-            api_key,
-            client,
-            asr_model: asr_model.unwrap_or_else(|| DEFAULT_ASR_MODEL.to_string()),
-            tts_model: tts_model.unwrap_or_else(|| DEFAULT_TTS_MODEL.to_string()),
+            client: ZhipuSdkClient::with_config(config),
             chat_model: chat_model.unwrap_or_else(|| DEFAULT_CHAT_MODEL.to_string()),
         }
     }
 
-    /// Get API key from environment
+    /// Create client from environment variables
     pub fn from_env() -> Option<Self> {
-        std::env::var("ZHIPU_API_KEY")
+        let api_key = std::env::var("ZHIPU_API_KEY")
+            .or_else(|_| std::env::var("ZHIPUAI_API_KEY"))
             .ok()
-            .filter(|k| !k.is_empty())
-            .map(|api_key| {
-                Self::with_models(
-                    api_key,
-                    std::env::var("ZHIPU_ASR_MODEL").ok(),
-                    std::env::var("ZHIPU_TTS_MODEL").ok(),
-                    std::env::var("ZHIPU_CHAT_MODEL").ok(),
-                )
-            })
+            .filter(|s| !s.is_empty())?;
+        let chat_model = std::env::var("ZHIPU_CHAT_MODEL").ok();
+
+        Some(Self::with_models(api_key, chat_model))
     }
 
-    /// Detect audio format from magic bytes
-    fn detect_format(audio_data: &[u8]) -> &'static str {
-        if audio_data.starts_with(b"RIFF") {
-            "wav"
-        } else if audio_data.len() >= 3
-            && (audio_data.starts_with(b"ID3")
-                || (audio_data[0] == 0xFF && (audio_data[1] & 0xE0) == 0xE0))
-        {
-            "mp3"
-        } else {
-            "wav"
+    /// Convert internal ChatMessage to Zhipu ChatMessage
+    fn to_zhipu_message(msg: &ChatMessage) -> ZhipuChatMessage {
+        match msg.role.as_str() {
+            "system" => ZhipuChatMessage::system(&msg.content),
+            "assistant" => ZhipuChatMessage::assistant(&msg.content),
+            _ => ZhipuChatMessage::user(&msg.content),
         }
     }
 }
@@ -170,68 +78,35 @@ impl AsrService for ZhipuClient {
         audio_data: Vec<u8>,
         _language: Option<&str>,
     ) -> Result<AsrResponse, AiProviderError> {
-        let url = format!("{}/chat/completions", ZHIPU_API_BASE);
+        tracing::info!(
+            "Zhipu ASR: transcribing {} bytes of audio",
+            audio_data.len()
+        );
 
-        let audio_base64 = BASE64.encode(&audio_data);
-        let format = Self::detect_format(&audio_data);
-
-        let request = AsrChatRequest {
-            model: self.asr_model.clone(),
-            messages: vec![AsrChatMessage {
-                role: "user".to_string(),
-                content: vec![AsrContent::InputAudio {
-                    input_audio: AudioData {
-                        data: audio_base64,
-                        format: format.to_string(),
-                    },
-                }],
-            }],
+        let audio = AudioInput::from_bytes(audio_data, "audio.wav");
+        let request = outfox_zhipu::spec::asr::CreateTranscriptionRequest {
+            audio: Some(audio),
+            ..Default::default()
         };
-
-        tracing::info!("Zhipu ASR: sending request to {}", url);
 
         let response = self
             .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
+            .asr()
+            .transcribe(request)
             .await
-            .map_err(|e| AiProviderError::Request(e.to_string()))?;
+            .map_err(|e| AiProviderError::Api(e.to_string()))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            tracing::error!("Zhipu ASR error {}: {}", status, body);
-            return Err(AiProviderError::Api(format!(
-                "Zhipu ASR API error {}: {}",
-                status, body
-            )));
-        }
-
-        let api_response: AsrApiResponse = response
-            .json()
-            .await
-            .map_err(|e| AiProviderError::Parse(e.to_string()))?;
-
-        let text = api_response
-            .choices
-            .first()
-            .map(|c| c.message.content.clone())
-            .unwrap_or_default();
-
-        tracing::info!("Zhipu ASR: transcribed text: {}", text);
+        tracing::info!("Zhipu ASR: transcribed text: {}", response.text);
 
         Ok(AsrResponse {
-            text,
+            text: response.text,
             confidence: None,
             words: None,
         })
     }
 
     fn supported_formats(&self) -> Vec<&'static str> {
-        vec!["wav", "mp3"]
+        vec!["wav", "mp3", "m4a", "flac", "ogg"]
     }
 }
 
@@ -240,58 +115,43 @@ impl TtsService for ZhipuClient {
     async fn synthesize(
         &self,
         text: &str,
-        voice: Option<&str>,
+        _voice: Option<&str>,
         speed: Option<f32>,
     ) -> Result<TtsResponse, AiProviderError> {
-        let url = format!("{}/audio/speech", ZHIPU_API_BASE);
+        tracing::info!("Zhipu TTS: synthesizing {} chars", text.len());
 
-        let request = TtsRequest {
-            model: self.tts_model.clone(),
+        let mut request = CreateSpeechRequest {
             input: text.to_string(),
-            voice: voice.unwrap_or("alloy").to_string(),
-            speed: speed.unwrap_or(1.0),
-            volume: 1.0,
-            response_format: "wav".to_string(),
+            ..Default::default()
         };
 
-        tracing::info!("Zhipu TTS: synthesizing {} chars", text.len());
+        if let Some(s) = speed {
+            request.speed = Some(s);
+        }
 
         let response = self
             .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
+            .tts()
+            .create(request)
             .await
-            .map_err(|e| AiProviderError::Request(e.to_string()))?;
+            .map_err(|e| AiProviderError::Api(e.to_string()))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            tracing::error!("Zhipu TTS error {}: {}", status, body);
-            return Err(AiProviderError::Api(format!(
-                "Zhipu TTS API error {}: {}",
-                status, body
-            )));
-        }
-
-        let audio_bytes = response
-            .bytes()
-            .await
-            .map_err(|e| AiProviderError::Request(e.to_string()))?;
-
-        tracing::info!("Zhipu TTS: generated {} bytes", audio_bytes.len());
+        tracing::info!(
+            "Zhipu TTS: generated {} bytes of audio",
+            response.audio.len()
+        );
 
         Ok(TtsResponse {
-            audio_data: audio_bytes.to_vec(),
+            audio_data: response.audio.to_vec(),
             format: "wav".to_string(),
             duration_ms: None,
         })
     }
 
     fn available_voices(&self) -> Vec<&'static str> {
-        vec!["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+        vec![
+            "tongtong", "chuichui", "xiaochen", "jam", "kazi", "douji", "luodo",
+        ]
     }
 }
 
@@ -303,52 +163,38 @@ impl ChatService for ZhipuClient {
         temperature: Option<f32>,
         max_tokens: Option<u32>,
     ) -> Result<String, AiProviderError> {
-        let url = format!("{}/chat/completions", ZHIPU_API_BASE);
+        let zhipu_messages: Vec<ZhipuChatMessage> =
+            messages.iter().map(Self::to_zhipu_message).collect();
 
-        let request = ChatRequest {
-            model: self.chat_model.clone(),
-            messages: messages
-                .into_iter()
-                .map(|m| ChatMessageInternal {
-                    role: m.role,
-                    content: m.content,
-                })
-                .collect(),
-            temperature,
-            max_tokens,
-        };
+        let mut request_builder = CreateChatCompletionRequestArgs::default();
+        request_builder
+            .model(&self.chat_model)
+            .messages(zhipu_messages);
+
+        if let Some(temp) = temperature {
+            request_builder.temperature(temp);
+        }
+        if let Some(max) = max_tokens {
+            request_builder.max_tokens(max);
+        }
+
+        let request = request_builder
+            .build()
+            .map_err(|e| AiProviderError::Config(e.to_string()))?;
 
         tracing::info!(
             "Zhipu Chat: sending request with {} messages",
-            request.messages.len()
+            messages.len()
         );
 
         let response = self
             .client
-            .post(&url)
-            .header("Authorization", format!("Bearer {}", self.api_key))
-            .header("Content-Type", "application/json")
-            .json(&request)
-            .send()
+            .chat()
+            .create(request)
             .await
-            .map_err(|e| AiProviderError::Request(e.to_string()))?;
+            .map_err(|e| AiProviderError::Api(e.to_string()))?;
 
-        if !response.status().is_success() {
-            let status = response.status();
-            let body = response.text().await.unwrap_or_default();
-            tracing::error!("Zhipu Chat error {}: {}", status, body);
-            return Err(AiProviderError::Api(format!(
-                "Zhipu Chat API error {}: {}",
-                status, body
-            )));
-        }
-
-        let chat_response: ChatResponseBody = response
-            .json()
-            .await
-            .map_err(|e| AiProviderError::Parse(e.to_string()))?;
-
-        let reply = chat_response
+        let reply = response
             .choices
             .first()
             .map(|c| c.message.content.clone())
@@ -357,6 +203,123 @@ impl ChatService for ZhipuClient {
         tracing::info!("Zhipu Chat: received {} chars response", reply.len());
 
         Ok(reply)
+    }
+
+    async fn chat_structured(
+        &self,
+        messages: Vec<ChatMessage>,
+        user_text: &str,
+        system_prompt: &str,
+    ) -> Result<StructuredChatResponse, AiProviderError> {
+        // Build enhanced system prompt that requests JSON output
+        let enhanced_system_prompt = format!(
+            "{}\n\n\
+            IMPORTANT: You must respond with a JSON object containing:\n\
+            1. A natural conversational reply to the user\n\
+            2. Grammar/vocabulary analysis of the user's last message\n\n\
+            Response JSON format:\n\
+            {{\n\
+              \"use_lang\": \"<en|zh|mix>\",\n\
+              \"original_en\": \"<user's text in English>\",\n\
+              \"original_zh\": \"<user's text in Chinese>\",\n\
+              \"reply_en\": \"<your reply in English>\",\n\
+              \"reply_zh\": \"<your reply in Chinese>\",\n\
+              \"issues\": [\n\
+                {{\n\
+                  \"type\": \"grammar|word_choice|suggestion\",\n\
+                  \"original\": \"<problematic text>\",\n\
+                  \"suggested\": \"<corrected text>\",\n\
+                  \"description_en\": \"<explanation in English>\",\n\
+                  \"description_zh\": \"<explanation in Chinese>\",\n\
+                  \"severity\": \"low|medium|high\"\n\
+                }}\n\
+              ]\n\
+            }}",
+            system_prompt
+        );
+
+        let mut all_messages = vec![ChatMessage {
+            role: "system".to_string(),
+            content: enhanced_system_prompt,
+        }];
+        all_messages.extend(messages);
+
+        // Convert to Zhipu messages
+        let zhipu_messages: Vec<ZhipuChatMessage> =
+            all_messages.iter().map(Self::to_zhipu_message).collect();
+
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(&self.chat_model)
+            .messages(zhipu_messages)
+            .temperature(0.7f32)
+            .max_tokens(2000u32)
+            .response_format(ResponseFormat::json_object())
+            .build()
+            .map_err(|e| AiProviderError::Config(e.to_string()))?;
+
+        tracing::info!(
+            "Zhipu Chat Structured: sending request for user text: {}",
+            user_text
+        );
+
+        let response = self
+            .client
+            .chat()
+            .create(request)
+            .await
+            .map_err(|e| AiProviderError::Api(e.to_string()))?;
+
+        let content = response
+            .choices
+            .first()
+            .map(|c| c.message.content.clone())
+            .unwrap_or_default();
+
+        tracing::debug!("Zhipu Chat Structured response: {}", content);
+
+        // Parse JSON response
+        let json_str = content
+            .trim()
+            .trim_start_matches("```json")
+            .trim_start_matches("```")
+            .trim_end_matches("```")
+            .trim();
+
+        let structured: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
+            tracing::warn!(
+                "Failed to parse structured response: {}, content: {}",
+                e,
+                content
+            );
+            AiProviderError::Parse(format!("Failed to parse structured response: {}", e))
+        })?;
+
+        let use_lang = structured["use_lang"].as_str().unwrap_or("en").to_string();
+        let original_en = structured["original_en"]
+            .as_str()
+            .unwrap_or(user_text)
+            .to_string();
+        let original_zh = structured["original_zh"].as_str().unwrap_or("").to_string();
+        let reply_en = structured["reply_en"].as_str().unwrap_or("").to_string();
+        let reply_zh = structured["reply_zh"].as_str().unwrap_or("").to_string();
+
+        let issues: Vec<TextIssue> =
+            serde_json::from_value(structured["issues"].clone()).unwrap_or_default();
+
+        tracing::info!(
+            "Zhipu Chat Structured: reply_en={} chars, issues={}",
+            reply_en.len(),
+            issues.len()
+        );
+
+        Ok(StructuredChatResponse {
+            use_lang,
+            original_en,
+            original_zh,
+            reply_en,
+            reply_zh,
+            issues,
+        })
     }
 }
 

@@ -1,48 +1,146 @@
+//! AI Services module
+//!
+//! This module provides AI services using outfox crates:
+//! - outfox-doubao for ASR and TTS (Bytedance Doubao)
+//! - outfox-zhipu for ASR, TTS, and Chat (Zhipu AI GLM models)
+//!
+//! Both providers now offer full ASR/TTS/Chat capabilities.
+//! You can use either provider independently, or combine them.
+
 pub mod ai_provider;
 pub mod doubao;
 pub mod zhipu;
 
-pub use ai_provider::{AiProvider, AiProviderError, ChatMessage, ProviderConfig, TextIssue, UserInputAnalysis};
+pub use ai_provider::{
+    AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig, TextIssue,
+    TtsService, UserInputAnalysis,
+};
 pub use doubao::DoubaoClient;
 pub use zhipu::ZhipuClient;
 
+use async_trait::async_trait;
 use std::sync::Arc;
 
+/// Combined AI Provider that mixes services from different providers.
+///
+/// Use this when you want to use Doubao for ASR/TTS (better Chinese voice quality)
+/// and Zhipu for Chat (GLM models).
+#[derive(Clone)]
+pub struct CombinedProvider {
+    doubao: DoubaoClient,
+    zhipu: ZhipuClient,
+}
+
+impl CombinedProvider {
+    /// Create a new combined provider with both clients
+    pub fn new(doubao: DoubaoClient, zhipu: ZhipuClient) -> Self {
+        Self { doubao, zhipu }
+    }
+
+    /// Create from environment variables
+    pub fn from_env() -> Option<Self> {
+        let doubao = DoubaoClient::from_env()?;
+        let zhipu = ZhipuClient::from_env()?;
+        Some(Self::new(doubao, zhipu))
+    }
+}
+
+#[async_trait]
+impl AiProvider for CombinedProvider {
+    fn name(&self) -> &'static str {
+        "combined"
+    }
+
+    fn asr(&self) -> Option<Arc<dyn AsrService>> {
+        // Use Doubao ASR for better Chinese speech recognition
+        self.doubao.asr()
+    }
+
+    fn tts(&self) -> Option<Arc<dyn TtsService>> {
+        // Use Doubao TTS for better Chinese voice quality
+        self.doubao.tts()
+    }
+
+    fn chat_service(&self) -> Option<Arc<dyn ChatService>> {
+        // Use Zhipu Chat (GLM models)
+        self.zhipu.chat_service()
+    }
+}
+
 /// Create an AI provider from configuration
+///
+/// - Doubao config: Creates Doubao provider for ASR/TTS, adds Zhipu for Chat if available
+/// - Zhipu config: Creates Zhipu provider with full ASR/TTS/Chat capabilities
 pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
-    println!("Creating provider with config: {:#?}", config);
+    tracing::info!("Creating provider with config: {:?}", config);
+
     match config {
         ProviderConfig::Doubao {
             app_id,
             access_token,
             api_key,
-            chat_model,
+            chat_model: _,
             tts_resource_id,
-        } => Arc::new(DoubaoClient::with_options(
-            app_id.clone(),
-            access_token.clone(),
-            api_key.clone(),
-            chat_model.clone(),
-            tts_resource_id.clone(),
-        )),
+        } => {
+            // Create Doubao client for ASR/TTS
+            let doubao = DoubaoClient::with_options(
+                app_id.clone(),
+                access_token.clone(),
+                api_key.clone(),
+                tts_resource_id.clone(),
+            );
+
+            // Try to create Zhipu client for Chat from environment
+            if let Some(zhipu) = ZhipuClient::from_env() {
+                tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
+                Arc::new(CombinedProvider::new(doubao, zhipu))
+            } else {
+                tracing::warn!(
+                    "Zhipu API key not found, chat service will be unavailable. \
+                     Set ZHIPU_API_KEY environment variable to enable chat."
+                );
+                Arc::new(doubao)
+            }
+        }
         ProviderConfig::Zhipu {
             api_key,
-            asr_model,
-            tts_model,
+            asr_model: _,
+            tts_model: _,
             chat_model,
-        } => Arc::new(ZhipuClient::with_models(
-            api_key.clone(),
-            asr_model.clone(),
-            tts_model.clone(),
-            chat_model.clone(),
-        )),
+        } => {
+            // Zhipu now provides full ASR/TTS/Chat capabilities
+            let zhipu = ZhipuClient::with_models(api_key.clone(), chat_model.clone());
+            tracing::info!("Created Zhipu provider with full ASR/TTS/Chat capabilities");
+            Arc::new(zhipu)
+        }
     }
 }
 
 /// Create an AI provider from environment variables
+///
+/// Priority:
+/// 1. Combined provider (Doubao ASR/TTS + Zhipu Chat) if both configured
+/// 2. Zhipu-only provider if only Zhipu is configured
+/// 3. Doubao-only provider if only Doubao is configured
 pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
-    ProviderConfig::from_env().map(|config| create_provider(&config))
-}
+    // Try to create combined provider first (for best experience)
+    if let Some(combined) = CombinedProvider::from_env() {
+        tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
+        return Some(Arc::new(combined));
+    }
 
-/// Legacy exports for backward compatibility
-pub use zhipu::ZhipuError;
+    // Try Zhipu alone (has full capabilities)
+    if let Some(zhipu) = ZhipuClient::from_env() {
+        tracing::info!("Created Zhipu provider with full ASR/TTS/Chat capabilities");
+        return Some(Arc::new(zhipu));
+    }
+
+    // Try Doubao alone (missing Chat)
+    if let Some(doubao) = DoubaoClient::from_env() {
+        tracing::warn!("Created Doubao provider (Chat unavailable without Zhipu)");
+        return Some(Arc::new(doubao));
+    }
+
+    tracing::error!("No AI provider configured. Set ZHIPU_API_KEY or DOUBAO_* env vars.");
+    None
+}

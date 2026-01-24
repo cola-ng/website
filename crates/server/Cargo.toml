@@ -38,6 +38,10 @@ scheduled-thread-pool = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }
 url = { workspace = true }
+
+# Outfox AI crates
+outfox-doubao = { path = "../../../../outfox-ai/outfox/crates/doubao", features = ["full"] }
+outfox-zhipu = { path = "../../../../outfox-ai/outfox/crates/zhipu", features = ["full"] }
 uuid = { workspace = true, features = ["serde", "v4", "v7"] }
 thiserror = { workspace = true }
 tracing = { workspace = true }
