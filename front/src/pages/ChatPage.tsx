@@ -1472,34 +1472,34 @@ export function ChatPage() {
             </div>
 
             {/* Input Area */}
-            <div className="border-t p-4 bg-white">
+            <div className="border-t px-4 py-2 bg-white">
               {/* Row 1: Mic button */}
-              <div className="flex flex-col items-center justify-center mb-4">
-                {/* Large Mic Button */}
+              <div className="flex flex-col items-center justify-center mb-2">
+                {/* Mic Button */}
                 <button
                   onClick={toggleRecording}
                   disabled={isVoiceProcessing}
                   className={cn(
-                    'h-16 w-16 rounded-full flex items-center justify-center transition-all flex-shrink-0',
+                    'h-11 w-11 rounded-full flex items-center justify-center transition-all flex-shrink-0',
                     isVoiceProcessing
                       ? 'bg-gray-400 text-white cursor-not-allowed'
                       : isRecording
-                        ? 'bg-red-500 text-white animate-pulse shadow-lg shadow-red-200'
-                        : 'bg-orange-500 text-white hover:bg-orange-600 shadow-lg shadow-orange-200'
+                        ? 'bg-red-500 text-white animate-pulse shadow-md shadow-red-200'
+                        : 'bg-orange-500 text-white hover:bg-orange-600 shadow-md shadow-orange-200'
                   )}
                   title={isVoiceProcessing ? '处理中...' : isRecording ? '停止录音 (空格键)' : '开始录音 (空格键)'}
                 >
                   {isVoiceProcessing ? (
-                    <Loader2 className="h-7 w-7 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   ) : isRecording ? (
-                    <MicOff className="h-7 w-7" />
+                    <MicOff className="h-5 w-5" />
                   ) : (
-                    <Mic className="h-7 w-7" />
+                    <Mic className="h-5 w-5" />
                   )}
                 </button>
-                {/* Unified recording status hint */}
+                {/* Recording status hint */}
                 <div className={cn(
-                  'mt-2 text-xs text-center',
+                  'mt-1 text-xs text-center',
                   isVoiceProcessing ? 'text-gray-500' : isRecording ? 'text-red-500' : 'text-gray-400'
                 )}>
                   {isVoiceProcessing ? (
