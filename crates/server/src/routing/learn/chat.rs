@@ -707,6 +707,8 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         }
     };
 
+    println!("======user_text: {}", user_text);
+
     // Save user's audio file if provided
     let user_audio_path = if let Some(audio_data) = &user_audio_data {
         save_audio_file(user_id, audio_data, "user").await

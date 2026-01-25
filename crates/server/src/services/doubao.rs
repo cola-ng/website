@@ -113,6 +113,8 @@ impl AsrService for DoubaoClient {
             .map_err(|e| AiProviderError::Api(e.to_string()))?;
 
         let text = response.result.text.clone();
+        println!("Doubao ASR transcribed text  1: {:#?}", response);
+        println!("Doubao ASR text 2: {}", text);
 
         // Extract word timings from utterances
         let words = if !response.result.utterances.is_empty() {
@@ -287,8 +289,8 @@ impl ChatService for DoubaoClient {
             Response JSON format:\n\
             {{\n\
               \"use_lang\": \"<en|zh|mix>\",\n\
-              \"original_en\": \"<the last message or translation in English>\",\n\
-              \"original_zh\": \"<the last message or translation in Chinese>\",\n\
+              \"original_en\": \"<the last user message or translation in English>\",\n\
+              \"original_zh\": \"<the last user message or translation in Chinese>\",\n\
               \"reply_en\": \"<your reply in English>\",\n\
               \"reply_zh\": \"<your reply in Chinese>\",\n\
               \"issues\": [\n\
@@ -310,6 +312,12 @@ impl ChatService for DoubaoClient {
             content: enhanced_system_prompt,
         }];
         all_messages.extend(messages);
+        all_messages.push(ChatMessage {
+            role: "user".to_string(),
+            content: user_text.to_string(),
+        });
+
+        println!("Doubao Chat Structured: total messages: {:#?}", all_messages);
 
         // Convert to Doubao messages
         let doubao_messages: Vec<DoubaoChatMessage> =
@@ -325,11 +333,11 @@ impl ChatService for DoubaoClient {
                 },
                 "original_en": {
                     "type": "string",
-                    "description": "The last message or translation in English in English. If the user wrote in Chinese or mixed language, translate it to English here."
+                    "description": "The last user message or translation in English. If the user wrote in Chinese or mixed language, translate it to English here."
                 },
                 "original_zh": {
                     "type": "string",
-                    "description": "The last message or translation in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
+                    "description": "The last user message or translation in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
                 },
                 "reply_en": {
                     "type": "string",

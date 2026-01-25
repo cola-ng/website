@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS learn_chat_turns (
     user_id BIGINT NOT NULL,
     chat_id BIGINT NOT NULL,
     speaker TEXT NOT NULL,
-    use_lang TEXT NOT NULL CHECK(use_lang IN ('en', 'zh')),
+    use_lang TEXT NOT NULL, -- CHECK(use_lang IN ('en', 'zh', 'mix')),
     content_en TEXT NOT NULL,
     content_zh TEXT NOT NULL,
     audio_path TEXT,
