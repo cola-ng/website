@@ -210,26 +210,22 @@ impl ChatService for ZhipuClient {
         // Build enhanced system prompt that requests JSON output
         let enhanced_system_prompt = format!(
             "{}\n\n\
-            IMPORTANT: You must respond with a JSON object containing:\n\
-            1. A natural conversational reply to the user\n\
-            2. Grammar/vocabulary analysis of the user's last message\n\n\
-            Response JSON format:\n\
+            CRITICAL: You MUST respond with a valid JSON object. No other text allowed.\n\n\
+            Instructions:\n\
+            1. Detect the language of the user's LAST message:\n\
+               - If Chinese: set use_lang=\"zh\", put Chinese in original_zh, translate to English in original_en\n\
+               - If English: set use_lang=\"en\", put English in original_en, translate to Chinese in original_zh\n\
+               - If mixed: set use_lang=\"mix\", fill both original_en and original_zh appropriately\n\
+            2. Generate your reply in BOTH English (reply_en) and Chinese (reply_zh)\n\
+            3. Find grammar/vocabulary issues ONLY if user wrote in English\n\n\
+            Required JSON format:\n\
             {{\n\
-              \"use_lang\": \"<en|zh|mix>\",\n\
-              \"original_en\": \"<user's text in English>\",\n\
-              \"original_zh\": \"<user's text in Chinese>\",\n\
-              \"reply_en\": \"<your reply in English>\",\n\
-              \"reply_zh\": \"<your reply in Chinese>\",\n\
-              \"issues\": [\n\
-                {{\n\
-                  \"type\": \"grammar|word_choice|suggestion\",\n\
-                  \"original\": \"<problematic text>\",\n\
-                  \"suggested\": \"<corrected text>\",\n\
-                  \"description_en\": \"<explanation in English>\",\n\
-                  \"description_zh\": \"<explanation in Chinese>\",\n\
-                  \"severity\": \"low|medium|high\"\n\
-                }}\n\
-              ]\n\
+              \"use_lang\": \"en|zh|mix\",\n\
+              \"original_en\": \"user's message in English (translate if user wrote Chinese)\",\n\
+              \"original_zh\": \"user's message in Chinese (translate if user wrote English)\",\n\
+              \"reply_en\": \"your reply in English - REQUIRED\",\n\
+              \"reply_zh\": \"your reply in Chinese - REQUIRED\",\n\
+              \"issues\": []\n\
             }}",
             system_prompt
         );
@@ -283,23 +279,49 @@ impl ChatService for ZhipuClient {
 
         println!("Parsed JSON string: {}", json_str);
 
-        let structured: serde_json::Value = serde_json::from_str(json_str).map_err(|e| {
-            tracing::warn!(
-                "Failed to parse structured response: {}, content: {}",
-                e,
-                content
-            );
-            AiProviderError::Parse(format!("Failed to parse structured response: {}", e))
-        })?;
+        let structured: serde_json::Value = match serde_json::from_str(json_str) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to parse structured response as JSON: {}, content: {}",
+                    e,
+                    content
+                );
+                // Fallback: detect if user_text is Chinese or English
+                let is_chinese = user_text.chars().any(|c| c >= '\u{4e00}' && c <= '\u{9fff}');
+                return Ok(StructuredChatResponse {
+                    use_lang: if is_chinese { "zh" } else { "en" }.to_string(),
+                    original_en: if is_chinese { String::new() } else { user_text.to_string() },
+                    original_zh: if is_chinese { user_text.to_string() } else { String::new() },
+                    reply_en: content.clone(),
+                    reply_zh: String::new(),
+                    issues: vec![],
+                });
+            }
+        };
 
         let use_lang = structured["use_lang"].as_str().unwrap_or("en").to_string();
+
+        // Detect if user_text is Chinese for fallback handling
+        let is_chinese = user_text.chars().any(|c| c >= '\u{4e00}' && c <= '\u{9fff}');
+
         let original_en = structured["original_en"]
             .as_str()
-            .unwrap_or(user_text)
-            .to_string();
-        let original_zh = structured["original_zh"].as_str().unwrap_or("").to_string();
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| if is_chinese { String::new() } else { user_text.to_string() });
+        let original_zh = structured["original_zh"]
+            .as_str()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| if is_chinese { user_text.to_string() } else { String::new() });
         let reply_en = structured["reply_en"].as_str().unwrap_or("").to_string();
         let reply_zh = structured["reply_zh"].as_str().unwrap_or("").to_string();
+
+        tracing::debug!(
+            "Zhipu parsed: use_lang={}, original_en={}, original_zh={}, reply_en_len={}, reply_zh_len={}",
+            use_lang, original_en, original_zh, reply_en.len(), reply_zh.len()
+        );
 
         let issues: Vec<TextIssue> =
             serde_json::from_value(structured["issues"].clone()).unwrap_or_default();
