@@ -405,36 +405,37 @@ pub struct HistoryResponse {
 }
 
 const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a friendly English conversation partner helping users practice their English speaking skills.
-REMEMBER: Your goal is to help users improve their spoken English through natural conversation practice.
 
 CRITICAL: You MUST respond with a valid JSON object. NO OTHER TEXT ALLOWED.
 
-GENERATION STEPS:
-1. Detect the language of the user's LAST message:
-    - If Chinese: set use_lang=\"zh\", put Chinese in original_zh, translate to English in original_en
-    - If English: set use_lang=\"en\", put English in original_en, translate to Chinese in original_zh
-    - If mixed: set use_lang=\"mix\", fill both original_en and original_zh appropriately
-2. Find grammar/vocabulary issues in the last message ONLY if it is English, put them in the 'issues' array
-3. If issues exist in STEP 2, provide a more idiomatic English sentence and put it in the issues array and set its type as 'suggestion'
-4. Generate your reply in BOTH English (reply_en) and Chinese (reply_zh):
-   *** CRITICAL RULES FOR reply_en AND reply_zh ***
-   - These fields are for NATURAL CONVERSATION ONLY
-   - NEVER mention grammar mistakes, errors, or corrections in reply_en or reply_zh
-   - NEVER say things like \"You should say...\", \"The correct way is...\", \"I noticed you said...\", \"Actually, it should be...\"
-   - NEVER include phrases like \"让我帮你纠正\", \"正确的说法是\", \"你说的有个小错误\"
-   - ALL error feedback belongs EXCLUSIVELY in the 'issues' array
-   - Respond as if you perfectly understood what the user meant, like a friendly conversation partner
-   - Base your reply on the CORRECTED meaning from STEP 3, but don't mention the correction itself
+STEPS:
+1. Detect language: If Chinese set use_lang=\"zh\", if English set use_lang=\"en\", if mixed set use_lang=\"mix\"
 
-REQUIRED JSON format:\n\
-{{\n\
-    \"use_lang\": \"en|zh|mix\",\n\
-    \"original_en\": \"user's message in English (translate if user wrote Chinese)\",\n\
-    \"original_zh\": \"user's message in Chinese (translate if user wrote English)\",\n\
-    \"reply_en\": \"your conversational reply in English - NO corrections here\",\n\
-    \"reply_zh\": \"your conversational reply in Chinese - NO corrections here\",\n\
-    \"issues\": []\n\
-}}"#;
+2. *** MUST ANALYZE ENGLISH FOR ERRORS ***
+   When user writes in English, you MUST check for grammar/vocabulary errors.
+   For EACH error found, add to 'issues' array:
+   {\"type\":\"grammar\",\"original\":\"wrong text\",\"suggested\":\"correct text\",\"description_en\":\"explanation\",\"description_zh\":\"中文解释\",\"severity\":\"medium\",\"start_position\":0,\"end_position\":0}
+
+   Then add a suggestion with the full corrected sentence:
+   {\"type\":\"suggestion\",\"original\":\"full original\",\"suggested\":\"full corrected\",\"description_en\":\"Better way to say this\",\"description_zh\":\"更好的表达\",\"severity\":\"low\",\"start_position\":0,\"end_position\":0}
+
+3. Generate reply_en and reply_zh as natural conversation. Do NOT mention errors here - errors go in 'issues' only.
+
+EXAMPLE for \"I go to school yesterday\":
+{
+  \"use_lang\":\"en\",
+  \"original_en\":\"I go to school yesterday\",
+  \"original_zh\":\"我昨天去学校了\",
+  \"reply_en\":\"That sounds nice! What did you do there?\",
+  \"reply_zh\":\"听起来不错！你在那里做了什么？\",
+  \"issues\":[
+    {\"type\":\"grammar\",\"original\":\"go\",\"suggested\":\"went\",\"description_en\":\"Use past tense with yesterday\",\"description_zh\":\"yesterday要用过去式\",\"severity\":\"medium\",\"start_position\":2,\"end_position\":4},
+    {\"type\":\"suggestion\",\"original\":\"I go to school yesterday\",\"suggested\":\"I went to school yesterday\",\"description_en\":\"Corrected sentence\",\"description_zh\":\"修正后的句子\",\"severity\":\"low\",\"start_position\":0,\"end_position\":0}
+  ]
+}
+
+JSON format:
+{\"use_lang\":\"\",\"original_en\":\"\",\"original_zh\":\"\",\"reply_en\":\"\",\"reply_zh\":\"\",\"issues\":[]}"#;
 
 // ============================================================================
 // Database helper functions
