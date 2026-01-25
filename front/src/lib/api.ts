@@ -684,7 +684,7 @@ export function clearAllChats(token: string): Promise<{ ok: boolean }> {
 /** Chat turn status */
 export type ChatTurnStatus = 'processing' | 'completed' | 'error'
 
-/** Chat turn from history */
+/** Chat turn from history with embedded issues */
 export type ChatTurn = {
   id: number
   user_id: number
@@ -701,6 +701,8 @@ export type ChatTurn = {
   status: ChatTurnStatus
   error: string | null
   created_at: string
+  /** Embedded issues for this turn (only present if issues_count > 0) */
+  issues: ChatIssue[]
 }
 
 /** Paginated response with cursor-based pagination */
@@ -721,14 +723,12 @@ export type PaginatedResponse<T> = {
   last_id: number | null
 }
 
-/** Response from send_chat - returns two turns */
+/** Response from send_chat - returns two turns with embedded issues */
 export type ChatSendResponse = {
-  /** User's chat turn (status: completed) */
+  /** User's chat turn with embedded issues (status: completed) */
   user_turn: ChatTurn
-  /** AI's chat turn (status: processing, will be updated async) */
+  /** AI's chat turn (status: completed) */
   ai_turn: ChatTurn
-  /** Grammar/word choice issues found in user input */
-  issues: TextIssue[]
 }
 
 /** Options for fetching chat turns with cursor-based pagination */

@@ -237,6 +237,74 @@ pub struct CreateChatTurnRequest {
     hesitation_count: Option<i32>,
 }
 
+/// Chat turn with embedded issues - response structure for turn APIs
+#[derive(Debug, Serialize, ToSchema)]
+pub struct ChatTurnWithIssues {
+    pub id: i64,
+    pub user_id: i64,
+    pub chat_id: i64,
+    pub speaker: String,
+    pub use_lang: String,
+    pub content_en: String,
+    pub content_zh: String,
+    pub audio_path: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub words_per_minute: Option<f32>,
+    pub issues_count: i32,
+    pub hesitation_count: Option<i32>,
+    pub status: String,
+    pub error: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    /// Associated issues for this turn (only present if issues_count > 0)
+    pub issues: Vec<ChatIssue>,
+}
+
+impl ChatTurnWithIssues {
+    /// Create from ChatTurn with empty issues
+    pub fn from_turn(turn: ChatTurn) -> Self {
+        Self {
+            id: turn.id,
+            user_id: turn.user_id,
+            chat_id: turn.chat_id,
+            speaker: turn.speaker,
+            use_lang: turn.use_lang,
+            content_en: turn.content_en,
+            content_zh: turn.content_zh,
+            audio_path: turn.audio_path,
+            duration_ms: turn.duration_ms,
+            words_per_minute: turn.words_per_minute,
+            issues_count: turn.issues_count,
+            hesitation_count: turn.hesitation_count,
+            status: turn.status,
+            error: turn.error,
+            created_at: turn.created_at,
+            issues: vec![],
+        }
+    }
+
+    /// Create from ChatTurn with issues
+    pub fn from_turn_with_issues(turn: ChatTurn, issues: Vec<ChatIssue>) -> Self {
+        Self {
+            id: turn.id,
+            user_id: turn.user_id,
+            chat_id: turn.chat_id,
+            speaker: turn.speaker,
+            use_lang: turn.use_lang,
+            content_en: turn.content_en,
+            content_zh: turn.content_zh,
+            audio_path: turn.audio_path,
+            duration_ms: turn.duration_ms,
+            words_per_minute: turn.words_per_minute,
+            issues_count: turn.issues_count,
+            hesitation_count: turn.hesitation_count,
+            status: turn.status,
+            error: turn.error,
+            created_at: turn.created_at,
+            issues,
+        }
+    }
+}
+
 /// List chat turns with cursor-based pagination
 ///
 /// Query parameters:
@@ -353,8 +421,51 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
         false
     };
 
+    // Fetch issues for turns that have issues_count > 0
+    let turn_ids_with_issues: Vec<i64> = turns
+        .iter()
+        .filter(|t| t.issues_count > 0)
+        .map(|t| t.id)
+        .collect();
+
+    let issues_by_turn: std::collections::HashMap<i64, Vec<ChatIssue>> =
+        if turn_ids_with_issues.is_empty() {
+            std::collections::HashMap::new()
+        } else {
+            let all_issues: Vec<ChatIssue> = with_conn({
+                let turn_ids = turn_ids_with_issues.clone();
+                move |conn| {
+                    learn_chat_issues::table
+                        .filter(learn_chat_issues::user_id.eq(user_id))
+                        .filter(learn_chat_issues::chat_turn_id.eq_any(turn_ids))
+                        .load::<ChatIssue>(conn)
+                }
+            })
+            .await
+            .unwrap_or_default();
+
+            let mut map: std::collections::HashMap<i64, Vec<ChatIssue>> =
+                std::collections::HashMap::new();
+            for issue in all_issues {
+                map.entry(issue.chat_turn_id).or_default().push(issue);
+            }
+            map
+        };
+
+    // Convert turns to ChatTurnWithIssues
+    let items: Vec<ChatTurnWithIssues> = turns
+        .into_iter()
+        .map(|turn| {
+            let issues = issues_by_turn
+                .get(&turn.id)
+                .cloned()
+                .unwrap_or_default();
+            ChatTurnWithIssues::from_turn_with_issues(turn, issues)
+        })
+        .collect();
+
     let response = PaginatedResponse {
-        items: turns,
+        items,
         total,
         limit,
         has_prev,
@@ -422,7 +533,7 @@ pub async fn delete_turn(
 /// If the turn status is "processing", the server will block for up to 30 seconds,
 /// polling periodically until the turn is completed or timeout is reached.
 #[endpoint(tags("Chat"))]
-pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTurn> {
+pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTurnWithIssues> {
     let user_id = depot.user_id()?;
     let turn_id = req
         .param::<i64>("id")
@@ -440,7 +551,22 @@ pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTu
         tracing::error!("Failed to get chat turn: {:?}", e);
         StatusError::not_found().brief("chat turn not found")
     })?;
-    json_ok(turn)
+
+    // Fetch issues if this turn has any
+    let issues: Vec<ChatIssue> = if turn.issues_count > 0 {
+        with_conn(move |conn| {
+            learn_chat_issues::table
+                .filter(learn_chat_issues::chat_turn_id.eq(turn_id))
+                .filter(learn_chat_issues::user_id.eq(user_id))
+                .load::<ChatIssue>(conn)
+        })
+        .await
+        .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    json_ok(ChatTurnWithIssues::from_turn_with_issues(turn, issues))
 }
 
 /// Request for chat - supports both audio and text input
@@ -473,12 +599,10 @@ pub struct TtsRequest {
 /// Response for voice/text chat - returns two chat turns
 #[derive(Debug, Serialize, ToSchema)]
 pub struct ChatSendResponse {
-    /// User's chat turn (status: completed)
-    pub user_turn: ChatTurn,
+    /// User's chat turn with embedded issues (status: completed)
+    pub user_turn: ChatTurnWithIssues,
     /// AI's chat turn (status: processing, will be updated async)
-    pub ai_turn: ChatTurn,
-    /// Grammar/word choice issues found in user input
-    pub issues: Vec<TextIssue>,
+    pub ai_turn: ChatTurnWithIssues,
 }
 
 /// Response for TTS only
@@ -966,10 +1090,24 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     )
     .await?;
 
+    // Fetch issues that were saved for the user turn
+    let user_turn_id = user_turn.id;
+    let user_issues: Vec<ChatIssue> = if user_turn.issues_count > 0 {
+        with_conn(move |conn| {
+            learn_chat_issues::table
+                .filter(learn_chat_issues::chat_turn_id.eq(user_turn_id))
+                .filter(learn_chat_issues::user_id.eq(user_id))
+                .load::<ChatIssue>(conn)
+        })
+        .await
+        .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
     json_ok(ChatSendResponse {
-        user_turn,
-        ai_turn,
-        issues: structured_response.issues.clone(),
+        user_turn: ChatTurnWithIssues::from_turn_with_issues(user_turn, user_issues),
+        ai_turn: ChatTurnWithIssues::from_turn(ai_turn),
     })
 }
 

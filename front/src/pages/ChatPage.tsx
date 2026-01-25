@@ -6,7 +6,22 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, getChatIssues, deleteChatTurn, type TextIssue, type ChatTurn } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
+
+// Helper to convert embedded ChatIssue[] to TextIssue[] for display
+function convertIssues(issues: ChatIssue[] | undefined): TextIssue[] | undefined {
+  if (!issues || issues.length === 0) return undefined
+  return issues.map(issue => ({
+    type: issue.issue_type,
+    original: issue.original_text || '',
+    suggested: issue.suggested_text || '',
+    description_en: issue.description_en || '',
+    description_zh: issue.description_zh || '',
+    severity: issue.severity || 'low',
+    start_position: issue.start_position,
+    end_position: issue.end_position,
+  }))
+}
 
 interface Message {
   id: string
@@ -172,30 +187,7 @@ export function ChatPage() {
             try {
               const turnsResponse = await getChatTurns(token, targetChat.serverId, { limit: 50, fromLatest: true })
 
-              // Check if any turn has issues before fetching issues
-              const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
-              let issuesByTurnId: Record<number, TextIssue[]> = {}
-
-              if (hasIssues) {
-                const issues = await getChatIssues(token, targetChat.serverId)
-                for (const ann of issues) {
-                  const turnId = ann.chat_turn_id
-                  if (!issuesByTurnId[turnId]) {
-                    issuesByTurnId[turnId] = []
-                  }
-                  issuesByTurnId[turnId].push({
-                    type: ann.issue_type,
-                    original: ann.original_text || '',
-                    suggested: ann.suggested_text || '',
-                    description_en: ann.description_en || '',
-                    description_zh: ann.description_zh || '',
-                    severity: ann.severity || 'low',
-                    start_position: ann.start_position,
-                    end_position: ann.end_position,
-                  })
-                }
-              }
-
+              // Convert turns to messages with embedded issues
               const messages: Message[] = turnsResponse.items
                 .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
                 .map((turn: ChatTurn) => ({
@@ -206,7 +198,7 @@ export function ChatPage() {
                   hasAudio: !!turn.audio_path,
                   audioPath: turn.audio_path || undefined,
                   timestamp: new Date(turn.created_at),
-                  issues: issuesByTurnId[turn.id],
+                  issues: convertIssues(turn.issues),
                 }))
 
               setChats(prev => prev.map(c => {
@@ -378,8 +370,8 @@ export function ChatPage() {
       // Poll for AI turn completion
       const completedAiTurn = await pollChatTurn(token, chatId, sendResponse.ai_turn.id, 1000, 60)
 
-      // Use issues directly from send response
-      const userIssues = sendResponse.issues
+      // Get issues from user turn's embedded issues
+      const userIssues = convertIssues(sendResponse.user_turn.issues)
 
       // Add AI response and update user message with issues
       const aiMessage: Message = {
@@ -397,7 +389,7 @@ export function ChatPage() {
           return {
             ...c,
             messages: c.messages
-              .map(m => m.id === userMessage.id ? { ...m, issues: userIssues.length > 0 ? userIssues : undefined } : m)
+              .map(m => m.id === userMessage.id ? { ...m, issues: userIssues } : m)
               .concat([aiMessage]),
             lastMessage: aiMessage.contentEn,
             timestamp: new Date(),
@@ -586,8 +578,8 @@ export function ChatPage() {
           // Poll for AI turn completion
           const completedAiTurn = await pollChatTurn(token, chatId, sendResponse.ai_turn.id, 1000, 60)
 
-          // Use issues directly from send response
-          const userIssues = sendResponse.issues
+          // Get issues from user turn's embedded issues
+          const userIssues = convertIssues(sendResponse.user_turn.issues)
 
           // Add AI response and update user message with issues
           const aiMessage: Message = {
@@ -605,7 +597,7 @@ export function ChatPage() {
               return {
                 ...c,
                 messages: c.messages
-                  .map(m => m.id === userMessage.id ? { ...m, issues: userIssues.length > 0 ? userIssues : undefined } : m)
+                  .map(m => m.id === userMessage.id ? { ...m, issues: userIssues } : m)
                   .concat([aiMessage]),
                 lastMessage: aiMessage.contentEn,
                 timestamp: new Date(),
@@ -871,30 +863,7 @@ export function ChatPage() {
       // Re-fetch from server to ensure UI is in sync
       const turnsResponse = await getChatTurns(token, conv.serverId, { limit: 50, fromLatest: true })
 
-      // Check if any turn has issues before fetching issues
-      const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
-      let issuesByTurnId: Record<number, TextIssue[]> = {}
-
-      if (hasIssues) {
-        const issues = await getChatIssues(token, conv.serverId)
-        for (const ann of issues) {
-          const tid = ann.chat_turn_id
-          if (!issuesByTurnId[tid]) {
-            issuesByTurnId[tid] = []
-          }
-          issuesByTurnId[tid].push({
-            type: ann.issue_type,
-            original: ann.original_text || '',
-            suggested: ann.suggested_text || '',
-            description_en: ann.description_en || '',
-            description_zh: ann.description_zh || '',
-            severity: ann.severity || 'low',
-            start_position: ann.start_position,
-            end_position: ann.end_position,
-          })
-        }
-      }
-
+      // Convert turns to messages with embedded issues
       const messages: Message[] = turnsResponse.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
         .map((turn: ChatTurn) => ({
@@ -905,7 +874,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
-          issues: issuesByTurnId[turn.id],
+          issues: convertIssues(turn.issues),
         }))
 
       setChats(prev => prev.map(c => {
@@ -956,30 +925,7 @@ export function ChatPage() {
       // Re-fetch from server to ensure UI is in sync
       const turnsResponse = await getChatTurns(token, serverId, { limit: 50, fromLatest: true })
 
-      // Check if any turn has issues before fetching issues
-      const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
-      let issuesByTurnId: Record<number, TextIssue[]> = {}
-
-      if (hasIssues) {
-        const issues = await getChatIssues(token, serverId)
-        for (const ann of issues) {
-          const tid = ann.chat_turn_id
-          if (!issuesByTurnId[tid]) {
-            issuesByTurnId[tid] = []
-          }
-          issuesByTurnId[tid].push({
-            type: ann.issue_type,
-            original: ann.original_text || '',
-            suggested: ann.suggested_text || '',
-            description_en: ann.description_en || '',
-            description_zh: ann.description_zh || '',
-            severity: ann.severity || 'low',
-            start_position: ann.start_position,
-            end_position: ann.end_position,
-          })
-        }
-      }
-
+      // Convert turns to messages with embedded issues
       const messages: Message[] = turnsResponse.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
         .map((turn: ChatTurn) => ({
@@ -990,7 +936,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
-          issues: issuesByTurnId[turn.id],
+          issues: convertIssues(turn.issues),
         }))
 
       setChats(prev => prev.map(c => {
@@ -1049,31 +995,7 @@ export function ChatPage() {
       // Fetch turns from server with pagination (latest first)
       const turnsResponse = await getChatTurns(token, chat.serverId, { limit: 50, fromLatest: true })
 
-      // Check if any turn has issues before fetching issues
-      const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
-      let issuesByTurnId: Record<number, TextIssue[]> = {}
-
-      if (hasIssues) {
-        const issues = await getChatIssues(token, chat.serverId)
-        for (const ann of issues) {
-          const turnId = ann.chat_turn_id
-          if (!issuesByTurnId[turnId]) {
-            issuesByTurnId[turnId] = []
-          }
-          issuesByTurnId[turnId].push({
-            type: ann.issue_type,
-            original: ann.original_text || '',
-            suggested: ann.suggested_text || '',
-            description_en: ann.description_en || '',
-            description_zh: ann.description_zh || '',
-            severity: ann.severity || 'low',
-            start_position: ann.start_position,
-            end_position: ann.end_position,
-          })
-        }
-      }
-
-      // Convert ChatTurn to Message format and update chat
+      // Convert ChatTurn to Message format with embedded issues
       const messages: Message[] = turnsResponse.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
         .map((turn: ChatTurn) => ({
@@ -1084,7 +1006,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
-          issues: issuesByTurnId[turn.id],
+          issues: convertIssues(turn.issues),
         }))
 
       setChats(prev => prev.map(c => {
@@ -1119,31 +1041,7 @@ export function ChatPage() {
         beforeId: activeChat.firstId,
       })
 
-      // Check if any turn has issues before fetching issues
-      const hasIssues = response.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
-      let issuesByTurnId: Record<number, TextIssue[]> = {}
-
-      if (hasIssues) {
-        const issues = await getChatIssues(token, activeChat.serverId)
-        for (const ann of issues) {
-          const tid = ann.chat_turn_id
-          if (!issuesByTurnId[tid]) {
-            issuesByTurnId[tid] = []
-          }
-          issuesByTurnId[tid].push({
-            type: ann.issue_type,
-            original: ann.original_text || '',
-            suggested: ann.suggested_text || '',
-            description_en: ann.description_en || '',
-            description_zh: ann.description_zh || '',
-            severity: ann.severity || 'low',
-            start_position: ann.start_position,
-            end_position: ann.end_position,
-          })
-        }
-      }
-
-      // Convert ChatTurn to Message format
+      // Convert ChatTurn to Message format with embedded issues
       const olderMessages: Message[] = response.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
         .map((turn: ChatTurn) => ({
@@ -1154,7 +1052,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
-          issues: issuesByTurnId[turn.id],
+          issues: convertIssues(turn.issues),
         }))
 
       // Prepend older messages to existing messages
