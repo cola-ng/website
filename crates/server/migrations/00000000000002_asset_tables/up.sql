@@ -1,27 +1,33 @@
 -- Table: taxon_domains - domains and classifications
 CREATE TABLE IF NOT EXISTS taxon_domains (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
-    name_en TEXT NOT NULL,                               -- 领域名称
-    name_zh TEXT NOT NULL,                               -- 领域名称
+    code TEXT NOT NULL UNIQUE,                                -- 领域代码
+    name_en TEXT NOT NULL UNIQUE,                               -- 领域名称
+    name_zh TEXT NOT NULL UNIQUE,                               -- 领域名称
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_taxon_domains_name ON taxon_domains(name_en, name_zh);
 
 -- Table: taxon_categories - categories and classifications
+drop table if exists taxon_categories;
 CREATE TABLE IF NOT EXISTS taxon_categories (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    code TEXT NOT NULL,                                -- 分类代码
     name_en TEXT NOT NULL,                               -- 分类名称
     name_zh TEXT NOT NULL,                               -- 分类名称
     domain_id BIGINT NOT NULL,                        -- 关联领域 ID
     parent_id BIGINT,                                  -- 父分类 ID
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE NULLS NOT DISTINCT (name_en, domain_id, parent_id),
+    UNIQUE NULLS NOT DISTINCT (name_zh, domain_id, parent_id)
 );
 CREATE INDEX IF NOT EXISTS idx_taxon_categories_name ON taxon_categories(name_en, name_zh);
 
 CREATE TABLE IF NOT EXISTS asset_contexts (
     id BIGSERIAL PRIMARY KEY,
-    name_en TEXT NOT NULL,
-    name_zh TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    name_en TEXT NOT NULL UNIQUE,
+    name_zh TEXT NOT NULL UNIQUE,
     description_en TEXT,
     description_zh TEXT,
     icon_emoji TEXT,
@@ -30,8 +36,7 @@ CREATE TABLE IF NOT EXISTS asset_contexts (
     user_id BIGINT, -- If null, it's a shared stage
     prompt TEXT,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(name_en, name_zh)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_asset_contexts_active ON asset_contexts(is_active, display_order);
 
@@ -48,21 +53,22 @@ CREATE INDEX IF NOT EXISTS idx_asset_context_categories_id ON asset_context_cate
 
 CREATE TABLE IF NOT EXISTS asset_stages (
     id BIGSERIAL PRIMARY KEY,
-    name_en TEXT NOT NULL,
-    name_zh TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    name_en TEXT NOT NULL UNIQUE,
+    name_zh TEXT NOT NULL UNIQUE,
     description_en TEXT,
     description_zh TEXT,
     icon_emoji TEXT,
     display_order INTEGER DEFAULT 0,
     difficulty SMALLINT, -- 1-10,
     is_active BOOLEAN DEFAULT TRUE,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE(name_en, name_zh)
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_asset_stages_active ON asset_stages(is_active, display_order);
 CREATE TABLE IF NOT EXISTS asset_scripts (
     id BIGSERIAL PRIMARY KEY,
     stage_id BIGINT NOT NULL,
+    code TEXT NOT NULL,
     title_en TEXT NOT NULL,
     title_zh TEXT NOT NULL,
     description_en TEXT,
@@ -95,10 +101,12 @@ CREATE INDEX IF NOT EXISTS idx_asset_script_turns_stage ON asset_script_turns(sc
 -- ============================================================================
 -- READING SUBJECT (Shared content - no user_id)
 -- ============================================================================
+drop table if exists asset_read_subjects;
 CREATE TABLE IF NOT EXISTS asset_read_subjects (
     id BIGSERIAL PRIMARY KEY,
-    title_en TEXT NOT NULL,
-    title_zh TEXT NOT NULL,
+    code TEXT NOT NULL UNIQUE,
+    title_en TEXT NOT NULL UNIQUE,
+    title_zh TEXT NOT NULL UNIQUE,
     description_en TEXT,
     description_zh TEXT,
     difficulty SMALLINT, -- 1-10,

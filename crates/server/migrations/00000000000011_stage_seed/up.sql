@@ -3,19 +3,14 @@
 -- ============================================================================
 
 -- Insert additional stages into asset_contexts
-INSERT INTO asset_contexts (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
-('Grocery Shopping', '超市购物', 'English communication skills for grocery shopping', '超市购物时的英语交流技巧', '🛒', 2, 11, true),
-('Banking', '银行业务', 'English expressions for banking services', '银行业务办理的英语表达', '🏦', 4, 12, true),
-('Phone Booking', '电话预约', 'English conversation skills for phone reservations', '电话预约的英语对话技巧', '📞', 4, 13, true),
-('Taking a Taxi', '打车出行', 'English communication when taking a taxi', '打车时的英语交流', '🚕', 2, 14, true),
-('Package Delivery', '快递收发', 'English for sending and receiving packages', '收发快递时的英语表达', '📦', 2, 15, true),
-('Movie Tickets', '电影购票', 'English dialogue for buying movie tickets', '电影院购票的英语对话', '🎬', 2, 16, true)
-ON CONFLICT (name_en, name_zh) DO UPDATE SET
-    description_en = EXCLUDED.description_en,
-    description_zh = EXCLUDED.description_zh,
-    icon_emoji = EXCLUDED.icon_emoji,
-    difficulty = EXCLUDED.difficulty,
-    display_order = EXCLUDED.display_order;
+INSERT INTO asset_contexts (code, name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
+('grocery_shopping', 'Grocery Shopping', '超市购物', 'English communication skills for grocery shopping', '超市购物时的英语交流技巧', '🛒', 2, 11, true),
+('banking', 'Banking', '银行业务', 'English expressions for banking services', '银行业务办理的英语表达', '🏦', 4, 12, true),
+('phone_booking', 'Phone Booking', '电话预约', 'English conversation skills for phone reservations', '电话预约的英语对话技巧', '📞', 4, 13, true),
+('taking_taxi', 'Taking a Taxi', '打车出行', 'English communication when taking a taxi', '打车时的英语交流', '🚕', 2, 14, true),
+('package_delivery', 'Package Delivery', '快递收发', 'English for sending and receiving packages', '收发快递时的英语表达', '📦', 2, 15, true),
+('movie_tickets', 'Movie Tickets', '电影购票', 'English dialogue for buying movie tickets', '电影院购票的英语对话', '🎬', 2, 16, true)
+ON CONFLICT DO NOTHING;
 
 -- Insert additional stages for script linking
 INSERT INTO asset_stages (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES

@@ -6,60 +6,50 @@
 -- ============================================================================
 
 -- Insert context domain
-INSERT INTO taxon_domains (name_en, name_zh) VALUES
-('Scene', '场景')
+INSERT INTO taxon_domains (code, name_en, name_zh) VALUES
+('context', 'Context', '场景')
 ON CONFLICT DO NOTHING;
 
 -- Insert context categories
-INSERT INTO taxon_categories (name_en, name_zh, domain_id) VALUES
-('Daily Life', '日常生活', (SELECT id FROM taxon_domains WHERE name_en = 'Scene')),
-('Business', '商务', (SELECT id FROM taxon_domains WHERE name_en = 'Scene')),
-('Travel', '旅行', (SELECT id FROM taxon_domains WHERE name_en = 'Scene'))
+INSERT INTO taxon_categories (code, name_en, name_zh, domain_id) VALUES
+('daily_life', 'Daily Life', '日常生活', (SELECT id FROM taxon_domains WHERE name_en = 'Context')),
+('business', 'Business', '商务', (SELECT id FROM taxon_domains WHERE name_en = 'Context')),
+('travel', 'Travel', '旅行', (SELECT id FROM taxon_domains WHERE name_en = 'Context'))
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- SCENARIOS (asset_contexts)
 -- ============================================================================
 
-INSERT INTO asset_contexts (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
-('Airport Check-in', '机场值机', 'Practice conversations at airport check-in counters', '练习机场值机柜台对话', '✈️', 3, 1, true),
-('Hotel Reservation', '酒店预订', 'Learn to book rooms and handle hotel situations', '学习预订房间和处理酒店情况', '🏨', 3, 2, true),
-('Restaurant Ordering', '餐厅点餐', 'Order food and interact with restaurant staff', '点餐和与餐厅员工互动', '🍽️', 3, 3, true),
-('Job Interview', '求职面试', 'Prepare for professional job interviews', '准备专业求职面试', '💼', 4, 4, true),
-('Doctor Visit', '看医生', 'Describe symptoms and understand medical advice', '描述症状和理解医疗建议', '🏥', 3, 5, true),
-('Shopping', '购物', 'Shop for clothes, electronics, and negotiate prices', '购买衣服、电子产品和讨价还价', '🛍️', 2, 6, true),
-('Business Meeting', '商务会议', 'Participate in professional meetings and presentations', '参加专业会议和演示', '📊', 4, 7, true),
-('Asking for Directions', '问路', 'Ask for and give directions in various situations', '在各种情况下问路和指路', '🗺️', 2, 8, true),
-('Phone Call', '电话沟通', 'Handle phone conversations professionally', '专业处理电话交流', '📞', 3, 9, true),
-('Coffee Shop', '咖啡店', 'Order drinks and have casual conversations', '点饮料和进行日常交谈', '☕', 1, 10, true)
-ON CONFLICT (name_en, name_zh) DO UPDATE SET
-    description_en = EXCLUDED.description_en,
-    description_zh = EXCLUDED.description_zh,
-    icon_emoji = EXCLUDED.icon_emoji,
-    difficulty = EXCLUDED.difficulty,
-    display_order = EXCLUDED.display_order;
+INSERT INTO asset_contexts (code, name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
+('airport_checkin', 'Airport Check-in', '机场值机', 'Practice conversations at airport check-in counters', '练习机场值机柜台对话', '✈️', 3, 1, true),
+('hotel_reservation', 'Hotel Reservation', '酒店预订', 'Learn to book rooms and handle hotel situations', '学习预订房间和处理酒店情况', '🏨', 3, 2, true),
+('restaurant_ordering', 'Restaurant Ordering', '餐厅点餐', 'Order food and interact with restaurant staff', '点餐和与餐厅员工互动', '🍽️', 3, 3, true),
+('job_interview', 'Job Interview', '求职面试', 'Prepare for professional job interviews', '准备专业求职面试', '💼', 4, 4, true),
+('doctor_visit', 'Doctor Visit', '看医生', 'Describe symptoms and understand medical advice', '描述症状和理解医疗建议', '🏥', 3, 5, true),
+('shopping', 'Shopping', '购物', 'Shop for clothes, electronics, and negotiate prices', '购买衣服、电子产品和讨价还价', '🛍️', 2, 6, true),
+('business_meeting', 'Business Meeting', '商务会议', 'Participate in professional meetings and presentations', '参加专业会议和演示', '📊', 4, 7, true),
+('asking_for_directions', 'Asking for Directions', '问路', 'Ask for and give directions in various situations', '在各种情况下问路和指路', '🗺️', 2, 8, true),
+('phone_call', 'Phone Call', '电话沟通', 'Handle phone conversations professionally', '专业处理电话交流', '📞', 3, 9, true),
+('coffee_shop', 'Coffee Shop', '咖啡店', 'Order drinks and have casual conversations', '点饮料和进行日常交谈', '☕', 1, 10, true)
+ON CONFLICT DO NOTHING;
 
 -- ============================================================================
 -- STAGES (asset_stages) - Mirror contexts for script linking
 -- ============================================================================
 
-INSERT INTO asset_stages (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
-('Airport Check-in', '机场值机', 'Practice conversations at airport check-in counters', '练习机场值机柜台对话', '✈️', 3, 1, true),
-('Hotel Reservation', '酒店预订', 'Learn to book rooms and handle hotel situations', '学习预订房间和处理酒店情况', '🏨', 3, 2, true),
-('Restaurant Ordering', '餐厅点餐', 'Order food and interact with restaurant staff', '点餐和与餐厅员工互动', '🍽️', 3, 3, true),
-('Job Interview', '求职面试', 'Prepare for professional job interviews', '准备专业求职面试', '💼', 4, 4, true),
-('Doctor Visit', '看医生', 'Describe symptoms and understand medical advice', '描述症状和理解医疗建议', '🏥', 3, 5, true),
-('Shopping', '购物', 'Shop for clothes, electronics, and negotiate prices', '购买衣服、电子产品和讨价还价', '🛍️', 2, 6, true),
-('Business Meeting', '商务会议', 'Participate in professional meetings and presentations', '参加专业会议和演示', '📊', 4, 7, true),
-('Asking for Directions', '问路', 'Ask for and give directions in various situations', '在各种情况下问路和指路', '🗺️', 2, 8, true),
-('Phone Call', '电话沟通', 'Handle phone conversations professionally', '专业处理电话交流', '📞', 3, 9, true),
-('Coffee Shop', '咖啡店', 'Order drinks and have casual conversations', '点饮料和进行日常交谈', '☕', 1, 10, true)
-ON CONFLICT (name_en, name_zh) DO UPDATE SET
-    description_en = EXCLUDED.description_en,
-    description_zh = EXCLUDED.description_zh,
-    icon_emoji = EXCLUDED.icon_emoji,
-    difficulty = EXCLUDED.difficulty,
-    display_order = EXCLUDED.display_order;
+INSERT INTO asset_stages (code, name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
+('airport_checkin', 'Airport Check-in', '机场值机', 'Practice conversations at airport check-in counters', '练习机场值机柜台对话', '✈️', 3, 1, true),
+('hotel_reservation', 'Hotel Reservation', '酒店预订', 'Learn to book rooms and handle hotel situations', '学习预订房间和处理酒店情况', '🏨', 3, 2, true),
+('restaurant_ordering', 'Restaurant Ordering', '餐厅点餐', 'Order food and interact with restaurant staff', '点餐和与餐厅员工互动', '🍽️', 3, 3, true),
+('job_interview', 'Job Interview', '求职面试', 'Prepare for professional job interviews', '准备专业求职面试', '💼', 4, 4, true),
+('doctor_visit', 'Doctor Visit', '看医生', 'Describe symptoms and understand medical advice', '描述症状和理解医疗建议', '🏥', 3, 5, true),
+('shopping', 'Shopping', '购物', 'Shop for clothes, electronics, and negotiate prices', '购买衣服、电子产品和讨价还价', '🛍️', 2, 6, true),
+('business_meeting', 'Business Meeting', '商务会议', 'Participate in professional meetings and presentations', '参加专业会议和演示', '📊', 4, 7, true),
+('asking_for_directions', 'Asking for Directions', '问路', 'Ask for and give directions in various situations', '在各种情况下问路和指路', '🗺️', 2, 8, true),
+('phone_call', 'Phone Call', '电话沟通', 'Handle phone conversations professionally', '专业处理电话交流', '📞', 3, 9, true),
+('coffee_shop', 'Coffee Shop', '咖啡店', 'Order drinks and have casual conversations', '点饮料和进行日常交谈', '☕', 1, 10, true)
+ON CONFLICT DO NOTHING;
 
 -- Link contexts to categories
 INSERT INTO asset_context_categories (context_id, category_id) VALUES
@@ -85,24 +75,24 @@ ON CONFLICT (context_id, category_id) DO NOTHING;
 -- ============================================================================
 
 -- Airport Check-in scripts
-INSERT INTO asset_scripts (stage_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
-((SELECT id FROM asset_stages WHERE name_en = 'Airport Check-in'), 'Basic Check-in', '基础值机', 'A simple check-in conversation', '简单的值机对话', 8, 120, 3),
-((SELECT id FROM asset_stages WHERE name_en = 'Airport Check-in'), 'Overweight Luggage', '行李超重', 'Handling overweight baggage situation', '处理行李超重的情况', 10, 180, 5),
-((SELECT id FROM asset_stages WHERE name_en = 'Airport Check-in'), 'Seat Upgrade Request', '升舱请求', 'Requesting a seat upgrade', '请求升舱', 8, 150, 5)
+INSERT INTO asset_scripts (stage_id, code, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
+((SELECT id FROM asset_stages WHERE name_en = 'Airport Check-in'), 'basic_checkin', 'Basic Check-in', '基础值机', 'A simple check-in conversation', '简单的值机对话', 8, 120, 3),
+((SELECT id FROM asset_stages WHERE name_en = 'Airport Check-in'), 'overweight_luggage', 'Overweight Luggage', '行李超重', 'Handling overweight baggage situation', '处理行李超重的情况', 10, 180, 5),
+((SELECT id FROM asset_stages WHERE name_en = 'Airport Check-in'), 'seat_upgrade_request', 'Seat Upgrade Request', '升舱请求', 'Requesting a seat upgrade', '请求升舱', 8, 150, 5)
 ON CONFLICT DO NOTHING;
 
 -- Hotel Reservation scripts
-INSERT INTO asset_scripts (stage_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
-((SELECT id FROM asset_stages WHERE name_en = 'Hotel Reservation'), 'Making a Reservation', '预订房间', 'Booking a hotel room', '预订酒店房间', 8, 120, 3),
-((SELECT id FROM asset_stages WHERE name_en = 'Hotel Reservation'), 'Checking In', '办理入住', 'Hotel check-in process', '酒店入住流程', 6, 90, 3),
-((SELECT id FROM asset_stages WHERE name_en = 'Hotel Reservation'), 'Room Complaint', '房间投诉', 'Handling issues with the room', '处理房间问题', 10, 180, 5)
+INSERT INTO asset_scripts (stage_id, code, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
+((SELECT id FROM asset_stages WHERE name_en = 'Hotel Reservation'), 'making_reservation', 'Making a Reservation', '预订房间', 'Booking a hotel room', '预订酒店房间', 8, 120, 3),
+((SELECT id FROM asset_stages WHERE name_en = 'Hotel Reservation'), 'checking_in', 'Checking In', '办理入住', 'Hotel check-in process', '酒店入住流程', 6, 90, 3),
+((SELECT id FROM asset_stages WHERE name_en = 'Hotel Reservation'), 'room_complaint', 'Room Complaint', '房间投诉', 'Handling issues with the room', '处理房间问题', 10, 180, 5)
 ON CONFLICT DO NOTHING;
 
 -- Restaurant scripts
-INSERT INTO asset_scripts (stage_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
-((SELECT id FROM asset_stages WHERE name_en = 'Restaurant Ordering'), 'Ordering a Meal', '点餐', 'Basic restaurant ordering', '基础餐厅点餐', 8, 120, 3),
-((SELECT id FROM asset_stages WHERE name_en = 'Restaurant Ordering'), 'Special Dietary Needs', '特殊饮食需求', 'Explaining allergies and preferences', '解释过敏和偏好', 10, 150, 5),
-((SELECT id FROM asset_stages WHERE name_en = 'Restaurant Ordering'), 'Paying the Bill', '结账', 'Asking for the check and paying', '要账单和付款', 6, 90, 3)
+INSERT INTO asset_scripts (stage_id, code, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty) VALUES
+((SELECT id FROM asset_stages WHERE name_en = 'Restaurant Ordering'), 'ordering_meal', 'Ordering a Meal', '点餐', 'Basic restaurant ordering', '基础餐厅点餐', 8, 120, 3),
+((SELECT id FROM asset_stages WHERE name_en = 'Restaurant Ordering'), 'special_dietary_needs', 'Special Dietary Needs', '特殊饮食需求', 'Explaining allergies and preferences', '解释过敏和偏好', 10, 150, 5),
+((SELECT id FROM asset_stages WHERE name_en = 'Restaurant Ordering'), 'paying_bill', 'Paying the Bill', '结账', 'Asking for the check and paying', '要账单和付款', 6, 90, 3)
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================
@@ -138,27 +128,26 @@ ON CONFLICT (script_id, turn_number) DO NOTHING;
 -- ============================================================================
 
 -- Insert classic domain
-INSERT INTO taxon_domains (name_en, name_zh) VALUES
-('Classic', '经典')
-ON CONFLICT DO NOTHING;
+INSERT INTO taxon_domains (code, name_en, name_zh) VALUES ('stage', 'Stage', '角色扮演') ON CONFLICT DO NOTHING;
 
 -- Insert classic categories (movie, tv_show, ted_talk)
-INSERT INTO taxon_categories (name_en, name_zh, domain_id) VALUES
-('Movie', '电影', (SELECT id FROM taxon_domains WHERE name_en = 'Classic')),
-('TV Show', '电视剧', (SELECT id FROM taxon_domains WHERE name_en = 'Classic')),
-('TED Talk', 'TED演讲', (SELECT id FROM taxon_domains WHERE name_en = 'Classic'))
+INSERT INTO taxon_categories (code, name_en, name_zh, domain_id) VALUES
+('movie', 'Movie', '电影', (SELECT id FROM taxon_domains WHERE code = 'stage')),
+('tv_show', 'TV Show', '电视剧', (SELECT id FROM taxon_domains WHERE code = 'stage')),
+('ted_talk', 'TED Talk', 'TED演讲', (SELECT id FROM taxon_domains WHERE code = 'stage'))
 ON CONFLICT DO NOTHING;
 
+INSERT INTO taxon_domains (code, name_en, name_zh) VALUES ('dictionary', 'Dictionary', '词典') ON CONFLICT DO NOTHING;
 -- ============================================================================
 -- READING SUBJECTS (asset_read_subjects)
 -- ============================================================================
 
-INSERT INTO asset_read_subjects (title_en, title_zh, description_en, description_zh, difficulty, subject_type) VALUES
-('Daily Greetings', '日常问候', 'Practice common greeting phrases', '练习常见问候短语', 3, 'sentence'),
-('Business Introductions', '商务介绍', 'Professional introduction phrases', '专业介绍短语', 5, 'sentence'),
-('Travel Conversations', '旅行对话', 'Useful phrases for traveling', '旅行中有用的短语', 3, 'sentence'),
-('Tongue Twisters', '绕口令', 'Fun pronunciation practice', '有趣的发音练习', 5, 'sentence'),
-('News Reading', '新闻阅读', 'Practice reading news articles', '练习阅读新闻文章', 8, 'sentence')
+INSERT INTO asset_read_subjects (code, title_en, title_zh, description_en, description_zh, difficulty, subject_type) VALUES
+('daily_greetings', 'Daily Greetings', '日常问候', 'Practice common greeting phrases', '练习常见问候短语', 3, 'sentence'),
+('business_introductions', 'Business Introductions', '商务介绍', 'Professional introduction phrases', '专业介绍短语', 5, 'sentence'),
+('travel_conversations', 'Travel Conversations', '旅行对话', 'Useful phrases for traveling', '旅行中有用的短语', 3, 'sentence'),
+('tongue_twisters', 'Tongue Twisters', '绕口令', 'Fun pronunciation practice', '有趣的发音练习', 5, 'sentence'),
+('news_reading', 'News Reading', '新闻阅读', 'Practice reading news articles', '练习阅读新闻文章', 8, 'sentence')
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================

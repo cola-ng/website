@@ -7,6 +7,7 @@ use std::time::Instant;
 use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::Deserialize;
+use colang::db::schema::*;
 
 const DEFAULT_WORDS_DIR: &str = "../words";
 const DEFAULT_BATCH_SIZE: usize = 100;
@@ -269,10 +270,15 @@ fn load_dictionaries_cache(
 fn load_categories_cache(
     conn: &mut PgConnection,
 ) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
-    use colang::db::schema::dict_categories;
+    let domain_id = dict_domains::table
+        .filter(dict_domains::name.eq("Dictionary"))
+        .select(dict_domains::id)
+        .first::<i64>(conn)
+        .optional()?;
 
     let categories: Vec<(i64, String)> = dict_categories::table
         .select((dict_categories::id, dict_categories::name))
+        .filter(dict_categories::domain_id.eq(domain_id))
         .load(conn)?;
 
     let mut cache = HashMap::new();

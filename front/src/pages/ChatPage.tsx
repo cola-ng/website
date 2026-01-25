@@ -25,7 +25,7 @@ function convertIssues(issues: ChatIssue[] | undefined): TextIssue[] | undefined
 
 interface Message {
   id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'notification'  // notification = local-only error/info messages
   contentEn: string
   contentZh: string
   hasAudio?: boolean
@@ -408,7 +408,7 @@ export function ChatPage() {
       // Add error message
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
-        role: 'assistant',
+        role: 'notification',
         contentEn: 'Sorry, I encountered an error. Please try again.',
         contentZh: '抱歉，发生了错误。请重试。',
         timestamp: new Date(),
@@ -614,7 +614,7 @@ export function ChatPage() {
           console.error('Voice chat error:', err)
           const errorMessage: Message = {
             id: (Date.now() + 1).toString(),
-            role: 'assistant',
+            role: 'notification',
             contentEn: 'Sorry, I could not process your voice message. Please try again.',
             contentZh: '抱歉，无法处理您的语音消息。请重试。',
             timestamp: new Date(),
@@ -899,6 +899,21 @@ export function ChatPage() {
   // Delete a single message (chat turn)
   const handleDeleteMessage = async (messageId: string) => {
     if (!token || !activeChat?.serverId) return
+
+    // Check if this is a notification message (local-only, don't send to server)
+    const message = activeChat.messages.find(m => m.id === messageId)
+    if (message?.role === 'notification') {
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChatId) {
+          return {
+            ...c,
+            messages: c.messages.filter(m => m.id !== messageId),
+          }
+        }
+        return c
+      }))
+      return
+    }
 
     // Parse the turn ID from message ID (messages loaded from server use turn ID as message ID)
     const turnId = parseInt(messageId, 10)
@@ -1533,6 +1548,7 @@ export function ChatPage() {
               )}
               {messages.map((message) => {
                 const isUser = message.role === 'user'
+                const isNotification = message.role === 'notification'
                 const showEn = isUser ? showUserEn : showBotEn
                 const showZh = isUser ? showUserZh : showBotZh
                 const lastDeselected = isUser ? lastDeselectedUser : lastDeselectedBot
@@ -1557,7 +1573,9 @@ export function ChatPage() {
                         'max-w-[70%] rounded-2xl px-4 py-3 transition-all',
                         isUser
                           ? 'bg-orange-500 text-white'
-                          : 'bg-gray-100 text-gray-900'
+                          : isNotification
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-gray-100 text-gray-900'
                       )}
                     >
                       {displayEn && (
@@ -1566,13 +1584,13 @@ export function ChatPage() {
                       {displayEn && displayZh && (
                         <div className={cn(
                           'my-2 border-t',
-                          isUser ? 'border-orange-400/30' : 'border-gray-200'
+                          isUser ? 'border-orange-400/30' : isNotification ? 'border-amber-200' : 'border-gray-200'
                         )} />
                       )}
                       {displayZh && (
                         <p className={cn(
                           'text-sm',
-                          isUser ? 'text-orange-100' : 'text-gray-600',
+                          isUser ? 'text-orange-100' : isNotification ? 'text-amber-600' : 'text-gray-600',
                           blurZh && 'blur-sm select-none'
                         )}>
                           {message.contentZh}
@@ -1580,13 +1598,13 @@ export function ChatPage() {
                       )}
                       <div className={cn(
                         'flex items-center justify-between mt-2 text-xs',
-                        isUser ? 'text-orange-200' : 'text-gray-400'
+                        isUser ? 'text-orange-200' : isNotification ? 'text-amber-500' : 'text-gray-400'
                       )}>
                         <span>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
                         <div className="flex items-center gap-1">
-                          {(message.hasAudio || message.audioBase64 || !isUser) && (
+                          {!isNotification && (message.hasAudio || message.audioBase64 || !isUser) && (
                             <button
                               onClick={() => playAudio(message.id)}
                               className={cn(
@@ -1611,7 +1629,7 @@ export function ChatPage() {
                             onClick={() => handleDeleteMessage(message.id)}
                             className={cn(
                               'p-1 rounded opacity-0 group-hover:opacity-100 transition-all',
-                              isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200'
+                              isUser ? 'hover:bg-white/20' : isNotification ? 'hover:bg-amber-200' : 'hover:bg-gray-200'
                             )}
                             title="删除消息"
                           >
