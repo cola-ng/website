@@ -15,6 +15,7 @@ use outfox_doubao::spec::chat::{
     ResponseFormatJsonSchema, ResponseFormatType,
 };
 use outfox_doubao::spec::tts::CreateSpeechRequestArgs;
+use outfox_zhipu::spec::voice;
 use serde_json::json;
 
 use super::ai_provider::{
@@ -34,7 +35,7 @@ pub struct DoubaoClient {
 impl DoubaoClient {
     /// Create a new Doubao client with the given credentials
     pub fn new(app_id: String, access_token: String, api_key: String) -> Self {
-        Self::with_options(app_id, access_token, api_key, None, None)
+        Self::with_options(app_id, access_token, api_key, None, None, None)
     }
 
     /// Create a new Doubao client with options
@@ -44,12 +45,14 @@ impl DoubaoClient {
         api_key: String,
         tts_resource_id: Option<String>,
         chat_model: Option<String>,
+        voice_type: Option<String>,
     ) -> Self {
         let config = DoubaoConfig::new()
             .with_app_id(&app_id)
             .with_access_token(&access_token)
             .with_api_key(&api_key)
-            .with_resource_id(&tts_resource_id.unwrap_or_else(|| "seed-tts-2.0".to_string()));
+            .with_resource_id(&tts_resource_id.unwrap_or_else(|| "seed-tts-2.0".to_string()))
+            .with_voice_type(voice_type.unwrap_or_else(|| "zh_female_vv_uranus_bigtts".to_string()));
 
         Self {
             client: DoubaoSdkClient::with_config(config),
@@ -69,6 +72,7 @@ impl DoubaoClient {
             .ok()
             .filter(|s| !s.is_empty())?;
         let tts_resource_id = std::env::var("DOUBAO_RESOURCE_ID").ok();
+        let voice_type = std::env::var("DOUBAO_VOICE_TYPE").ok();
         let chat_model = std::env::var("DOUBAO_CHAT_MODEL").ok();
 
         Some(Self::with_options(
@@ -77,6 +81,7 @@ impl DoubaoClient {
             api_key,
             tts_resource_id,
             chat_model,
+            voice_type,
         ))
     }
 
@@ -209,7 +214,7 @@ impl TtsService for DoubaoClient {
             "zh_male_aojiaobazong_moon_bigtts",
             "zh_female_tianmeixiaoyuan_moon_bigtts",
             "zh_male_wennuanahu_moon_bigtts",
-            "en_female_amanda_moon_bigtts",
+            "zh_female_vv_uranus_bigtts",
             "en_male_adam_moon_bigtts",
         ]
     }
@@ -519,6 +524,3 @@ impl AiProvider for DoubaoClient {
         Some(Arc::new(self.clone()))
     }
 }
-
-/// Legacy error type alias
-pub type DoubaoError = AiProviderError;

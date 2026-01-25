@@ -271,6 +271,8 @@ pub enum ProviderConfig {
         chat_model: Option<String>,
         #[serde(default)]
         tts_resource_id: Option<String>,
+        #[serde(default)]
+        voice_type: Option<String>,
     },
 }
 
@@ -293,6 +295,7 @@ impl ProviderConfig {
             api_key,
             chat_model: std::env::var("DOUBAO_CHAT_MODEL").ok(),
             tts_resource_id: std::env::var("DOUBAO_RESOURCE_ID").ok(),
+            voice_type: std::env::var("DOUBAO_VOICE_TYPE").ok(),
         })
     }
 

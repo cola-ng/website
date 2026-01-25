@@ -339,6 +339,3 @@ impl AiProvider for ZhipuClient {
         Some(Arc::new(self.clone()))
     }
 }
-
-/// Legacy error type alias
-pub type ZhipuError = AiProviderError;

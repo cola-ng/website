@@ -81,6 +81,7 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
             api_key,
             chat_model,
             tts_resource_id,
+            voice_type,
         } => {
             // Doubao now provides full ASR/TTS/Chat capabilities
             let doubao = DoubaoClient::with_options(
@@ -89,6 +90,7 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
                 api_key.clone(),
                 tts_resource_id.clone(),
                 chat_model.clone(),
+                voice_type.clone(),
             );
             tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
             Arc::new(doubao)

@@ -4,6 +4,7 @@ use std::time::Duration;
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::Utc;
+use chrono::format;
 use diesel::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
@@ -336,42 +337,19 @@ pub async fn get_chat_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<C
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
 
-    // Long-polling settings
-    const MAX_WAIT_SECS: u64 = 30;
-    const POLL_INTERVAL_MS: u64 = 500;
-
-    let start_time = std::time::Instant::now();
-    let max_wait = Duration::from_secs(MAX_WAIT_SECS);
-    let poll_interval = Duration::from_millis(POLL_INTERVAL_MS);
-
-    loop {
-        // Fetch the turn from database
-        let turn: ChatTurn = with_conn(move |conn| {
-            learn_chat_turns::table
-                .filter(learn_chat_turns::id.eq(turn_id))
-                .filter(learn_chat_turns::user_id.eq(user_id))
-                .first::<ChatTurn>(conn)
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to get chat turn: {:?}", e);
-            StatusError::not_found().brief("chat turn not found")
-        })?;
-
-        // If not processing, return immediately
-        if turn.status != "processing" {
-            return json_ok(turn);
-        }
-
-        // Check if we've exceeded the max wait time
-        if start_time.elapsed() >= max_wait {
-            // Return the current state (still processing)
-            return json_ok(turn);
-        }
-
-        // Wait before next poll
-        tokio::time::sleep(poll_interval).await;
-    }
+    // Fetch the turn from database
+    let turn: ChatTurn = with_conn(move |conn| {
+        learn_chat_turns::table
+            .filter(learn_chat_turns::id.eq(turn_id))
+            .filter(learn_chat_turns::user_id.eq(user_id))
+            .first::<ChatTurn>(conn)
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to get chat turn: {:?}", e);
+        StatusError::not_found().brief("chat turn not found")
+    })?;
+    json_ok(turn)
 }
 
 /// Request for chat - supports both audio and text input
@@ -545,8 +523,8 @@ fn get_audio_dir(user_id: i64) -> PathBuf {
 }
 
 /// Save audio data to file and return the relative path
-async fn save_audio_file(user_id: i64, audio_data: &[u8], prefix: &str) -> Option<String> {
-    let audio_dir = get_audio_dir(user_id);
+async fn save_audio_file(user_id: i64, audio_data: &[u8], prefix: &str, format: &str) -> Option<String> {
+    let audio_dir: PathBuf = get_audio_dir(user_id);
 
     // Create directory if it doesn't exist
     if let Err(e) = tokio::fs::create_dir_all(&audio_dir).await {
@@ -556,7 +534,7 @@ async fn save_audio_file(user_id: i64, audio_data: &[u8], prefix: &str) -> Optio
 
     // Generate unique filename with timestamp
     let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%3f");
-    let filename = format!("{}_{}.wav", prefix, timestamp);
+    let filename = format!("{}_{}.{}", prefix, timestamp, format);
     let file_path = audio_dir.join(&filename);
 
     // Write audio data to file
@@ -598,8 +576,6 @@ async fn clear_user_session(user_id: i64) -> Result<(), StatusError> {
 /// Update AI turn with response content
 async fn update_ai_turn(
     turn_id: i64,
-    content_en: String,
-    content_zh: String,
     audio_path: Option<String>,
     status: String,
     error: Option<String>,
@@ -607,8 +583,6 @@ async fn update_ai_turn(
     with_conn(move |conn| {
         diesel::update(learn_chat_turns::table.find(turn_id))
             .set((
-                learn_chat_turns::content_en.eq(content_en),
-                learn_chat_turns::content_zh.eq(content_zh),
                 learn_chat_turns::audio_path.eq(audio_path),
                 learn_chat_turns::status.eq(status),
                 learn_chat_turns::error.eq(error),
@@ -711,7 +685,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
 
     // Save user's audio file if provided
     let user_audio_path = if let Some(audio_data) = &user_audio_data {
-        save_audio_file(user_id, audio_data, "user").await
+        save_audio_file(user_id, audio_data, "user", "wav").await
     } else {
         None
     };
@@ -787,7 +761,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             content_zh: structured_response.reply_zh.clone(),
             audio_path: None,
         },
-        "completed",
+        "processing",
     )
     .await?;
 
@@ -836,66 +810,57 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
 
     // Spawn background task for AI response generation
     let ai_turn_id = ai_turn.id;
-    tokio::spawn(async move {
+    tracing::info!(
+        "Background: {} chat_structured API completed: reply_en_len={}",
+        provider.name(),
+        structured_response.reply_en.len()
+    );
+
+    // Generate TTS for AI response if needed
+    let ai_audio_path = if let Some(tts) = provider.tts() {
         tracing::info!(
-            "Background: {} chat_structured API completed: reply_en_len={}",
-            provider.name(),
+            "Generating TTS for AI response ({} chars)...",
             structured_response.reply_en.len()
         );
-
-        // Generate TTS for AI response if needed
-        let ai_audio_path = if let Some(tts) = provider.tts() {
-            tracing::info!(
-                "Background: Generating TTS for AI response ({} chars)...",
-                structured_response.reply_en.len()
-            );
-            // Use English voice for English response text
-            match tts
-                .synthesize(
-                    &structured_response.reply_en,
-                    Some("en_female_amanda_moon_bigtts"),
-                    None,
-                )
-                .await
-            {
-                Ok(tts_response) => {
-                    tracing::info!(
-                        "Background: TTS succeeded, saving {} bytes audio...",
-                        tts_response.audio_data.len()
-                    );
-                    save_audio_file(user_id, &tts_response.audio_data, "ai").await
-                }
-                Err(e) => {
-                    tracing::error!("Background: AI TTS failed: {}", e);
-                    None
-                }
-            }
-        } else {
-            tracing::warn!("Background: TTS service not available");
-            None
-        };
-
-        // Update AI turn with response
-        tracing::info!(
-            "Background: Updating AI turn {} with audio_path={:?}",
-            ai_turn_id,
-            ai_audio_path
-        );
-        if let Err(e) = update_ai_turn(
-            ai_turn_id,
-            structured_response.reply_en,
-            structured_response.reply_zh,
-            ai_audio_path.clone(),
-            "completed".to_string(),
-            None,
-        )
-        .await
+        // Use English voice for English response text
+        match tts
+            .synthesize(
+                &structured_response.reply_en,
+                Some("zh_female_vv_uranus_bigtts"),
+                None,
+            )
+            .await
         {
-            tracing::error!("Failed to update AI turn: {:?}", e);
-        } else {
-            tracing::info!("Background: AI turn {} updated successfully", ai_turn_id);
+            Ok(tts_response) => {
+                tracing::info!(
+                    "Background: TTS succeeded, saving {} bytes audio...",
+                    tts_response.audio_data.len()
+                );
+                save_audio_file(user_id, &tts_response.audio_data, "ai", "mp3").await
+            }
+            Err(e) => {
+                tracing::error!("Background: AI TTS failed: {}", e);
+                None
+            }
         }
-    });
+    } else {
+        tracing::warn!("Background: TTS service not available");
+        None
+    };
+
+    // Update AI turn with response
+    if let Err(e) = update_ai_turn(
+        ai_turn_id,
+        ai_audio_path.clone(),
+        "completed".to_string(),
+        None,
+    )
+    .await
+    {
+        tracing::error!("Failed to update AI turn: {:?}", e);
+    } else {
+        tracing::info!("Background: AI turn {} updated successfully", ai_turn_id);
+    }
 
     json_ok(ChatSendResponse {
         user_turn,
@@ -939,25 +904,6 @@ pub async fn text_to_speech(
     let audio_base64 = BASE64.encode(&tts_response.audio_data);
 
     json_ok(TtsResponse { audio_base64 })
-}
-
-/// Clear chat history
-#[endpoint(tags("Chat"))]
-pub async fn clear_session(depot: &mut Depot) -> JsonResult<OkResponse> {
-    let user_id = depot.user_id()?;
-    clear_user_session(user_id).await?;
-    json_ok(OkResponse::default())
-}
-
-/// Get chat history
-#[endpoint(tags("Chat"))]
-pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
-    let user_id = depot.user_id()?;
-
-    let session = get_or_create_session(user_id).await?;
-    let messages = get_chat_leatest_turns(session.id, 100).await?;
-
-    json_ok(HistoryResponse { messages })
 }
 
 // ============================================================================
