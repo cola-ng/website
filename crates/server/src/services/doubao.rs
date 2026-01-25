@@ -290,25 +290,7 @@ impl ChatService for DoubaoClient {
             "{}\n\n\
             IMPORTANT: You must respond with a JSON object containing:\n\
             1. A natural conversational reply to the user\n\
-            2. Grammar/vocabulary analysis of the user's last message\n\n\
-            Response JSON format:\n\
-            {{\n\
-              \"use_lang\": \"<en|zh|mix>\",\n\
-              \"original_en\": \"<the last user message or translation in English>\",\n\
-              \"original_zh\": \"<the last user message or translation in Chinese>\",\n\
-              \"reply_en\": \"<your reply in English>\",\n\
-              \"reply_zh\": \"<your reply in Chinese>\",\n\
-              \"issues\": [\n\
-                {{\n\
-                  \"type\": \"grammar|word_choice|suggestion\",\n\
-                  \"original\": \"<problematic text>\",\n\
-                  \"suggested\": \"<corrected text>\",\n\
-                  \"description_en\": \"<explanation in English>\",\n\
-                  \"description_zh\": \"<explanation in Chinese>\",\n\
-                  \"severity\": \"low|medium|high\"\n\
-                }}\n\
-              ]\n\
-            }}",
+            2. Grammar/vocabulary analysis of the user's last message\n\n",
             system_prompt
         );
 
@@ -338,11 +320,11 @@ impl ChatService for DoubaoClient {
                 },
                 "original_en": {
                     "type": "string",
-                    "description": "The last user message or translation in English. If the user wrote in Chinese or mixed language, translate it to English here."
+                    "description": "The last user message or translation in English. If the user wrote in Chinese or mixed language, translate it to English here. ONLY English characters are allowed here; Chinese characters are not permitted."
                 },
                 "original_zh": {
                     "type": "string",
-                    "description": "The last user message or translation in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
+                    "description": "The last user message or translation in Chinese. If the user wrote in English or mixed language, translate it to Chinese here. Chinese characters MUST BE present here."
                 },
                 "reply_en": {
                     "type": "string",

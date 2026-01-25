@@ -376,6 +376,12 @@ export function ChatPage() {
         }
         return c
       }))
+
+      // Auto-play AI response audio if available
+      if (aiMessage.audioPath) {
+        // Small delay to ensure state is updated
+        setTimeout(() => playAudio(aiMessage.id), 100)
+      }
     } catch (err) {
       console.error('Chat error:', err)
       // Add error message
@@ -1494,10 +1500,7 @@ export function ChatPage() {
                   isVoiceProcessing ? 'text-gray-500' : isRecording ? 'text-red-500' : 'text-gray-400'
                 )}>
                   {isVoiceProcessing ? (
-                    <span className="flex items-center justify-center gap-1.5">
-                      <Loader2 className="h-3 w-3 animate-spin" />
-                      正在处理语音...
-                    </span>
+                    <span>正在处理语音...</span>
                   ) : isRecording ? (
                     <span className="flex items-center justify-center gap-1.5">
                       <span className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
