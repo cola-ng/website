@@ -1152,13 +1152,13 @@ export function ChatPage() {
       let issuesHtml = ''
       if (reportMode && isUser && msg.issues && msg.issues.length > 0) {
         issuesHtml = `
-          <div style="margin-top: 6pt; padding: 6pt 10pt; background: #fef3c7; border-radius: 6pt; font-size: 10pt;">
+          <div style="margin-top: 6pt; padding: 6pt 10pt; background: #fef3c7; border-radius: 6pt; font-size: 11pt;">
             <div style="font-weight: 600; color: #92400e; margin-bottom: 3pt;">改进建议:</div>
             ${msg.issues.map((issue: TextIssue) => `
               <div style="margin-bottom: 3pt;">
                 <span style="color: #dc2626; text-decoration: line-through;">${issue.original}</span>
                 → <span style="color: #16a34a; font-weight: 500;">${issue.suggested}</span>
-                <div style="color: #78716c; font-size: 9pt; margin-top: 2pt;">${issue.description_zh}</div>
+                <div style="color: #78716c; font-size: 10pt; margin-top: 2pt;">${issue.description_zh}</div>
               </div>
             `).join('')}
           </div>
@@ -1166,9 +1166,9 @@ export function ChatPage() {
       }
       return `
         <div class="message-item" style="text-align: ${isUser ? 'right' : 'left'};">
-          <div style="display: inline-block; max-width: 100%; padding: 8pt 12pt; border-radius: 12pt; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'}; font-size: 11pt;">
+          <div style="display: inline-block; max-width: 100%; padding: 8pt 12pt; border-radius: 12pt; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'}; font-size: 12pt;">
             <p style="margin: 0;">${msg.contentEn}</p>
-            <p style="margin: 6pt 0 0 0; opacity: 0.8; font-size: 9pt;">${msg.contentZh}</p>
+            <p style="margin: 6pt 0 0 0; font-size: 11pt;">${msg.contentZh}</p>
           </div>
           ${issuesHtml}
         </div>
@@ -1200,7 +1200,7 @@ export function ChatPage() {
               color: #111827;
             }
           }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; font-size: 11pt; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; font-size: 12pt; }
           .pdf-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12pt; margin-bottom: 0; padding-bottom: 3pt; border-bottom: 1.5pt solid #f97316; }
           .pdf-header .brand { display: flex; flex-direction: column; gap: 3pt; }
           .pdf-header .brand-row { display: flex; align-items: center; gap: 8pt; }
@@ -1213,7 +1213,16 @@ export function ChatPage() {
           .messages-container { column-count: 2; column-gap: 18pt; margin-top: 12pt; }
           .message-item { break-inside: avoid; margin-bottom: 12pt; }
           @media print {
-            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              -webkit-font-smoothing: antialiased;
+              -moz-osx-font-smoothing: grayscale;
+              text-rendering: optimizeLegibility;
+            }
+            * {
+              text-shadow: none !important;
+            }
           }
         </style>
       </head>
