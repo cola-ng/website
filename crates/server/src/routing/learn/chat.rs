@@ -248,7 +248,7 @@ pub struct CreateChatTurnRequest {
 #[handler]
 pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let chat_id = req.try_query::<i64>("id")?;
+    let chat_id = req.try_param::<i64>("id")?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 500);
     let after_id = req.query::<i64>("after_id");
     let before_id = req.query::<i64>("before_id");
@@ -272,15 +272,11 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
     // When from_latest is true, order by DESC to get newest first, then reverse for display
     // When from_latest is false, order by ASC (oldest first) for normal pagination
     let mut turns: Vec<ChatTurn> = with_conn({
-        let chat_id_param = chat_id_param;
         move |conn| {
             let mut query = learn_chat_turns::table
                 .filter(learn_chat_turns::user_id.eq(user_id))
+                .filter(learn_chat_turns::chat_id.eq(chat_id))
                 .into_boxed();
-
-            if let Some(cid) = chat_id_param {
-                query = query.filter(learn_chat_turns::chat_id.eq(cid));
-            }
 
             // Cursor-based filtering
             if let Some(aid) = after_id {
@@ -322,18 +318,14 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
     // Check if there are items before the first item
     let has_prev: bool = if let Some(fid) = first_id {
         with_conn({
-            let chat_id_param = chat_id_param;
             move |conn| {
-                let mut query = learn_chat_turns::table
+                learn_chat_turns::table
                     .filter(learn_chat_turns::user_id.eq(user_id))
                     .filter(learn_chat_turns::id.lt(fid))
-                    .into_boxed();
-
-                if let Some(cid) = chat_id_param {
-                    query = query.filter(learn_chat_turns::chat_id.eq(cid));
-                }
-
-                query.count().get_result::<i64>(conn).map(|c| c > 0)
+                    .filter(learn_chat_turns::chat_id.eq(chat_id))
+                    .count()
+                    .get_result::<i64>(conn)
+                    .map(|c| c > 0)
             }
         })
         .await
@@ -345,18 +337,14 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
     // Check if there are items after the last item
     let has_next: bool = if let Some(lid) = last_id {
         with_conn({
-            let chat_id_param = chat_id_param;
             move |conn| {
-                let mut query = learn_chat_turns::table
+                learn_chat_turns::table
                     .filter(learn_chat_turns::user_id.eq(user_id))
                     .filter(learn_chat_turns::id.gt(lid))
-                    .into_boxed();
-
-                if let Some(cid) = chat_id_param {
-                    query = query.filter(learn_chat_turns::chat_id.eq(cid));
-                }
-
-                query.count().get_result::<i64>(conn).map(|c| c > 0)
+                    .filter(learn_chat_turns::chat_id.eq(chat_id))
+                    .count()
+                    .get_result::<i64>(conn)
+                    .map(|c| c > 0)
             }
         })
         .await
