@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS learn_chats (
     title TEXT NOT NULL,
     context_id BIGINT,
     duration_ms INTEGER,
-    pause_count INTEGER,
+    issues_count INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_learn_chats_user ON learn_chats(user_id, created_at);
@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS learn_chat_turns (
     audio_path TEXT,
     duration_ms INTEGER,
     words_per_minute REAL,
-    pause_count INTEGER,
+    issues_count INTEGER NOT NULL DEFAULT 0,
     hesitation_count INTEGER,
     status TEXT NOT NULL DEFAULT 'completed', -- 'pending', 'processing', 'completed', 'error'
     error TEXT,

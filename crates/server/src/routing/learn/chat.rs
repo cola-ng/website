@@ -46,7 +46,7 @@ pub struct CreateChatRequest {
     title: String,
     context_id: Option<i64>,
     duration_ms: Option<i32>,
-    pause_count: Option<i32>,
+    issues_count: Option<i32>,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -94,7 +94,7 @@ pub async fn create_chat(
         title: input.title,
         context_id: input.context_id,
         duration_ms: input.duration_ms,
-        pause_count: input.pause_count,
+        issues_count: input.issues_count,
     };
 
     let chat: Chat = with_conn(move |conn| {
@@ -233,7 +233,7 @@ pub struct CreateChatTurnRequest {
     audio_path: Option<String>,
     duration_ms: Option<i32>,
     words_per_minute: Option<f32>,
-    pause_count: Option<i32>,
+    issues_count: Option<i32>,
     hesitation_count: Option<i32>,
 }
 
@@ -367,12 +367,62 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
     Ok(())
 }
 
+/// Delete a single chat turn by ID
+///
+/// Also deletes any associated issues for this turn.
+#[handler]
+pub async fn delete_turn(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
+    let turn_id = req
+        .param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
+
+    // Delete the turn and its associated issues
+    with_conn(move |conn| {
+        // First verify ownership
+        let _existing = learn_chat_turns::table
+            .filter(learn_chat_turns::id.eq(turn_id))
+            .filter(learn_chat_turns::user_id.eq(user_id))
+            .first::<ChatTurn>(conn)?;
+
+        // Delete associated issues first
+        diesel::delete(
+            learn_chat_issues::table
+                .filter(learn_chat_issues::chat_turn_id.eq(turn_id))
+                .filter(learn_chat_issues::user_id.eq(user_id)),
+        )
+        .execute(conn)?;
+
+        // Delete the turn
+        diesel::delete(
+            learn_chat_turns::table
+                .filter(learn_chat_turns::id.eq(turn_id))
+                .filter(learn_chat_turns::user_id.eq(user_id)),
+        )
+        .execute(conn)?;
+
+        Ok::<_, diesel::result::Error>(())
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to delete chat turn: {:?}", e);
+        StatusError::internal_server_error().brief("failed to delete chat turn")
+    })?;
+
+    res.render(Json(serde_json::json!({ "ok": true })));
+    Ok(())
+}
+
 /// Get a single chat turn by ID with long-polling support
 ///
 /// If the turn status is "processing", the server will block for up to 30 seconds,
 /// polling periodically until the turn is completed or timeout is reached.
 #[endpoint(tags("Chat"))]
-pub async fn get_chat_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTurn> {
+pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTurn> {
     let user_id = depot.user_id()?;
     let turn_id = req
         .param::<i64>("id")
@@ -502,7 +552,7 @@ async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError>
             title: "Chat Session".to_string(),
             context_id: None,
             duration_ms: None,
-            pause_count: None,
+            issues_count: None,
         };
 
         diesel::insert_into(learn_chats::table)
@@ -546,6 +596,7 @@ struct SaveMessageParams {
     content_en: String,
     content_zh: String,
     audio_path: Option<String>,
+    issues_count: Option<i32>,
 }
 
 /// Save a single message to database and return the created turn
@@ -563,7 +614,7 @@ async fn save_message(params: SaveMessageParams, status: &str) -> Result<ChatTur
                 audio_path: params.audio_path,
                 duration_ms: None,
                 words_per_minute: None,
-                pause_count: None,
+                issues_count: params.issues_count,
                 hesitation_count: None,
                 status,
             })
@@ -812,6 +863,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             content_en: structured_response.original_en.clone(),
             content_zh: structured_response.original_zh.clone(),
             audio_path: user_audio_path,
+            issues_count: Some(structured_response.issues.len() as i32),
         },
         "completed",
     )
@@ -908,6 +960,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             content_en: structured_response.reply_en.clone(),
             content_zh: structured_response.reply_zh.clone(),
             audio_path: ai_audio_path,
+            issues_count: None,
         },
         "completed",
     )

@@ -696,7 +696,7 @@ export type ChatTurn = {
   audio_path: string | null
   duration_ms: number | null
   words_per_minute: number | null
-  pause_count: number | null
+  issues_count: number | null
   hesitation_count: number | null
   status: ChatTurnStatus
   error: string | null
@@ -847,7 +847,7 @@ export type LearnChat = {
   title: string
   context_id: number | null
   duration_ms: number | null
-  pause_count: number | null
+  issues_count: number | null
   created_at: string
 }
 
@@ -952,6 +952,18 @@ export function getChatIssues(token: string, chatId: number): Promise<ChatIssue[
 export function getTurnIssues(token: string, turnId: number): Promise<ChatIssue[]> {
   return requestJson<ChatIssue[]>(`/api/learn/chats/turns/${turnId}/issues`, {
     method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Delete a chat turn
+ * @param token Auth token
+ * @param turnId Turn ID
+ */
+export function deleteChatTurn(token: string, turnId: number): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>(`/api/learn/chats/turns/${turnId}`, {
+    method: 'DELETE',
     token,
   })
 }

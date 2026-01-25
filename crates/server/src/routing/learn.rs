@@ -39,7 +39,8 @@ pub fn router() -> Router {
                 .push(Router::with_path("turns").get(chat::list_turns))
                 .push(
                     Router::with_path("turns/{id}")
-                        .get(chat::get_chat_turn)
+                        .get(chat::get_turn)
+                        .delete(chat::delete_turn)
                         .push(Router::with_path("issues").get(chat::list_turn_issues)),
                 ),
         )

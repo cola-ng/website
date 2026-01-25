@@ -1,7 +1,7 @@
 //! Doubao (豆包) Provider - wraps outfox-doubao crate
 //!
 //! Uses the outfox-doubao crate for:
-//! - TTS (Text-to-Speech) via WebSocket bidirectional API
+//! - TTS (Text-to-Speech) via HTTP v3 streaming API
 //! - ASR (Speech-to-Text) via BigModel flash recognition API
 //! - Chat completions via Ark API
 
@@ -192,7 +192,7 @@ impl TtsService for DoubaoClient {
         let response = self
             .client
             .tts()
-            .speech()
+            .speech_http_v3()
             .create(request)
             .await
             .map_err(|e| AiProviderError::Api(e.to_string()))?;

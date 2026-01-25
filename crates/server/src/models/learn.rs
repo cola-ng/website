@@ -62,7 +62,7 @@ pub struct Chat {
     pub title: String,
     pub context_id: Option<i64>,
     pub duration_ms: Option<i32>,
-    pub pause_count: Option<i32>,
+    pub issues_count: Option<i32>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -73,7 +73,7 @@ pub struct NewChat {
     pub title: String,
     pub context_id: Option<i64>,
     pub duration_ms: Option<i32>,
-    pub pause_count: Option<i32>,
+    pub issues_count: Option<i32>,
 }
 
 // ============================================================================
@@ -93,7 +93,7 @@ pub struct ChatTurn {
     pub audio_path: Option<String>,
     pub duration_ms: Option<i32>,
     pub words_per_minute: Option<f32>,
-    pub pause_count: Option<i32>,
+    pub issues_count: i32,
     pub hesitation_count: Option<i32>,
     pub status: String,
     pub error: Option<String>,
@@ -112,7 +112,7 @@ pub struct NewChatTurn {
     pub audio_path: Option<String>,
     pub duration_ms: Option<i32>,
     pub words_per_minute: Option<f32>,
-    pub pause_count: Option<i32>,
+    pub issues_count: Option<i32>,
     pub hesitation_count: Option<i32>,
     pub status: String,
 }

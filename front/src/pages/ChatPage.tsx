@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, getChatIssues, type TextIssue, type ChatTurn } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, getChatIssues, deleteChatTurn, type TextIssue, type ChatTurn } from '../lib/api'
 
 interface Message {
   id: string
@@ -167,31 +167,33 @@ export function ChatPage() {
 
           setActiveChatId(targetChat.id)
 
-          // Fetch turns and issues for the target chat
+          // Fetch turns for the target chat
           if (targetChat.serverId) {
             try {
-              const [turnsResponse, issues] = await Promise.all([
-                getChatTurns(token, targetChat.serverId, { limit: 50, fromLatest: true }),
-                getChatIssues(token, targetChat.serverId),
-              ])
+              const turnsResponse = await getChatTurns(token, targetChat.serverId, { limit: 50, fromLatest: true })
 
-              // Create a map of turn_id -> issues for quick lookup
-              const issuesByTurnId: Record<number, TextIssue[]> = {}
-              for (const ann of issues) {
-                const turnId = ann.chat_turn_id
-                if (!issuesByTurnId[turnId]) {
-                  issuesByTurnId[turnId] = []
+              // Check if any turn has issues before fetching issues
+              const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
+              let issuesByTurnId: Record<number, TextIssue[]> = {}
+
+              if (hasIssues) {
+                const issues = await getChatIssues(token, targetChat.serverId)
+                for (const ann of issues) {
+                  const turnId = ann.chat_turn_id
+                  if (!issuesByTurnId[turnId]) {
+                    issuesByTurnId[turnId] = []
+                  }
+                  issuesByTurnId[turnId].push({
+                    type: ann.issue_type,
+                    original: ann.original_text || '',
+                    suggested: ann.suggested_text || '',
+                    description_en: ann.description_en || '',
+                    description_zh: ann.description_zh || '',
+                    severity: ann.severity || 'low',
+                    start_position: ann.start_position,
+                    end_position: ann.end_position,
+                  })
                 }
-                issuesByTurnId[turnId].push({
-                  type: ann.issue_type,
-                  original: ann.original_text || '',
-                  suggested: ann.suggested_text || '',
-                  description_en: ann.description_en || '',
-                  description_zh: ann.description_zh || '',
-                  severity: ann.severity || 'low',
-                  start_position: ann.start_position,
-                  end_position: ann.end_position,
-                })
               }
 
               const messages: Message[] = turnsResponse.items
@@ -859,14 +861,154 @@ export function ChatPage() {
 
     try {
       await resetChat(token, conv.serverId)
-      // Clear messages in local state
+      // Clear messages in local state immediately
       setChats(prev => prev.map(c =>
         c.id === convId
           ? { ...c, messages: [], lastMessage: '', hasMorePrev: false, hasMoreNext: false, firstId: undefined, lastId: undefined }
           : c
       ))
+
+      // Re-fetch from server to ensure UI is in sync
+      const turnsResponse = await getChatTurns(token, conv.serverId, { limit: 50, fromLatest: true })
+
+      // Check if any turn has issues before fetching issues
+      const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
+      let issuesByTurnId: Record<number, TextIssue[]> = {}
+
+      if (hasIssues) {
+        const issues = await getChatIssues(token, conv.serverId)
+        for (const ann of issues) {
+          const tid = ann.chat_turn_id
+          if (!issuesByTurnId[tid]) {
+            issuesByTurnId[tid] = []
+          }
+          issuesByTurnId[tid].push({
+            type: ann.issue_type,
+            original: ann.original_text || '',
+            suggested: ann.suggested_text || '',
+            description_en: ann.description_en || '',
+            description_zh: ann.description_zh || '',
+            severity: ann.severity || 'low',
+            start_position: ann.start_position,
+            end_position: ann.end_position,
+          })
+        }
+      }
+
+      const messages: Message[] = turnsResponse.items
+        .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
+        .map((turn: ChatTurn) => ({
+          id: turn.id.toString(),
+          role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
+          contentEn: turn.content_en || '',
+          contentZh: turn.content_zh || '',
+          hasAudio: !!turn.audio_path,
+          audioPath: turn.audio_path || undefined,
+          timestamp: new Date(turn.created_at),
+          issues: issuesByTurnId[turn.id],
+        }))
+
+      setChats(prev => prev.map(c => {
+        if (c.id === convId) {
+          return {
+            ...c,
+            messages,
+            lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
+            hasMorePrev: turnsResponse.has_prev,
+            hasMoreNext: turnsResponse.has_next,
+            firstId: turnsResponse.first_id ?? undefined,
+            lastId: turnsResponse.last_id ?? undefined,
+          }
+        }
+        return c
+      }))
     } catch (err) {
       console.error('Failed to clear chat:', err)
+    }
+  }
+
+  // Delete a single message (chat turn)
+  const handleDeleteMessage = async (messageId: string) => {
+    if (!token || !activeChat?.serverId) return
+
+    // Parse the turn ID from message ID (messages loaded from server use turn ID as message ID)
+    const turnId = parseInt(messageId, 10)
+    if (isNaN(turnId)) {
+      // Local-only message, just remove from state
+      setChats(prev => prev.map(c => {
+        if (c.id === activeChatId) {
+          return {
+            ...c,
+            messages: c.messages.filter(m => m.id !== messageId),
+          }
+        }
+        return c
+      }))
+      return
+    }
+
+    const chatId = activeChat.id
+    const serverId = activeChat.serverId
+
+    try {
+      await deleteChatTurn(token, turnId)
+
+      // Re-fetch from server to ensure UI is in sync
+      const turnsResponse = await getChatTurns(token, serverId, { limit: 50, fromLatest: true })
+
+      // Check if any turn has issues before fetching issues
+      const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
+      let issuesByTurnId: Record<number, TextIssue[]> = {}
+
+      if (hasIssues) {
+        const issues = await getChatIssues(token, serverId)
+        for (const ann of issues) {
+          const tid = ann.chat_turn_id
+          if (!issuesByTurnId[tid]) {
+            issuesByTurnId[tid] = []
+          }
+          issuesByTurnId[tid].push({
+            type: ann.issue_type,
+            original: ann.original_text || '',
+            suggested: ann.suggested_text || '',
+            description_en: ann.description_en || '',
+            description_zh: ann.description_zh || '',
+            severity: ann.severity || 'low',
+            start_position: ann.start_position,
+            end_position: ann.end_position,
+          })
+        }
+      }
+
+      const messages: Message[] = turnsResponse.items
+        .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
+        .map((turn: ChatTurn) => ({
+          id: turn.id.toString(),
+          role: turn.speaker === 'user' ? 'user' : 'assistant' as const,
+          contentEn: turn.content_en || '',
+          contentZh: turn.content_zh || '',
+          hasAudio: !!turn.audio_path,
+          audioPath: turn.audio_path || undefined,
+          timestamp: new Date(turn.created_at),
+          issues: issuesByTurnId[turn.id],
+        }))
+
+      setChats(prev => prev.map(c => {
+        if (c.id === chatId) {
+          return {
+            ...c,
+            messages,
+            lastMessage: messages.length > 0 ? messages[messages.length - 1].contentEn : '',
+            hasMorePrev: turnsResponse.has_prev,
+            hasMoreNext: turnsResponse.has_next,
+            firstId: turnsResponse.first_id ?? undefined,
+            lastId: turnsResponse.last_id ?? undefined,
+          }
+        }
+        return c
+      }))
+    } catch (err) {
+      console.error('Failed to delete message:', err)
     }
   }
 
@@ -904,29 +1046,31 @@ export function ChatPage() {
     }
 
     try {
-      // Fetch turns and issues from server with pagination (latest first)
-      const [turnsResponse, issues] = await Promise.all([
-        getChatTurns(token, chat.serverId, { limit: 50, fromLatest: true }),
-        getChatIssues(token, chat.serverId),
-      ])
+      // Fetch turns from server with pagination (latest first)
+      const turnsResponse = await getChatTurns(token, chat.serverId, { limit: 50, fromLatest: true })
 
-      // Create a map of turn_id -> issues for quick lookup
-      const issuesByTurnId: Record<number, TextIssue[]> = {}
-      for (const ann of issues) {
-        const turnId = ann.chat_turn_id
-        if (!issuesByTurnId[turnId]) {
-          issuesByTurnId[turnId] = []
+      // Check if any turn has issues before fetching issues
+      const hasIssues = turnsResponse.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
+      let issuesByTurnId: Record<number, TextIssue[]> = {}
+
+      if (hasIssues) {
+        const issues = await getChatIssues(token, chat.serverId)
+        for (const ann of issues) {
+          const turnId = ann.chat_turn_id
+          if (!issuesByTurnId[turnId]) {
+            issuesByTurnId[turnId] = []
+          }
+          issuesByTurnId[turnId].push({
+            type: ann.issue_type,
+            original: ann.original_text || '',
+            suggested: ann.suggested_text || '',
+            description_en: ann.description_en || '',
+            description_zh: ann.description_zh || '',
+            severity: ann.severity || 'low',
+            start_position: ann.start_position,
+            end_position: ann.end_position,
+          })
         }
-        issuesByTurnId[turnId].push({
-          type: ann.issue_type,
-          original: ann.original_text || '',
-          suggested: ann.suggested_text || '',
-          description_en: ann.description_en || '',
-          description_zh: ann.description_zh || '',
-          severity: ann.severity || 'low',
-          start_position: ann.start_position,
-          end_position: ann.end_position,
-        })
       }
 
       // Convert ChatTurn to Message format and update chat
@@ -975,6 +1119,30 @@ export function ChatPage() {
         beforeId: activeChat.firstId,
       })
 
+      // Check if any turn has issues before fetching issues
+      const hasIssues = response.items.some((turn: ChatTurn) => (turn.issues_count ?? 0) > 0)
+      let issuesByTurnId: Record<number, TextIssue[]> = {}
+
+      if (hasIssues) {
+        const issues = await getChatIssues(token, activeChat.serverId)
+        for (const ann of issues) {
+          const tid = ann.chat_turn_id
+          if (!issuesByTurnId[tid]) {
+            issuesByTurnId[tid] = []
+          }
+          issuesByTurnId[tid].push({
+            type: ann.issue_type,
+            original: ann.original_text || '',
+            suggested: ann.suggested_text || '',
+            description_en: ann.description_en || '',
+            description_zh: ann.description_zh || '',
+            severity: ann.severity || 'low',
+            start_position: ann.start_position,
+            end_position: ann.end_position,
+          })
+        }
+      }
+
       // Convert ChatTurn to Message format
       const olderMessages: Message[] = response.items
         .filter((turn: ChatTurn) => turn.status === 'completed' && (turn.content_en || turn.content_zh))
@@ -986,6 +1154,7 @@ export function ChatPage() {
           hasAudio: !!turn.audio_path,
           audioPath: turn.audio_path || undefined,
           timestamp: new Date(turn.created_at),
+          issues: issuesByTurnId[turn.id],
         }))
 
       // Prepend older messages to existing messages
@@ -1472,7 +1641,7 @@ export function ChatPage() {
                   <div
                     key={message.id}
                     className={cn(
-                      'flex flex-col',
+                      'flex flex-col group',
                       isUser ? 'items-end' : 'items-start'
                     )}
                   >
@@ -1509,27 +1678,39 @@ export function ChatPage() {
                         <span>
                           {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                         </span>
-                        {(message.hasAudio || message.audioBase64 || !isUser) && (
+                        <div className="flex items-center gap-1">
+                          {(message.hasAudio || message.audioBase64 || !isUser) && (
+                            <button
+                              onClick={() => playAudio(message.id)}
+                              className={cn(
+                                'p-1 rounded hover:bg-black/10 transition-colors',
+                                isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200',
+                                isPlayingAudio === message.id && 'bg-black/10'
+                              )}
+                              title={isPlayingAudio === message.id ? '停止播放' : '播放语音'}
+                            >
+                              {isPlayingAudio === message.id ? (
+                                <div className="h-4 w-4 flex items-center justify-center gap-[2px]">
+                                  <span className="w-[3px] h-2 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '0ms' }} />
+                                  <span className="w-[3px] h-3 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '150ms' }} />
+                                  <span className="w-[3px] h-2 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '300ms' }} />
+                                </div>
+                              ) : (
+                                <Volume2 className="h-4 w-4" />
+                              )}
+                            </button>
+                          )}
                           <button
-                            onClick={() => playAudio(message.id)}
+                            onClick={() => handleDeleteMessage(message.id)}
                             className={cn(
-                              'p-1 rounded hover:bg-black/10 transition-colors',
-                              isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200',
-                              isPlayingAudio === message.id && 'bg-black/10'
+                              'p-1 rounded opacity-0 group-hover:opacity-100 transition-all',
+                              isUser ? 'hover:bg-white/20' : 'hover:bg-gray-200'
                             )}
-                            title={isPlayingAudio === message.id ? '停止播放' : '播放语音'}
+                            title="删除消息"
                           >
-                            {isPlayingAudio === message.id ? (
-                              <div className="h-4 w-4 flex items-center justify-center gap-[2px]">
-                                <span className="w-[3px] h-2 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '0ms' }} />
-                                <span className="w-[3px] h-3 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '150ms' }} />
-                                <span className="w-[3px] h-2 bg-current rounded-full animate-sound-wave" style={{ animationDelay: '300ms' }} />
-                              </div>
-                            ) : (
-                              <Volume2 className="h-4 w-4" />
-                            )}
+                            <Trash2 className="h-3.5 w-3.5" />
                           </button>
-                        )}
+                        </div>
                       </div>
                     </div>
                     {/* Issues display in report mode */}

@@ -562,7 +562,7 @@ diesel::table! {
         audio_path -> Nullable<Text>,
         duration_ms -> Nullable<Int4>,
         words_per_minute -> Nullable<Float4>,
-        pause_count -> Nullable<Int4>,
+        issues_count -> Int4,
         hesitation_count -> Nullable<Int4>,
         status -> Text,
         error -> Nullable<Text>,
@@ -577,7 +577,7 @@ diesel::table! {
         title -> Text,
         context_id -> Nullable<Int8>,
         duration_ms -> Nullable<Int4>,
-        pause_count -> Nullable<Int4>,
+        issues_count -> Nullable<Int4>,
         created_at -> Timestamptz,
     }
 }
