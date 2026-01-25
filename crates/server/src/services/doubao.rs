@@ -185,7 +185,7 @@ impl TtsService for DoubaoClient {
             .text(text)
             .speaker(speaker)
             .speech_rate(speech_rate)
-            .sample_rate(24000u32)
+            .sample_rate(48000u32)
             .build()
             .map_err(|e| AiProviderError::Config(e.to_string()))?;
 
