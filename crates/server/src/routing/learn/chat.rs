@@ -451,15 +451,13 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
             }
             map
         };
+    println!("issues_by_turn: {:?}", issues_by_turn);
 
     // Convert turns to ChatTurnWithIssues
     let items: Vec<ChatTurnWithIssues> = turns
         .into_iter()
         .map(|turn| {
-            let issues = issues_by_turn
-                .get(&turn.id)
-                .cloned()
-                .unwrap_or_default();
+            let issues = issues_by_turn.get(&turn.id).cloned().unwrap_or_default();
             ChatTurnWithIssues::from_turn_with_issues(turn, issues)
         })
         .collect();

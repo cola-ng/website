@@ -65,17 +65,17 @@ CREATE TABLE IF NOT EXISTS learn_chat_issues (
     user_id BIGINT NOT NULL,
     chat_id BIGINT NOT NULL,
     chat_turn_id BIGINT NOT NULL,
-    issue_type TEXT NOT NULL CHECK(
-        issue_type IN ('pronunciation_error', 'grammar_error', 'word_choice',
-                           'fluency_issue', 'suggestion', 'correction')
-    ),
+    issue_type TEXT NOT NULL,-- CHECK(
+        --issue_type IN ('pronunciation_error', 'grammar_error', 'word_choice',
+       --                    'fluency_issue', 'suggestion', 'correction')
+    --),
     start_position INTEGER,
     end_position INTEGER,
     original_text TEXT,
     suggested_text TEXT,
     description_en TEXT,
     description_zh TEXT,
-    severity TEXT CHECK(severity IN ('low', 'medium', 'high')) DEFAULT 'medium',
+    severity TEXT,-- CHECK(severity IN ('low', 'medium', 'high')) DEFAULT 'medium',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_issues_chat ON learn_chat_issues(chat_id, chat_turn_id);
