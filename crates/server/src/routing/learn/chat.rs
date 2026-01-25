@@ -759,7 +759,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         structured_response.reply_en.len()
     );
 
-    println!("======user_audio_path: {:?}", user_audio_path);
+    println!("======structured_response: {:#?}", structured_response);
     // Create user turn with enriched info (status: completed)
     let user_turn = save_message(
         SaveMessageParams {

@@ -287,8 +287,8 @@ impl ChatService for DoubaoClient {
             Response JSON format:\n\
             {{\n\
               \"use_lang\": \"<en|zh|mix>\",\n\
-              \"original_en\": \"<user's text in English>\",\n\
-              \"original_zh\": \"<user's text in Chinese>\",\n\
+              \"original_en\": \"<the last message or translation in English>\",\n\
+              \"original_zh\": \"<the last message or translation in Chinese>\",\n\
               \"reply_en\": \"<your reply in English>\",\n\
               \"reply_zh\": \"<your reply in Chinese>\",\n\
               \"issues\": [\n\
@@ -325,11 +325,11 @@ impl ChatService for DoubaoClient {
                 },
                 "original_en": {
                     "type": "string",
-                    "description": "The original user text in English. If the user wrote in Chinese or mixed language, translate it to English here."
+                    "description": "The last message or translation in English in English. If the user wrote in Chinese or mixed language, translate it to English here."
                 },
                 "original_zh": {
                     "type": "string",
-                    "description": "The original user text in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
+                    "description": "The last message or translation in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
                 },
                 "reply_en": {
                     "type": "string",
