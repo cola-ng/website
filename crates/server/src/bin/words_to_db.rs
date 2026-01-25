@@ -7,7 +7,6 @@ use std::time::Instant;
 use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::Deserialize;
-use colang::db::schema::*;
 
 const DEFAULT_WORDS_DIR: &str = "../words";
 const DEFAULT_BATCH_SIZE: usize = 100;
@@ -33,9 +32,35 @@ struct WordEntry {
 }
 
 #[derive(Debug, Deserialize)]
-struct DictionaryRef {
-    name: String,
-    priority_order: Option<i32>,
+#[serde(untagged)]
+enum DictionaryRef {
+    Id(i64),
+    Name(String),
+    Full { name: String, priority_order: Option<i32> },
+}
+
+impl DictionaryRef {
+    fn name(&self) -> Option<&str> {
+        match self {
+            DictionaryRef::Id(_) => None,
+            DictionaryRef::Name(name) => Some(name),
+            DictionaryRef::Full { name, .. } => Some(name),
+        }
+    }
+
+    fn id(&self) -> Option<i64> {
+        match self {
+            DictionaryRef::Id(id) => Some(*id),
+            _ => None,
+        }
+    }
+
+    fn priority_order(&self) -> Option<i32> {
+        match self {
+            DictionaryRef::Name(_) | DictionaryRef::Id(_) => None,
+            DictionaryRef::Full { priority_order, .. } => *priority_order,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -76,7 +101,8 @@ struct Etymology {
     origin_word: Option<String>,
     origin_meaning: Option<String>,
     etymology: String,
-    first_attested_year: Option<i32>,
+    #[serde(default)]
+    first_attested_year: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -105,7 +131,7 @@ struct Frequency {
     corpus_type: Option<String>,
     band: Option<String>,
     rank: Option<i32>,
-    per_million: Option<i32>,
+    per_million: Option<f32>,
 }
 
 #[derive(Debug)]
@@ -200,7 +226,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Found {} JSON files to process", json_files.len());
 
     println!("\nLoading dictionaries cache...");
-    let dictionaries_cache = load_dictionaries_cache(&mut conn)?;
+    let mut dictionaries_cache = load_dictionaries_cache(&mut conn)?;
     println!("Loaded {} dictionaries", dictionaries_cache.len());
 
     println!("\nLoading categories cache...");
@@ -212,7 +238,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &json_files,
         batch_size,
         skip_existing,
-        &dictionaries_cache,
+        &mut dictionaries_cache,
         &mut categories_cache,
     )?;
 
@@ -270,20 +296,25 @@ fn load_dictionaries_cache(
 fn load_categories_cache(
     conn: &mut PgConnection,
 ) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
-    let domain_id = dict_domains::table
-        .filter(dict_domains::name.eq("Dictionary"))
-        .select(dict_domains::id)
+    use colang::db::schema::{taxon_categories, taxon_domains};
+
+    let domain_id: Option<i64> = taxon_domains::table
+        .filter(taxon_domains::code.eq("dictionary"))
+        .select(taxon_domains::id)
         .first::<i64>(conn)
         .optional()?;
 
-    let categories: Vec<(i64, String)> = dict_categories::table
-        .select((dict_categories::id, dict_categories::name))
-        .filter(dict_categories::domain_id.eq(domain_id))
-        .load(conn)?;
-
     let mut cache = HashMap::new();
-    for (id, name) in categories {
-        cache.insert(name, id);
+
+    if let Some(did) = domain_id {
+        let categories: Vec<(i64, String)> = taxon_categories::table
+            .select((taxon_categories::id, taxon_categories::name_en))
+            .filter(taxon_categories::domain_id.eq(did))
+            .load(conn)?;
+
+        for (id, name) in categories {
+            cache.insert(name, id);
+        }
     }
 
     Ok(cache)
@@ -294,7 +325,7 @@ fn import_words(
     json_files: &[PathBuf],
     batch_size: usize,
     skip_existing: bool,
-    dictionaries_cache: &HashMap<String, i64>,
+    dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
 ) -> Result<ImportStats, Box<dyn std::error::Error>> {
     let mut stats = ImportStats {
@@ -343,7 +374,7 @@ fn process_json_file(
     conn: &mut PgConnection,
     json_file: &Path,
     skip_existing: bool,
-    dictionaries_cache: &HashMap<String, i64>,
+    dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     use colang::db::schema::dict_words;
@@ -614,7 +645,7 @@ fn insert_etymologies(
                     dict_etymologies::origin_meaning.eq(&etym.origin_meaning),
                     dict_etymologies::language.eq(&etym.language),
                     dict_etymologies::etymology.eq(&etym.etymology),
-                    dict_etymologies::first_attested_year.eq(etym.first_attested_year),
+                    dict_etymologies::first_attested_year.eq(etym.first_attested_year.as_ref()),
                 ))
                 .returning(dict_etymologies::id)
                 .get_result(conn)?;
@@ -640,16 +671,27 @@ fn insert_categories(
     entry: &WordEntry,
     categories_cache: &mut HashMap<String, i64>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use colang::db::schema::*;
+    use colang::db::schema::{dict_word_categories, taxon_categories, taxon_domains};
 
     if let Some(categories) = &entry.categories {
         for cat in categories {
             let category_id = if let Some(&id) = categories_cache.get(&cat.name) {
                 id
             } else {
-                let id: i64 = diesel::insert_into(dict_categories::table)
-                    .values((dict_categories::name.eq(&cat.name),))
-                    .returning(dict_categories::id)
+                // Get the dictionary domain
+                let domain_id: i64 = taxon_domains::table
+                    .filter(taxon_domains::code.eq("dictionary"))
+                    .select(taxon_domains::id)
+                    .first::<i64>(conn)?;
+
+                let id: i64 = diesel::insert_into(taxon_categories::table)
+                    .values((
+                        taxon_categories::code.eq(cat.name.to_lowercase().replace(' ', "_")),
+                        taxon_categories::name_en.eq(&cat.name),
+                        taxon_categories::name_zh.eq(&cat.name),
+                        taxon_categories::domain_id.eq(domain_id),
+                    ))
+                    .returning(taxon_categories::id)
                     .get_result(conn)?;
                 categories_cache.insert(cat.name.clone(), id);
                 id
@@ -702,17 +744,31 @@ fn insert_relation_type(
                 .first(conn)
                 .optional()?;
 
-            if let Some(related_id) = related_word_id {
-                diesel::insert_into(dict_relations::table)
+            let related_id = if let Some(id) = related_word_id {
+                id
+            } else {
+                // Create related word if not exists
+                diesel::insert_into(dict_words::table)
                     .values((
-                        dict_relations::word_id.eq(word_id),
-                        dict_relations::relation_type.eq(relation_type),
-                        dict_relations::related_word_id.eq(related_id),
-                        dict_relations::relation_strength.eq(related.strength),
+                        dict_words::word.eq(&related.word),
+                        dict_words::word_lower.eq(&related_word_lower),
+                        dict_words::language.eq("en"),
+                        dict_words::is_active.eq(true),
+                        dict_words::word_count.eq(related.word.split_whitespace().count() as i32),
                     ))
-                    .on_conflict_do_nothing()
-                    .execute(conn)?;
-            }
+                    .returning(dict_words::id)
+                    .get_result(conn)?
+            };
+
+            diesel::insert_into(dict_relations::table)
+                .values((
+                    dict_relations::word_id.eq(word_id),
+                    dict_relations::relation_type.eq(relation_type),
+                    dict_relations::related_word_id.eq(related_id),
+                    dict_relations::relation_strength.eq(related.strength),
+                ))
+                .on_conflict_do_nothing()
+                .execute(conn)?;
         }
     }
 
@@ -741,7 +797,7 @@ fn insert_frequencies(
                     dict_frequencies::corpus_type.eq(corpus_type),
                     dict_frequencies::band.eq(band),
                     dict_frequencies::rank.eq(freq.rank),
-                    dict_frequencies::frequency_per_million.eq(freq.per_million),
+                    dict_frequencies::per_million.eq(freq.per_million),
                 ))
                 .on_conflict_do_nothing()
                 .execute(conn)?;
@@ -782,22 +838,45 @@ fn insert_word_dictionaries(
     conn: &mut PgConnection,
     word_id: i64,
     entry: &WordEntry,
-    dictionaries_cache: &HashMap<String, i64>,
+    dictionaries_cache: &mut HashMap<String, i64>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use colang::db::schema::dict_word_dictionaries;
+    use colang::db::schema::{dict_dictionaries, dict_word_dictionaries};
 
     if let Some(dictionaries) = &entry.dictionaries {
         for dict_ref in dictionaries {
-            if let Some(&dictionary_id) = dictionaries_cache.get(&dict_ref.name) {
-                diesel::insert_into(dict_word_dictionaries::table)
-                    .values((
-                        dict_word_dictionaries::word_id.eq(word_id),
-                        dict_word_dictionaries::dictionary_id.eq(dictionary_id),
-                        dict_word_dictionaries::priority_order.eq(dict_ref.priority_order),
-                    ))
-                    .on_conflict_do_nothing()
-                    .execute(conn)?;
-            }
+            // Handle dictionary ID directly
+            let dictionary_id = if let Some(id) = dict_ref.id() {
+                id
+            } else if let Some(dict_name) = dict_ref.name() {
+                if let Some(&id) = dictionaries_cache.get(dict_name) {
+                    id
+                } else {
+                    // Create dictionary if not exists
+                    let id: i64 = diesel::insert_into(dict_dictionaries::table)
+                        .values((
+                            dict_dictionaries::name_en.eq(dict_name),
+                            dict_dictionaries::name_zh.eq(dict_name),
+                            dict_dictionaries::short_en.eq(dict_name),
+                            dict_dictionaries::short_zh.eq(dict_name),
+                            dict_dictionaries::is_active.eq(true),
+                        ))
+                        .returning(dict_dictionaries::id)
+                        .get_result(conn)?;
+                    dictionaries_cache.insert(dict_name.to_string(), id);
+                    id
+                }
+            } else {
+                continue; // Skip invalid dictionary reference
+            };
+
+            diesel::insert_into(dict_word_dictionaries::table)
+                .values((
+                    dict_word_dictionaries::word_id.eq(word_id),
+                    dict_word_dictionaries::dictionary_id.eq(dictionary_id),
+                    dict_word_dictionaries::priority_order.eq(dict_ref.priority_order()),
+                ))
+                .on_conflict_do_nothing()
+                .execute(conn)?;
         }
     }
 

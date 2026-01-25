@@ -138,6 +138,7 @@ CREATE Unique INDEX IF NOT EXISTS idx_dict_sentences_word ON dict_word_sentences
 CREATE INDEX IF NOT EXISTS idx_dict_sentences_definition ON dict_word_sentences(definition_id);
 
 -- Table: dict_etymology - etymology information 语源；词源学
+drop table if exists dict_etymologies;
 CREATE TABLE IF NOT EXISTS dict_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     origin_language TEXT,                               -- 起源语言
@@ -145,7 +146,7 @@ CREATE TABLE IF NOT EXISTS dict_etymologies (
     origin_meaning TEXT,                                -- 起源含义
     language TEXT NOT NULL,                             -- 词源说明语言
     etymology TEXT NOT NULL,                            -- 词源说明
-    first_attested_year INTEGER,                        -- 首次出现的年份
+    first_attested_year TEXT,                        -- 首次出现的年份
     historical_forms JSONB,                              -- 历史形式 (JSONB)
     cognate_words JSONB,                                -- 同源词 (JSONB)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
@@ -216,6 +217,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_relations_type ON dict_relations(relation_ty
 
 
 -- Table: dict_frequency_bands - Frequency band classifications
+drop table if exists dict_frequencies;
 CREATE TABLE IF NOT EXISTS dict_frequencies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
@@ -223,7 +225,7 @@ CREATE TABLE IF NOT EXISTS dict_frequencies (
     corpus_type TEXT CHECK(corpus_type IN ('spoken', 'written', 'academic', 'news', 'fiction', 'internet', 'general')), -- 语料库类型：口语、书面语、学术等
     band TEXT CHECK(band IN ('top_1000', 'top_2000', 'top_3000', 'top_5000', 'top_10000', 'beyond_10000')), -- 频率等级：前1000、前2000等
     rank INTEGER,                                       -- 排名
-    frequency_per_million INTEGER,                         -- 每百万词出现频率
+    per_million REAL,                         -- 每百万词出现频率
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),      -- 创建时间
     UNIQUE(word_id, corpus_name, corpus_type)
 );

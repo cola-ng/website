@@ -36,7 +36,7 @@ pub struct CreateEtymologyRequest {
     pub origin_meaning: Option<String>,
     pub etymology_en: Option<String>,
     pub etymology_zh: Option<String>,
-    pub first_attested_year: Option<i32>,
+    pub first_attested_year: Option<String>,
     pub historical_forms: Option<serde_json::Value>,
     pub cognate_words: Option<serde_json::Value>,
 }

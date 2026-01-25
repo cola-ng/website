@@ -14,6 +14,7 @@ use crate::db::schema::*;
 #[diesel(table_name = taxon_domains)]
 pub struct TaxonDomain {
     pub id: i64,
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub created_at: DateTime<Utc>,
@@ -22,6 +23,7 @@ pub struct TaxonDomain {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = taxon_domains)]
 pub struct NewTaxonDomain {
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
 }
@@ -30,6 +32,7 @@ pub struct NewTaxonDomain {
 #[diesel(table_name = taxon_categories)]
 pub struct TaxonCategory {
     pub id: i64,
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub domain_id: i64,
@@ -40,6 +43,7 @@ pub struct TaxonCategory {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = taxon_categories)]
 pub struct NewTaxonCategory {
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub domain_id: i64,
@@ -54,6 +58,7 @@ pub struct NewTaxonCategory {
 #[diesel(table_name = asset_contexts)]
 pub struct Context {
     pub id: i64,
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
@@ -70,6 +75,7 @@ pub struct Context {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = asset_contexts)]
 pub struct NewContext {
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
@@ -104,6 +110,7 @@ pub struct NewContextCategory {
 #[diesel(table_name = asset_stages)]
 pub struct Stage {
     pub id: i64,
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
@@ -118,6 +125,7 @@ pub struct Stage {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = asset_stages)]
 pub struct NewStage {
+    pub code: String,
     pub name_en: String,
     pub name_zh: String,
     pub description_en: Option<String>,
@@ -138,6 +146,7 @@ pub struct NewStage {
 pub struct Script {
     pub id: i64,
     pub stage_id: i64,
+    pub code: String,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
@@ -152,6 +161,7 @@ pub struct Script {
 #[diesel(table_name = asset_scripts)]
 pub struct NewScript {
     pub stage_id: i64,
+    pub code: String,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
@@ -205,6 +215,7 @@ pub struct NewScriptTurn {
 #[diesel(table_name = asset_read_subjects)]
 pub struct ReadSubject {
     pub id: i64,
+    pub code: String,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,
@@ -217,6 +228,7 @@ pub struct ReadSubject {
 #[derive(Insertable, Deserialize)]
 #[diesel(table_name = asset_read_subjects)]
 pub struct NewReadSubject {
+    pub code: String,
     pub title_en: String,
     pub title_zh: String,
     pub description_en: Option<String>,

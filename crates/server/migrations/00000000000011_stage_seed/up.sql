@@ -13,33 +13,28 @@ INSERT INTO asset_contexts (code, name_en, name_zh, description_en, description_
 ON CONFLICT DO NOTHING;
 
 -- Insert additional stages for script linking
-INSERT INTO asset_stages (name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
-('Grocery Shopping', '超市购物', 'English communication skills for grocery shopping', '超市购物时的英语交流技巧', '🛒', 2, 11, true),
-('Banking', '银行业务', 'English expressions for banking services', '银行业务办理的英语表达', '🏦', 4, 12, true),
-('Phone Booking', '电话预约', 'English conversation skills for phone reservations', '电话预约的英语对话技巧', '📞', 4, 13, true),
-('Taking a Taxi', '打车出行', 'English communication when taking a taxi', '打车时的英语交流', '🚕', 2, 14, true),
-('Package Delivery', '快递收发', 'English for sending and receiving packages', '收发快递时的英语表达', '📦', 2, 15, true),
-('Movie Tickets', '电影购票', 'English dialogue for buying movie tickets', '电影院购票的英语对话', '🎬', 2, 16, true)
-ON CONFLICT (name_en, name_zh) DO UPDATE SET
-    description_en = EXCLUDED.description_en,
-    description_zh = EXCLUDED.description_zh,
-    icon_emoji = EXCLUDED.icon_emoji,
-    difficulty = EXCLUDED.difficulty,
-    display_order = EXCLUDED.display_order;
+INSERT INTO asset_stages (code, name_en, name_zh, description_en, description_zh, icon_emoji, difficulty, display_order, is_active) VALUES
+('grocery_shopping', 'Grocery Shopping', '超市购物', 'English communication skills for grocery shopping', '超市购物时的英语交流技巧', '🛒', 2, 11, true),
+('banking', 'Banking', '银行业务', 'English expressions for banking services', '银行业务办理的英语表达', '🏦', 4, 12, true),
+('phone_booking', 'Phone Booking', '电话预约', 'English conversation skills for phone reservations', '电话预约的英语对话技巧', '📞', 4, 13, true),
+('taking_taxi', 'Taking a Taxi', '打车出行', 'English communication when taking a taxi', '打车时的英语交流', '🚕', 2, 14, true),
+('package_delivery', 'Package Delivery', '快递收发', 'English for sending and receiving packages', '收发快递时的英语表达', '📦', 2, 15, true),
+('movie_tickets', 'Movie Tickets', '电影购票', 'English dialogue for buying movie tickets', '电影院购票的英语对话', '🎬', 2, 16, true)
+ON CONFLICT DO NOTHING;
 
 -- Insert dialogues for asset_scripts (need stage_id from asset_stages)
-INSERT INTO asset_scripts (stage_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
-SELECT s.id, 'Restaurant Ordering Full Dialogue', '餐厅点餐完整对话', 'Complete dialogue practice for restaurant ordering', '餐厅点餐完整对话练习', 12, 300, 3
+INSERT INTO asset_scripts (stage_id, code, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
+SELECT s.id, 'restaurant_ordering_full', 'Restaurant Ordering Full Dialogue', '餐厅点餐完整对话', 'Complete dialogue practice for restaurant ordering', '餐厅点餐完整对话练习', 12, 300, 3
 FROM asset_stages s WHERE s.name_en = 'Restaurant Ordering'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO asset_scripts (stage_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
-SELECT s.id, 'Hotel Check-in Full Dialogue', '酒店入住完整对话', 'Complete dialogue practice for hotel check-in', '酒店入住完整对话练习', 13, 480, 3
+INSERT INTO asset_scripts (stage_id, code, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
+SELECT s.id, 'hotel_checkin_full', 'Hotel Check-in Full Dialogue', '酒店入住完整对话', 'Complete dialogue practice for hotel check-in', '酒店入住完整对话练习', 13, 480, 3
 FROM asset_stages s WHERE s.name_en = 'Hotel Reservation'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO asset_scripts (stage_id, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
-SELECT s.id, 'Airport Travel Full Dialogue', '机场出行完整对话', 'Complete dialogue practice for airport travel', '机场出行完整对话练习', 12, 600, 4
+INSERT INTO asset_scripts (stage_id, code, title_en, title_zh, description_en, description_zh, total_turns, estimated_duration_seconds, difficulty)
+SELECT s.id, 'airport_travel_full', 'Airport Travel Full Dialogue', '机场出行完整对话', 'Complete dialogue practice for airport travel', '机场出行完整对话练习', 12, 600, 4
 FROM asset_stages s WHERE s.name_en = 'Airport Check-in'
 ON CONFLICT DO NOTHING;
 
@@ -105,10 +100,10 @@ FROM asset_scripts d JOIN asset_stages s ON d.stage_id = s.id WHERE s.name_en = 
 ON CONFLICT (script_id, turn_number) DO NOTHING;
 
 -- Insert additional reading subjects
-INSERT INTO asset_read_subjects (title_en, title_zh, description_en, description_zh, difficulty, subject_type) VALUES
-('Daily Chat', '日常对话', 'Common phrases for everyday situations', '日常情境中的常用表达', 3, 'sentence'),
-('Business English', '商务英语', 'Professional expressions for the workplace', '职场专业表达', 5, 'sentence'),
-('Advanced Expressions', '高级表达', 'Sophisticated phrases for fluent communication', '流利交流的高级表达', 7, 'sentence')
+INSERT INTO asset_read_subjects (code, title_en, title_zh, description_en, description_zh, difficulty, subject_type) VALUES
+('daily_chat', 'Daily Chat', '日常对话', 'Common phrases for everyday situations', '日常情境中的常用表达', 3, 'sentence'),
+('business_english', 'Business English', '商务英语', 'Professional expressions for the workplace', '职场专业表达', 5, 'sentence'),
+('advanced_expressions', 'Advanced Expressions', '高级表达', 'Sophisticated phrases for fluent communication', '流利交流的高级表达', 7, 'sentence')
 ON CONFLICT DO NOTHING;
 
 -- Insert reading sentences for Daily Chat

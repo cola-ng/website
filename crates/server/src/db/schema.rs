@@ -93,6 +93,7 @@ diesel::table! {
 diesel::table! {
     asset_contexts (id) {
         id -> Int8,
+        code -> Text,
         name_en -> Text,
         name_zh -> Text,
         description_en -> Nullable<Text>,
@@ -125,6 +126,7 @@ diesel::table! {
 diesel::table! {
     asset_read_subjects (id) {
         id -> Int8,
+        code -> Text,
         title_en -> Text,
         title_zh -> Text,
         description_en -> Nullable<Text>,
@@ -155,6 +157,7 @@ diesel::table! {
     asset_scripts (id) {
         id -> Int8,
         stage_id -> Int8,
+        code -> Text,
         title_en -> Text,
         title_zh -> Text,
         description_en -> Nullable<Text>,
@@ -169,6 +172,7 @@ diesel::table! {
 diesel::table! {
     asset_stages (id) {
         id -> Int8,
+        code -> Text,
         name_en -> Text,
         name_zh -> Text,
         description_en -> Nullable<Text>,
@@ -318,7 +322,7 @@ diesel::table! {
         origin_meaning -> Nullable<Text>,
         language -> Text,
         etymology -> Text,
-        first_attested_year -> Nullable<Int4>,
+        first_attested_year -> Nullable<Text>,
         historical_forms -> Nullable<Jsonb>,
         cognate_words -> Nullable<Jsonb>,
         created_at -> Timestamptz,
@@ -345,7 +349,7 @@ diesel::table! {
         corpus_type -> Nullable<Text>,
         band -> Nullable<Text>,
         rank -> Nullable<Int4>,
-        frequency_per_million -> Nullable<Int4>,
+        per_million -> Nullable<Float4>,
         created_at -> Timestamptz,
     }
 }
@@ -742,6 +746,7 @@ diesel::table! {
 diesel::table! {
     taxon_categories (id) {
         id -> Int8,
+        code -> Text,
         name_en -> Text,
         name_zh -> Text,
         domain_id -> Int8,
@@ -753,6 +758,7 @@ diesel::table! {
 diesel::table! {
     taxon_domains (id) {
         id -> Int8,
+        code -> Text,
         name_en -> Text,
         name_zh -> Text,
         created_at -> Timestamptz,

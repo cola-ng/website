@@ -362,7 +362,7 @@ pub struct Etymology {
     pub origin_meaning: Option<String>,
     pub language: String,
     pub etymology: String,
-    pub first_attested_year: Option<i32>,
+    pub first_attested_year: Option<String>,
     pub historical_forms: Option<serde_json::Value>,
     pub cognate_words: Option<serde_json::Value>,
     pub created_at: DateTime<Utc>,
@@ -385,7 +385,7 @@ pub struct NewEtymology {
     pub origin_meaning: Option<String>,
     pub language: String,
     pub etymology: String,
-    pub first_attested_year: Option<i32>,
+    pub first_attested_year: Option<String>,
     pub historical_forms: Option<serde_json::Value>,
     pub cognate_words: Option<serde_json::Value>,
 }
