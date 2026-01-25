@@ -739,6 +739,8 @@ export type GetChatTurnsOptions = {
   afterId?: number
   /** Load items before this ID (for loading older messages) */
   beforeId?: number
+  /** If true, load the latest messages first (default false) */
+  fromLatest?: boolean
 }
 
 /**
@@ -756,6 +758,7 @@ export function getChatTurns(
   if (options.limit) params.set('limit', options.limit.toString())
   if (options.afterId) params.set('after_id', options.afterId.toString())
   if (options.beforeId) params.set('before_id', options.beforeId.toString())
+  if (options.fromLatest) params.set('from_latest', 'true')
 
   const queryString = params.toString()
   const url = `/api/learn/chats/${chatId}/turns${queryString ? `?${queryString}` : ''}`
@@ -892,6 +895,18 @@ export function updateChatTitle(token: string, chatId: number, title: string): P
 export function listChats(token: string, limit = 50): Promise<LearnChat[]> {
   return requestJson<LearnChat[]>(`/api/learn/chats?limit=${limit}`, {
     method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Reset a chat - delete all turns and issues
+ * @param token Auth token
+ * @param chatId Chat ID
+ */
+export function resetChat(token: string, chatId: number): Promise<{ ok: boolean }> {
+  return requestJson<{ ok: boolean }>(`/api/learn/chats/${chatId}/reset`, {
+    method: 'POST',
     token,
   })
 }

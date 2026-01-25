@@ -32,10 +32,11 @@ pub fn router() -> Router {
                     Router::with_path("{id}")
                         .put(chat::update_chat)
                         .push(Router::with_path("send").post(chat::send_chat))
+                        .push(Router::with_path("reset").post(chat::reset_chat))
                         .push(Router::with_path("issues").get(chat::list_chat_issues))
-                        .push(Router::with_path("turns").get(chat::list_chat_turns)),
+                        .push(Router::with_path("turns").get(chat::list_turns)),
                 )
-                .push(Router::with_path("turns").get(chat::list_chat_turns))
+                .push(Router::with_path("turns").get(chat::list_turns))
                 .push(
                     Router::with_path("turns/{id}")
                         .get(chat::get_chat_turn)

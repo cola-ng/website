@@ -156,6 +156,50 @@ pub async fn update_chat(
     Ok(())
 }
 
+/// Reset a chat - delete all turns and issues for this chat
+#[handler]
+pub async fn reset_chat(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+    let user_id = depot.user_id()?;
+    let chat_id = req
+        .param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing chat id"))?;
+
+    // Verify ownership and delete all turns and issues for this chat
+    with_conn(move |conn| {
+        // First verify ownership
+        let _existing = learn_chats::table
+            .filter(learn_chats::id.eq(chat_id))
+            .filter(learn_chats::user_id.eq(user_id))
+            .first::<Chat>(conn)?;
+
+        // Delete all issues for this chat
+        diesel::delete(
+            learn_chat_issues::table
+                .filter(learn_chat_issues::chat_id.eq(chat_id))
+                .filter(learn_chat_issues::user_id.eq(user_id)),
+        )
+        .execute(conn)?;
+
+        // Delete all turns for this chat
+        diesel::delete(
+            learn_chat_turns::table
+                .filter(learn_chat_turns::chat_id.eq(chat_id))
+                .filter(learn_chat_turns::user_id.eq(user_id)),
+        )
+        .execute(conn)?;
+
+        Ok::<_, diesel::result::Error>(())
+    })
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to reset chat: {:?}", e);
+        StatusError::internal_server_error().brief("failed to reset chat")
+    })?;
+
+    res.render(Json(serde_json::json!({ "ok": true })));
+    Ok(())
+}
+
 // ============================================================================
 // Chat Turns API
 // ============================================================================
@@ -200,30 +244,24 @@ pub struct CreateChatTurnRequest {
 /// - `limit`: Max items to return (default 50, max 500)
 /// - `after_id`: Load items after this ID (for loading older messages)
 /// - `before_id`: Load items before this ID (for loading newer messages)
+/// - `from_latest`: If true, load the latest messages first (default false)
 #[handler]
-pub async fn list_chat_turns(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
-    let chat_id_param = req.query::<i64>("chat_id");
+    let chat_id = req.try_query::<i64>("id")?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 500);
     let after_id = req.query::<i64>("after_id");
     let before_id = req.query::<i64>("before_id");
+    let from_latest = req.query::<bool>("from_latest").unwrap_or(false);
 
     // Get total count for this query
     let total: i64 = with_conn({
-        let chat_id_param = chat_id_param;
         move |conn| {
             let mut query = learn_chat_turns::table
                 .filter(learn_chat_turns::user_id.eq(user_id))
                 .into_boxed();
 
-            if let Some(cid) = chat_id_param {
-                query = query.filter(learn_chat_turns::chat_id.eq(cid));
-            }
-
+            query = query.filter(learn_chat_turns::chat_id.eq(chat_id));
             query.count().get_result::<i64>(conn)
         }
     })
@@ -231,8 +269,9 @@ pub async fn list_chat_turns(
     .map_err(|_| StatusError::internal_server_error().brief("failed to count chat turns"))?;
 
     // Get turns with cursor-based pagination
-    // Order by created_at ASC (oldest first) so messages display correctly in chat
-    let turns: Vec<ChatTurn> = with_conn({
+    // When from_latest is true, order by DESC to get newest first, then reverse for display
+    // When from_latest is false, order by ASC (oldest first) for normal pagination
+    let mut turns: Vec<ChatTurn> = with_conn({
         let chat_id_param = chat_id_param;
         move |conn| {
             let mut query = learn_chat_turns::table
@@ -253,14 +292,28 @@ pub async fn list_chat_turns(
                 query = query.filter(learn_chat_turns::id.lt(bid));
             }
 
-            query
-                .order(learn_chat_turns::created_at.asc())
-                .limit(limit)
-                .load::<ChatTurn>(conn)
+            if from_latest {
+                // Load latest messages first (for initial load)
+                query
+                    .order(learn_chat_turns::created_at.desc())
+                    .limit(limit)
+                    .load::<ChatTurn>(conn)
+            } else {
+                // Normal chronological order (for loading older messages)
+                query
+                    .order(learn_chat_turns::created_at.asc())
+                    .limit(limit)
+                    .load::<ChatTurn>(conn)
+            }
         }
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list chat turns"))?;
+
+    // When from_latest, reverse to get chronological order for display
+    if from_latest {
+        turns.reverse();
+    }
 
     // Determine if there are more items
     let first_id = turns.first().map(|t| t.id);

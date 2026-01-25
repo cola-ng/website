@@ -1,11 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
+import { useParams, useNavigate } from 'react-router-dom'
+import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2, RotateCcw } from 'lucide-react'
 
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, getChatIssues, type TextIssue, type ChatTurn } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, getChatIssues, type TextIssue, type ChatTurn } from '../lib/api'
 
 interface Message {
   id: string
@@ -51,6 +52,8 @@ interface Context {
 
 export function ChatPage() {
   const { token } = useAuth()
+  const { chatId: urlChatId } = useParams<{ chatId: string }>()
+  const navigate = useNavigate()
   const [chats, setChats] = useState<Chat[]>([])
   const [activeChatId, setActiveChatId] = useState<string | null>(null)
   const [chatsLoading, setChatsLoading] = useState(true)
@@ -148,17 +151,28 @@ export function ChatPage() {
         }))
         setChats(loadedChats)
 
-        // Auto-load turns for the first chat
+        // Determine which chat to activate based on URL or default to first
         if (loadedChats.length > 0) {
-          const firstChat = loadedChats[0]
-          setActiveChatId(firstChat.id)
+          // Try to find chat from URL parameter
+          let targetChat = urlChatId
+            ? loadedChats.find(c => c.id === urlChatId)
+            : null
 
-          // Fetch turns and issues for the first chat
-          if (firstChat.serverId) {
+          // If URL chat not found, use the first (most recent) chat
+          if (!targetChat) {
+            targetChat = loadedChats[0]
+            // Update URL to reflect actual chat if URL was invalid or missing
+            navigate(`/chat/${targetChat.id}`, { replace: true })
+          }
+
+          setActiveChatId(targetChat.id)
+
+          // Fetch turns and issues for the target chat
+          if (targetChat.serverId) {
             try {
               const [turnsResponse, issues] = await Promise.all([
-                getChatTurns(token, firstChat.serverId, { limit: 50 }),
-                getChatIssues(token, firstChat.serverId),
+                getChatTurns(token, targetChat.serverId, { limit: 50, fromLatest: true }),
+                getChatIssues(token, targetChat.serverId),
               ])
 
               // Create a map of turn_id -> issues for quick lookup
@@ -194,7 +208,7 @@ export function ChatPage() {
                 }))
 
               setChats(prev => prev.map(c => {
-                if (c.id === firstChat.id) {
+                if (c.id === targetChat!.id) {
                   return {
                     ...c,
                     messages,
@@ -219,7 +233,7 @@ export function ChatPage() {
       .finally(() => {
         setChatsLoading(false)
       })
-  }, [token])
+  }, [token, urlChatId, navigate])
 
   // Fetch contexts when dialog is opened
   useEffect(() => {
@@ -235,15 +249,29 @@ export function ChatPage() {
 
   const activeChat = chats.find(c => c.id === activeChatId)
   const messages = activeChat?.messages || []
-  const prevMessagesLengthRef = useRef(messages.length)
+  const prevMessagesLengthRef = useRef(0)
+  const prevChatIdRef = useRef<string | null>(null)
 
-  // Only scroll when new messages are added, not on initial load
+  // Scroll to bottom: immediately on chat switch/initial load, smooth animation for new messages
   useEffect(() => {
-    if (messages.length > prevMessagesLengthRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+    if (messages.length > 0) {
+      const isChatSwitch = prevChatIdRef.current !== activeChatId
+      const isNewMessage = messages.length > prevMessagesLengthRef.current && !isChatSwitch
+
+      if (isChatSwitch) {
+        // Chat switched or initial load: scroll immediately without animation
+        // Use requestAnimationFrame to ensure DOM is updated
+        requestAnimationFrame(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: 'instant' })
+        })
+      } else if (isNewMessage) {
+        // New messages added during session: smooth scroll
+        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+      }
     }
     prevMessagesLengthRef.current = messages.length
-  }, [messages.length])
+    prevChatIdRef.current = activeChatId
+  }, [messages.length, activeChatId])
 
   // Auto-resize textarea
   useEffect(() => {
@@ -707,8 +735,11 @@ export function ChatPage() {
       }
     }
 
+    // Use serverId as the chat ID if available, otherwise use timestamp
+    const chatId = serverId?.toString() || Date.now().toString()
+
     const newChat: Chat = {
-      id: Date.now().toString(),
+      id: chatId,
       serverId,
       title: '随便聊',
       lastMessage: '',
@@ -726,6 +757,7 @@ export function ChatPage() {
 
     setChats(prev => [newChat, ...prev])
     setActiveChatId(newChat.id)
+    navigate(`/chat/${newChat.id}`, { replace: true })
   }
 
   // Handle context-based chat (选场景)
@@ -744,8 +776,11 @@ export function ChatPage() {
       }
     }
 
+    // Use serverId as the chat ID if available, otherwise use timestamp
+    const chatId = serverId?.toString() || Date.now().toString()
+
     const newChat: Chat = {
-      id: Date.now().toString(),
+      id: chatId,
       serverId,
       title: context.name_zh,
       contextId: context.id,
@@ -765,6 +800,7 @@ export function ChatPage() {
 
     setChats(prev => [newChat, ...prev])
     setActiveChatId(newChat.id)
+    navigate(`/chat/${newChat.id}`, { replace: true })
   }
 
   // Pin chat to top
@@ -815,6 +851,25 @@ export function ChatPage() {
     setRenameValue('')
   }
 
+  // Clear chat (reset - delete all messages)
+  const handleClearChat = async (convId: string) => {
+    setMenuOpenId(null)
+    const conv = chats.find(c => c.id === convId)
+    if (!conv?.serverId || !token) return
+
+    try {
+      await resetChat(token, conv.serverId)
+      // Clear messages in local state
+      setChats(prev => prev.map(c =>
+        c.id === convId
+          ? { ...c, messages: [], lastMessage: '', hasMorePrev: false, hasMoreNext: false, firstId: undefined, lastId: undefined }
+          : c
+      ))
+    } catch (err) {
+      console.error('Failed to clear chat:', err)
+    }
+  }
+
   // Delete chat
   const handleDeleteChat = (convId: string) => {
     setMenuOpenId(null)
@@ -823,6 +878,9 @@ export function ChatPage() {
       // If we deleted the active chat, switch to the first one
       if (activeChatId === convId && filtered.length > 0) {
         setActiveChatId(filtered[0].id)
+        navigate(`/chat/${filtered[0].id}`, { replace: true })
+      } else if (filtered.length === 0) {
+        navigate('/chat', { replace: true })
       }
       return filtered
     })
@@ -831,6 +889,8 @@ export function ChatPage() {
   // Handle chat selection - fetch turns from server
   const handleSelectChat = useCallback(async (chat: Chat) => {
     setActiveChatId(chat.id)
+    // Update URL to reflect selected chat
+    navigate(`/chat/${chat.id}`, { replace: true })
 
     // If chat has no server ID or already has messages loaded, skip fetching
     if (!chat.serverId || !token) {
@@ -844,9 +904,9 @@ export function ChatPage() {
     }
 
     try {
-      // Fetch turns and issues from server with pagination
+      // Fetch turns and issues from server with pagination (latest first)
       const [turnsResponse, issues] = await Promise.all([
-        getChatTurns(token, chat.serverId, { limit: 50 }),
+        getChatTurns(token, chat.serverId, { limit: 50, fromLatest: true }),
         getChatIssues(token, chat.serverId),
       ])
 
@@ -900,7 +960,7 @@ export function ChatPage() {
     } catch (err) {
       console.error('Failed to fetch chat turns:', err)
     }
-  }, [token, chats])
+  }, [token, chats, navigate])
 
   // Load more (older) messages for the active chat
   const handleLoadMoreMessages = useCallback(async () => {
@@ -1259,6 +1319,16 @@ export function ChatPage() {
                           >
                             <Pencil className="h-3.5 w-3.5" />
                             重命名
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              handleClearChat(conv.id)
+                            }}
+                            className="w-full px-3 py-1.5 text-left text-sm hover:bg-gray-100 flex items-center gap-2 text-orange-600"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            清空
                           </button>
                           <button
                             onClick={(e) => {

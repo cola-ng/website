@@ -23,6 +23,7 @@ function AppRoutes() {
       <Route path="/" element={<LandingPage />} />
       <Route path="/dict" element={<DictPage />} />
       <Route path="/chat" element={<ChatPage />} />
+      <Route path="/chat/:chatId" element={<ChatPage />} />
       <Route path="/review" element={<ReviewPage />} />
       <Route path="/review/session" element={<ReviewSessionPage />} />
       <Route path="/stages" element={<StagesPage />} />
