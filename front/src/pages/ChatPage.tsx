@@ -1,7 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2 } from 'lucide-react'
 
-import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
@@ -1266,9 +1265,11 @@ export function ChatPage() {
           </div>
 
           {/* Right Panel - Chat Window */}
-          <div className="flex-1 flex flex-col">
-            {/* Chat Header with Display Settings */}
-            <div className="border-b px-6 py-3 bg-white">
+          <div className="flex-1 flex flex-col overflow-hidden">
+            {/* Scrollable container with sticky header */}
+            <div className="flex-1 overflow-y-auto">
+            {/* Chat Header with Display Settings - sticky within scroll container */}
+            <div className="border-b px-6 py-3 bg-white sticky top-0 z-10">
               <div className="flex items-center justify-between">
                 <h2 className="font-semibold text-gray-900">
                   {activeChat?.title || '天天唠嗑'}
@@ -1357,7 +1358,7 @@ export function ChatPage() {
             </div>
 
             {/* Messages */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="p-6 space-y-4">
               {/* Load more button at top */}
               {activeChat?.hasMorePrev && (
                 <div className="flex justify-center">
@@ -1467,6 +1468,7 @@ export function ChatPage() {
                 )
               })}
               <div ref={messagesEndRef} />
+            </div>
             </div>
 
             {/* Input Area */}
@@ -1636,7 +1638,6 @@ export function ChatPage() {
         />
       )}
 
-      <Footer />
     </div>
   )
 }
