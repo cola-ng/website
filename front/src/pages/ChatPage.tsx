@@ -1038,8 +1038,8 @@ export function ChatPage() {
         `
       }
       return `
-        <div style="margin-bottom: 16px; text-align: ${isUser ? 'right' : 'left'};">
-          <div style="display: inline-block; max-width: 70%; padding: 12px 16px; border-radius: 16px; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'};">
+        <div class="message-item" style="text-align: ${isUser ? 'right' : 'left'};">
+          <div style="display: inline-block; max-width: 100%; padding: 12px 16px; border-radius: 16px; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'};">
             <p style="margin: 0;">${msg.contentEn}</p>
             <p style="margin: 8px 0 0 0; opacity: 0.8; font-size: 9px;">${msg.contentZh}</p>
           </div>
@@ -1056,10 +1056,21 @@ export function ChatPage() {
           @page {
             size: A4;
             margin: 15mm 15mm 15mm 15mm;
-            @bottom-center {
-              content: counter(page);
+            @bottom-left {
+              content: "开朗英语";
               font-size: 9px;
-              color: #6b7280;
+              color: #ea580c;
+              font-weight: 500;
+            }
+            @bottom-center {
+              content: "—  " counter(page) " / " counter(pages) "  —";
+              font-size: 9px;
+              color: #9ca3af;
+            }
+            @bottom-right {
+              content: "https://cola.ng";
+              font-size: 9px;
+              color: #ea580c;
             }
           }
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
@@ -1072,6 +1083,8 @@ export function ChatPage() {
           .pdf-header .title-section { text-align: right; }
           .pdf-header .title { font-size: 18px; font-weight: bold; color: #111827; }
           .pdf-header .meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
+          .messages-container { column-count: 2; column-gap: 24px; margin-top: 16px; }
+          .message-item { break-inside: avoid; margin-bottom: 16px; }
           @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
@@ -1091,7 +1104,9 @@ export function ChatPage() {
             <div class="meta">导出时间: ${new Date().toLocaleString()}${reportMode ? ' | 报告模式' : ''}</div>
           </div>
         </div>
+        <div class="messages-container">
         ${messagesHtml}
+        </div>
         <script>
           var logoImg = document.getElementById('logo-img');
           var printTriggered = false;
