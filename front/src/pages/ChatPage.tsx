@@ -6,7 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, clearAllChats, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, getChatIssues, type TextIssue, type ChatTurn } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, pollChatTurn, getChatTurns, getChatIssues, type TextIssue, type ChatTurn } from '../lib/api'
 
 interface Message {
   id: string
@@ -335,10 +335,10 @@ export function ChatPage() {
             messages: c.messages.map(m =>
               m.id === userMessage.id
                 ? {
-                    ...m,
-                    contentEn: sendResponse.user_turn.content_en || messageText,
-                    contentZh: sendResponse.user_turn.content_zh || messageText,
-                  }
+                  ...m,
+                  contentEn: sendResponse.user_turn.content_en || messageText,
+                  contentZh: sendResponse.user_turn.content_zh || messageText,
+                }
                 : m
             ),
           }
@@ -584,6 +584,11 @@ export function ChatPage() {
             }
             return c
           }))
+
+          // Auto-play AI response audio if available
+          if (aiMessage.audioPath) {
+            playAudio(aiMessage.id)
+          }
         } catch (err) {
           console.error('Voice chat error:', err)
           const errorMessage: Message = {
@@ -669,8 +674,8 @@ export function ChatPage() {
 
       const activeElement = document.activeElement
       const isInputFocused = activeElement instanceof HTMLTextAreaElement ||
-                            activeElement instanceof HTMLInputElement ||
-                            activeElement?.getAttribute('contenteditable') === 'true'
+        activeElement instanceof HTMLInputElement ||
+        activeElement?.getAttribute('contenteditable') === 'true'
 
       // Space key toggles recording when input is not focused
       if (e.code === 'Space' && !isInputFocused) {
@@ -695,8 +700,6 @@ export function ChatPage() {
 
     if (token) {
       try {
-        // Clear server-side history when starting a new chat
-        await clearAllChats(token)
         // Create new chat on server
         const chat = await createChat(token, '随便聊')
         serverId = chat.id
@@ -734,8 +737,6 @@ export function ChatPage() {
 
     if (token) {
       try {
-        // Clear server-side history first
-        await clearAllChats(token)
         // Create new chat on server with context_id
         const chat = await createChat(token, context.name_zh, context.id)
         serverId = chat.id
