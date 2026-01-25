@@ -294,12 +294,92 @@ impl ChatService for DoubaoClient {
         let doubao_messages: Vec<DoubaoChatMessage> =
             all_messages.iter().map(Self::to_doubao_message).collect();
 
+        // JSON Schema for structured output
+        let response_schema = json!({
+            "type": "object",
+            "properties": {
+                "use_lang": {
+                    "type": "string",
+                    "description": "The language of the original text, either 'en' for English, 'zh' for Chinese, or 'mix' for mixed. ONLY contains issues if this value is 'en'."
+                },
+                "original_en": {
+                    "type": "string",
+                    "description": "The original user text in English. If the user wrote in Chinese or mixed language, translate it to English here."
+                },
+                "original_zh": {
+                    "type": "string",
+                    "description": "The original user text in Chinese. If the user wrote in English or mixed language, translate it to Chinese here."
+                },
+                "reply_en": {
+                    "type": "string",
+                    "description": "Your natural conversational response to the user in English. Keep it concise and encouraging."
+                },
+                "reply_zh": {
+                    "type": "string",
+                    "description": "Translation of your reply_en into Chinese."
+                },
+                "issues": {
+                    "type": "array",
+                    "description": "Grammar, word choice, or phrasing issues found in the user's last message. Empty array if no issues.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "type": {
+                                "type": "string",
+                                "enum": ["grammar", "word_choice", "suggestion"],
+                                "description": "Type of issue"
+                            },
+                            "original": {
+                                "type": "string",
+                                "description": "The problematic text from user's message"
+                            },
+                            "suggested": {
+                                "type": "string",
+                                "description": "The corrected or better alternative"
+                            },
+                            "description_en": {
+                                "type": "string",
+                                "description": "Explanation of the issue using simple English"
+                            },
+                            "description_zh": {
+                                "type": "string",
+                                "description": "Explanation of the issue using simple Chinese"
+                            },
+                            "severity": {
+                                "type": "string",
+                                "enum": ["low", "medium", "high"],
+                                "description": "Severity level of the issue"
+                            },
+                            "start_position": {
+                                "type": ["integer", "null"],
+                                "description": "0-based character offset where issue starts (null if unknown)"
+                            },
+                            "end_position": {
+                                "type": ["integer", "null"],
+                                "description": "0-based character offset where issue ends, exclusive (null if unknown)"
+                            }
+                        },
+                        "required": ["type", "original", "suggested", "description_en", "description_zh", "severity"],
+                        "additionalProperties": false
+                    }
+                }
+            },
+            "required": ["use_lang", "original_en", "original_zh", "reply_en", "reply_zh", "issues"],
+            "additionalProperties": false
+        });
         let request = CreateChatCompletionRequestArgs::default()
             .model(&self.chat_model)
             .messages(doubao_messages)
             .temperature(0.7f32)
             .max_tokens(2000i32)
-            .response_format(ResponseFormat::json_object())
+            .response_format(ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+                json_schema: Some(ResponseFormatJsonSchema {
+                    name: "english_teacher_response",
+                    strict: Some(true),
+                    schema: response_schema,
+                }),
+            })
             .build()
             .map_err(|e| AiProviderError::Config(e.to_string()))?;
 

@@ -139,10 +139,17 @@ pub trait TtsService: Send + Sync {
 pub struct UserInputAnalysis {
     /// Language of user input: "en" | "zh" | "mix"
     pub use_lang: String,
+
     /// User text in English (original or translated)
-    pub content_en: String,
+    pub original_en: String,
     /// User text in Chinese (original or translated)
-    pub content_zh: String,
+    pub original_zh: String,
+
+    /// AI reply text in English
+    pub reply_en: String,
+    /// AI reply text in Chinese
+    pub reply_zh: String,
+
     /// Grammar/word choice issues found in user input
     #[serde(default)]
     pub issues: Vec<TextIssue>,

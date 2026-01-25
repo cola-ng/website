@@ -12,10 +12,10 @@ use serde::{Deserialize, Serialize};
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
-use crate::models::learn::{
-    Chat, ChatIssue, ChatTurn, NewChat, NewChatIssue, NewChatTurn,
+use crate::models::learn::{Chat, ChatIssue, ChatTurn, NewChat, NewChatIssue, NewChatTurn};
+use crate::services::{
+    AiProviderError, ChatMessage, TextIssue, UserInputAnalysis, create_provider_from_env,
 };
-use crate::services::{AiProviderError, ChatMessage, TextIssue, UserInputAnalysis, create_provider_from_env};
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
 // Type aliases for backward compatibility
@@ -476,12 +476,15 @@ async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError>
 }
 
 /// Get chat history for a session (last 20 messages)
-async fn get_session_history(chat_id: i64) -> Result<Vec<HistoryMessage>, StatusError> {
+async fn get_chat_leatest_turns(
+    chat_id: i64,
+    max_count: i64,
+) -> Result<Vec<HistoryMessage>, StatusError> {
     with_conn(move |conn| {
         let messages = learn_chat_turns::table
             .filter(learn_chat_turns::chat_id.eq(chat_id))
             .order(learn_chat_turns::created_at.asc())
-            .limit(20)
+            .limit(max_count)
             .load::<DbChatMessage>(conn)?;
 
         Ok(messages.into_iter().map(Into::into).collect())
@@ -647,9 +650,8 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     })?;
 
     // Get AI provider early - needed for both ASR and user input analysis
-    let provider = create_provider_from_env().ok_or_else(|| {
-        StatusError::internal_server_error().brief("AI provider not configured")
-    })?;
+    let provider = create_provider_from_env()
+        .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
 
     // Get or create session
     let session = get_or_create_session(user_id).await?;
@@ -711,12 +713,12 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     };
 
     // Call AI service to analyze user input (language detection, translation)
-    let chat_service = provider.chat_service().ok_or_else(|| {
-        StatusError::internal_server_error().brief("Chat service not available")
-    })?;
+    let chat_service = provider
+        .chat_service()
+        .ok_or_else(|| StatusError::internal_server_error().brief("Chat service not available"))?;
 
     tracing::info!("Calling {} analyze_user_input API...", provider.name());
-    let user_analysis = chat_service
+    let structured_response = chat_service
         .analyze_user_input(&user_text)
         .await
         .unwrap_or_else(|e| {
@@ -724,15 +726,17 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             // Fallback: assume English, use original text
             UserInputAnalysis {
                 use_lang: "en".to_string(),
-                content_en: user_text.clone(),
-                content_zh: String::new(),
+                original_en: user_text.clone(),
+                original_zh: String::new(),
+                reply_en: "I'm sorry, I couldn't process your input.".to_string(),
+                reply_zh: "抱歉，我无法处理您的输入。".to_string(),
                 issues: vec![],
             }
         });
     tracing::info!(
         "{} analyze_user_input completed: use_lang={}",
         provider.name(),
-        user_analysis.use_lang
+        structured_response.use_lang
     );
 
     println!("======user_audio_path: {:?}", user_audio_path);
@@ -742,25 +746,39 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             user_id,
             chat_id,
             speaker: "user".to_string(),
-            use_lang: user_analysis.use_lang.clone(),
-            content_en: user_analysis.content_en.clone(),
-            content_zh: user_analysis.content_zh.clone(),
+            use_lang: structured_response.use_lang.clone(),
+            content_en: structured_response.original_en.clone(),
+            content_zh: structured_response.original_zh.clone(),
             audio_path: user_audio_path,
         },
         "completed",
     )
     .await?;
 
+    let ai_turn = save_message(
+        SaveMessageParams {
+            user_id,
+            chat_id,
+            speaker: "assistant".to_string(),
+            use_lang: "en".to_owned(),
+            content_en: structured_response.reply_en.clone(),
+            content_zh: structured_response.reply_zh.clone(),
+            audio_path: None,
+        },
+        "completed",
+    )
+    .await?;
+
     // Save chat issues if any issues were found in user input
-    if !user_analysis.issues.is_empty() {
+    if !structured_response.issues.is_empty() {
         tracing::info!(
             "Saving {} chat issues for user turn {}",
-            user_analysis.issues.len(),
+            structured_response.issues.len(),
             user_turn.id
         );
 
         let user_turn_id = user_turn.id;
-        let issues: Vec<NewChatIssue> = user_analysis
+        let issues: Vec<NewChatIssue> = structured_response
             .issues
             .iter()
             .map(|issue| NewChatIssue {
@@ -787,123 +805,13 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         {
             tracing::error!("Failed to save chat issues: {:?}", e);
         } else {
-            tracing::info!(
-                "Saved {} issues successfully",
-                user_analysis.issues.len()
-            );
+            tracing::info!("Saved {} issues successfully", structured_response.issues.len());
         }
     }
 
-    // Create AI turn placeholder (status: processing)
-    let ai_turn = save_message(
-        SaveMessageParams {
-            user_id,
-            chat_id,
-            speaker: "assistant".to_string(),
-            use_lang: "en".to_string(),
-            content_en: String::new(),
-            content_zh: String::new(),
-            audio_path: None,
-        },
-        "processing",
-    )
-    .await?;
-
-    // Capture issues for the response before moving content_en
-    let user_issues = user_analysis.issues;
-
     // Spawn background task for AI response generation
     let ai_turn_id = ai_turn.id;
-    let user_content_en = user_analysis.content_en;
     tokio::spawn(async move {
-        // Get AI provider
-        let provider = match create_provider_from_env() {
-            Some(p) => p,
-            None => {
-                tracing::error!("AI provider not configured for background task");
-                let _ = update_ai_turn(
-                    ai_turn_id,
-                    String::new(),
-                    String::new(),
-                    None,
-                    "error".to_string(),
-                    Some("AI provider not configured".to_string()),
-                )
-                .await;
-                return;
-            }
-        };
-
-        // Get history from database
-        let history_messages = match get_session_history(chat_id).await {
-            Ok(msgs) => msgs,
-            Err(e) => {
-                tracing::error!("Failed to get history: {:?}", e);
-                let _ = update_ai_turn(
-                    ai_turn_id,
-                    String::new(),
-                    String::new(),
-                    None,
-                    "error".to_string(),
-                    Some("Failed to get chat history".to_string()),
-                )
-                .await;
-                return;
-            }
-        };
-
-        let history: Vec<ChatMessage> = history_messages
-            .into_iter()
-            .filter(|m| m.role != "assistant" || !m.content.is_empty()) // Skip empty AI turns
-            .map(|m| ChatMessage {
-                role: m.role,
-                content: m.content,
-            })
-            .collect();
-
-        // Get chat service for structured output
-        let chat_service = match provider.chat_service() {
-            Some(s) => s,
-            None => {
-                tracing::error!("Chat service not available");
-                let _ = update_ai_turn(
-                    ai_turn_id,
-                    String::new(),
-                    String::new(),
-                    None,
-                    "error".to_string(),
-                    Some("Chat service not available".to_string()),
-                )
-                .await;
-                return;
-            }
-        };
-
-        // Generate AI response with structured output
-        tracing::info!(
-            "Background: Calling {} chat_structured API...",
-            provider.name()
-        );
-        let structured_response = match chat_service
-            .chat_structured(history, &user_content_en, DEFAULT_SYSTEM_PROMPT)
-            .await
-        {
-            Ok(resp) => resp,
-            Err(e) => {
-                tracing::error!("{} chat_structured error: {:?}", provider.name(), e);
-                let _ = update_ai_turn(
-                    ai_turn_id,
-                    String::new(),
-                    String::new(),
-                    None,
-                    "error".to_string(),
-                    Some(format!("AI error: {}", e)),
-                )
-                .await;
-                return;
-            }
-        };
-
         tracing::info!(
             "Background: {} chat_structured API completed: reply_en_len={}",
             provider.name(),
@@ -964,7 +872,11 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         }
     });
 
-    json_ok(ChatSendResponse { user_turn, ai_turn, issues: user_issues })
+    json_ok(ChatSendResponse {
+        user_turn,
+        ai_turn,
+        issues: user_issues,
+    })
 }
 
 /// Convert text to speech only
@@ -1018,7 +930,7 @@ pub async fn get_history(depot: &mut Depot) -> JsonResult<HistoryResponse> {
     let user_id = depot.user_id()?;
 
     let session = get_or_create_session(user_id).await?;
-    let messages = get_session_history(session.id).await?;
+    let messages = get_chat_leatest_turns(session.id, 100).await?;
 
     json_ok(HistoryResponse { messages })
 }
@@ -1099,9 +1011,7 @@ pub async fn list_turn_issues(
     .map_err(|_| StatusError::internal_server_error().brief("database error"))?;
 
     if !turn_exists {
-        return Err(StatusError::not_found()
-            .brief("chat turn not found")
-            .into());
+        return Err(StatusError::not_found().brief("chat turn not found").into());
     }
 
     // Get issues for this turn
@@ -1128,7 +1038,11 @@ pub async fn list_turn_issues(
 /// Users can only access their own audio files.
 /// Path: /learn/audios/{user_id}/{filename}
 #[handler]
-pub async fn serve_audio(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn serve_audio(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
     let auth_user_id = depot.user_id()?;
 
     // Get user_id from path parameter
@@ -1150,9 +1064,7 @@ pub async fn serve_audio(req: &mut Request, depot: &mut Depot, res: &mut Respons
 
     // Sanitize filename to prevent directory traversal
     if filename.contains("..") || filename.contains('/') || filename.contains('\\') {
-        return Err(StatusError::bad_request()
-            .brief("invalid filename")
-            .into());
+        return Err(StatusError::bad_request().brief("invalid filename").into());
     }
 
     // Build the file path
@@ -1185,8 +1097,10 @@ pub async fn serve_audio(req: &mut Request, depot: &mut Depot, res: &mut Respons
     };
 
     // Set response headers and body
-    res.headers_mut()
-        .insert(salvo::http::header::CONTENT_TYPE, content_type.parse().unwrap());
+    res.headers_mut().insert(
+        salvo::http::header::CONTENT_TYPE,
+        content_type.parse().unwrap(),
+    );
     res.headers_mut().insert(
         salvo::http::header::CONTENT_LENGTH,
         audio_data.len().to_string().parse().unwrap(),
