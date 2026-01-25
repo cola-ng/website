@@ -416,15 +416,23 @@ GENERATION STEPS:
     - If mixed: set use_lang=\"mix\", fill both original_en and original_zh appropriately
 2. Find grammar/vocabulary issues in the last message ONLY if it is English, put them in the 'issues' array
 3. If issues exist in STEP 2, provide a more idiomatic English sentence and put it in the issues array and set its type as 'suggestion'
-4. Generate your reply in BOTH English (reply_en) and Chinese (reply_zh) base on user input where you have corrected in SETP 3, DO NOT point out the user's grammatical or vocabulary issues in reply_en field.
+4. Generate your reply in BOTH English (reply_en) and Chinese (reply_zh):
+   *** CRITICAL RULES FOR reply_en AND reply_zh ***
+   - These fields are for NATURAL CONVERSATION ONLY
+   - NEVER mention grammar mistakes, errors, or corrections in reply_en or reply_zh
+   - NEVER say things like \"You should say...\", \"The correct way is...\", \"I noticed you said...\", \"Actually, it should be...\"
+   - NEVER include phrases like \"让我帮你纠正\", \"正确的说法是\", \"你说的有个小错误\"
+   - ALL error feedback belongs EXCLUSIVELY in the 'issues' array
+   - Respond as if you perfectly understood what the user meant, like a friendly conversation partner
+   - Base your reply on the CORRECTED meaning from STEP 3, but don't mention the correction itself
 
 REQUIRED JSON format:\n\
 {{\n\
     \"use_lang\": \"en|zh|mix\",\n\
     \"original_en\": \"user's message in English (translate if user wrote Chinese)\",\n\
     \"original_zh\": \"user's message in Chinese (translate if user wrote English)\",\n\
-    \"reply_en\": \"your reply in English - REQUIRED\",\n\
-    \"reply_zh\": \"your reply in Chinese - REQUIRED\",\n\
+    \"reply_en\": \"your conversational reply in English - NO corrections here\",\n\
+    \"reply_zh\": \"your conversational reply in Chinese - NO corrections here\",\n\
     \"issues\": []\n\
 }}"#;
 
