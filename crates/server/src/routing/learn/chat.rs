@@ -523,7 +523,12 @@ fn get_audio_dir(user_id: i64) -> PathBuf {
 }
 
 /// Save audio data to file and return the relative path
-async fn save_audio_file(user_id: i64, audio_data: &[u8], prefix: &str, format: &str) -> Option<String> {
+async fn save_audio_file(
+    user_id: i64,
+    audio_data: &[u8],
+    prefix: &str,
+    format: &str,
+) -> Option<String> {
     let audio_dir: PathBuf = get_audio_dir(user_id);
 
     // Create directory if it doesn't exist
@@ -751,20 +756,6 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     )
     .await?;
 
-    let ai_turn = save_message(
-        SaveMessageParams {
-            user_id,
-            chat_id,
-            speaker: "assistant".to_string(),
-            use_lang: "en".to_owned(),
-            content_en: structured_response.reply_en.clone(),
-            content_zh: structured_response.reply_zh.clone(),
-            audio_path: None,
-        },
-        "processing",
-    )
-    .await?;
-
     // Save chat issues if any issues were found in user input
     if !structured_response.issues.is_empty() {
         tracing::info!(
@@ -809,7 +800,6 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     }
 
     // Spawn background task for AI response generation
-    let ai_turn_id = ai_turn.id;
     tracing::info!(
         "Background: {} chat_structured API completed: reply_en_len={}",
         provider.name(),
@@ -848,19 +838,19 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         None
     };
 
-    // Update AI turn with response
-    if let Err(e) = update_ai_turn(
-        ai_turn_id,
-        ai_audio_path.clone(),
-        "completed".to_string(),
-        None,
+    let ai_turn = save_message(
+        SaveMessageParams {
+            user_id,
+            chat_id,
+            speaker: "assistant".to_string(),
+            use_lang: "en".to_owned(),
+            content_en: structured_response.reply_en.clone(),
+            content_zh: structured_response.reply_zh.clone(),
+            audio_path: ai_audio_path,
+        },
+        "completed",
     )
-    .await
-    {
-        tracing::error!("Failed to update AI turn: {:?}", e);
-    } else {
-        tracing::info!("Background: AI turn {} updated successfully", ai_turn_id);
-    }
+    .await?;
 
     json_ok(ChatSendResponse {
         user_turn,
