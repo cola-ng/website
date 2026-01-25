@@ -1025,7 +1025,7 @@ export function ChatPage() {
       let issuesHtml = ''
       if (reportMode && isUser && msg.issues && msg.issues.length > 0) {
         issuesHtml = `
-          <div style="margin-top: 8px; padding: 8px 12px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
+          <div style="margin-top: 9px; padding: 8px 12px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
             <div style="font-weight: 600; color: #92400e; margin-bottom: 4px;">改进建议:</div>
             ${msg.issues.map((issue: TextIssue) => `
               <div style="margin-bottom: 4px;">
@@ -1041,7 +1041,7 @@ export function ChatPage() {
         <div style="margin-bottom: 16px; text-align: ${isUser ? 'right' : 'left'};">
           <div style="display: inline-block; max-width: 70%; padding: 12px 16px; border-radius: 16px; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'};">
             <p style="margin: 0;">${msg.contentEn}</p>
-            <p style="margin: 8px 0 0 0; opacity: 0.8; font-size: 14px;">${msg.contentZh}</p>
+            <p style="margin: 8px 0 0 0; opacity: 0.8; font-size: 9px;">${msg.contentZh}</p>
           </div>
           ${issuesHtml}
         </div>
@@ -1058,12 +1058,12 @@ export function ChatPage() {
             margin: 15mm 15mm 15mm 15mm;
             @bottom-center {
               content: counter(page);
-              font-size: 12px;
+              font-size: 9px;
               color: #6b7280;
             }
           }
           body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
-          .pdf-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; padding-bottom: 3px; border-bottom: 2px solid #f97316; }
+          .pdf-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; margin-bottom: 0; padding-bottom: 3px; border-bottom: 2px solid #f97316; }
           .pdf-header .brand { display: flex; flex-direction: column; gap: 4px; }
           .pdf-header .brand-row { display: flex; align-items: center; gap: 10px; }
           .pdf-header .logo { height: 32px; width: 32px; }
