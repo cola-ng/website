@@ -1152,13 +1152,13 @@ export function ChatPage() {
       let issuesHtml = ''
       if (reportMode && isUser && msg.issues && msg.issues.length > 0) {
         issuesHtml = `
-          <div style="margin-top: 9px; padding: 8px 12px; background: #fef3c7; border-radius: 8px; font-size: 13px;">
-            <div style="font-weight: 600; color: #92400e; margin-bottom: 4px;">改进建议:</div>
+          <div style="margin-top: 6pt; padding: 6pt 10pt; background: #fef3c7; border-radius: 6pt; font-size: 10pt;">
+            <div style="font-weight: 600; color: #92400e; margin-bottom: 3pt;">改进建议:</div>
             ${msg.issues.map((issue: TextIssue) => `
-              <div style="margin-bottom: 4px;">
+              <div style="margin-bottom: 3pt;">
                 <span style="color: #dc2626; text-decoration: line-through;">${issue.original}</span>
                 → <span style="color: #16a34a; font-weight: 500;">${issue.suggested}</span>
-                <div style="color: #78716c; font-size: 12px; margin-top: 2px;">${issue.description_zh}</div>
+                <div style="color: #78716c; font-size: 9pt; margin-top: 2pt;">${issue.description_zh}</div>
               </div>
             `).join('')}
           </div>
@@ -1166,9 +1166,9 @@ export function ChatPage() {
       }
       return `
         <div class="message-item" style="text-align: ${isUser ? 'right' : 'left'};">
-          <div style="display: inline-block; max-width: 100%; padding: 12px 16px; border-radius: 16px; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'};">
+          <div style="display: inline-block; max-width: 100%; padding: 8pt 12pt; border-radius: 12pt; background: ${isUser ? '#f97316' : '#f3f4f6'}; color: ${isUser ? 'white' : '#111827'}; font-size: 11pt;">
             <p style="margin: 0;">${msg.contentEn}</p>
-            <p style="margin: 8px 0 0 0; opacity: 0.8; font-size: 9px;">${msg.contentZh}</p>
+            <p style="margin: 6pt 0 0 0; opacity: 0.8; font-size: 9pt;">${msg.contentZh}</p>
           </div>
           ${issuesHtml}
         </div>
@@ -1184,34 +1184,34 @@ export function ChatPage() {
             size: A4;
             margin: 15mm 15mm 15mm 15mm;
             @bottom-left {
-              content: "开朗英语";
-              font-size: 9px;
+              content: "开朗英语 https://cola.ng";
+              font-size: 8pt;
               color: #ea580c;
               font-weight: 500;
             }
             @bottom-center {
               content: "—  " counter(page) " / " counter(pages) "  —";
-              font-size: 9px;
+              font-size: 8pt;
               color: #9ca3af;
             }
             @bottom-right {
-              content: "https://cola.ng";
-              font-size: 9px;
-              color: #ea580c;
+              content: "${activeChat.title}";
+              font-size: 8pt;
+              color: #111827;
             }
           }
-          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; }
-          .pdf-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 16px; margin-bottom: 0; padding-bottom: 3px; border-bottom: 2px solid #f97316; }
-          .pdf-header .brand { display: flex; flex-direction: column; gap: 4px; }
-          .pdf-header .brand-row { display: flex; align-items: center; gap: 10px; }
-          .pdf-header .logo { height: 32px; width: 32px; }
-          .pdf-header .brand-name { font-size: 18px; font-weight: bold; color: #ea580c; }
-          .pdf-header .pdf-url { color: #9ca3af; font-size: 12px; }
+          body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 0; font-size: 11pt; }
+          .pdf-header { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 12pt; margin-bottom: 0; padding-bottom: 3pt; border-bottom: 1.5pt solid #f97316; }
+          .pdf-header .brand { display: flex; flex-direction: column; gap: 3pt; }
+          .pdf-header .brand-row { display: flex; align-items: center; gap: 8pt; }
+          .pdf-header .logo { height: 24pt; width: 24pt; }
+          .pdf-header .brand-name { font-size: 14pt; font-weight: bold; color: #ea580c; }
+          .pdf-header .pdf-url { color: #9ca3af; font-size: 9pt; }
           .pdf-header .title-section { text-align: right; }
-          .pdf-header .title { font-size: 18px; font-weight: bold; color: #111827; }
-          .pdf-header .meta { color: #6b7280; font-size: 12px; margin-top: 4px; }
-          .messages-container { column-count: 2; column-gap: 24px; margin-top: 16px; }
-          .message-item { break-inside: avoid; margin-bottom: 16px; }
+          .pdf-header .title { font-size: 14pt; font-weight: bold; color: #111827; }
+          .pdf-header .meta { color: #6b7280; font-size: 9pt; margin-top: 3pt; }
+          .messages-container { column-count: 2; column-gap: 18pt; margin-top: 12pt; }
+          .message-item { break-inside: avoid; margin-bottom: 12pt; }
           @media print {
             body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           }
