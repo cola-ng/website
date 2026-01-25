@@ -1,10 +1,10 @@
 use diesel::prelude::*;
 use salvo::prelude::*;
 
+use crate::AppResult;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
-use crate::AppResult;
 
 #[handler]
 pub async fn list_scripts(req: &mut Request, res: &mut Response) -> AppResult<()> {

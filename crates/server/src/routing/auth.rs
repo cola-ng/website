@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
+use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 

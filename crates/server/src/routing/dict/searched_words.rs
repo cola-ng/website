@@ -28,10 +28,7 @@ pub async fn create_searched_word(req: &mut Request) -> JsonResult<SearchedWord>
 
     let created: SearchedWord = with_conn(move |conn| {
         diesel::insert_into(dict_searched_words::table)
-            .values(&NewSearchedWord {
-                user_id,
-                word,
-            })
+            .values(&NewSearchedWord { user_id, word })
             .get_result::<SearchedWord>(conn)
     })
     .await
@@ -63,7 +60,8 @@ pub async fn clear_searched_words(req: &mut Request) -> JsonResult<serde_json::V
     let user_id = 1; // TODO: Get from authenticated user
 
     let _ = with_conn(move |conn| {
-        diesel::delete(dict_searched_words::table.filter(dict_searched_words::user_id.eq(user_id))).execute(conn)
+        diesel::delete(dict_searched_words::table.filter(dict_searched_words::user_id.eq(user_id)))
+            .execute(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to clear searched words"))?;

@@ -49,18 +49,23 @@ async fn main() {
 
     let router = router
         .unshift(doc.into_router("/api-doc/openapi.json"))
-        .unshift(
-            Router::with_path("/api-doc/swagger-ui/{**}")
-                .get(salvo::oapi::swagger_ui::SwaggerUi::new("/api-doc/openapi.json")),
-        )
+        .unshift(Router::with_path("/api-doc/swagger-ui/{**}").get(
+            salvo::oapi::swagger_ui::SwaggerUi::new("/api-doc/openapi.json"),
+        ))
         .unshift(
             Router::with_path("/api-doc/scalar/{**}")
                 .get(salvo::oapi::scalar::Scalar::new("/api-doc/openapi.json")),
         );
 
     println!("bind_addr: {:?}", bind_addr);
-    println!("OpenAPI docs available at: http://{}/api-doc/swagger-ui/", bind_addr);
-    println!("Scalar docs available at: http://{}/api-doc/scalar/", bind_addr);
+    println!(
+        "OpenAPI docs available at: http://{}/api-doc/swagger-ui/",
+        bind_addr
+    );
+    println!(
+        "Scalar docs available at: http://{}/api-doc/scalar/",
+        bind_addr
+    );
 
     let acceptor = TcpListener::new(bind_addr).bind().await;
     println!("acceptor: {:?}", acceptor);

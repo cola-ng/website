@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::time::Duration;
 
-use base64::{Engine, engine::general_purpose::STANDARD as BASE64};
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::Utc;
 use diesel::prelude::*;
 use salvo::oapi::ToSchema;
@@ -14,7 +15,7 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::{Chat, ChatIssue, ChatTurn, NewChat, NewChatIssue, NewChatTurn};
 use crate::services::{
-    AiProviderError, ChatMessage, TextIssue, UserInputAnalysis, create_provider_from_env,
+    AiProviderError, ChatMessage, StructuredChatResponse, TextIssue, create_provider_from_env,
 };
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
@@ -434,6 +435,7 @@ Guidelines:
 4. Be encouraging and supportive
 5. If the user speaks in Chinese, respond in English but acknowledge what they said
 6. Occasionally ask follow-up questions to keep the conversation going
+7. Only the last message is analyzed in the returned structured data
 
 Remember: Your goal is to help users improve their spoken English through natural conversation practice."#;
 
@@ -712,19 +714,36 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         None
     };
 
-    // Call AI service to analyze user input (language detection, translation)
+    // Get chat service for structured output
     let chat_service = provider
         .chat_service()
         .ok_or_else(|| StatusError::internal_server_error().brief("Chat service not available"))?;
 
-    tracing::info!("Calling {} analyze_user_input API...", provider.name());
+    // Get conversation history (last 100 messages for context)
+    let history_messages = get_chat_leatest_turns(chat_id, 100)
+        .await
+        .unwrap_or_default();
+    let history: Vec<ChatMessage> = history_messages
+        .into_iter()
+        .filter(|m| m.role != "assistant" || !m.content.is_empty())
+        .map(|m| ChatMessage {
+            role: m.role,
+            content: m.content,
+        })
+        .collect();
+
+    tracing::info!(
+        "Calling {} chat_structured API with {} history messages...",
+        provider.name(),
+        history.len()
+    );
     let structured_response = chat_service
-        .analyze_user_input(&user_text)
+        .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
         .await
         .unwrap_or_else(|e| {
-            tracing::warn!("Failed to analyze user input: {}, using defaults", e);
+            tracing::warn!("Failed to get structured response: {}, using defaults", e);
             // Fallback: assume English, use original text
-            UserInputAnalysis {
+            StructuredChatResponse {
                 use_lang: "en".to_string(),
                 original_en: user_text.clone(),
                 original_zh: String::new(),
@@ -734,9 +753,10 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
             }
         });
     tracing::info!(
-        "{} analyze_user_input completed: use_lang={}",
+        "{} chat_structured completed: use_lang={}, reply_len={}",
         provider.name(),
-        structured_response.use_lang
+        structured_response.use_lang,
+        structured_response.reply_en.len()
     );
 
     println!("======user_audio_path: {:?}", user_audio_path);
@@ -805,7 +825,10 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
         {
             tracing::error!("Failed to save chat issues: {:?}", e);
         } else {
-            tracing::info!("Saved {} issues successfully", structured_response.issues.len());
+            tracing::info!(
+                "Saved {} issues successfully",
+                structured_response.issues.len()
+            );
         }
     }
 
@@ -875,7 +898,7 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     json_ok(ChatSendResponse {
         user_turn,
         ai_turn,
-        issues: user_issues,
+        issues: structured_response.issues.clone(),
     })
 }
 

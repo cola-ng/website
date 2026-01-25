@@ -63,14 +63,8 @@ pub fn router() -> Router {
                 .get(form::list_forms)
                 .post(form::create_form),
         )
-        .push(
-            Router::with_path("words/{id}/categories")
-                .get(category::list_categories),
-        )
-        .push(
-            Router::with_path("words/{id}/tags")
-                .get(category::list_categories),
-        )
+        .push(Router::with_path("words/{id}/categories").get(category::list_categories))
+        .push(Router::with_path("words/{id}/tags").get(category::list_categories))
         .push(
             Router::with_path("words/{id}/etymology")
                 .get(etymology::list_etymology)

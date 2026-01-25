@@ -1,18 +1,17 @@
 use diesel::prelude::*;
 use salvo::prelude::*;
 
+use crate::AppResult;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
-use crate::AppResult;
 
 #[handler]
 pub async fn list_domains(_req: &mut Request, res: &mut Response) -> AppResult<()> {
-    let domains: Vec<TaxonDomain> = with_conn(move |conn| {
-        taxon_domains::table.load::<TaxonDomain>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to list domains"))?;
+    let domains: Vec<TaxonDomain> =
+        with_conn(move |conn| taxon_domains::table.load::<TaxonDomain>(conn))
+            .await
+            .map_err(|_| StatusError::internal_server_error().brief("failed to list domains"))?;
 
     res.render(Json(domains));
     Ok(())

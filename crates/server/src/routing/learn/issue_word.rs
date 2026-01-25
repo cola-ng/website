@@ -1,14 +1,14 @@
 use chrono::Utc;
 use diesel::prelude::*;
-use salvo::oapi::extract::JsonBody;
 use salvo::oapi::ToSchema;
+use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
 use serde::Deserialize;
 
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::{json_ok, DepotExt, JsonResult};
+use crate::{DepotExt, JsonResult, json_ok};
 
 #[derive(Deserialize, ToSchema)]
 pub struct CreateIssueWordRequest {
@@ -26,10 +26,7 @@ pub struct CreateIssueWordRequest {
 
 /// List issue words for current user
 #[endpoint(tags("Learn"))]
-pub async fn list_issue_words(
-    req: &mut Request,
-    depot: &mut Depot,
-) -> JsonResult<Vec<IssueWord>> {
+pub async fn list_issue_words(req: &mut Request, depot: &mut Depot) -> JsonResult<Vec<IssueWord>> {
     let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);

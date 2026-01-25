@@ -66,7 +66,9 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
 
     let name_en = input.name_en.trim().to_string();
     if name_en.is_empty() {
-        return Err(StatusError::bad_request().brief("name_en is required").into());
+        return Err(StatusError::bad_request()
+            .brief("name_en is required")
+            .into());
     }
 
     let created: Dictionary = with_conn(move |conn| {

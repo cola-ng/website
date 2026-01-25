@@ -3,10 +3,11 @@
 //! Defines traits for ASR, TTS, and Chat services that can be implemented
 //! by different providers (BigModel, Doubao, etc.)
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
-use std::sync::Arc;
 
 /// Error type for AI provider operations
 #[derive(Debug, thiserror::Error)]
@@ -134,27 +135,6 @@ pub trait TtsService: Send + Sync {
     }
 }
 
-/// User input analysis result
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserInputAnalysis {
-    /// Language of user input: "en" | "zh" | "mix"
-    pub use_lang: String,
-
-    /// User text in English (original or translated)
-    pub original_en: String,
-    /// User text in Chinese (original or translated)
-    pub original_zh: String,
-
-    /// AI reply text in English
-    pub reply_en: String,
-    /// AI reply text in Chinese
-    pub reply_zh: String,
-
-    /// Grammar/word choice issues found in user input
-    #[serde(default)]
-    pub issues: Vec<TextIssue>,
-}
-
 /// Structured AI response for English teaching
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StructuredChatResponse {
@@ -212,106 +192,22 @@ pub trait ChatService: Send + Sync {
         max_tokens: Option<u32>,
     ) -> Result<String, AiProviderError>;
 
-    /// Analyze user input: detect language and translate
-    ///
-    /// # Arguments
-    /// * `user_text` - The user's message text to analyze
-    async fn analyze_user_input(
-        &self,
-        user_text: &str,
-    ) -> Result<UserInputAnalysis, AiProviderError> {
-        // Default implementation: use LLM to detect language and translate, and analyze grammar
-        let prompt = format!(
-            r#"You are an English teaching assistant. Analyze the following user input and respond in JSON format only.
-
-Tasks:
-1. Detect language (en/zh/mix)
-2. Translate to both English and Chinese
-3. Find grammar mistakes, word choice issues, or suggestions for improvement in the English text
-
-Response format:
-{{
-  "use_lang": "<en|zh|mix>",
-  "content_en": "<text in English, translate if needed>",
-  "content_zh": "<text in Chinese, translate if needed>",
-  "issues": [
-    {{
-      "type": "<grammar|word_choice|suggestion>",
-      "original": "<the problematic text>",
-      "suggested": "<the corrected text>",
-      "description_en": "<explanation in English>",
-      "description_zh": "<explanation in Chinese>",
-      "severity": "<low|medium|high>"
-    }}
-  ]
-}}
-
-Notes:
-- Only include issues if the user writes in English (use_lang is "en" or "mix")
-- If the English is perfect, return an empty issues array
-- Focus on common grammar mistakes, awkward phrasing, or unnatural expressions
-
-User input: {}"#,
-            user_text
-        );
-
-        let messages = vec![ChatMessage {
-            role: "user".to_string(),
-            content: prompt,
-        }];
-
-        let response = self.chat(messages, Some(0.3), Some(1500)).await?;
-
-        // Try to parse JSON from response
-        let json_str = response
-            .trim()
-            .trim_start_matches("```json")
-            .trim_start_matches("```")
-            .trim_end_matches("```")
-            .trim();
-
-        serde_json::from_str(json_str).map_err(|e| {
-            tracing::warn!(
-                "Failed to parse user input analysis: {}, response: {}",
-                e,
-                response
-            );
-            // Fallback: assume English
-            AiProviderError::Parse(format!("Failed to parse analysis: {}", e))
-        })
-    }
-
     /// Send chat completion with structured output (for English teaching)
     ///
+    /// This function combines user input analysis and AI reply generation in one call.
+    /// It takes conversation history, analyzes only the last user message for issues,
+    /// and generates a contextual reply based on the full conversation.
+    ///
     /// # Arguments
-    /// * `messages` - Chat history
-    /// * `user_text` - The user's latest message text
+    /// * `messages` - Chat history (up to 100 recent messages for context)
+    /// * `user_text` - The user's latest message text (to analyze for issues)
     /// * `system_prompt` - System prompt for the AI
     async fn chat_structured(
         &self,
         messages: Vec<ChatMessage>,
         user_text: &str,
         system_prompt: &str,
-    ) -> Result<StructuredChatResponse, AiProviderError> {
-        // Default implementation falls back to regular chat
-        let _ = user_text;
-        let mut all_messages = vec![ChatMessage {
-            role: "system".to_string(),
-            content: system_prompt.to_string(),
-        }];
-        all_messages.extend(messages);
-
-        let reply = self.chat(all_messages, Some(0.7), None).await?;
-
-        Ok(StructuredChatResponse {
-            use_lang: "en".to_string(),
-            original_en: user_text.to_string(),
-            original_zh: String::new(),
-            reply_en: reply,
-            reply_zh: String::new(),
-            issues: vec![],
-        })
-    }
+    ) -> Result<StructuredChatResponse, AiProviderError>;
 }
 
 /// Pronunciation Assessment Service Trait (optional capability)
@@ -402,7 +298,6 @@ impl ProviderConfig {
 
     /// Try to load Zhipu (智谱) configuration from environment variables
     fn try_zhipu() -> Option<Self> {
-        panic!("zzzzzzzzzzzipu");
         let api_key = std::env::var("ZHIPU_API_KEY")
             .ok()
             .filter(|s| !s.is_empty())?;

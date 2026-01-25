@@ -208,11 +208,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let mut total_associations = 0;
 
         for vocab_file in &vocabulary_files {
-            println!("\nProcessing: {}", vocab_file.file_name().unwrap_or_default().to_string_lossy());
+            println!(
+                "\nProcessing: {}",
+                vocab_file.file_name().unwrap_or_default().to_string_lossy()
+            );
 
             match import_vocabulary_file(&mut conn, vocab_file) {
                 Ok(stats) => {
-                    println!("  Words found: {}, Associations added: {}", stats.words, stats.associations);
+                    println!(
+                        "  Words found: {}, Associations added: {}",
+                        stats.words, stats.associations
+                    );
                     total_words += stats.words;
                     total_associations += stats.associations;
                 }
@@ -655,7 +661,11 @@ fn import_vocabulary_file(
 ) -> Result<VocabImportStats, Box<dyn std::error::Error>> {
     use colang::db::schema::*;
 
-    let file_name = vocab_file.file_stem().unwrap_or_default().to_string_lossy().to_string();
+    let file_name = vocab_file
+        .file_stem()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
     let dictionary_name = match file_name.as_str() {
         "cet4" => "CET4",
         "cet6" => "CET6",
@@ -749,7 +759,10 @@ fn print_usage() {
     println!("                       (default: {})", DEFAULT_VOCAB_DIR);
     println!("  --audio-dir <PATH>   Audio directory with uk/us subdirs");
     println!("                       (default: {})", DEFAULT_AUDIO_DIR);
-    println!("  --batch-size <N>     Batch size for inserts (default: {})", DEFAULT_BATCH_SIZE);
+    println!(
+        "  --batch-size <N>     Batch size for inserts (default: {})",
+        DEFAULT_BATCH_SIZE
+    );
     println!("  --dict-only          Only import dictionary data, skip vocabulary");
     println!("  --vocab-only         Only import vocabulary data, skip dictionary");
     println!("  --help               Show this help message");

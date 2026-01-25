@@ -11,15 +11,15 @@ pub mod ai_provider;
 pub mod doubao;
 pub mod zhipu;
 
+use std::sync::Arc;
+
 pub use ai_provider::{
-    AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig, TextIssue,
-    TtsService, UserInputAnalysis,
+    AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig,
+    StructuredChatResponse, TextIssue, TtsService,
 };
+use async_trait::async_trait;
 pub use doubao::DoubaoClient;
 pub use zhipu::ZhipuClient;
-
-use async_trait::async_trait;
-use std::sync::Arc;
 
 /// Combined AI Provider that mixes services from different providers.
 ///

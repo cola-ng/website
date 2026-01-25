@@ -32,7 +32,11 @@ pub async fn list_achievement_definitions(res: &mut Response) -> AppResult<()> {
     let achievements: Vec<AchievementDefinition> = with_conn(move |conn| {
         archive_achievement_definitions::table
             .filter(archive_achievement_definitions::is_active.eq(true))
-            .filter(archive_achievement_definitions::is_hidden.eq(false).or(archive_achievement_definitions::is_hidden.is_null()))
+            .filter(
+                archive_achievement_definitions::is_hidden
+                    .eq(false)
+                    .or(archive_achievement_definitions::is_hidden.is_null()),
+            )
             .order(archive_achievement_definitions::sort_order.asc())
             .load::<AchievementDefinition>(conn)
     })
@@ -83,9 +87,9 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
             .last()
             .cloned();
 
-        let next_rank = current_rank.as_ref().and_then(|cr| {
-            ranks.iter().find(|r| r.level == cr.level + 1).cloned()
-        });
+        let next_rank = current_rank
+            .as_ref()
+            .and_then(|cr| ranks.iter().find(|r| r.level == cr.level + 1).cloned());
 
         let xp_to_next_rank = next_rank
             .as_ref()
@@ -103,7 +107,8 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
             .load::<UserAchievementRecord>(conn)?;
 
         // Step 2: Get achievement definitions for those IDs
-        let achievement_ids: Vec<i64> = user_achievements.iter().map(|a| a.achievement_id).collect();
+        let achievement_ids: Vec<i64> =
+            user_achievements.iter().map(|a| a.achievement_id).collect();
         let definitions: Vec<AchievementDefinition> = archive_achievement_definitions::table
             .filter(archive_achievement_definitions::id.eq_any(&achievement_ids))
             .load::<AchievementDefinition>(conn)?;
@@ -112,16 +117,17 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
         let recent_achievements: Vec<AchievementBadge> = user_achievements
             .into_iter()
             .filter_map(|ua| {
-                definitions.iter().find(|d| d.id == ua.achievement_id).map(|def| {
-                    AchievementBadge {
+                definitions
+                    .iter()
+                    .find(|d| d.id == ua.achievement_id)
+                    .map(|def| AchievementBadge {
                         code: def.code.clone(),
                         name_en: def.name_en.clone(),
                         name_zh: def.name_zh.clone(),
                         icon: def.icon.clone(),
                         rarity: def.rarity.clone(),
                         completed_at: ua.completed_at,
-                    }
-                })
+                    })
             })
             .collect();
 
@@ -177,9 +183,7 @@ pub async fn list_user_achievements(depot: &mut Depot, res: &mut Response) -> Ap
             .into_iter()
             .filter(|d| d.is_hidden != Some(true))
             .map(|def| {
-                let progress = user_progress
-                    .iter()
-                    .find(|p| p.achievement_id == def.id);
+                let progress = user_progress.iter().find(|p| p.achievement_id == def.id);
 
                 AchievementWithProgress {
                     id: def.id,

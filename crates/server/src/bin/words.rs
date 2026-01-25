@@ -2,8 +2,8 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use futures_util::stream::{self, StreamExt};
@@ -148,7 +148,10 @@ impl ModelPool {
     fn print_status(&self) {
         println!("\nModel Pool Status:");
         println!("{:-<60}", "");
-        println!("{:<30} {:>10} {:>10} {:>8}", "Model", "Max", "Current", "Avail%");
+        println!(
+            "{:<30} {:>10} {:>10} {:>8}",
+            "Model", "Max", "Current", "Avail%"
+        );
         println!("{:-<60}", "");
         for model in &self.models {
             let current = model.current_usage.load(Ordering::SeqCst);
@@ -304,7 +307,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // 从 all words 文件过滤已下载的单词，生成 queue 文件
     let queue_words = build_queue_file(&all_words_file, &queue_file, &existing_words)?;
-    println!("Built queue file with {} words to process", queue_words.len());
+    println!(
+        "Built queue file with {} words to process",
+        queue_words.len()
+    );
 
     let words_to_process: Vec<String> = if let Some(l) = limit {
         queue_words.into_iter().take(l).collect()
@@ -367,10 +373,7 @@ fn load_existing_valid_words(
                                 existing.insert(stem.to_string_lossy().to_string());
                             }
                         } else {
-                            println!(
-                                "  Invalid JSON file, will regenerate: {}",
-                                path.display()
-                            );
+                            println!("  Invalid JSON file, will regenerate: {}", path.display());
                         }
                     }
                 }
@@ -525,7 +528,9 @@ async fn process_words_concurrent(
                         // 将每个单词的数据写入单独的 JSON 文件
                         for word in &batch {
                             let word_lower = word.to_lowercase();
-                            if let Some(word_data) = word_map.get(&word_lower).or_else(|| word_map.get(word)) {
+                            if let Some(word_data) =
+                                word_map.get(&word_lower).or_else(|| word_map.get(word))
+                            {
                                 let filename = format!("{}.json", word_lower);
                                 let filepath = output_dir.join(&filename);
 
@@ -581,7 +586,10 @@ async fn process_words_concurrent(
     let final_errors = error_count.load(Ordering::SeqCst);
 
     println!("\n-----------------------------------------------");
-    println!("Processed: {} words in {} batches", total_words, total_batches);
+    println!(
+        "Processed: {} words in {} batches",
+        total_words, total_batches
+    );
     println!("Success: {}", final_success);
     println!("Skipped: {}", final_skip);
     println!("Errors: {}", final_errors);
@@ -765,7 +773,8 @@ CRITICAL REQUIREMENTS:
                                         if let Some(obj) = value.as_object() {
                                             return Ok(obj.clone());
                                         } else {
-                                            last_error = Some("Response is not a JSON object".to_string());
+                                            last_error =
+                                                Some("Response is not a JSON object".to_string());
                                         }
                                     }
                                     Err(e) => {

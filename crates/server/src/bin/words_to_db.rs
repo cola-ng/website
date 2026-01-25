@@ -321,11 +321,7 @@ fn import_words(
                         }
                     }
                     Err(e) => {
-                        eprintln!(
-                            "  Error processing {}: {}",
-                            json_file.display(),
-                            e
-                        );
+                        eprintln!("  Error processing {}: {}", json_file.display(), e);
                         stats.errors += 1;
                     }
                 }
@@ -391,7 +387,10 @@ fn insert_word(
     let word_type = if word.contains(' ') {
         Some("phrase".to_string())
     } else {
-        entry.word_type.clone().and_then(|t| normalize_word_type(&t))
+        entry
+            .word_type
+            .clone()
+            .and_then(|t| normalize_word_type(&t))
     };
 
     let word_id: i64 = diesel::insert_into(dict_words::table)
@@ -404,7 +403,9 @@ fn insert_word(
             dict_words::difficulty.eq(entry.difficulty),
             dict_words::syllable_count.eq(entry.syllable_count),
             dict_words::is_lemma.eq(entry.is_lemma),
-            dict_words::word_count.eq(entry.word_count.or(Some(word.split_whitespace().count() as i32))),
+            dict_words::word_count.eq(entry
+                .word_count
+                .or(Some(word.split_whitespace().count() as i32))),
             dict_words::is_active.eq(true),
         ))
         .returning(dict_words::id)
@@ -721,7 +722,10 @@ fn insert_frequencies(
 
     if let Some(frequencies) = &entry.frequencies {
         for freq in frequencies {
-            let corpus_type = freq.corpus_type.as_ref().and_then(|t| normalize_corpus_type(t));
+            let corpus_type = freq
+                .corpus_type
+                .as_ref()
+                .and_then(|t| normalize_corpus_type(t));
             let band = freq.band.as_ref().and_then(|b| normalize_band(b));
 
             diesel::insert_into(dict_frequencies::table)

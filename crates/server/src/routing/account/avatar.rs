@@ -18,10 +18,7 @@ const AVATAR_FORMATS: [&str; 2] = ["webp", "png"];
 
 /// Generate all avatar sizes for an image
 /// Returns Ok if at least one size was generated
-async fn generate_avatar_sizes<P: AsRef<Path>>(
-    source_path: P,
-    output_dir: P,
-) -> AppResult<()> {
+async fn generate_avatar_sizes<P: AsRef<Path>>(source_path: P, output_dir: P) -> AppResult<()> {
     let source = source_path.as_ref().to_path_buf();
     let dir = output_dir.as_ref().to_path_buf();
 
@@ -84,12 +81,10 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(
     })
     .await
     .map_err(|e| {
-        StatusError::internal_server_error()
-            .brief(format!("image processing task failed: {}", e))
+        StatusError::internal_server_error().brief(format!("image processing task failed: {}", e))
     })?
     .map_err(|e| {
-        StatusError::internal_server_error()
-            .brief(format!("image processing failed: {}", e))
+        StatusError::internal_server_error().brief(format!("image processing failed: {}", e))
     })?;
 
     Ok(())
@@ -97,11 +92,7 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(
 
 /// Get avatar for current user
 #[endpoint(tags("Account"))]
-pub async fn show(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+pub async fn show(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     println!("Serving avatar request");
     let user_id = depot.user_id()?;
 

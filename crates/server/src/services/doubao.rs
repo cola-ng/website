@@ -5,17 +5,17 @@
 //! - ASR (Speech-to-Text) via BigModel flash recognition API
 //! - Chat completions via Ark API
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
-use outfox_doubao::{
-    Client as DoubaoSdkClient,
-    config::DoubaoConfig,
-    spec::{
-        chat::{ChatMessage as DoubaoChatMessage, CreateChatCompletionRequestArgs, ResponseFormat},
-        tts::CreateSpeechRequestArgs,
-    },
+use async_trait::async_trait;
+use outfox_doubao::Client as DoubaoSdkClient;
+use outfox_doubao::config::DoubaoConfig;
+use outfox_doubao::spec::chat::{
+    ChatMessage as DoubaoChatMessage, CreateChatCompletionRequestArgs, ResponseFormat,
+    ResponseFormatJsonSchema, ResponseFormatType,
 };
+use outfox_doubao::spec::tts::CreateSpeechRequestArgs;
+use serde_json::json;
 
 use super::ai_provider::{
     AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService,
@@ -278,16 +278,37 @@ impl ChatService for DoubaoClient {
         user_text: &str,
         system_prompt: &str,
     ) -> Result<StructuredChatResponse, AiProviderError> {
-        let system_message = ChatMessage {
+        // Build enhanced system prompt that requests JSON output
+        let enhanced_system_prompt = format!(
+            "{}\n\n\
+            IMPORTANT: You must respond with a JSON object containing:\n\
+            1. A natural conversational reply to the user\n\
+            2. Grammar/vocabulary analysis of the user's last message\n\n\
+            Response JSON format:\n\
+            {{\n\
+              \"use_lang\": \"<en|zh|mix>\",\n\
+              \"original_en\": \"<user's text in English>\",\n\
+              \"original_zh\": \"<user's text in Chinese>\",\n\
+              \"reply_en\": \"<your reply in English>\",\n\
+              \"reply_zh\": \"<your reply in Chinese>\",\n\
+              \"issues\": [\n\
+                {{\n\
+                  \"type\": \"grammar|word_choice|suggestion\",\n\
+                  \"original\": \"<problematic text>\",\n\
+                  \"suggested\": \"<corrected text>\",\n\
+                  \"description_en\": \"<explanation in English>\",\n\
+                  \"description_zh\": \"<explanation in Chinese>\",\n\
+                  \"severity\": \"low|medium|high\"\n\
+                }}\n\
+              ]\n\
+            }}",
+            system_prompt
+        );
+
+        let mut all_messages = vec![ChatMessage {
             role: "system".to_string(),
-            content: format!(
-                "{}\n\nIMPORTANT: You must respond with a JSON object containing:\n\
-                1. A natural conversational reply to the user\n\
-                2. Grammar/vocabulary analysis of the user's last message",
-                system_prompt
-            ),
-        };
-        let mut all_messages = vec![system_message];
+            content: enhanced_system_prompt,
+        }];
         all_messages.extend(messages);
 
         // Convert to Doubao messages
@@ -375,9 +396,12 @@ impl ChatService for DoubaoClient {
             .response_format(ResponseFormat {
                 format_type: ResponseFormatType::JsonObject,
                 json_schema: Some(ResponseFormatJsonSchema {
-                    name: "english_teacher_response",
+                    name: "english_teacher_response".to_owned(),
                     strict: Some(true),
                     schema: response_schema,
+                    description: Some(
+                        "Structured response for English learning with corrections".to_owned(),
+                    ),
                 }),
             })
             .build()

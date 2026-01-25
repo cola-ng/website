@@ -5,20 +5,16 @@
 //! - ASR (Speech-to-Text) via GLM-ASR
 //! - TTS (Text-to-Speech) via GLM-TTS
 
-use async_trait::async_trait;
 use std::sync::Arc;
 
-use outfox_zhipu::{
-    config::ZhipuConfig,
-    spec::{
-        asr::AudioInput,
-        chat::{
-            ChatMessage as ZhipuChatMessage, CreateChatCompletionRequestArgs, ResponseFormat,
-        },
-        tts::CreateSpeechRequest,
-    },
-    Client as ZhipuSdkClient,
+use async_trait::async_trait;
+use outfox_zhipu::Client as ZhipuSdkClient;
+use outfox_zhipu::config::ZhipuConfig;
+use outfox_zhipu::spec::asr::AudioInput;
+use outfox_zhipu::spec::chat::{
+    ChatMessage as ZhipuChatMessage, CreateChatCompletionRequestArgs, ResponseFormat,
 };
+use outfox_zhipu::spec::tts::CreateSpeechRequest;
 
 use super::ai_provider::{
     AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService,
