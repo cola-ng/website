@@ -293,21 +293,111 @@ export function DictPage() {
               )
             })()}
 
-            {(result.etymologies?.length ?? 0) > 0 && (
-              <div className="bg-white rounded-xl shadow-lg p-5">
-                <h3 className="text-xl font-bold text-gray-900 mb-3">词源</h3>
-                <div className="space-y-2">
-                  {(result.etymologies ?? []).map((etym) => (
-                    <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                      <p className="text-sm text-gray-800">{etym.etymology}</p>
-                      {etym.origin_language && (
-                        <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            {(() => {
+              const hasEtymologies = (result.etymologies?.length ?? 0) > 0
+              const relations = result.relations ?? []
+              const synonyms = relations.filter(r => r.relation_type === 'synonym' || r.relation_type === 'similar')
+              const antonyms = relations.filter(r => r.relation_type === 'antonym')
+              const relatedWords = relations.filter(r =>
+                r.relation_type === 'related' ||
+                r.relation_type === 'broader' ||
+                r.relation_type === 'narrower' ||
+                r.relation_type === 'part_of' ||
+                r.relation_type === 'member_of' ||
+                r.relation_type === 'substance_of' ||
+                r.relation_type === 'instance_of'
+              )
+
+              const hasSynonyms = synonyms.length > 0
+              const hasAntonyms = antonyms.length > 0
+              const hasRelated = relatedWords.length > 0
+              const hasAny = hasEtymologies || hasSynonyms || hasAntonyms || hasRelated
+
+              if (!hasAny) return null
+
+              const defaultTab = hasEtymologies ? 'etymology' : hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : 'related'
+
+              const tabCount = [hasEtymologies, hasSynonyms, hasAntonyms, hasRelated].filter(Boolean).length
+              const gridColsClass = tabCount === 1 ? 'grid-cols-1' : tabCount === 2 ? 'grid-cols-2' : tabCount === 3 ? 'grid-cols-3' : 'grid-cols-4'
+
+              return (
+                <Tabs defaultValue={defaultTab}>
+                  <TabsList className={`grid w-full max-w-md ${gridColsClass}`}>
+                    {hasEtymologies && <TabsTrigger value="etymology">词源</TabsTrigger>}
+                    {hasSynonyms && <TabsTrigger value="synonyms">同义词</TabsTrigger>}
+                    {hasAntonyms && <TabsTrigger value="antonyms">反义词</TabsTrigger>}
+                    {hasRelated && <TabsTrigger value="related">相关词</TabsTrigger>}
+                  </TabsList>
+                  {hasEtymologies && (
+                    <TabsContent value="etymology" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="space-y-2">
+                          {(result.etymologies ?? []).map((etym) => (
+                            <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+                              <p className="text-sm text-gray-800">{etym.etymology}</p>
+                              {etym.origin_language && (
+                                <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
+                              )}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
+                  {hasSynonyms && (
+                    <TabsContent value="synonyms" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="flex flex-wrap gap-2">
+                          {synonyms.map((rel) => (
+                            <span
+                              key={rel.id}
+                              className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
+                              onClick={() => { setQuery(rel.related_word); }}
+                            >
+                              {rel.related_word}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
+                  {hasAntonyms && (
+                    <TabsContent value="antonyms" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="flex flex-wrap gap-2">
+                          {antonyms.map((rel) => (
+                            <span
+                              key={rel.id}
+                              className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
+                              onClick={() => { setQuery(rel.related_word); }}
+                            >
+                              {rel.related_word}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
+                  {hasRelated && (
+                    <TabsContent value="related" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="flex flex-wrap gap-2">
+                          {relatedWords.map((rel) => (
+                            <span
+                              key={rel.id}
+                              className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
+                              onClick={() => { setQuery(rel.related_word); }}
+                            >
+                              {rel.related_word}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
+                </Tabs>
+              )
+            })()}
 
             {(result.categories?.length ?? 0) > 0 && (
               <div className="bg-white rounded-xl shadow-lg p-5">

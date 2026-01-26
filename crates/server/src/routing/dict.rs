@@ -179,9 +179,24 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .filter(dict_images::word_id.eq(word_id))
             .load::<Image>(conn)?;
 
-        let relations = dict_relations::table
+        let relations_raw: Vec<(Relation, String)> = dict_relations::table
+            .inner_join(dict_words::table.on(dict_words::id.eq(dict_relations::related_word_id)))
             .filter(dict_relations::word_id.eq(word_id))
-            .load::<Relation>(conn)?;
+            .select((dict_relations::all_columns, dict_words::word))
+            .load::<(Relation, String)>(conn)?;
+
+        let relations: Vec<RelationWithWord> = relations_raw
+            .into_iter()
+            .map(|(rel, related_word)| RelationWithWord {
+                id: rel.id,
+                word_id: rel.word_id,
+                relation_type: rel.relation_type,
+                related_word_id: rel.related_word_id,
+                related_word,
+                semantic_field: rel.semantic_field,
+                relation_strength: rel.relation_strength,
+            })
+            .collect();
 
         let etymology_ids = dict_word_etymologies::table
             .filter(dict_word_etymologies::word_id.eq(word_id))

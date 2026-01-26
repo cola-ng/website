@@ -255,13 +255,24 @@ pub struct NewRelation {
 }
 
 #[derive(Serialize, ToSchema, Debug)]
+pub struct RelationWithWord {
+    pub id: i64,
+    pub word_id: i64,
+    pub relation_type: Option<String>,
+    pub related_word_id: i64,
+    pub related_word: String,
+    pub semantic_field: Option<String>,
+    pub relation_strength: Option<i16>,
+}
+
+#[derive(Serialize, ToSchema, Debug)]
 pub struct WordQueryResponse {
     pub word: Word,
     pub definitions: Vec<Definition>,
     pub sentences: Vec<Sentence>,
     pub pronunciations: Vec<Pronunciation>,
     pub dictionaries: Vec<Dictionary>,
-    pub relations: Vec<Relation>,
+    pub relations: Vec<RelationWithWord>,
     pub etymologies: Vec<Etymology>,
     pub forms: Vec<Form>,
     pub images: Vec<Image>,

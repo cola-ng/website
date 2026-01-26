@@ -94,9 +94,9 @@ export type Relation = {
   word_id: number
   relation_type: string | null
   related_word_id: number
+  related_word: string
   semantic_field: string | null
   relation_strength: number | null
-  created_at: string
 }
 
 export type Etymology = {
