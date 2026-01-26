@@ -101,8 +101,21 @@ struct Etymology {
     origin_word: Option<String>,
     origin_meaning: Option<String>,
     etymology: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "deserialize_year_as_string")]
     first_attested_year: Option<String>,
+}
+
+fn deserialize_year_as_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::Number(n)) => Ok(Some(n.to_string())),
+        Some(serde_json::Value::String(s)) => Ok(Some(s)),
+        _ => Ok(None),
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -121,7 +134,7 @@ struct Relations {
 
 #[derive(Debug, Deserialize)]
 struct RelatedWord {
-    word: String,
+    word: Option<String>,
     strength: Option<i16>,
 }
 
@@ -335,36 +348,36 @@ fn import_words(
         errors: 0,
     };
 
-    for chunk in json_files.chunks(batch_size) {
-        conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
-            for json_file in chunk {
-                stats.files_processed += 1;
+    for json_file in json_files {
+        stats.files_processed += 1;
 
-                match process_json_file(
-                    conn,
-                    json_file,
-                    skip_existing,
-                    dictionaries_cache,
-                    categories_cache,
-                ) {
-                    Ok(added) => {
-                        if added {
-                            stats.words_added += 1;
-                            if stats.words_added % 100 == 0 {
-                                println!("  Progress: {} words added", stats.words_added);
-                            }
-                        } else {
-                            stats.words_skipped += 1;
-                        }
+        // Each file gets its own transaction to prevent cascading failures
+        let result = conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
+            process_json_file(
+                conn,
+                json_file,
+                skip_existing,
+                dictionaries_cache,
+                categories_cache,
+            )
+        });
+
+        match result {
+            Ok(added) => {
+                if added {
+                    stats.words_added += 1;
+                    if stats.words_added % 100 == 0 {
+                        println!("  Progress: {} words added", stats.words_added);
                     }
-                    Err(e) => {
-                        eprintln!("  Error processing {}: {}", json_file.display(), e);
-                        stats.errors += 1;
-                    }
+                } else {
+                    stats.words_skipped += 1;
                 }
             }
-            Ok(())
-        })?;
+            Err(e) => {
+                eprintln!("  Error processing {}: {}", json_file.display(), e);
+                stats.errors += 1;
+            }
+        }
     }
 
     Ok(stats)
@@ -430,6 +443,21 @@ fn insert_word(
             .and_then(|t| normalize_word_type(&t))
     };
 
+    // Validate and clamp difficulty to 1-5 range
+    let difficulty = entry.difficulty.map(|d| {
+        if d < 1 || d > 5 {
+            eprintln!(
+                "  Warning: difficulty {} for word '{}' is out of range [1-5], clamping to {}",
+                d,
+                word,
+                d.clamp(1, 5)
+            );
+            d.clamp(1, 5)
+        } else {
+            d
+        }
+    });
+
     let word_id: i64 = diesel::insert_into(dict_words::table)
         .values((
             dict_words::word.eq(word),
@@ -437,7 +465,7 @@ fn insert_word(
             dict_words::word_type.eq(word_type),
             dict_words::language.eq(entry.language.as_deref().unwrap_or("en")),
             dict_words::frequency.eq(entry.frequency),
-            dict_words::difficulty.eq(entry.difficulty),
+            dict_words::difficulty.eq(difficulty),
             dict_words::syllable_count.eq(entry.syllable_count),
             dict_words::is_lemma.eq(entry.is_lemma),
             dict_words::word_count.eq(entry
@@ -511,6 +539,8 @@ fn insert_definitions(
                 .as_ref()
                 .and_then(|p| normalize_part_of_speech(p));
 
+            let register = def.register.as_ref().and_then(|r| normalize_register(r));
+
             diesel::insert_into(dict_definitions::table)
                 .values((
                     dict_definitions::word_id.eq(word_id),
@@ -518,7 +548,7 @@ fn insert_definitions(
                     dict_definitions::definition.eq(&def.definition),
                     dict_definitions::part_of_speech.eq(part_of_speech),
                     dict_definitions::definition_order.eq(order),
-                    dict_definitions::register.eq(&def.register),
+                    dict_definitions::register.eq(register),
                     dict_definitions::usage_notes.eq(&def.usage_notes),
                     dict_definitions::is_primary.eq(def.is_primary.unwrap_or(order == 1)),
                 ))
@@ -545,6 +575,21 @@ fn normalize_part_of_speech(pos: &str) -> Option<String> {
         "abbr." | "abbreviation" | "缩写" => Some("abbreviation".to_string()),
         "phrase" | "短语" => Some("phrase".to_string()),
         "idiom" | "习语" => Some("idiom".to_string()),
+        _ => None,
+    }
+}
+
+fn normalize_register(register: &str) -> Option<String> {
+    let lower = register.to_lowercase();
+    match lower.as_str() {
+        "formal" | "正式" => Some("formal".to_string()),
+        "informal" | "非正式" => Some("informal".to_string()),
+        "slang" | "俚语" => Some("slang".to_string()),
+        "archaic" | "historical" | "古语" | "古旧" | "历史" => Some("archaic".to_string()),
+        "literary" | "文学" | "书面" => Some("literary".to_string()),
+        "technical" | "tech" | "专业" | "术语" => Some("technical".to_string()),
+        "colloquial" | "口语" => Some("colloquial".to_string()),
+        "neutral" | "中性" | "标准" | "standard" => Some("neutral".to_string()),
         _ => None,
     }
 }
@@ -736,7 +781,13 @@ fn insert_relation_type(
 
     if let Some(words) = related_words {
         for related in words {
-            let related_word_lower = related.word.to_lowercase();
+            // Skip entries without a word field
+            let word = match &related.word {
+                Some(w) => w,
+                None => continue,
+            };
+
+            let related_word_lower = word.to_lowercase();
 
             let related_word_id: Option<i64> = dict_words::table
                 .select(dict_words::id)
@@ -750,11 +801,11 @@ fn insert_relation_type(
                 // Create related word if not exists
                 diesel::insert_into(dict_words::table)
                     .values((
-                        dict_words::word.eq(&related.word),
+                        dict_words::word.eq(word),
                         dict_words::word_lower.eq(&related_word_lower),
                         dict_words::language.eq("en"),
                         dict_words::is_active.eq(true),
-                        dict_words::word_count.eq(related.word.split_whitespace().count() as i32),
+                        dict_words::word_count.eq(word.split_whitespace().count() as i32),
                     ))
                     .returning(dict_words::id)
                     .get_result(conn)?
@@ -851,17 +902,51 @@ fn insert_word_dictionaries(
                 if let Some(&id) = dictionaries_cache.get(dict_name) {
                     id
                 } else {
-                    // Create dictionary if not exists
-                    let id: i64 = diesel::insert_into(dict_dictionaries::table)
-                        .values((
-                            dict_dictionaries::name_en.eq(dict_name),
-                            dict_dictionaries::name_zh.eq(dict_name),
-                            dict_dictionaries::short_en.eq(dict_name),
-                            dict_dictionaries::short_zh.eq(dict_name),
-                            dict_dictionaries::is_active.eq(true),
-                        ))
-                        .returning(dict_dictionaries::id)
-                        .get_result(conn)?;
+                    // First try to find existing dictionary by name_zh, name_en, or short_en
+                    let existing_id: Option<i64> = dict_dictionaries::table
+                        .select(dict_dictionaries::id)
+                        .filter(
+                            dict_dictionaries::name_zh
+                                .eq(dict_name)
+                                .or(dict_dictionaries::name_en.eq(dict_name))
+                                .or(dict_dictionaries::short_en.eq(dict_name)),
+                        )
+                        .first(conn)
+                        .optional()?;
+
+                    let id = if let Some(id) = existing_id {
+                        id
+                    } else {
+                        // Create dictionary if not exists, skip on conflict
+                        let insert_result = diesel::insert_into(dict_dictionaries::table)
+                            .values((
+                                dict_dictionaries::name_en.eq(dict_name),
+                                dict_dictionaries::name_zh.eq(dict_name),
+                                dict_dictionaries::short_en.eq(dict_name),
+                                dict_dictionaries::short_zh.eq(dict_name),
+                                dict_dictionaries::is_active.eq(true),
+                            ))
+                            .on_conflict_do_nothing()
+                            .returning(dict_dictionaries::id)
+                            .get_result::<i64>(conn)
+                            .optional()?;
+
+                        match insert_result {
+                            Some(id) => id,
+                            None => {
+                                // Conflict occurred, fetch existing dictionary
+                                dict_dictionaries::table
+                                    .select(dict_dictionaries::id)
+                                    .filter(
+                                        dict_dictionaries::name_zh
+                                            .eq(dict_name)
+                                            .or(dict_dictionaries::name_en.eq(dict_name))
+                                            .or(dict_dictionaries::short_en.eq(dict_name)),
+                                    )
+                                    .first(conn)?
+                            }
+                        }
+                    };
                     dictionaries_cache.insert(dict_name.to_string(), id);
                     id
                 }

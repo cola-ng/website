@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS dict_words (
     word_type TEXT CHECK(word_type IN ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'article', 'abbreviation', 'phrase', 'idiom')), -- 词性：名词、动词、形容词、副词等
     language TEXT DEFAULT 'en',                         -- 语言（默认英文）
     frequency SMALLINT CHECK(frequency BETWEEN 0 AND 100), -- 频率评分 (0-100)，越高表示越常用
-    difficulty SMALLINT CHECK(difficulty BETWEEN 1 AND 10), -- 难度等级 (1-5)，1 最简单，5 最难
+    difficulty SMALLINT,-- CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)，1 最简单，5 最难
     syllable_count SMALLINT,                   -- 音节数量
     is_lemma BOOLEAN DEFAULT TRUE,                      -- 是否为词元（词根/原形）
     word_count INTEGER,                       -- 单词数量
@@ -120,7 +120,7 @@ CREATE TABLE IF NOT EXISTS dict_sentences (
     sentence TEXT NOT NULL,                          -- 例句
     source TEXT,                                        -- 来源
     author TEXT,                                        -- 作者
-    difficulty INTEGER CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
+    difficulty INTEGER,-- CHECK(difficulty BETWEEN 1 AND 5), -- 难度等级 (1-5)
     is_common BOOLEAN DEFAULT FALSE,                    -- 是否为常用例句
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
