@@ -968,3 +968,66 @@ export function deleteChatTurn(token: string, turnId: number): Promise<{ ok: boo
     token,
   })
 }
+
+// ============================================================================
+// Reading Practice API
+// ============================================================================
+
+/** Reading subject (exercise collection) */
+export type ReadSubject = {
+  id: number
+  code: string
+  title_en: string
+  title_zh: string
+  description_en: string | null
+  description_zh: string | null
+  difficulty: number | null
+  subject_type: string | null
+  created_at: string
+}
+
+/** Reading sentence */
+export type ReadSentence = {
+  id: number
+  subject_id: number
+  sentence_order: number
+  content_en: string
+  content_zh: string
+  phonetic_transcription: string | null
+  native_audio_path: string | null
+  difficulty: number | null
+  focus_sounds: string[] | null
+  common_mistakes: string[] | null
+}
+
+/**
+ * List reading subjects (exercises)
+ * @param difficulty Optional difficulty filter
+ * @param subjectType Optional subject type filter
+ * @param limit Max number of subjects to return
+ */
+export function listReadSubjects(params?: {
+  difficulty?: number
+  type?: string
+  limit?: number
+}): Promise<ReadSubject[]> {
+  const searchParams = new URLSearchParams()
+  if (params?.difficulty !== undefined) searchParams.set('difficulty', params.difficulty.toString())
+  if (params?.type) searchParams.set('type', params.type)
+  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
+
+  const query = searchParams.toString()
+  return requestJson<ReadSubject[]>(`/api/asset/read/subjects${query ? `?${query}` : ''}`, {
+    method: 'GET',
+  })
+}
+
+/**
+ * Get sentences for a reading subject
+ * @param subjectId Subject ID
+ */
+export function getReadSentences(subjectId: number): Promise<ReadSentence[]> {
+  return requestJson<ReadSentence[]>(`/api/asset/read/subjects/${subjectId}/sentences`, {
+    method: 'GET',
+  })
+}

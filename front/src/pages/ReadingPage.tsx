@@ -6,27 +6,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-
-interface ReadingExercise {
-  id: number
-  title_en: string
-  title_zh: string
-  description_en: string | null
-  description_zh: string | null
-  difficulty: string | null
-  exercise_type: string | null
-}
-
-interface ReadingSentence {
-  id: number
-  exercise_id: number
-  sentence_order: number
-  content_en: string
-  content_zh: string
-  phonetic_transcription: string | null
-  native_audio_path: string | null
-  tips?: string | null
-}
+import { listReadSubjects, getReadSentences, type ReadSubject, type ReadSentence } from '../lib/api'
 
 interface ScoreDetail {
   label: string
@@ -55,55 +35,49 @@ function ScoreBar({ label, score, color }: ScoreDetail) {
 
 export function ReadingPage() {
   const { token } = useAuth()
-  const [exercises, setExercises] = useState<ReadingExercise[]>([])
-  const [sentences, setSentences] = useState<ReadingSentence[]>([])
-  const [selectedExercise, setSelectedExercise] = useState<ReadingExercise | null>(null)
+  const [subjects, setSubjects] = useState<ReadSubject[]>([])
+  const [sentences, setSentences] = useState<ReadSentence[]>([])
+  const [selectedSubject, setSelectedSubject] = useState<ReadSubject | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
   const [hasRecorded, setHasRecorded] = useState(false)
   const [loading, setLoading] = useState(true)
 
-  // Fetch exercises from API
+  // Fetch subjects from API
   useEffect(() => {
-    async function fetchExercises() {
+    async function fetchSubjects() {
       try {
         setLoading(true)
-        const response = await fetch('/api/asset/reading-exercises')
-        if (response.ok) {
-          const data = await response.json()
-          setExercises(data)
-          if (data.length > 0) {
-            setSelectedExercise(data[0])
-          }
+        const data = await listReadSubjects()
+        setSubjects(data)
+        if (data.length > 0) {
+          setSelectedSubject(data[0])
         }
       } catch (err) {
-        console.error('Failed to fetch exercises:', err)
+        console.error('Failed to fetch subjects:', err)
       } finally {
         setLoading(false)
       }
     }
-    fetchExercises()
+    fetchSubjects()
   }, [])
 
-  // Fetch sentences for selected exercise
+  // Fetch sentences for selected subject
   useEffect(() => {
     async function fetchSentences() {
-      if (!selectedExercise) return
+      if (!selectedSubject) return
       try {
-        const response = await fetch(`/api/asset/reading-exercises/${selectedExercise.id}/sentences`)
-        if (response.ok) {
-          const data = await response.json()
-          setSentences(data)
-          setCurrentIndex(0)
-          setHasRecorded(false)
-        }
+        const data = await getReadSentences(selectedSubject.id)
+        setSentences(data)
+        setCurrentIndex(0)
+        setHasRecorded(false)
       } catch (err) {
         console.error('Failed to fetch sentences:', err)
       }
     }
     fetchSentences()
-  }, [selectedExercise])
+  }, [selectedSubject])
 
   const currentSentence = sentences[currentIndex]
   const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0
@@ -183,21 +157,21 @@ export function ReadingPage() {
             <p className="text-gray-500">发音纠正 · 音波对比 · AI 智能评分</p>
           </div>
 
-          {/* Exercise selector */}
-          {exercises.length > 0 && (
+          {/* Subject selector */}
+          {subjects.length > 0 && (
             <div className="flex gap-2 mb-4 flex-wrap">
-              {exercises.map((exercise) => (
+              {subjects.map((subject) => (
                 <button
-                  key={exercise.id}
-                  onClick={() => setSelectedExercise(exercise)}
+                  key={subject.id}
+                  onClick={() => setSelectedSubject(subject)}
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
-                    selectedExercise?.id === exercise.id
+                    selectedSubject?.id === subject.id
                       ? 'bg-orange-500 text-white'
                       : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
                   )}
                 >
-                  {exercise.title_zh}
+                  {subject.title_zh}
                 </button>
               ))}
             </div>
@@ -223,14 +197,14 @@ export function ReadingPage() {
           <>
             <div className="bg-white rounded-xl shadow-lg p-6 mb-4 text-center">
               <div className="text-xs text-gray-400 mb-2">
-                {selectedExercise?.title_zh || '今日练习'}
+                {selectedSubject?.title_zh || '今日练习'}
               </div>
               <h2 className="text-2xl font-semibold text-gray-900 mb-2">
                 {currentSentence.content_en}
               </h2>
               <p className="text-gray-500">{currentSentence.content_zh}</p>
-              {currentSentence.tips && (
-                <p className="text-sm text-orange-600 mt-2">💡 {currentSentence.tips}</p>
+              {currentSentence.phonetic_transcription && (
+                <p className="text-sm text-orange-600 mt-2">🔊 {currentSentence.phonetic_transcription}</p>
               )}
             </div>
 
