@@ -25,6 +25,7 @@ struct WordEntry {
     definitions: Option<Vec<Definition>>,
     forms: Option<Vec<WordForm>>,
     sentences: Option<Vec<Sentence>>,
+    #[serde(default, deserialize_with = "deserialize_one_or_many_etymologies")]
     etymologies: Option<Vec<Etymology>>,
     categories: Option<Vec<Category>>,
     relations: Option<Relations>,
@@ -100,6 +101,7 @@ struct Etymology {
     origin_language: Option<String>,
     origin_word: Option<String>,
     origin_meaning: Option<String>,
+    #[serde(default)]
     etymology: String,
     #[serde(default, deserialize_with = "deserialize_year_as_string")]
     first_attested_year: Option<String>,
@@ -114,6 +116,57 @@ where
         None => Ok(None),
         Some(serde_json::Value::Number(n)) => Ok(Some(n.to_string())),
         Some(serde_json::Value::String(s)) => Ok(Some(s)),
+        _ => Ok(None),
+    }
+}
+
+fn deserialize_string_or_number_as_i32<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::Number(n)) => Ok(n.as_i64().map(|v| v as i32)),
+        Some(serde_json::Value::String(s)) => Ok(s.parse::<i32>().ok()),
+        _ => Ok(None),
+    }
+}
+
+fn deserialize_string_or_number_as_f32<'de, D>(deserializer: D) -> Result<Option<f32>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::Number(n)) => Ok(n.as_f64().map(|v| v as f32)),
+        Some(serde_json::Value::String(s)) => Ok(s.parse::<f32>().ok()),
+        _ => Ok(None),
+    }
+}
+
+fn deserialize_one_or_many_etymologies<'de, D>(
+    deserializer: D,
+) -> Result<Option<Vec<Etymology>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value: Option<serde_json::Value> = Option::deserialize(deserializer)?;
+    match value {
+        None => Ok(None),
+        Some(serde_json::Value::Array(arr)) => {
+            let etymologies: Result<Vec<Etymology>, _> = arr
+                .into_iter()
+                .map(|v| serde_json::from_value(v).map_err(serde::de::Error::custom))
+                .collect();
+            Ok(Some(etymologies?))
+        }
+        Some(obj @ serde_json::Value::Object(_)) => {
+            let etymology: Etymology =
+                serde_json::from_value(obj).map_err(serde::de::Error::custom)?;
+            Ok(Some(vec![etymology]))
+        }
         _ => Ok(None),
     }
 }
@@ -143,7 +196,9 @@ struct Frequency {
     corpus: String,
     corpus_type: Option<String>,
     band: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_string_or_number_as_i32")]
     rank: Option<i32>,
+    #[serde(default, deserialize_with = "deserialize_string_or_number_as_f32")]
     per_million: Option<f32>,
 }
 
@@ -412,15 +467,34 @@ fn process_json_file(
         }
 
         let word_id = insert_word(conn, &word, &word_lower, &entry)?;
-        insert_pronunciations(conn, word_id, &entry)?;
-        insert_definitions(conn, word_id, &entry)?;
-        insert_forms(conn, word_id, &entry)?;
-        insert_sentences(conn, word_id, &entry)?;
-        insert_etymologies(conn, word_id, &entry)?;
-        insert_categories(conn, word_id, &entry, categories_cache)?;
-        insert_relations(conn, word_id, &entry)?;
-        insert_frequencies(conn, word_id, &entry)?;
-        insert_word_dictionaries(conn, word_id, &entry, dictionaries_cache)?;
+
+        if let Err(e) = insert_pronunciations(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert pronunciations for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_definitions(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert definitions for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_forms(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert forms for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_sentences(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert sentences for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_etymologies(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert etymologies for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_categories(conn, word_id, &entry, categories_cache) {
+            eprintln!("  Warning: failed to insert categories for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_relations(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert relations for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_frequencies(conn, word_id, &entry) {
+            eprintln!("  Warning: failed to insert frequencies for '{}': {}", word, e);
+        }
+        if let Err(e) = insert_word_dictionaries(conn, word_id, &entry, dictionaries_cache) {
+            eprintln!("  Warning: failed to insert dictionaries for '{}': {}", word, e);
+        }
     }
 
     Ok(true)
@@ -683,13 +757,20 @@ fn insert_etymologies(
     if let Some(etymologies) = &entry.etymologies {
         let mut order = 1;
         for etym in etymologies {
+            // Use origin_word as fallback if etymology is empty
+            let etymology_text = if etym.etymology.is_empty() {
+                etym.origin_word.clone().unwrap_or_default()
+            } else {
+                etym.etymology.clone()
+            };
+
             let etymology_id: i64 = diesel::insert_into(dict_etymologies::table)
                 .values((
                     dict_etymologies::origin_language.eq(&etym.origin_language),
                     dict_etymologies::origin_word.eq(&etym.origin_word),
                     dict_etymologies::origin_meaning.eq(&etym.origin_meaning),
                     dict_etymologies::language.eq(&etym.language),
-                    dict_etymologies::etymology.eq(&etym.etymology),
+                    dict_etymologies::etymology.eq(&etymology_text),
                     dict_etymologies::first_attested_year.eq(etym.first_attested_year.as_ref()),
                 ))
                 .returning(dict_etymologies::id)
