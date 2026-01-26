@@ -391,7 +391,7 @@ fn load_categories_cache(
 fn import_words(
     conn: &mut PgConnection,
     json_files: &[PathBuf],
-    batch_size: usize,
+    _batch_size: usize,
     skip_existing: bool,
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
@@ -441,7 +441,7 @@ fn import_words(
 fn process_json_file(
     conn: &mut PgConnection,
     json_file: &Path,
-    skip_existing: bool,
+    _skip_existing: bool,
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
 ) -> Result<bool, Box<dyn std::error::Error>> {
@@ -451,53 +451,84 @@ fn process_json_file(
     let reader = BufReader::new(file);
     let json_data: HashMap<String, WordEntry> = serde_json::from_reader(reader)?;
 
+    let mut any_word_processed = false;
+
     for (word, entry) in json_data {
         let word_lower = word.to_lowercase();
 
-        if skip_existing {
-            let existing: Option<i64> = dict_words::table
-                .select(dict_words::id)
-                .filter(dict_words::word_lower.eq(&word_lower))
-                .first(conn)
-                .optional()?;
+        // Step 1: Check if word already exists
+        let existing_word_id: Option<i64> = dict_words::table
+            .select(dict_words::id)
+            .filter(dict_words::word_lower.eq(&word_lower))
+            .first(conn)
+            .optional()?;
 
-            if existing.is_some() {
-                return Ok(false);
+        let (word_id, is_new_word) = match existing_word_id {
+            Some(existing_id) => {
+                // Word exists
+                (existing_id, false)
             }
-        }
+            None => {
+                // Word doesn't exist, insert it
+                let new_id = insert_word(conn, &word, &word_lower, &entry)?;
+                (new_id, true)
+            }
+        };
 
-        let word_id = insert_word(conn, &word, &word_lower, &entry)?;
+        // Step 2: Insert related data
+        // - For new words: insert all related data
+        // - For existing words: only insert missing related data (each function checks internally)
+        let mut has_errors = false;
 
         if let Err(e) = insert_pronunciations(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert pronunciations for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_definitions(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert definitions for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_forms(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert forms for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_sentences(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert sentences for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_etymologies(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert etymologies for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_categories(conn, word_id, &entry, categories_cache) {
             eprintln!("  Warning: failed to insert categories for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_relations(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert relations for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_frequencies(conn, word_id, &entry) {
             eprintln!("  Warning: failed to insert frequencies for '{}': {}", word, e);
+            has_errors = true;
         }
         if let Err(e) = insert_word_dictionaries(conn, word_id, &entry, dictionaries_cache) {
             eprintln!("  Warning: failed to insert dictionaries for '{}': {}", word, e);
+            has_errors = true;
         }
+
+        if has_errors {
+            let status = if is_new_word { "inserted" } else { "updated" };
+            eprintln!(
+                "  Error: word '{}' was {} but some related data failed to insert",
+                word, status
+            );
+        }
+
+        any_word_processed = true;
     }
 
-    Ok(true)
+    Ok(any_word_processed)
 }
 
 fn insert_word(
@@ -580,6 +611,16 @@ fn insert_pronunciations(
     use colang::db::schema::dict_pronunciations;
 
     if let Some(pronunciations) = &entry.pronunciations {
+        // Check if pronunciations already exist for this word
+        let existing_count: i64 = dict_pronunciations::table
+            .filter(dict_pronunciations::word_id.eq(word_id))
+            .count()
+            .get_result(conn)?;
+
+        if existing_count > 0 {
+            return Ok(()); // Already has pronunciations, skip
+        }
+
         let mut is_first = true;
         for pron in pronunciations {
             diesel::insert_into(dict_pronunciations::table)
@@ -606,6 +647,16 @@ fn insert_definitions(
     use colang::db::schema::dict_definitions;
 
     if let Some(definitions) = &entry.definitions {
+        // Check if definitions already exist for this word
+        let existing_count: i64 = dict_definitions::table
+            .filter(dict_definitions::word_id.eq(word_id))
+            .count()
+            .get_result(conn)?;
+
+        if existing_count > 0 {
+            return Ok(()); // Already has definitions, skip
+        }
+
         let mut order = 1;
         for def in definitions {
             let part_of_speech = def
@@ -676,6 +727,16 @@ fn insert_forms(
     use colang::db::schema::dict_forms;
 
     if let Some(forms) = &entry.forms {
+        // Check if forms already exist for this word
+        let existing_count: i64 = dict_forms::table
+            .filter(dict_forms::word_id.eq(word_id))
+            .count()
+            .get_result(conn)?;
+
+        if existing_count > 0 {
+            return Ok(()); // Already has forms, skip
+        }
+
         for form in forms {
             let form_type = form.form_type.as_ref().and_then(|t| normalize_form_type(t));
 
@@ -719,6 +780,16 @@ fn insert_sentences(
     use colang::db::schema::*;
 
     if let Some(sentences) = &entry.sentences {
+        // Check if sentences already exist for this word
+        let existing_count: i64 = dict_word_sentences::table
+            .filter(dict_word_sentences::word_id.eq(word_id))
+            .count()
+            .get_result(conn)?;
+
+        if existing_count > 0 {
+            return Ok(()); // Already has sentences, skip
+        }
+
         let mut order = 1;
         for sent in sentences {
             let sentence_id: i64 = diesel::insert_into(dict_sentences::table)
@@ -738,6 +809,7 @@ fn insert_sentences(
                     dict_word_sentences::sentence_id.eq(sentence_id),
                     dict_word_sentences::priority_order.eq(order),
                 ))
+                .on_conflict_do_nothing()
                 .execute(conn)?;
 
             order += 1;
@@ -755,6 +827,16 @@ fn insert_etymologies(
     use colang::db::schema::*;
 
     if let Some(etymologies) = &entry.etymologies {
+        // Check if etymologies already exist for this word
+        let existing_count: i64 = dict_word_etymologies::table
+            .filter(dict_word_etymologies::word_id.eq(word_id))
+            .count()
+            .get_result(conn)?;
+
+        if existing_count > 0 {
+            return Ok(()); // Already has etymologies, skip
+        }
+
         let mut order = 1;
         for etym in etymologies {
             // Use origin_word as fallback if etymology is empty
@@ -782,6 +864,7 @@ fn insert_etymologies(
                     dict_word_etymologies::etymology_id.eq(etymology_id),
                     dict_word_etymologies::priority_order.eq(order),
                 ))
+                .on_conflict_do_nothing()
                 .execute(conn)?;
 
             order += 1;
