@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Search, Volume2, Star } from 'lucide-react'
 import { lookup, type WordQueryResponse } from '../lib/api'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
@@ -6,27 +7,41 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 
 export function DictPage() {
+  const { word: urlWord } = useParams<{ word: string }>()
+  const navigate = useNavigate()
   const [query, setQuery] = useState('')
   const [result, setResult] = useState<WordQueryResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showMoreSentences, setShowMoreSentences] = useState(false)
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!query.trim()) return
+  const searchWord = useCallback(async (word: string) => {
+    if (!word.trim()) return
 
     setLoading(true)
     setError('')
     try {
-      const data = await lookup(query.trim())
+      const data = await lookup(word.trim())
       setResult(data)
+      setQuery(word.trim())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch word')
       setResult(null)
     } finally {
       setLoading(false)
     }
+  }, [])
+
+  useEffect(() => {
+    if (urlWord) {
+      searchWord(decodeURIComponent(urlWord))
+    }
+  }, [urlWord, searchWord])
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!query.trim()) return
+    navigate(`/dict/${encodeURIComponent(query.trim())}`)
   }
 
   const playAudio = (url: string | null) => {
@@ -299,13 +314,7 @@ export function DictPage() {
               const synonyms = relations.filter(r => r.relation_type === 'synonym' || r.relation_type === 'similar')
               const antonyms = relations.filter(r => r.relation_type === 'antonym')
               const relatedWords = relations.filter(r =>
-                r.relation_type === 'related' ||
-                r.relation_type === 'broader' ||
-                r.relation_type === 'narrower' ||
-                r.relation_type === 'part_of' ||
-                r.relation_type === 'member_of' ||
-                r.relation_type === 'substance_of' ||
-                r.relation_type === 'instance_of'
+                r.relation_type !== 'synonym' && r.relation_type !== 'similar' && r.relation_type !== 'antonym'
               )
 
               const hasSynonyms = synonyms.length > 0
@@ -315,19 +324,70 @@ export function DictPage() {
 
               if (!hasAny) return null
 
-              const defaultTab = hasEtymologies ? 'etymology' : hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : 'related'
+              const defaultTab = hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : hasRelated ? 'related' : 'etymology'
 
-              const tabCount = [hasEtymologies, hasSynonyms, hasAntonyms, hasRelated].filter(Boolean).length
+              const tabCount = [hasSynonyms, hasAntonyms, hasRelated, hasEtymologies].filter(Boolean).length
               const gridColsClass = tabCount === 1 ? 'grid-cols-1' : tabCount === 2 ? 'grid-cols-2' : tabCount === 3 ? 'grid-cols-3' : 'grid-cols-4'
 
               return (
                 <Tabs defaultValue={defaultTab}>
                   <TabsList className={`grid w-full max-w-md ${gridColsClass}`}>
-                    {hasEtymologies && <TabsTrigger value="etymology">词源</TabsTrigger>}
-                    {hasSynonyms && <TabsTrigger value="synonyms">同义词</TabsTrigger>}
+                    {hasSynonyms && <TabsTrigger value="synonyms">近义词</TabsTrigger>}
                     {hasAntonyms && <TabsTrigger value="antonyms">反义词</TabsTrigger>}
                     {hasRelated && <TabsTrigger value="related">相关词</TabsTrigger>}
+                    {hasEtymologies && <TabsTrigger value="etymology">词源</TabsTrigger>}
                   </TabsList>
+                  {hasSynonyms && (
+                    <TabsContent value="synonyms" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="flex flex-wrap gap-2">
+                          {synonyms.map((rel) => (
+                            <Link
+                              key={rel.id}
+                              to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                              className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
+                            >
+                              {rel.related_word}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
+                  {hasAntonyms && (
+                    <TabsContent value="antonyms" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="flex flex-wrap gap-2">
+                          {antonyms.map((rel) => (
+                            <Link
+                              key={rel.id}
+                              to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                              className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
+                            >
+                              {rel.related_word}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
+                  {hasRelated && (
+                    <TabsContent value="related" className="mt-3">
+                      <div className="bg-white rounded-xl shadow-lg p-5">
+                        <div className="flex flex-wrap gap-2">
+                          {relatedWords.map((rel) => (
+                            <Link
+                              key={rel.id}
+                              to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                              className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
+                            >
+                              {rel.related_word}
+                            </Link>
+                          ))}
+                        </div>
+                      </div>
+                    </TabsContent>
+                  )}
                   {hasEtymologies && (
                     <TabsContent value="etymology" className="mt-3">
                       <div className="bg-white rounded-xl shadow-lg p-5">
@@ -339,57 +399,6 @@ export function DictPage() {
                                 <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
                               )}
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    </TabsContent>
-                  )}
-                  {hasSynonyms && (
-                    <TabsContent value="synonyms" className="mt-3">
-                      <div className="bg-white rounded-xl shadow-lg p-5">
-                        <div className="flex flex-wrap gap-2">
-                          {synonyms.map((rel) => (
-                            <span
-                              key={rel.id}
-                              className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
-                              onClick={() => { setQuery(rel.related_word); }}
-                            >
-                              {rel.related_word}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </TabsContent>
-                  )}
-                  {hasAntonyms && (
-                    <TabsContent value="antonyms" className="mt-3">
-                      <div className="bg-white rounded-xl shadow-lg p-5">
-                        <div className="flex flex-wrap gap-2">
-                          {antonyms.map((rel) => (
-                            <span
-                              key={rel.id}
-                              className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
-                              onClick={() => { setQuery(rel.related_word); }}
-                            >
-                              {rel.related_word}
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    </TabsContent>
-                  )}
-                  {hasRelated && (
-                    <TabsContent value="related" className="mt-3">
-                      <div className="bg-white rounded-xl shadow-lg p-5">
-                        <div className="flex flex-wrap gap-2">
-                          {relatedWords.map((rel) => (
-                            <span
-                              key={rel.id}
-                              className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
-                              onClick={() => { setQuery(rel.related_word); }}
-                            >
-                              {rel.related_word}
-                            </span>
                           ))}
                         </div>
                       </div>
