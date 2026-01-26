@@ -129,11 +129,21 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .unwrap_or(0);
 
         // 8. Average mastery level (as percentage)
-        let avg_mastery: Option<f64> = learn_vocabularies::table
+        let mastery_levels: Vec<Option<i32>> = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
-            .select(diesel::dsl::avg(learn_vocabularies::mastery_level))
-            .first::<Option<f64>>(conn)?;
-        let average_mastery = avg_mastery.map(|v| (v / 5.0 * 100.0) as i32).unwrap_or(0);
+            .select(learn_vocabularies::mastery_level)
+            .load::<Option<i32>>(conn)?;
+        let average_mastery = if mastery_levels.is_empty() {
+            0
+        } else {
+            let sum: i32 = mastery_levels.iter().filter_map(|&x| x).sum();
+            let count = mastery_levels.iter().filter(|x| x.is_some()).count() as i32;
+            if count > 0 {
+                (sum as f64 / count as f64 / 5.0 * 100.0) as i32
+            } else {
+                0
+            }
+        };
 
         // 9. Check if user has any learning data
         let has_chats: i64 = learn_chats::table

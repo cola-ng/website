@@ -6,7 +6,7 @@ use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::{Utc, format};
 use diesel::prelude::*;
 use salvo::oapi::ToSchema;
-use salvo::oapi::extract::JsonBody;
+use salvo::oapi::extract::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -715,40 +715,6 @@ JSON format:
 // Database helper functions
 // ============================================================================
 
-/// Get or create active session for user
-async fn get_or_create_session(user_id: i64) -> Result<ChatSession, StatusError> {
-    with_conn(move |conn| {
-        // Try to find the most recent session for this user
-        let existing = learn_chats::table
-            .filter(learn_chats::user_id.eq(user_id))
-            .order(learn_chats::created_at.desc())
-            .first::<ChatSession>(conn)
-            .optional()?;
-
-        if let Some(session) = existing {
-            return Ok(session);
-        }
-
-        // Create new session
-        let new_session = NewChatSession {
-            user_id,
-            title: "Chat Session".to_string(),
-            context_id: None,
-            duration_ms: None,
-            issues_count: None,
-        };
-
-        diesel::insert_into(learn_chats::table)
-            .values(&new_session)
-            .get_result::<ChatSession>(conn)
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to get/create session: {:?}", e);
-        StatusError::internal_server_error().brief("database error")
-    })
-}
-
 /// Get chat history for a session (last 20 messages)
 async fn get_chat_leatest_turns(
     chat_id: i64,
@@ -907,7 +873,12 @@ async fn update_ai_turn(
 /// - Audio input: Transcribed to text using ASR, audio file is saved
 /// - Text input: Optionally converted to audio using TTS
 #[endpoint(tags("Chat"))]
-pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatSendResponse> {
+pub async fn send_chat(
+    id: PathParam<i64>,
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<ChatSendResponse> {
+    let chat_id = id.into_inner();
     let user_id = depot.user_id()?;
 
     // Read body with larger size limit for audio (50MB)
@@ -928,10 +899,6 @@ pub async fn send_chat(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatS
     // Get AI provider early - needed for both ASR and user input analysis
     let provider = create_provider_from_env()
         .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
-
-    // Get or create session
-    let session = get_or_create_session(user_id).await?;
-    let chat_id = session.id;
 
     // Process based on input type - transcribe audio if needed
     let (user_text, user_audio_data) = match &input {

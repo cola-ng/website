@@ -6,7 +6,55 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, toggleWordInVocabulary, listVocabulary, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
+
+// Component to render English text with clickable words
+interface ClickableTextProps {
+  text: string
+  vocabularyWords: Set<string>
+  onWordDoubleClick: (word: string) => void
+  className?: string
+}
+
+function ClickableText({ text, vocabularyWords, onWordDoubleClick, className }: ClickableTextProps) {
+  // Split text into words and non-words (punctuation, spaces)
+  const parts = text.split(/(\s+|[^\w'-]+)/g)
+
+  return (
+    <span className={className}>
+      {parts.map((part, index) => {
+        // Check if this is an English word (contains only letters, hyphens, apostrophes)
+        const isWord = /^[a-zA-Z'-]+$/.test(part) && part.length >= 2
+        if (!isWord) {
+          return <span key={index}>{part}</span>
+        }
+
+        const normalizedWord = part.toLowerCase().replace(/[^a-z'-]/g, '')
+        const isInVocabulary = vocabularyWords.has(normalizedWord)
+
+        return (
+          <span
+            key={index}
+            onDoubleClick={(e) => {
+              e.preventDefault()
+              e.stopPropagation()
+              onWordDoubleClick(part)
+            }}
+            className={cn(
+              'cursor-pointer transition-colors rounded px-0.5 -mx-0.5',
+              isInVocabulary
+                ? 'text-orange-500 font-medium'
+                : 'hover:bg-black/5'
+            )}
+            title={isInVocabulary ? '双击移出单词本' : '双击加入单词本'}
+          >
+            {part}
+          </span>
+        )
+      })}
+    </span>
+  )
+}
 
 // Helper to convert embedded ChatIssue[] to TextIssue[] for display
 function convertIssues(issues: ChatIssue[] | undefined): TextIssue[] | undefined {
@@ -96,6 +144,9 @@ export function ChatPage() {
   const [renameDialogId, setRenameDialogId] = useState<string | null>(null)
   const [renameValue, setRenameValue] = useState('')
 
+  // Vocabulary words that have been added (for highlighting)
+  const [vocabularyWords, setVocabularyWords] = useState<Set<string>>(new Set())
+
   // Display settings - independent toggles for each language (persisted to localStorage)
   const [showBotEn, setShowBotEn] = useState(() => {
     const saved = localStorage.getItem('conv_showBotEn')
@@ -144,6 +195,53 @@ export function ChatPage() {
     localStorage.setItem('conv_showUserEn', String(showUserEn))
     localStorage.setItem('conv_showUserZh', String(showUserZh))
   }, [showBotEn, showBotZh, showUserEn, showUserZh])
+
+  // Load user's vocabulary words on mount (for highlighting)
+  useEffect(() => {
+    if (!token) return
+    listVocabulary(token, false, 1000)
+      .then((vocab) => {
+        const words = new Set(vocab.map((v) => v.word.toLowerCase()))
+        setVocabularyWords(words)
+      })
+      .catch((err) => console.error('Failed to load vocabulary:', err))
+  }, [token])
+
+  // Handle toggling word in vocabulary on double-click
+  const handleToggleWord = useCallback(async (word: string) => {
+    if (!token) return
+    const normalizedWord = word.toLowerCase().replace(/[^a-z'-]/g, '')
+    if (!normalizedWord || normalizedWord.length < 2) return
+
+    const wasInVocabulary = vocabularyWords.has(normalizedWord)
+
+    // Optimistically toggle local state
+    setVocabularyWords((prev) => {
+      const next = new Set(prev)
+      if (wasInVocabulary) {
+        next.delete(normalizedWord)
+      } else {
+        next.add(normalizedWord)
+      }
+      return next
+    })
+
+    try {
+      await toggleWordInVocabulary(token, normalizedWord)
+    } catch (err) {
+      console.error('Failed to toggle word in vocabulary:', err)
+      // Revert on error
+      setVocabularyWords((prev) => {
+        const next = new Set(prev)
+        if (wasInVocabulary) {
+          next.add(normalizedWord)
+        } else {
+          next.delete(normalizedWord)
+        }
+        return next
+      })
+    }
+  }, [token, vocabularyWords])
 
   // Load chats from server on mount
   useEffect(() => {
@@ -1580,7 +1678,17 @@ export function ChatPage() {
                       )}
                     >
                       {displayEn && (
-                        <p className={cn('text-sm', blurEn && 'blur-sm select-none')}>{message.contentEn}</p>
+                        <p className={cn('text-sm', blurEn && 'blur-sm select-none')}>
+                          {isUser ? (
+                            message.contentEn
+                          ) : (
+                            <ClickableText
+                              text={message.contentEn}
+                              vocabularyWords={vocabularyWords}
+                              onWordDoubleClick={handleToggleWord}
+                            />
+                          )}
+                        </p>
                       )}
                       {displayEn && displayZh && (
                         <div className={cn(

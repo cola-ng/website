@@ -540,6 +540,29 @@ export function listIssueWords(token: string, dueOnly = false, limit = 50): Prom
   })
 }
 
+// Add word to vocabulary
+export function addWordToVocabulary(token: string, word: string, wordZh?: string): Promise<UserVocabulary> {
+  return requestJson<UserVocabulary>('/api/learn/vocabulary', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ word, word_zh: wordZh }),
+  })
+}
+
+// Toggle word in vocabulary (add if not exists, remove if exists)
+export type ToggleVocabularyResponse = {
+  word: string
+  added: boolean
+}
+
+export function toggleWordInVocabulary(token: string, word: string): Promise<ToggleVocabularyResponse> {
+  return requestJson<ToggleVocabularyResponse>('/api/learn/vocabulary/toggle', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ word }),
+  })
+}
+
 // ============================================================================
 // Achievement System Types
 // ============================================================================

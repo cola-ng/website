@@ -60,7 +60,8 @@ pub fn router() -> Router {
             Router::with_path("vocabulary")
                 .get(vocabulary::list_vocabulary)
                 .post(vocabulary::create_vocabulary)
-                .delete(reset::reset_vocabulary),
+                .delete(reset::reset_vocabulary)
+                .push(Router::with_path("toggle").post(vocabulary::toggle_vocabulary)),
         )
         .push(
             Router::with_path("daily-stats")
