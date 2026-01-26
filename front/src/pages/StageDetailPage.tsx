@@ -1,19 +1,23 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   ArrowLeft,
   RotateCcw,
   Volume2,
-  ChevronRight,
-  CheckCircle,
+  Mic,
+  MicOff,
+  Play,
   BookOpen,
-  MessageSquare,
+  Users,
+  Loader2,
+  ArrowLeftRight,
 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
+import { useAuth } from '../lib/auth'
 
 // Stage matches backend asset_stages table
 interface Stage {
@@ -58,18 +62,58 @@ interface ScriptTurn {
   notes: string | null
 }
 
+// User's recording result
+interface RecordingResult {
+  turnId: number
+  audioBlob: Blob
+  audioUrl: string
+  score?: number
+  feedback?: string
+}
+
 export function StageDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  useAuth() // Ensure user is authenticated
 
   const [stage, setStage] = useState<Stage | null>(null)
   const [scripts, setScripts] = useState<Script[]>([])
   const [selectedScript, setSelectedScript] = useState<Script | null>(null)
   const [turns, setTurns] = useState<ScriptTurn[]>([])
-  const [currentTurnIndex, setCurrentTurnIndex] = useState(0)
-  const [showTranslation, setShowTranslation] = useState(true)
+  const [activeTurnIndex, setActiveTurnIndex] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+
+  // Role selection - which role the user is playing
+  const [selectedRole, setSelectedRole] = useState<string | null>(null)
+
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+  const [recordings, setRecordings] = useState<Map<number, RecordingResult>>(new Map())
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  // Audio playback state
+  const [playingAudioId, setPlayingAudioId] = useState<string | null>(null)
+  const audioRef = useRef<HTMLAudioElement | null>(null)
+
+  // Display settings (persisted to localStorage)
+  const [showEn, setShowEn] = useState(() => {
+    const saved = localStorage.getItem('stage_showEn')
+    return saved !== null ? saved === 'true' : true
+  })
+  const [showZh, setShowZh] = useState(() => {
+    const saved = localStorage.getItem('stage_showZh')
+    return saved !== null ? saved === 'true' : true
+  })
+
+  // Persist display settings
+  useEffect(() => {
+    localStorage.setItem('stage_showEn', String(showEn))
+    localStorage.setItem('stage_showZh', String(showZh))
+  }, [showEn, showZh])
 
   // Fetch stage data
   useEffect(() => {
@@ -117,9 +161,16 @@ export function StageDetailPage() {
       try {
         const response = await fetch(`/api/asset/scripts/${selectedScript.id}/turns`)
         if (!response.ok) throw new Error('Failed to fetch turns')
-        const data = await response.json()
+        const data: ScriptTurn[] = await response.json()
         setTurns(data)
-        setCurrentTurnIndex(0)
+        setRecordings(new Map())
+        // Auto-select first role as the user's role
+        const uniqueRoles = [...new Set(data.map(t => t.speaker_role))]
+        const defaultRole = uniqueRoles.find(r => r === 'user') || uniqueRoles[0] || null
+        setSelectedRole(defaultRole)
+        // Auto-select first turn of that role
+        const firstUserTurnIndex = data.findIndex(t => t.speaker_role === defaultRole)
+        setActiveTurnIndex(firstUserTurnIndex >= 0 ? firstUserTurnIndex : null)
       } catch (err) {
         console.error('Failed to fetch turns:', err)
       }
@@ -127,41 +178,169 @@ export function StageDetailPage() {
     fetchTurns()
   }, [selectedScript])
 
-  const currentTurn = turns[currentTurnIndex]
-
-  const handleNextTurn = () => {
-    if (currentTurnIndex < turns.length - 1) {
-      setCurrentTurnIndex(currentTurnIndex + 1)
+  // Get unique roles from turns
+  const roles = turns.reduce((acc, turn) => {
+    if (!acc.find(r => r.role === turn.speaker_role)) {
+      acc.push({
+        role: turn.speaker_role,
+        name: turn.speaker_name || (turn.speaker_role === 'user' ? '你' : 'AI'),
+      })
     }
-  }
+    return acc
+  }, [] as { role: string; name: string }[])
 
-  const handlePrevTurn = () => {
-    if (currentTurnIndex > 0) {
-      setCurrentTurnIndex(currentTurnIndex - 1)
+  // Play audio
+  const playAudio = useCallback(async (audioId: string, audioSource: string | Blob) => {
+    // Stop any currently playing audio
+    if (audioRef.current) {
+      audioRef.current.pause()
+      audioRef.current = null
     }
-  }
 
+    if (playingAudioId === audioId) {
+      setPlayingAudioId(null)
+      return
+    }
+
+    try {
+      const audio = new Audio(
+        typeof audioSource === 'string'
+          ? audioSource
+          : URL.createObjectURL(audioSource)
+      )
+      audioRef.current = audio
+      setPlayingAudioId(audioId)
+
+      audio.onended = () => {
+        setPlayingAudioId(null)
+        if (typeof audioSource !== 'string') {
+          URL.revokeObjectURL(audio.src)
+        }
+      }
+      audio.onerror = () => {
+        setPlayingAudioId(null)
+        console.error('Audio playback failed')
+      }
+      await audio.play()
+    } catch (err) {
+      console.error('Failed to play audio:', err)
+      setPlayingAudioId(null)
+    }
+  }, [playingAudioId])
+
+  // Start recording
+  const startRecording = useCallback(async (turnIndex: number) => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+      })
+
+      mediaRecorderRef.current = mediaRecorder
+      audioChunksRef.current = []
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data)
+        }
+      }
+
+      mediaRecorder.onstop = () => {
+        stream.getTracks().forEach(track => track.stop())
+        if (recordingTimerRef.current) {
+          clearInterval(recordingTimerRef.current)
+          recordingTimerRef.current = null
+        }
+        setRecordingDuration(0)
+
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
+        if (audioBlob.size > 0) {
+          const turn = turns[turnIndex]
+          const result: RecordingResult = {
+            turnId: turn.id,
+            audioBlob,
+            audioUrl: URL.createObjectURL(audioBlob),
+            // Mock score for now - in real implementation, this would come from ASR evaluation
+            score: Math.floor(Math.random() * 30) + 70,
+            feedback: '发音清晰，语调自然。',
+          }
+          setRecordings(prev => {
+            const next = new Map(prev).set(turn.id, result)
+            // Auto-advance to next unrecorded user turn
+            const nextUserTurnIndex = turns.findIndex((t, i) =>
+              i > turnIndex && t.speaker_role === selectedRole && !next.has(t.id)
+            )
+            if (nextUserTurnIndex >= 0) {
+              setActiveTurnIndex(nextUserTurnIndex)
+            }
+            return next
+          })
+        }
+      }
+
+      mediaRecorder.start()
+      setIsRecording(true)
+      setActiveTurnIndex(turnIndex)
+      setRecordingDuration(0)
+
+      recordingTimerRef.current = setInterval(() => {
+        setRecordingDuration(prev => prev + 1)
+      }, 1000)
+    } catch (err) {
+      console.error('Failed to start recording:', err)
+      alert('无法访问麦克风。请确保已授予麦克风权限。')
+    }
+  }, [turns, selectedRole])
+
+  // Stop recording
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop()
+    }
+    setIsRecording(false)
+  }, [])
+
+  // Keyboard shortcut: Space to toggle recording
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      if (e.code === 'Space' && activeTurnIndex !== null) {
+        e.preventDefault()
+        if (isRecording) {
+          stopRecording()
+        } else {
+          startRecording(activeTurnIndex)
+        }
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [activeTurnIndex, isRecording, startRecording, stopRecording])
+
+  // Handle restart
   const handleRestart = () => {
-    setCurrentTurnIndex(0)
+    setRecordings(new Map())
+    setActiveTurnIndex(null)
   }
 
-  const playAudio = () => {
-    // In real implementation, this would play TTS audio
-    console.log('Playing audio for:', currentTurn?.content_en)
-  }
+  // Calculate progress
+  // User turns are the turns for the role the user is playing
+  const userTurns = turns.filter(t => t.speaker_role === selectedRole)
+  const completedUserTurns = userTurns.filter(t => recordings.has(t.id))
+  const progress = userTurns.length > 0 ? (completedUserTurns.length / userTurns.length) * 100 : 0
 
-  const getDifficultyColor = (difficulty: number | null) => {
-    if (difficulty === null) return 'bg-gray-100 text-gray-700'
-    if (difficulty <= 2) return 'bg-green-100 text-green-700'
-    if (difficulty <= 3) return 'bg-amber-100 text-amber-700'
-    return 'bg-red-100 text-red-700'
-  }
-
-  const getDifficultyLabel = (difficulty: number | null) => {
-    if (difficulty === null) return '未知'
-    if (difficulty <= 2) return '初级'
-    if (difficulty <= 3) return '中级'
-    return '高级'
+  // Handle role switch
+  const handleSwitchRole = () => {
+    if (roles.length < 2) return
+    const currentIndex = roles.findIndex(r => r.role === selectedRole)
+    const nextIndex = (currentIndex + 1) % roles.length
+    const newRole = roles[nextIndex].role
+    setSelectedRole(newRole)
+    setRecordings(new Map()) // Clear recordings when switching roles
+    // Auto-select first turn of the new role
+    const firstTurnIndex = turns.findIndex(t => t.speaker_role === newRole)
+    setActiveTurnIndex(firstTurnIndex >= 0 ? firstTurnIndex : null)
   }
 
   if (loading) {
@@ -170,7 +349,7 @@ export function StageDetailPage() {
         <Header />
         <main className="mx-auto max-w-6xl p-4">
           <div className="flex items-center justify-center h-64">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
+            <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
           </div>
         </main>
         <Footer />
@@ -198,216 +377,388 @@ export function StageDetailPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       <Header />
 
-      <main className="mx-auto max-w-6xl p-4">
-        {/* Back button and stage info */}
-        <div className="mb-6">
+      <main className="flex-1 mx-auto w-full max-w-6xl px-4 py-4">
+        {/* Compact header */}
+        <div className="flex items-center justify-between mb-4">
           <button
             onClick={() => navigate('/stages')}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-4"
+            className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
             <ArrowLeft className="h-4 w-4" />
             <span>返回角色扮演</span>
           </button>
-
-          <div className="bg-white rounded-xl shadow-lg p-6">
-            <div className="flex items-start gap-4">
-              <div className="text-5xl">{stage.icon_emoji || '📚'}</div>
-              <div className="flex-1">
-                <h1 className="text-2xl font-bold text-gray-900 mb-1">{stage.name_zh}</h1>
-                <p className="text-gray-500 mb-3">{stage.name_en}</p>
-                <p className="text-gray-600 mb-4">{stage.description_zh || stage.description_en}</p>
-                <div className="flex items-center gap-4 text-sm">
-                  <span
-                    className={cn(
-                      'px-3 py-1 rounded-full font-medium',
-                      getDifficultyColor(stage.difficulty)
-                    )}
-                  >
-                    {getDifficultyLabel(stage.difficulty)}
-                  </span>
-                  <span className="flex items-center gap-1 text-gray-500">
-                    <MessageSquare className="h-4 w-4" />
-                    {scripts.length} 个对话
-                  </span>
-                </div>
-              </div>
+          <div className="flex items-center gap-3">
+            <span className="text-2xl">{stage.icon_emoji || '📚'}</span>
+            <div>
+              <h1 className="font-semibold text-gray-900">{stage.name_zh}</h1>
+              <p className="text-sm text-gray-500">{stage.name_en}</p>
             </div>
+          </div>
+          {/* Language toggles */}
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-gray-500">显示:</span>
+            <button
+              onClick={() => setShowEn(!showEn)}
+              className={cn(
+                'px-2 py-0.5 text-xs font-medium rounded-full transition-all',
+                showEn
+                  ? 'bg-orange-500 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+              )}
+            >
+              英
+            </button>
+            <button
+              onClick={() => setShowZh(!showZh)}
+              className={cn(
+                'px-2 py-0.5 text-xs font-medium rounded-full transition-all',
+                showZh
+                  ? 'bg-orange-500 text-white shadow-sm'
+                  : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+              )}
+            >
+              中
+            </button>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Dialogue list */}
-          <div className="lg:col-span-1">
-            <div className="bg-white rounded-xl shadow-lg p-4">
-              <h2 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-                <BookOpen className="h-5 w-5 text-orange-500" />
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-4 h-[calc(100vh-180px)]">
+          {/* Left: Script list */}
+          <div className="lg:col-span-1 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col">
+            <div className="p-3 border-b bg-gray-50">
+              <h2 className="font-semibold text-gray-900 flex items-center gap-2">
+                <BookOpen className="h-4 w-4 text-orange-500" />
                 对话列表
               </h2>
-              <div className="space-y-2">
-                {scripts.map((script) => (
-                  <button
-                    key={script.id}
-                    onClick={() => setSelectedScript(script)}
-                    className={cn(
-                      'w-full text-left p-3 rounded-lg transition-colors',
-                      selectedScript?.id === script.id
-                        ? 'bg-orange-100 border-2 border-orange-300'
-                        : 'bg-gray-50 hover:bg-gray-100'
-                    )}
-                  >
-                    <div className="font-medium text-gray-900">{script.title_zh}</div>
-                    <div className="text-sm text-gray-500">{script.title_en}</div>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
-                      <span>{script.total_turns || 0} 轮对话</span>
-                      {script.estimated_duration_seconds && (
-                        <span>• {Math.ceil(script.estimated_duration_seconds / 60)} 分钟</span>
-                      )}
-                    </div>
-                  </button>
-                ))}
-                {scripts.length === 0 && (
-                  <div className="text-center text-gray-500 py-8">
-                    暂无对话内容
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-1">
+              {scripts.map((script) => (
+                <button
+                  key={script.id}
+                  onClick={() => setSelectedScript(script)}
+                  className={cn(
+                    'w-full text-left p-2 rounded-lg transition-colors text-sm',
+                    selectedScript?.id === script.id
+                      ? 'bg-orange-100 border border-orange-300'
+                      : 'hover:bg-gray-50'
+                  )}
+                >
+                  <div className="font-medium text-gray-900">{script.title_zh}</div>
+                  <div className="text-xs text-gray-500">{script.title_en}</div>
+                  <div className="text-xs text-gray-400 mt-1">
+                    {script.total_turns || 0} 轮 • {Math.ceil((script.estimated_duration_seconds || 60) / 60)} 分钟
                   </div>
-                )}
-              </div>
+                </button>
+              ))}
             </div>
           </div>
 
-          {/* Dialogue practice area */}
-          <div className="lg:col-span-2">
-            <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-              {/* Progress bar */}
-              {turns.length > 0 && (
-                <div className="bg-gray-100 px-6 py-3">
-                  <div className="flex items-center justify-between text-sm text-gray-600 mb-2">
-                    <span>进度</span>
-                    <span>
-                      {currentTurnIndex + 1} / {turns.length}
-                    </span>
+          {/* Right: Dialogue content */}
+          <div className="lg:col-span-3 bg-white rounded-xl shadow-lg overflow-hidden flex flex-col">
+            {selectedScript && turns.length > 0 ? (
+              <>
+                {/* Script info and roles */}
+                <div className="p-4 border-b bg-gray-50">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <h2 className="font-semibold text-gray-900">{selectedScript.title_zh}</h2>
+                      <p className="text-sm text-gray-500">{selectedScript.description_zh || selectedScript.description_en}</p>
+                    </div>
+                    <div className="flex items-center gap-4">
+                      {/* Roles with switch button - selected role always on right */}
+                      <div className="flex items-center gap-1">
+                        <Users className="h-4 w-4 text-gray-400 mr-1" />
+                        {/* Sort roles: non-selected first, selected (你) last */}
+                        {[...roles]
+                          .sort((a, _b) => (a.role === selectedRole ? 1 : -1))
+                          .map((r, idx, arr) => (
+                            <div key={r.role} className="flex items-center">
+                              <span
+                                className={cn(
+                                  'px-2 py-0.5 rounded-full text-xs font-medium',
+                                  r.role === selectedRole
+                                    ? 'bg-blue-100 text-blue-700'
+                                    : 'bg-orange-100 text-orange-700'
+                                )}
+                              >
+                                {r.name} {r.role === selectedRole && '(你)'}
+                              </span>
+                              {/* Switch button between roles */}
+                              {idx < arr.length - 1 && (
+                                <button
+                                  onClick={handleSwitchRole}
+                                  className="mx-1 p-1 rounded-full bg-gray-100 hover:bg-gray-200 transition-colors"
+                                  title="切换角色"
+                                >
+                                  <ArrowLeftRight className="h-3 w-3 text-gray-500" />
+                                </button>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                      {/* Progress */}
+                      <div className="text-sm text-gray-500">
+                        进度: {completedUserTurns.length}/{userTurns.length}
+                      </div>
+                      {/* Restart button */}
+                      <Button variant="outline" size="sm" onClick={handleRestart}>
+                        <RotateCcw className="h-3 w-3 mr-1" />
+                        重新开始
+                      </Button>
+                    </div>
                   </div>
-                  <div className="h-2 bg-gray-200 rounded-full overflow-hidden">
+                  {/* Progress bar */}
+                  <div className="mt-3 h-1.5 bg-gray-200 rounded-full overflow-hidden">
                     <div
                       className="h-full bg-gradient-to-r from-orange-500 to-amber-500 transition-all duration-300"
-                      style={{ width: `${((currentTurnIndex + 1) / turns.length) * 100}%` }}
+                      style={{ width: `${progress}%` }}
                     />
                   </div>
                 </div>
-              )}
 
-              {/* Current turn display */}
-              <div className="p-6">
-                {currentTurn ? (
-                  <div className="space-y-6">
-                    {/* Speaker info */}
-                    <div className="flex items-center gap-3">
+                {/* Dialogue transcript */}
+                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                  {turns.map((turn, index) => {
+                    const isUserRole = turn.speaker_role === selectedRole
+                    const recording = recordings.get(turn.id)
+                    const isActive = activeTurnIndex === index
+                    const bothOff = !showEn && !showZh
+
+                    return (
                       <div
+                        key={turn.id}
                         className={cn(
-                          'w-10 h-10 rounded-full flex items-center justify-center text-white font-bold',
-                          currentTurn.speaker_role === 'user'
-                            ? 'bg-blue-500'
-                            : 'bg-orange-500'
+                          'flex gap-3',
+                          isUserRole ? 'flex-row-reverse' : ''
                         )}
                       >
-                        {currentTurn.speaker_role === 'user' ? '你' : 'AI'}
-                      </div>
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {currentTurn.speaker_role === 'user' ? '你的回复' : '对方说'}
+                        {/* Avatar column with speaker buttons below */}
+                        <div className="flex flex-col items-center gap-1 flex-shrink-0">
+                          {/* Avatar */}
+                          <div
+                            className={cn(
+                              'w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold',
+                              isUserRole ? 'bg-blue-500' : 'bg-orange-500'
+                            )}
+                          >
+                            {isUserRole ? '你' : turn.speaker_name?.charAt(0) || 'AI'}
+                          </div>
+                          {/* Speaker buttons below avatar */}
+                          <div className="flex flex-col gap-0.5">
+                            {/* Original audio button (orange) */}
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                playAudio(`original-${turn.id}`, `/api/tts?text=${encodeURIComponent(turn.content_en)}`)
+                              }}
+                              className={cn(
+                                'p-1 rounded-full transition-colors',
+                                playingAudioId === `original-${turn.id}`
+                                  ? 'bg-orange-500 text-white'
+                                  : 'bg-orange-100 text-orange-500 hover:bg-orange-200'
+                              )}
+                              title="播放原声"
+                            >
+                              <Volume2 className="h-3 w-3" />
+                            </button>
+                            {/* User recording button (green) - only for user role with recording */}
+                            {isUserRole && recording && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation()
+                                  playAudio(`user-${turn.id}`, recording.audioBlob)
+                                }}
+                                className={cn(
+                                  'p-1 rounded-full transition-colors',
+                                  playingAudioId === `user-${turn.id}`
+                                    ? 'bg-green-500 text-white'
+                                    : 'bg-green-100 text-green-600 hover:bg-green-200'
+                                )}
+                                title="播放我的录音"
+                              >
+                                <Play className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
-                        <div className="text-sm text-gray-500">
-                          第 {currentTurn.turn_number} 轮
-                        </div>
-                      </div>
-                    </div>
 
-                    {/* Content */}
-                    <div className="bg-gray-50 rounded-xl p-6">
-                      <p className="text-xl text-gray-900 mb-4 leading-relaxed">
-                        {currentTurn.content_en}
-                      </p>
-                      {showTranslation && (
-                        <p className="text-gray-600">{currentTurn.content_zh}</p>
+                        {/* Content */}
+                        <div className={cn('flex-1 max-w-[75%]', isUserRole ? 'text-right' : '')}>
+                          {/* Speaker name */}
+                          <div className="text-xs text-gray-400 mb-1">
+                            {turn.speaker_name || (isUserRole ? '你的台词' : '对方')} · 第 {turn.turn_number} 句
+                          </div>
+
+                          {/* Message bubble - clickable for user turns */}
+                          <div
+                            onClick={() => isUserRole && !isRecording && setActiveTurnIndex(index)}
+                            className={cn(
+                              'inline-block rounded-2xl px-4 py-2 text-left',
+                              isUserRole
+                                ? 'bg-blue-500 text-white'
+                                : 'bg-gray-100 text-gray-900',
+                              isUserRole && !isRecording && 'cursor-pointer hover:opacity-90',
+                              isActive && 'ring-2 ring-orange-400',
+                              isUserRole && recording && 'border-2 border-green-400'
+                            )}
+                          >
+                            {(showEn || bothOff) && (
+                              <p className={cn('text-sm', bothOff && 'blur-sm select-none')}>
+                                {turn.content_en}
+                              </p>
+                            )}
+                            {showEn && showZh && (
+                              <div className={cn('my-1.5 border-t', isUserRole ? 'border-blue-400/30' : 'border-gray-200')} />
+                            )}
+                            {(showZh || bothOff) && (
+                              <p className={cn(
+                                'text-sm',
+                                isUserRole ? 'text-blue-100' : 'text-gray-600',
+                                bothOff && 'blur-sm select-none'
+                              )}>
+                                {turn.content_zh}
+                              </p>
+                            )}
+                            {/* Inline score badge for recorded turns */}
+                            {isUserRole && recording && recording.score !== undefined && (
+                              <div className={cn(
+                                'mt-1 text-xs font-medium',
+                                recording.score >= 80 ? 'text-green-200' : recording.score >= 60 ? 'text-amber-200' : 'text-red-200'
+                              )}>
+                                {recording.score}分
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+
+                {/* Bottom recording controls */}
+                <div className="border-t px-4 py-3 bg-gray-50">
+                  <div className="flex items-center gap-4">
+                    {/* Left: Sentence info - full text with wrapping */}
+                    <div className="flex-1 min-w-0">
+                      {activeTurnIndex !== null ? (
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-gray-700">第 {turns[activeTurnIndex].turn_number} 句</span>
+                            {/* Recording timer */}
+                            {isRecording && (
+                              <span className="text-sm font-mono text-red-500">
+                                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                              </span>
+                            )}
+                            {/* Re-record button */}
+                            {!isRecording && recordings.has(turns[activeTurnIndex].id) && (
+                              <button
+                                onClick={() => {
+                                  const turnId = turns[activeTurnIndex].id
+                                  setRecordings(prev => {
+                                    const next = new Map(prev)
+                                    next.delete(turnId)
+                                    return next
+                                  })
+                                }}
+                                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                                title="重新录音"
+                              >
+                                <RotateCcw className="h-3 w-3" />
+                                重录
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-sm text-gray-500 break-words">
+                            {turns[activeTurnIndex].content_en}
+                          </p>
+                        </div>
+                      ) : (
+                        <div className="text-sm text-gray-500">
+                          点击蓝色对话框选择要录制的台词
+                        </div>
                       )}
                     </div>
 
-                    {/* Hints for user turns */}
-                    {currentTurn.speaker_role === 'user' && currentTurn.notes && (
-                      <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                        <div className="text-sm font-medium text-blue-800 mb-1">提示</div>
-                        <div className="text-blue-700">{currentTurn.notes}</div>
-                      </div>
-                    )}
+                    {/* Right: Audio controls and recording button */}
+                    {activeTurnIndex !== null && (
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        {/* Play original audio */}
+                        <button
+                          onClick={() => playAudio(`original-${turns[activeTurnIndex].id}`, `/api/tts?text=${encodeURIComponent(turns[activeTurnIndex].content_en)}`)}
+                          className={cn(
+                            'p-2 rounded-full transition-colors',
+                            playingAudioId === `original-${turns[activeTurnIndex].id}`
+                              ? 'bg-orange-100 text-orange-600'
+                              : 'bg-gray-100 text-gray-500 hover:bg-gray-200'
+                          )}
+                          title="播放原声"
+                        >
+                          <Volume2 className="h-5 w-5" />
+                        </button>
 
-                    {/* Action buttons */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Button variant="outline" size="sm" onClick={playAudio}>
-                          <Volume2 className="h-4 w-4 mr-1" />
-                          播放
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowTranslation(!showTranslation)}
-                        >
-                          {showTranslation ? '隐藏翻译' : '显示翻译'}
-                        </Button>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={handlePrevTurn}
-                          disabled={currentTurnIndex === 0}
-                        >
-                          上一句
-                        </Button>
-                        <Button
-                          size="sm"
-                          onClick={handleNextTurn}
-                          disabled={currentTurnIndex >= turns.length - 1}
-                        >
-                          下一句
-                          <ChevronRight className="h-4 w-4 ml-1" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-12">
-                    <div className="text-6xl mb-4">📝</div>
-                    <h3 className="text-lg font-medium text-gray-900 mb-2">
-                      选择一个对话开始练习
-                    </h3>
-                    <p className="text-gray-500">
-                      从左侧列表选择对话，开始你的场景练习
-                    </p>
-                  </div>
-                )}
-              </div>
+                        {/* Play user recording if exists */}
+                        {recordings.has(turns[activeTurnIndex].id) && (
+                          <button
+                            onClick={() => {
+                              const rec = recordings.get(turns[activeTurnIndex].id)
+                              if (rec) playAudio(`user-${turns[activeTurnIndex].id}`, rec.audioBlob)
+                            }}
+                            className={cn(
+                              'p-2 rounded-full transition-colors',
+                              playingAudioId === `user-${turns[activeTurnIndex].id}`
+                                ? 'bg-green-500 text-white'
+                                : 'bg-green-100 text-green-600 hover:bg-green-200'
+                            )}
+                            title="播放我的录音"
+                          >
+                            <Play className="h-5 w-5" />
+                          </button>
+                        )}
 
-              {/* Bottom controls */}
-              {turns.length > 0 && (
-                <div className="border-t px-6 py-4 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <Button variant="outline" onClick={handleRestart}>
-                      <RotateCcw className="h-4 w-4 mr-2" />
-                      重新开始
-                    </Button>
-                    {currentTurnIndex >= turns.length - 1 && (
-                      <div className="flex items-center gap-2 text-green-600">
-                        <CheckCircle className="h-5 w-5" />
-                        <span className="font-medium">对话完成！</span>
+                        {/* Recording button with hint */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => isRecording ? stopRecording() : startRecording(activeTurnIndex)}
+                            className={cn(
+                              'w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-lg',
+                              isRecording
+                                ? 'bg-red-500 text-white animate-pulse scale-110'
+                                : 'bg-blue-500 text-white hover:bg-blue-600 hover:scale-105'
+                            )}
+                            title={isRecording ? '停止录音' : '开始录音'}
+                          >
+                            {isRecording ? (
+                              <MicOff className="h-5 w-5" />
+                            ) : (
+                              <Mic className="h-5 w-5" />
+                            )}
+                          </button>
+                          <span className="text-xs text-gray-400 w-16 text-center">
+                            {isRecording ? '点击停止' : '按空格录音'}
+                          </span>
+                        </div>
                       </div>
                     )}
                   </div>
                 </div>
-              )}
-            </div>
+              </>
+            ) : (
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="text-6xl mb-4">📝</div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">
+                    选择一个对话开始练习
+                  </h3>
+                  <p className="text-gray-500">
+                    从左侧列表选择对话，开始你的场景练习
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </main>
