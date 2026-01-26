@@ -36,8 +36,10 @@ pub fn router() -> Router {
         )
         // Reading subjects
         .push(
-            Router::with_path("reading-subjects")
+            Router::with_path("read").push(
+            Router::with_path("subjects")
                 .get(reading::list_read_subjects)
                 .push(Router::with_path("{id}/sentences").get(reading::get_read_sentences)),
+            )
         )
 }

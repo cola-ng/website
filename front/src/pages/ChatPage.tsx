@@ -160,6 +160,7 @@ export function ChatPage() {
           serverId: chat.id,
           title: chat.title,
           contextId: chat.context_id ?? undefined,
+          icon: chat.icon_emoji ?? undefined,
           lastMessage: '',
           timestamp: new Date(chat.created_at),
           messages: [],

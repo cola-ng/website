@@ -28,7 +28,7 @@ function AppRoutes() {
       <Route path="/review/session" element={<ReviewSessionPage />} />
       <Route path="/stages" element={<StagesPage />} />
       <Route path="/stages/:id" element={<StageDetailPage />} />
-      <Route path="/reading" element={<ReadingPage />} />
+      <Route path="/read" element={<ReadingPage />} />
       <Route path="/login" element={<HomePage />} />
       <Route path="/auth" element={<AuthorizePage />} />
       <Route path="/me" element={token ? <MePage /> : <Navigate to="/" replace />} />

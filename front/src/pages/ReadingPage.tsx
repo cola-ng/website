@@ -145,7 +145,7 @@ export function ReadingPage() {
               AI 智能评分，纠正发音，提升口语流利度
             </p>
             <Button asChild>
-              <a href="/login?redirectTo=/reading">登录开始练习</a>
+              <a href="/login?redirectTo=/read">登录开始练习</a>
             </Button>
           </div>
         </div>

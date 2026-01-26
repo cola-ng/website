@@ -3,8 +3,7 @@ use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
-use chrono::Utc;
-use chrono::format;
+use chrono::{Utc, format};
 use diesel::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
@@ -41,6 +40,19 @@ impl From<ChatTurn> for HistoryMessage {
     }
 }
 
+/// Chat with context icon for list response
+#[derive(Debug, Clone, Serialize, ToSchema)]
+pub struct ChatWithIcon {
+    pub id: i64,
+    pub user_id: i64,
+    pub title: String,
+    pub context_id: Option<i64>,
+    pub icon_emoji: Option<String>,
+    pub duration_ms: Option<i32>,
+    pub issues_count: Option<i32>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
 #[derive(Deserialize, ToSchema)]
 pub struct CreateChatRequest {
     title: String,
@@ -59,12 +71,61 @@ pub async fn list_chats(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let chats: Vec<Chat> = with_conn(move |conn| {
+    let chats: Vec<ChatWithIcon> = with_conn(move |conn| {
         learn_chats::table
+            .left_join(
+                asset_contexts::table.on(learn_chats::context_id.eq(asset_contexts::id.nullable())),
+            )
             .filter(learn_chats::user_id.eq(user_id))
             .order(learn_chats::created_at.desc())
             .limit(limit)
-            .load::<Chat>(conn)
+            .select((
+                learn_chats::id,
+                learn_chats::user_id,
+                learn_chats::title,
+                learn_chats::context_id,
+                asset_contexts::icon_emoji.nullable(),
+                learn_chats::duration_ms,
+                learn_chats::issues_count,
+                learn_chats::created_at,
+            ))
+            .load::<(
+                i64,
+                i64,
+                String,
+                Option<i64>,
+                Option<String>,
+                Option<i32>,
+                Option<i32>,
+                chrono::DateTime<chrono::Utc>,
+            )>(conn)
+            .map(|rows| {
+                rows.into_iter()
+                    .map(
+                        |(
+                            id,
+                            user_id,
+                            title,
+                            context_id,
+                            icon_emoji,
+                            duration_ms,
+                            issues_count,
+                            created_at,
+                        )| {
+                            ChatWithIcon {
+                                id,
+                                user_id,
+                                title,
+                                context_id,
+                                icon_emoji,
+                                duration_ms,
+                                issues_count,
+                                created_at,
+                            }
+                        },
+                    )
+                    .collect()
+            })
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list chats"))?;

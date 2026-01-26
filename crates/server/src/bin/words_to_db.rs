@@ -37,7 +37,10 @@ struct WordEntry {
 enum DictionaryRef {
     Id(i64),
     Name(String),
-    Full { name: String, priority_order: Option<i32> },
+    Full {
+        name: String,
+        priority_order: Option<i32>,
+    },
 }
 
 impl DictionaryRef {
@@ -481,11 +484,17 @@ fn process_json_file(
         let mut has_errors = false;
 
         if let Err(e) = insert_pronunciations(conn, word_id, &entry) {
-            eprintln!("  Warning: failed to insert pronunciations for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert pronunciations for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_definitions(conn, word_id, &entry) {
-            eprintln!("  Warning: failed to insert definitions for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert definitions for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_forms(conn, word_id, &entry) {
@@ -493,27 +502,45 @@ fn process_json_file(
             has_errors = true;
         }
         if let Err(e) = insert_sentences(conn, word_id, &entry) {
-            eprintln!("  Warning: failed to insert sentences for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert sentences for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_etymologies(conn, word_id, &entry) {
-            eprintln!("  Warning: failed to insert etymologies for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert etymologies for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_categories(conn, word_id, &entry, categories_cache) {
-            eprintln!("  Warning: failed to insert categories for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert categories for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_relations(conn, word_id, &entry) {
-            eprintln!("  Warning: failed to insert relations for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert relations for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_frequencies(conn, word_id, &entry) {
-            eprintln!("  Warning: failed to insert frequencies for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert frequencies for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
         if let Err(e) = insert_word_dictionaries(conn, word_id, &entry, dictionaries_cache) {
-            eprintln!("  Warning: failed to insert dictionaries for '{}': {}", word, e);
+            eprintln!(
+                "  Warning: failed to insert dictionaries for '{}': {}",
+                word, e
+            );
             has_errors = true;
         }
 

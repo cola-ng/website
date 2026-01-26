@@ -63,7 +63,7 @@ export function AuthSuccessPage() {
                 </div>
               </Link>
 
-              <Link to="/reading" className="block">
+              <Link to="/read" className="block">
                 <div className="flex flex-col items-center gap-2 rounded-lg border bg-white p-4 transition-all hover:border-orange-300 hover:shadow-md">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100">
                     <Mic className="h-5 w-5 text-red-600" />

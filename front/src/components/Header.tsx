@@ -24,7 +24,7 @@ const navItems: NavItem[] = [
   { label: '天天唠嗑', path: '/chat', icon: <MessageSquare className="h-4 w-4" /> },
   { label: '温故知新', path: '/review', icon: <RotateCcw className="h-4 w-4" /> },
   { label: '角色扮演', path: '/stages', icon: <Theater className="h-4 w-4" /> },
-  { label: '大声跟读', path: '/reading', icon: <Mic className="h-4 w-4" /> },
+  { label: '大声跟读', path: '/read', icon: <Mic className="h-4 w-4" /> },
   { label: '词典查询', path: '/dict', icon: <BookOpen className="h-4 w-4" /> },
 ]
 

@@ -846,6 +846,7 @@ export type LearnChat = {
   user_id: number
   title: string
   context_id: number | null
+  icon_emoji: string | null
   duration_ms: number | null
   issues_count: number | null
   created_at: string
