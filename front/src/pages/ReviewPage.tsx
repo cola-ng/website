@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { RotateCcw, CheckCircle, XCircle, TrendingUp, Clock, Target } from 'lucide-react'
 
@@ -8,6 +8,14 @@ import { Button } from '../components/ui/button'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
+import {
+  getLearnSummary,
+  listVocabulary,
+  listIssueWords,
+  type LearnSummary,
+  type UserVocabulary,
+  type IssueWord,
+} from '../lib/api'
 
 interface ReviewWord {
   id: string
@@ -19,73 +27,58 @@ interface ReviewWord {
   dueIn?: string
 }
 
-const dueWords: ReviewWord[] = [
-  {
-    id: '1',
-    word: 'accommodation',
-    meaning: '住所，住宿',
-    example: 'We need to find accommodation for the night.',
-    lastReview: '2 days ago',
-    mastery: 60,
-    dueIn: 'Now',
-  },
-  {
-    id: '2',
-    word: 'itinerary',
-    meaning: '行程表',
-    example: "What's our itinerary for tomorrow?",
-    lastReview: '3 days ago',
-    mastery: 45,
-    dueIn: 'Now',
-  },
-  {
-    id: '3',
-    word: 'reservation',
-    meaning: '预订',
-    example: 'I have a reservation under the name Smith.',
-    lastReview: '1 week ago',
-    mastery: 70,
-    dueIn: '2 hours',
-  },
-]
+function formatTimeAgo(dateStr: string | null): string {
+  if (!dateStr) return '从未'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
 
-const mistakes: ReviewWord[] = [
-  {
-    id: '4',
-    word: 'affect vs effect',
-    meaning: 'affect (v.) 影响 / effect (n.) 效果',
-    example: 'The weather affects my mood. The effect was immediate.',
-    lastReview: '1 day ago',
-    mastery: 30,
-  },
-  {
-    id: '5',
-    word: 'their vs there',
-    meaning: 'their (他们的) / there (那里)',
-    example: 'Their car is over there.',
-    lastReview: '2 days ago',
-    mastery: 40,
-  },
-]
+  if (diffDays === 0) return '今天'
+  if (diffDays === 1) return '1 天前'
+  if (diffDays < 7) return `${diffDays} 天前`
+  if (diffDays < 14) return '1 周前'
+  if (diffDays < 30) return `${Math.floor(diffDays / 7)} 周前`
+  return `${Math.floor(diffDays / 30)} 月前`
+}
 
-const masteredWords: ReviewWord[] = [
-  {
-    id: '6',
-    word: 'schedule',
-    meaning: '日程安排',
-    example: "Let me check my schedule.",
-    lastReview: '2 weeks ago',
-    mastery: 95,
-  },
-  {
-    id: '7',
-    word: 'appointment',
-    meaning: '预约',
-    example: 'I have an appointment at 3pm.',
-    lastReview: '1 week ago',
-    mastery: 90,
-  },
-]
+function formatDueIn(dateStr: string | null): string {
+  if (!dateStr) return '现在'
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = date.getTime() - now.getTime()
+
+  if (diffMs <= 0) return '现在'
+
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+  if (diffHours < 1) return '即将'
+  if (diffHours < 24) return `${diffHours} 小时后`
+  const diffDays = Math.floor(diffHours / 24)
+  return `${diffDays} 天后`
+}
+
+function vocabToReviewWord(vocab: UserVocabulary): ReviewWord {
+  return {
+    id: vocab.id.toString(),
+    word: vocab.word,
+    meaning: vocab.word_zh || '',
+    example: '',
+    lastReview: formatTimeAgo(vocab.last_practiced_at),
+    mastery: (vocab.mastery_level || 1) * 20,
+    dueIn: formatDueIn(vocab.next_review_at),
+  }
+}
+
+function issueToReviewWord(issue: IssueWord): ReviewWord {
+  return {
+    id: issue.id.toString(),
+    word: issue.word,
+    meaning: issue.description_zh || issue.description_en || '',
+    example: issue.context || '',
+    lastReview: formatTimeAgo(issue.last_picked_at),
+    mastery: issue.difficulty ? (5 - issue.difficulty) * 20 : 40,
+  }
+}
 
 function WordCard({ word, showDue = false }: { word: ReviewWord; showDue?: boolean }) {
   const [flipped, setFlipped] = useState(false)
@@ -134,24 +127,28 @@ function WordCard({ word, showDue = false }: { word: ReviewWord; showDue?: boole
   )
 }
 
-function StatsPanel() {
+interface StatsPanelProps {
+  summary: LearnSummary | null
+}
+
+function StatsPanel({ summary }: StatsPanelProps) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
       <div className="bg-orange-50 rounded-lg p-4 text-center">
-        <div className="text-2xl font-bold text-orange-600">23</div>
+        <div className="text-2xl font-bold text-orange-600">{summary?.pending_review_count ?? 0}</div>
         <div className="text-xs text-gray-500">待复习</div>
       </div>
       <div className="bg-green-50 rounded-lg p-4 text-center">
-        <div className="text-2xl font-bold text-green-600">156</div>
+        <div className="text-2xl font-bold text-green-600">{summary?.mastered_vocabulary_count ?? 0}</div>
         <div className="text-xs text-gray-500">已掌握</div>
       </div>
       <div className="bg-red-50 rounded-lg p-4 text-center">
-        <div className="text-2xl font-bold text-red-600">8</div>
+        <div className="text-2xl font-bold text-red-600">{summary?.issue_words_count ?? 0}</div>
         <div className="text-xs text-gray-500">易错点</div>
       </div>
       <div className="bg-blue-50 rounded-lg p-4 text-center">
-        <div className="text-2xl font-bold text-blue-600">85%</div>
-        <div className="text-xs text-gray-500">正确率</div>
+        <div className="text-2xl font-bold text-blue-600">{summary?.average_mastery ?? 0}%</div>
+        <div className="text-xs text-gray-500">平均掌握度</div>
       </div>
     </div>
   )
@@ -159,6 +156,46 @@ function StatsPanel() {
 
 export function ReviewPage() {
   const { token } = useAuth()
+  const [summary, setSummary] = useState<LearnSummary | null>(null)
+  const [dueWords, setDueWords] = useState<ReviewWord[]>([])
+  const [masteredWords, setMasteredWords] = useState<ReviewWord[]>([])
+  const [mistakes, setMistakes] = useState<ReviewWord[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!token) return
+
+    const fetchData = async () => {
+      setLoading(true)
+      try {
+        const [summaryData, vocabData, issueData] = await Promise.all([
+          getLearnSummary(token),
+          listVocabulary(token, false, 100),
+          listIssueWords(token, false, 50),
+        ])
+
+        setSummary(summaryData)
+
+        // Split vocabulary into due and mastered
+        const due = vocabData
+          .filter((v) => (v.mastery_level || 0) < 4)
+          .map(vocabToReviewWord)
+        const mastered = vocabData
+          .filter((v) => (v.mastery_level || 0) >= 4)
+          .map(vocabToReviewWord)
+
+        setDueWords(due)
+        setMasteredWords(mastered)
+        setMistakes(issueData.map(issueToReviewWord))
+      } catch (err) {
+        console.error('Failed to fetch review data:', err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchData()
+  }, [token])
 
   if (!token) {
     return (
@@ -202,9 +239,15 @@ export function ReviewPage() {
               </Link>
             </Button>
           </div>
-          <StatsPanel />
+          <StatsPanel summary={summary} />
         </div>
 
+        {loading ? (
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600 mx-auto mb-4"></div>
+            <p className="text-gray-500">加载中...</p>
+          </div>
+        ) : (
         <div className="bg-white rounded-xl shadow-lg overflow-hidden">
           <Tabs defaultValue="due">
             <div className="border-b px-6 py-3">
@@ -276,19 +319,19 @@ export function ReviewPage() {
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="text-sm text-gray-500">总学习词汇</div>
-                      <div className="text-2xl font-bold text-gray-900">187</div>
+                      <div className="text-2xl font-bold text-gray-900">{summary?.total_vocabulary_count ?? 0}</div>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="text-sm text-gray-500">学习天数</div>
-                      <div className="text-2xl font-bold text-gray-900">32</div>
+                      <div className="text-2xl font-bold text-gray-900">{summary?.learning_days ?? 0}</div>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="text-sm text-gray-500">复习次数</div>
-                      <div className="text-2xl font-bold text-gray-900">456</div>
+                      <div className="text-2xl font-bold text-gray-900">{summary?.total_review_times ?? 0}</div>
                     </div>
                     <div className="bg-gray-50 rounded-lg p-4">
                       <div className="text-sm text-gray-500">平均掌握度</div>
-                      <div className="text-2xl font-bold text-gray-900">78%</div>
+                      <div className="text-2xl font-bold text-gray-900">{summary?.average_mastery ?? 0}%</div>
                     </div>
                   </div>
                 </div>
@@ -296,21 +339,27 @@ export function ReviewPage() {
                 <div>
                   <h3 className="font-medium text-gray-900 mb-3">本周复习</h3>
                   <div className="flex items-end gap-2 h-32">
-                    {['一', '二', '三', '四', '五', '六', '日'].map((day, i) => (
-                      <div key={day} className="flex-1 flex flex-col items-center gap-1">
-                        <div
-                          className="w-full bg-orange-400 rounded-t"
-                          style={{ height: `${[60, 80, 45, 90, 70, 30, 50][i]}%` }}
-                        />
-                        <span className="text-xs text-gray-500">{day}</span>
-                      </div>
-                    ))}
+                    {['一', '二', '三', '四', '五', '六', '日'].map((day, i) => {
+                      const minutes = summary?.weekly_minutes?.[i]?.minutes ?? 0
+                      const maxMinutes = Math.max(...(summary?.weekly_minutes?.map(w => w.minutes) ?? [1]), 1)
+                      const height = maxMinutes > 0 ? (minutes / maxMinutes) * 100 : 0
+                      return (
+                        <div key={day} className="flex-1 flex flex-col items-center gap-1">
+                          <div
+                            className="w-full bg-orange-400 rounded-t"
+                            style={{ height: `${Math.max(height, 5)}%` }}
+                          />
+                          <span className="text-xs text-gray-500">{day}</span>
+                        </div>
+                      )
+                    })}
                   </div>
                 </div>
               </div>
             </TabsContent>
           </Tabs>
         </div>
+        )}
       </main>
       <Footer />
     </div>

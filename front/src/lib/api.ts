@@ -474,11 +474,67 @@ export type LearnSummary = {
   weekly_chat_minutes: number
   mastered_vocabulary_count: number
   pending_review_count: number
+  issue_words_count: number
+  total_vocabulary_count: number
+  learning_days: number
+  total_review_times: number
+  average_mastery: number
   weekly_minutes: WeeklyMinutes[]
 }
 
 export function getLearnSummary(token: string): Promise<LearnSummary> {
   return requestJson<LearnSummary>('/api/learn/summary', {
+    method: 'GET',
+    token,
+  })
+}
+
+// User Vocabulary
+export type UserVocabulary = {
+  id: number
+  user_id: number
+  word: string
+  word_zh: string | null
+  mastery_level: number | null
+  first_seen_at: string
+  last_practiced_at: string | null
+  practice_count: number | null
+  correct_count: number | null
+  next_review_at: string | null
+}
+
+export function listVocabulary(token: string, dueOnly = false, limit = 50): Promise<UserVocabulary[]> {
+  const params = new URLSearchParams()
+  if (dueOnly) params.set('due_only', 'true')
+  params.set('limit', limit.toString())
+  return requestJson<UserVocabulary[]>(`/api/learn/vocabulary?${params.toString()}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+// Issue Words (common mistakes)
+export type IssueWord = {
+  id: number
+  user_id: number
+  word: string
+  issue_type: string
+  description_en: string | null
+  description_zh: string | null
+  last_picked_at: string | null
+  pick_count: number
+  next_review_at: string | null
+  review_interval_days: number | null
+  difficulty: number | null
+  context: string | null
+  created_at: string
+}
+
+export function listIssueWords(token: string, dueOnly = false, limit = 50): Promise<IssueWord[]> {
+  const params = new URLSearchParams()
+  if (dueOnly) params.set('due_only', 'true')
+  params.set('limit', limit.toString())
+  return requestJson<IssueWord[]>(`/api/learn/issue-words?${params.toString()}`, {
     method: 'GET',
     token,
   })

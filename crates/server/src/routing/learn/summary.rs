@@ -28,6 +28,16 @@ pub struct LearnSummary {
     pub mastered_vocabulary_count: i64,
     /// Number of words due for review
     pub pending_review_count: i64,
+    /// Number of issue words (common mistakes)
+    pub issue_words_count: i64,
+    /// Total vocabulary count
+    pub total_vocabulary_count: i64,
+    /// Number of days with learning activity
+    pub learning_days: i64,
+    /// Total review times (sum of practice_count)
+    pub total_review_times: i64,
+    /// Average mastery level (percentage 0-100)
+    pub average_mastery: i32,
     /// Minutes studied per day this week (Monday to Sunday)
     pub weekly_minutes: Vec<WeeklyMinutes>,
 }
@@ -80,35 +90,69 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .count()
             .get_result(conn)?;
 
-        // 3. Count pending review words
+        // 3. Count pending review words (mastery_level < 4 or due for review)
         let pending_review_count: i64 = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .filter(
-                learn_vocabularies::next_review_at
-                    .is_null()
-                    .or(learn_vocabularies::next_review_at.le(now)),
+                learn_vocabularies::mastery_level.lt(4).or(
+                    learn_vocabularies::next_review_at
+                        .is_null()
+                        .or(learn_vocabularies::next_review_at.le(now)),
+                ),
             )
             .count()
             .get_result(conn)?;
 
-        // 4. Check if user has any learning data
+        // 4. Count issue words
+        let issue_words_count: i64 = learn_issue_words::table
+            .filter(learn_issue_words::user_id.eq(user_id))
+            .count()
+            .get_result(conn)?;
+
+        // 5. Total vocabulary count
+        let total_vocabulary_count: i64 = learn_vocabularies::table
+            .filter(learn_vocabularies::user_id.eq(user_id))
+            .count()
+            .get_result(conn)?;
+
+        // 6. Learning days (days with stats)
+        let learning_days: i64 = learn_daily_stats::table
+            .filter(learn_daily_stats::user_id.eq(user_id))
+            .count()
+            .get_result(conn)?;
+
+        // 7. Total review times (sum of practice_count from vocabularies)
+        let total_review_times: i64 = learn_vocabularies::table
+            .filter(learn_vocabularies::user_id.eq(user_id))
+            .select(diesel::dsl::sum(learn_vocabularies::practice_count))
+            .first::<Option<i64>>(conn)?
+            .unwrap_or(0);
+
+        // 8. Average mastery level (as percentage)
+        let avg_mastery: Option<f64> = learn_vocabularies::table
+            .filter(learn_vocabularies::user_id.eq(user_id))
+            .select(diesel::dsl::avg(learn_vocabularies::mastery_level))
+            .first::<Option<f64>>(conn)?;
+        let average_mastery = avg_mastery.map(|v| (v / 5.0 * 100.0) as i32).unwrap_or(0);
+
+        // 9. Check if user has any learning data
         let has_chats: i64 = learn_chats::table
             .filter(learn_chats::user_id.eq(user_id))
             .count()
             .get_result(conn)?;
 
-        let has_vocab: i64 = learn_vocabularies::table
-            .filter(learn_vocabularies::user_id.eq(user_id))
-            .count()
-            .get_result(conn)?;
-
-        let has_data = has_chats > 0 || has_vocab > 0 || weekly_chat_minutes > 0;
+        let has_data = has_chats > 0 || total_vocabulary_count > 0 || weekly_chat_minutes > 0;
 
         Ok::<_, diesel::result::Error>(LearnSummary {
             has_data,
             weekly_chat_minutes,
             mastered_vocabulary_count,
             pending_review_count,
+            issue_words_count,
+            total_vocabulary_count,
+            learning_days,
+            total_review_times,
+            average_mastery,
             weekly_minutes,
         })
     })
