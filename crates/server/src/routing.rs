@@ -5,6 +5,7 @@ use salvo::http::Method;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
+use salvo::serve_static::StaticDir;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
@@ -18,35 +19,44 @@ mod dict;
 mod learn;
 
 pub fn router() -> Router {
-    Router::new().push(
-        Router::with_path("api")
-            .hoop(
-                Cors::new()
-                    .allow_origin(cors::Any)
-                    .allow_methods([
-                        Method::GET,
-                        Method::POST,
-                        Method::PUT,
-                        Method::DELETE,
-                        Method::OPTIONS,
-                    ])
-                    .allow_headers(AllowHeaders::list([
-                        salvo::http::header::ACCEPT,
-                        salvo::http::header::CONTENT_TYPE,
-                        salvo::http::header::AUTHORIZATION,
-                        salvo::http::header::RANGE,
-                    ]))
-                    .max_age(Duration::from_secs(86400))
-                    .into_handler(),
-            )
-            .get(health)
-            .push(account::router())
-            .push(achievement::router())
-            .push(auth::router())
-            .push(asset::router())
-            .push(dict::router())
-            .push(learn::router()),
-    )
+    Router::new()
+        .push(
+            Router::with_path("api")
+                .hoop(
+                    Cors::new()
+                        .allow_origin(cors::Any)
+                        .allow_methods([
+                            Method::GET,
+                            Method::POST,
+                            Method::PUT,
+                            Method::DELETE,
+                            Method::OPTIONS,
+                        ])
+                        .allow_headers(AllowHeaders::list([
+                            salvo::http::header::ACCEPT,
+                            salvo::http::header::CONTENT_TYPE,
+                            salvo::http::header::AUTHORIZATION,
+                            salvo::http::header::RANGE,
+                        ]))
+                        .max_age(Duration::from_secs(86400))
+                        .into_handler(),
+                )
+                .get(health)
+                .push(account::router())
+                .push(achievement::router())
+                .push(auth::router())
+                .push(asset::router())
+                .push(dict::router())
+                .push(learn::router()),
+        )
+        .push(
+            Router::with_path("{**}").get(
+                StaticDir::new("static")
+                    .include_dot_files(false)
+                    .defaults("index.html")
+                    .auto_list(true),
+            ),
+        )
 }
 
 /// Health check endpoint

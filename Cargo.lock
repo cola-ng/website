@@ -835,6 +835,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ececcb659e7ba858fb4f10388c250a7252eb0a27373f1a72b8748afdd248e587"
 dependencies = [
  "powerfmt",
+ "serde_core",
 ]
 
 [[package]]
@@ -2347,6 +2348,7 @@ dependencies = [
 [[package]]
 name = "outfox-doubao"
 version = "0.3.0"
+source = "git+https://github.com/outfox-ai/outfox.git?branch=next#11bb0647aeedda5d2f493ca7d12de877278399ff"
 dependencies = [
  "base64",
  "bytes",
@@ -2369,6 +2371,7 @@ dependencies = [
 [[package]]
 name = "outfox-zhipu"
 version = "0.3.0"
+source = "git+https://github.com/outfox-ai/outfox.git?branch=next#11bb0647aeedda5d2f493ca7d12de877278399ff"
 dependencies = [
  "base64",
  "bytes",
@@ -2431,6 +2434,12 @@ name = "pastey"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "35fb2e5f958ec131621fdd531e9fc186ed768cbe395337403ae56c17a74c68ec"
+
+[[package]]
+name = "path-slash"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1e91099d4268b0e11973f036e885d652fb0b21fedcf69738c627f94db6a44f42"
 
 [[package]]
 name = "pear"
@@ -3251,6 +3260,7 @@ dependencies = [
  "salvo-cors",
  "salvo-oapi",
  "salvo-proxy",
+ "salvo-serve-static",
  "salvo_core",
  "salvo_extra",
 ]
@@ -3406,6 +3416,26 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.114",
+]
+
+[[package]]
+name = "salvo-serve-static"
+version = "0.88.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6eed828ef9e7a17026ddd1960ac841aeee8cb767c4e81ec9c0212f72ab2c0c76"
+dependencies = [
+ "hex",
+ "mime",
+ "mime-infer",
+ "path-slash",
+ "percent-encoding",
+ "rust-embed",
+ "salvo_core",
+ "serde",
+ "serde_json",
+ "time",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
