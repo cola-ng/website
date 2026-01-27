@@ -18,6 +18,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
+import { ensureAudioContextRunning, stopAudio as globalStopAudio, queueAudio, onPlayingStateChange } from '../lib/audio'
 
 // Stage matches backend asset_stages table
 interface Stage {
@@ -99,6 +100,16 @@ export function StageDetailPage() {
   const [playingAudioId, setPlayingAudioId] = useState<string | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
 
+  // Practice session state
+  const [isStarted, setIsStarted] = useState(false)
+
+  // Subscribe to global audio playing state
+  useEffect(() => {
+    return onPlayingStateChange((id) => {
+      setPlayingAudioId(id)
+    })
+  }, [])
+
   // Display settings (persisted to localStorage)
   const [showEn, setShowEn] = useState(() => {
     const saved = localStorage.getItem('stage_showEn')
@@ -164,6 +175,7 @@ export function StageDetailPage() {
         const data: ScriptTurn[] = await response.json()
         setTurns(data)
         setRecordings(new Map())
+        setIsStarted(false) // Reset start state when script changes
         // Auto-select first role as the user's role
         const uniqueRoles = [...new Set(data.map(t => t.speaker_role))]
         const defaultRole = uniqueRoles.find(r => r === 'user') || uniqueRoles[0] || null
@@ -189,7 +201,7 @@ export function StageDetailPage() {
     return acc
   }, [] as { role: string; name: string }[])
 
-  // Play audio
+  // Play audio (for manual playback)
   const playAudio = useCallback(async (audioId: string, audioSource: string | Blob) => {
     // Stop any currently playing audio
     if (audioRef.current) {
@@ -227,6 +239,29 @@ export function StageDetailPage() {
       setPlayingAudioId(null)
     }
   }, [playingAudioId])
+
+  // Handle start practice - activates AudioContext and plays first AI turn if applicable
+  const handleStart = useCallback(async () => {
+    // Activate AudioContext on user interaction
+    await ensureAudioContextRunning()
+    setIsStarted(true)
+
+    // Check if first turn is AI (not user's role)
+    if (turns.length > 0 && turns[0].speaker_role !== selectedRole) {
+      const firstTurn = turns[0]
+      // Fetch and play first AI turn's audio
+      try {
+        const audioUrl = `/api/tts?text=${encodeURIComponent(firstTurn.content_en)}`
+        const response = await fetch(audioUrl)
+        if (response.ok) {
+          const arrayBuffer = await response.arrayBuffer()
+          queueAudio(arrayBuffer, `original-${firstTurn.id}`)
+        }
+      } catch (err) {
+        console.error('Failed to play first AI turn audio:', err)
+      }
+    }
+  }, [turns, selectedRole])
 
   // Start recording
   const startRecording = useCallback(async (turnIndex: number) => {
@@ -322,6 +357,9 @@ export function StageDetailPage() {
   const handleRestart = () => {
     setRecordings(new Map())
     setActiveTurnIndex(null)
+    setIsStarted(false)
+    // Stop any playing audio using global audio manager
+    globalStopAudio()
   }
 
   // Calculate progress
@@ -520,7 +558,7 @@ export function StageDetailPage() {
                 </div>
 
                 {/* Dialogue transcript */}
-                <div className="flex-1 overflow-y-auto p-4 space-y-3">
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 relative">
                   {turns.map((turn, index) => {
                     const isUserRole = turn.speaker_role === selectedRole
                     const recording = recordings.get(turn.id)
@@ -647,50 +685,71 @@ export function StageDetailPage() {
                   })}
                 </div>
 
-                {/* Bottom recording controls */}
+                {/* Bottom controls - Start button or Recording controls */}
                 <div className="border-t px-4 py-3 bg-gray-50">
-                  <div className="flex items-center gap-4">
-                    {/* Left: Sentence info - full text with wrapping */}
-                    <div className="flex-1 min-w-0">
-                      {activeTurnIndex !== null ? (
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-700">第 {turns[activeTurnIndex].turn_number} 句</span>
-                            {/* Recording timer */}
-                            {isRecording && (
-                              <span className="text-sm font-mono text-red-500">
-                                {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
-                              </span>
-                            )}
-                            {/* Re-record button */}
-                            {!isRecording && recordings.has(turns[activeTurnIndex].id) && (
-                              <button
-                                onClick={() => {
-                                  const turnId = turns[activeTurnIndex].id
-                                  setRecordings(prev => {
-                                    const next = new Map(prev)
-                                    next.delete(turnId)
-                                    return next
-                                  })
-                                }}
-                                className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
-                                title="重新录音"
-                              >
-                                <RotateCcw className="h-3 w-3" />
-                                重录
-                              </button>
-                            )}
-                          </div>
-                          <p className="text-sm text-gray-500 break-words">
-                            {turns[activeTurnIndex].content_en}
-                          </p>
-                        </div>
-                      ) : (
-                        <div className="text-sm text-gray-500">
-                          点击蓝色对话框选择要录制的台词
-                        </div>
-                      )}
+                  {!isStarted ? (
+                    /* Start practice button */
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <p className="text-sm text-gray-600">
+                          👆 先熟悉上方台词，准备好后点击开始
+                          {turns.length > 0 && turns[0].speaker_role !== selectedRole && (
+                            <span className="text-orange-600 ml-1">（AI将先开口说第一句）</span>
+                          )}
+                        </p>
+                      </div>
+                      <Button
+                        onClick={handleStart}
+                        className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white px-6"
+                      >
+                        <Play className="h-4 w-4 mr-2" />
+                        开始练习
+                      </Button>
                     </div>
+                  ) : (
+                    /* Recording controls - shown after practice starts */
+                    <div className="flex items-center gap-4">
+                      {/* Left: Sentence info - full text with wrapping */}
+                      <div className="flex-1 min-w-0">
+                        {activeTurnIndex !== null ? (
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium text-gray-700">第 {turns[activeTurnIndex].turn_number} 句</span>
+                              {/* Recording timer */}
+                              {isRecording && (
+                                <span className="text-sm font-mono text-red-500">
+                                  {Math.floor(recordingDuration / 60)}:{(recordingDuration % 60).toString().padStart(2, '0')}
+                                </span>
+                              )}
+                              {/* Re-record button */}
+                              {!isRecording && recordings.has(turns[activeTurnIndex].id) && (
+                                <button
+                                  onClick={() => {
+                                    const turnId = turns[activeTurnIndex].id
+                                    setRecordings(prev => {
+                                      const next = new Map(prev)
+                                      next.delete(turnId)
+                                      return next
+                                    })
+                                  }}
+                                  className="text-xs text-gray-500 hover:text-gray-700 flex items-center gap-1"
+                                  title="重新录音"
+                                >
+                                  <RotateCcw className="h-3 w-3" />
+                                  重录
+                                </button>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500 break-words">
+                              {turns[activeTurnIndex].content_en}
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="text-sm text-gray-500">
+                            点击蓝色对话框选择要录制的台词
+                          </div>
+                        )}
+                      </div>
 
                     {/* Right: Audio controls and recording button */}
                     {activeTurnIndex !== null && (
@@ -753,6 +812,7 @@ export function StageDetailPage() {
                       </div>
                     )}
                   </div>
+                  )}
                 </div>
               </>
             ) : (

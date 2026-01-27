@@ -7,6 +7,7 @@ import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
 import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, toggleWordInVocabulary, listVocabulary, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
+import { ensureAudioContextRunning, stopAudio as globalStopAudio, queueAudio, queueAudioFromBase64, onPlayingStateChange } from '../lib/audio'
 
 // Component to render English text with clickable words
 interface ClickableTextProps {
@@ -134,11 +135,12 @@ export function ChatPage() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
-  // Web Audio API refs for auto-play support
-  const audioContextRef = useRef<AudioContext | null>(null)
-  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null)
-  const audioQueueRef = useRef<{ data: ArrayBuffer; messageId: string }[]>([])
-  const isPlayingFromQueueRef = useRef(false)
+  // Subscribe to global audio playing state
+  useEffect(() => {
+    return onPlayingStateChange((id) => {
+      setIsPlayingAudio(id)
+    })
+  }, [])
 
   // Context selection dialog state
   const [showContextDialog, setShowContextDialog] = useState(false)
@@ -385,119 +387,19 @@ export function ChatPage() {
     }
   }, [input])
 
-  // Stop audio playback
+  // Stop audio playback (uses global audio manager)
   const stopAudio = useCallback(() => {
     if (audioElementRef.current) {
       audioElementRef.current.pause()
       audioElementRef.current = null
     }
-    // Stop Web Audio API source
-    if (audioSourceRef.current) {
-      try {
-        audioSourceRef.current.stop()
-      } catch {
-        // Already stopped
-      }
-      audioSourceRef.current = null
-    }
-    // Clear audio queue
-    audioQueueRef.current = []
-    isPlayingFromQueueRef.current = false
-    setIsPlayingAudio(null)
+    globalStopAudio()
   }, [])
 
-  // Initialize or get AudioContext (lazy initialization)
-  const getAudioContext = useCallback(() => {
-    if (!audioContextRef.current) {
-      audioContextRef.current = new AudioContext()
-    }
-    return audioContextRef.current
+  // Helper function to play audio from base64 using global audio manager
+  const playAudioFromBase64 = useCallback((base64: string, messageId: string) => {
+    queueAudioFromBase64(base64, messageId)
   }, [])
-
-  // Ensure AudioContext is running (call on user interaction)
-  const ensureAudioContextRunning = useCallback(async () => {
-    const ctx = getAudioContext()
-    if (ctx.state === 'suspended') {
-      await ctx.resume()
-    }
-    return ctx
-  }, [getAudioContext])
-
-  // Process next audio in queue (defined as regular function to avoid circular deps)
-  const processAudioQueue = useCallback(async () => {
-    if (isPlayingFromQueueRef.current || audioQueueRef.current.length === 0) {
-      return
-    }
-
-    isPlayingFromQueueRef.current = true
-    const item = audioQueueRef.current.shift()
-    if (!item) {
-      isPlayingFromQueueRef.current = false
-      return
-    }
-
-    try {
-      const ctx = await ensureAudioContextRunning()
-      const audioBuffer = await ctx.decodeAudioData(item.data.slice(0))
-
-      // Stop previous source if playing
-      if (audioSourceRef.current) {
-        try {
-          audioSourceRef.current.stop()
-        } catch {
-          // Already stopped
-        }
-      }
-
-      // Create and play source
-      const source = ctx.createBufferSource()
-      source.buffer = audioBuffer
-      source.connect(ctx.destination)
-      audioSourceRef.current = source
-      setIsPlayingAudio(item.messageId)
-
-      source.onended = () => {
-        setIsPlayingAudio(null)
-        audioSourceRef.current = null
-        isPlayingFromQueueRef.current = false
-        // Process next item in queue (use setTimeout to avoid stack issues)
-        setTimeout(() => processAudioQueue(), 0)
-      }
-
-      source.start(0)
-    } catch (err) {
-      console.error('Failed to play audio from queue:', err)
-      setIsPlayingAudio(null)
-      isPlayingFromQueueRef.current = false
-      // Try next item
-      setTimeout(() => processAudioQueue(), 0)
-    }
-  }, [ensureAudioContextRunning])
-
-  // Queue audio for playback
-  const queueAudio = useCallback((arrayBuffer: ArrayBuffer, messageId: string) => {
-    audioQueueRef.current.push({ data: arrayBuffer, messageId })
-    processAudioQueue()
-  }, [processAudioQueue])
-
-  // Helper function to play audio from base64 using Web Audio API
-  const playAudioFromBase64 = useCallback(async (base64: string, messageId: string) => {
-    try {
-      // Convert base64 to ArrayBuffer
-      const binaryString = atob(base64)
-      const bytes = new Uint8Array(binaryString.length)
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i)
-      }
-      const arrayBuffer = bytes.buffer
-
-      // Queue audio for playback
-      queueAudio(arrayBuffer, messageId)
-    } catch (err) {
-      console.error('Failed to play audio from base64:', err)
-      setIsPlayingAudio(null)
-    }
-  }, [queueAudio])
 
   const handleSend = async () => {
     if (!input.trim() || !activeChat || !token || isTextProcessing) return
@@ -931,6 +833,9 @@ export function ChatPage() {
 
   // Handle free chat (随便聊)
   const handleNewFreeChat = async () => {
+    // Activate AudioContext on user interaction to enable auto-play of AI response
+    ensureAudioContextRunning()
+
     let serverId: number | undefined
 
     if (token) {
@@ -971,6 +876,9 @@ export function ChatPage() {
   // Handle context-based chat (选场景)
   const handleNewContextChat = async (context: Context) => {
     setShowContextDialog(false)
+
+    // Activate AudioContext on user interaction to enable auto-play of AI response
+    ensureAudioContextRunning()
 
     let serverId: number | undefined
 
