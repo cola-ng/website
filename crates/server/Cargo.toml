@@ -17,6 +17,10 @@ path = "src/bin/words.rs"
 name = "words_to_db"
 path = "src/bin/words_to_db.rs"
 
+[[bin]]
+name = "tts_words"
+path = "src/bin/tts_words.rs"
+
 [dependencies]
 argon2 = { workspace = true }
 async-trait = { workspace = true }
