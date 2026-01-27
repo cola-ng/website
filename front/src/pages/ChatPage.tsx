@@ -134,6 +134,12 @@ export function ChatPage() {
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const audioElementRef = useRef<HTMLAudioElement | null>(null)
 
+  // Web Audio API refs for auto-play support
+  const audioContextRef = useRef<AudioContext | null>(null)
+  const audioSourceRef = useRef<AudioBufferSourceNode | null>(null)
+  const audioQueueRef = useRef<{ data: ArrayBuffer; messageId: string }[]>([])
+  const isPlayingFromQueueRef = useRef(false)
+
   // Context selection dialog state
   const [showContextDialog, setShowContextDialog] = useState(false)
   const [contexts, setContexts] = useState<Context[]>([])
@@ -379,40 +385,125 @@ export function ChatPage() {
     }
   }, [input])
 
-  // Helper function to play audio from base64
-  const playAudioFromBase64 = useCallback((base64: string, messageId: string) => {
-    if (audioElementRef.current) {
-      audioElementRef.current.pause()
-    }
-
-    const audio = new Audio(`data:audio/wav;base64,${base64}`)
-    audioElementRef.current = audio
-    setIsPlayingAudio(messageId)
-
-    audio.onended = () => {
-      setIsPlayingAudio(null)
-    }
-    audio.onerror = () => {
-      setIsPlayingAudio(null)
-      console.error('Audio playback failed')
-    }
-    audio.play().catch(err => {
-      console.error('Failed to play audio:', err)
-      setIsPlayingAudio(null)
-    })
-  }, [])
-
   // Stop audio playback
   const stopAudio = useCallback(() => {
     if (audioElementRef.current) {
       audioElementRef.current.pause()
       audioElementRef.current = null
     }
+    // Stop Web Audio API source
+    if (audioSourceRef.current) {
+      try {
+        audioSourceRef.current.stop()
+      } catch {
+        // Already stopped
+      }
+      audioSourceRef.current = null
+    }
+    // Clear audio queue
+    audioQueueRef.current = []
+    isPlayingFromQueueRef.current = false
     setIsPlayingAudio(null)
   }, [])
 
+  // Initialize or get AudioContext (lazy initialization)
+  const getAudioContext = useCallback(() => {
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext()
+    }
+    return audioContextRef.current
+  }, [])
+
+  // Ensure AudioContext is running (call on user interaction)
+  const ensureAudioContextRunning = useCallback(async () => {
+    const ctx = getAudioContext()
+    if (ctx.state === 'suspended') {
+      await ctx.resume()
+    }
+    return ctx
+  }, [getAudioContext])
+
+  // Process next audio in queue (defined as regular function to avoid circular deps)
+  const processAudioQueue = useCallback(async () => {
+    if (isPlayingFromQueueRef.current || audioQueueRef.current.length === 0) {
+      return
+    }
+
+    isPlayingFromQueueRef.current = true
+    const item = audioQueueRef.current.shift()
+    if (!item) {
+      isPlayingFromQueueRef.current = false
+      return
+    }
+
+    try {
+      const ctx = await ensureAudioContextRunning()
+      const audioBuffer = await ctx.decodeAudioData(item.data.slice(0))
+
+      // Stop previous source if playing
+      if (audioSourceRef.current) {
+        try {
+          audioSourceRef.current.stop()
+        } catch {
+          // Already stopped
+        }
+      }
+
+      // Create and play source
+      const source = ctx.createBufferSource()
+      source.buffer = audioBuffer
+      source.connect(ctx.destination)
+      audioSourceRef.current = source
+      setIsPlayingAudio(item.messageId)
+
+      source.onended = () => {
+        setIsPlayingAudio(null)
+        audioSourceRef.current = null
+        isPlayingFromQueueRef.current = false
+        // Process next item in queue (use setTimeout to avoid stack issues)
+        setTimeout(() => processAudioQueue(), 0)
+      }
+
+      source.start(0)
+    } catch (err) {
+      console.error('Failed to play audio from queue:', err)
+      setIsPlayingAudio(null)
+      isPlayingFromQueueRef.current = false
+      // Try next item
+      setTimeout(() => processAudioQueue(), 0)
+    }
+  }, [ensureAudioContextRunning])
+
+  // Queue audio for playback
+  const queueAudio = useCallback((arrayBuffer: ArrayBuffer, messageId: string) => {
+    audioQueueRef.current.push({ data: arrayBuffer, messageId })
+    processAudioQueue()
+  }, [processAudioQueue])
+
+  // Helper function to play audio from base64 using Web Audio API
+  const playAudioFromBase64 = useCallback(async (base64: string, messageId: string) => {
+    try {
+      // Convert base64 to ArrayBuffer
+      const binaryString = atob(base64)
+      const bytes = new Uint8Array(binaryString.length)
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i)
+      }
+      const arrayBuffer = bytes.buffer
+
+      // Queue audio for playback
+      queueAudio(arrayBuffer, messageId)
+    } catch (err) {
+      console.error('Failed to play audio from base64:', err)
+      setIsPlayingAudio(null)
+    }
+  }, [queueAudio])
+
   const handleSend = async () => {
     if (!input.trim() || !activeChat || !token || isTextProcessing) return
+
+    // Activate AudioContext on user interaction to enable auto-play of AI response
+    ensureAudioContextRunning()
 
     const messageText = input.trim()
     setInput('')
@@ -498,9 +589,19 @@ export function ChatPage() {
       }))
 
       // Auto-play AI response audio if available
-      if (aiMessage.audioPath) {
-        // Small delay to ensure state is updated
-        setTimeout(() => playAudio(aiMessage.id), 100)
+      if (aiMessage.audioPath && token) {
+        // Directly fetch and play audio instead of relying on state lookup
+        try {
+          const audioResponse = await fetch(`/api/${aiMessage.audioPath}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          })
+          if (audioResponse.ok) {
+            const arrayBuffer = await audioResponse.arrayBuffer()
+            queueAudio(arrayBuffer, aiMessage.id)
+          }
+        } catch (err) {
+          console.error('Failed to auto-play AI audio:', err)
+        }
       }
     } catch (err) {
       console.error('Chat error:', err)
@@ -601,6 +702,9 @@ export function ChatPage() {
   // Start recording
   const startRecording = async () => {
     if (!token || !activeChat) return
+
+    // Activate AudioContext on user interaction to enable auto-play of AI response
+    ensureAudioContextRunning()
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -706,8 +810,19 @@ export function ChatPage() {
           }))
 
           // Auto-play AI response audio if available
-          if (aiMessage.audioPath) {
-            playAudio(aiMessage.id)
+          if (aiMessage.audioPath && token) {
+            // Directly fetch and play audio instead of relying on state lookup
+            try {
+              const audioResponse = await fetch(`/api/${aiMessage.audioPath}`, {
+                headers: { Authorization: `Bearer ${token}` },
+              })
+              if (audioResponse.ok) {
+                const arrayBuffer = await audioResponse.arrayBuffer()
+                queueAudio(arrayBuffer, aiMessage.id)
+              }
+            } catch (audioErr) {
+              console.error('Failed to auto-play AI audio:', audioErr)
+            }
           }
         } catch (err) {
           console.error('Voice chat error:', err)
@@ -1198,7 +1313,7 @@ export function ChatPage() {
     if (message?.audioBase64) {
       playAudioFromBase64(message.audioBase64, messageId)
     } else if (message?.audioPath && token) {
-      // Fetch audio from server endpoint
+      // Fetch audio from server endpoint and play via Web Audio API
       // audioPath format: "learn/audios/{user_id}/{filename}"
       try {
         setIsPlayingAudio(messageId) // Show loading state
@@ -1210,30 +1325,10 @@ export function ChatPage() {
         if (!response.ok) {
           throw new Error(`Failed to fetch audio: ${response.status}`)
         }
-        const blob = await response.blob()
-        const audioUrl = URL.createObjectURL(blob)
-
-        if (audioElementRef.current) {
-          audioElementRef.current.pause()
-        }
-
-        const audio = new Audio(audioUrl)
-        audioElementRef.current = audio
-
-        audio.onended = () => {
-          setIsPlayingAudio(null)
-          URL.revokeObjectURL(audioUrl)
-        }
-        audio.onerror = () => {
-          setIsPlayingAudio(null)
-          URL.revokeObjectURL(audioUrl)
-          console.error('Audio playback failed')
-        }
-        audio.play().catch(err => {
-          console.error('Failed to play audio:', err)
-          setIsPlayingAudio(null)
-          URL.revokeObjectURL(audioUrl)
-        })
+        // Get ArrayBuffer directly for Web Audio API
+        const arrayBuffer = await response.arrayBuffer()
+        setIsPlayingAudio(null) // Clear loading state, queueAudio will set it again
+        queueAudio(arrayBuffer, messageId)
       } catch (err) {
         console.error('Failed to fetch audio:', err)
         setIsPlayingAudio(null)
