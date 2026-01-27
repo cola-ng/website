@@ -547,7 +547,7 @@ export function StageDetailPage() {
                             {isUserRole ? '你' : turn.speaker_name?.charAt(0) || 'AI'}
                           </div>
                           {/* Speaker buttons below avatar */}
-                          <div className="flex flex-col gap-0.5">
+                          <div className="flex flex-col gap-0.5 items-center">
                             {/* Original audio button (orange) */}
                             <button
                               onClick={(e) => {
@@ -582,6 +582,15 @@ export function StageDetailPage() {
                                 <Play className="h-3 w-3" />
                               </button>
                             )}
+                            {/* Score below buttons */}
+                            {isUserRole && recording && recording.score !== undefined && (
+                              <span className={cn(
+                                'text-xs font-medium',
+                                recording.score >= 80 ? 'text-green-600' : recording.score >= 60 ? 'text-amber-600' : 'text-red-500'
+                              )}>
+                                {recording.score}
+                              </span>
+                            )}
                           </div>
                         </div>
 
@@ -593,16 +602,18 @@ export function StageDetailPage() {
                           </div>
 
                           {/* Message bubble - clickable for user turns */}
+                          {/* User role: light blue when unrecorded, deep blue when recorded */}
                           <div
                             onClick={() => isUserRole && !isRecording && setActiveTurnIndex(index)}
                             className={cn(
                               'inline-block rounded-2xl px-4 py-2 text-left',
                               isUserRole
-                                ? 'bg-blue-500 text-white'
+                                ? recording
+                                  ? 'bg-blue-500 text-white'  // recorded: deep blue
+                                  : 'bg-blue-100 text-blue-800'  // unrecorded: light blue
                                 : 'bg-gray-100 text-gray-900',
                               isUserRole && !isRecording && 'cursor-pointer hover:opacity-90',
-                              isActive && 'ring-2 ring-orange-400',
-                              isUserRole && recording && 'border-2 border-green-400'
+                              isActive && 'ring-2 ring-orange-400'
                             )}
                           >
                             {(showEn || bothOff) && (
@@ -611,25 +622,23 @@ export function StageDetailPage() {
                               </p>
                             )}
                             {showEn && showZh && (
-                              <div className={cn('my-1.5 border-t', isUserRole ? 'border-blue-400/30' : 'border-gray-200')} />
+                              <div className={cn(
+                                'my-1.5 border-t',
+                                isUserRole
+                                  ? recording ? 'border-blue-400/30' : 'border-blue-200'
+                                  : 'border-gray-200'
+                              )} />
                             )}
                             {(showZh || bothOff) && (
                               <p className={cn(
                                 'text-sm',
-                                isUserRole ? 'text-blue-100' : 'text-gray-600',
+                                isUserRole
+                                  ? recording ? 'text-blue-100' : 'text-blue-600'  // adjust Chinese text color
+                                  : 'text-gray-600',
                                 bothOff && 'blur-sm select-none'
                               )}>
                                 {turn.content_zh}
                               </p>
-                            )}
-                            {/* Inline score badge for recorded turns */}
-                            {isUserRole && recording && recording.score !== undefined && (
-                              <div className={cn(
-                                'mt-1 text-xs font-medium',
-                                recording.score >= 80 ? 'text-green-200' : recording.score >= 60 ? 'text-amber-200' : 'text-red-200'
-                              )}>
-                                {recording.score}分
-                              </div>
                             )}
                           </div>
                         </div>
