@@ -94,11 +94,11 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
         let pending_review_count: i64 = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .filter(
-                learn_vocabularies::mastery_level.lt(4).or(
-                    learn_vocabularies::next_review_at
+                learn_vocabularies::mastery_level
+                    .lt(4)
+                    .or(learn_vocabularies::next_review_at
                         .is_null()
-                        .or(learn_vocabularies::next_review_at.le(now)),
-                ),
+                        .or(learn_vocabularies::next_review_at.le(now))),
             )
             .count()
             .get_result(conn)?;

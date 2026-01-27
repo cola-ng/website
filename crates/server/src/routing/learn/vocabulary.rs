@@ -158,5 +158,8 @@ pub async fn toggle_vocabulary(
         StatusError::internal_server_error().brief("failed to toggle vocabulary")
     })?;
 
-    json_ok(ToggleVocabularyResponse { word: input.word.trim().to_lowercase(), added })
+    json_ok(ToggleVocabularyResponse {
+        word: input.word.trim().to_lowercase(),
+        added,
+    })
 }

@@ -1,8 +1,8 @@
 services:
-  backend:
+  colang:
     build:
       context: .
-      dockerfile: crates/server/Dockerfile
+      dockerfile: Dockerfile
     ports:
       - "8119:8119"
     environment:
@@ -11,16 +11,6 @@ services:
       - BIND_ADDR=0.0.0.0:8119
     depends_on:
       - db
-    restart: unless-stopped
-
-  frontend:
-    build:
-      context: .
-      dockerfile: front/Dockerfile
-    ports:
-      - "80:80"
-    depends_on:
-      - backend
     restart: unless-stopped
 
   db:
