@@ -5,7 +5,7 @@ COPY . .
 
 RUN cargo build --release
 
-FROM debian:bookworm-slim
+FROM debian:trixie-slim
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
