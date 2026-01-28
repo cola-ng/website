@@ -114,14 +114,15 @@ CREATE TABLE IF NOT EXISTS asset_read_subjects (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+drop table if exists asset_read_sentences;
 CREATE TABLE IF NOT EXISTS asset_read_sentences (
     id BIGSERIAL PRIMARY KEY,
     subject_id BIGINT NOT NULL,
     sentence_order INTEGER NOT NULL,
     content_en TEXT NOT NULL,
     content_zh TEXT NOT NULL,
+    audio_path TEXT,
     phonetic_transcription TEXT,
-    native_audio_path TEXT,
     difficulty SMALLINT, -- 1-10,
     focus_sounds JSONB,
     common_mistakes JSONB,

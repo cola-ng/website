@@ -115,8 +115,8 @@ diesel::table! {
         sentence_order -> Int4,
         content_en -> Text,
         content_zh -> Text,
+        audio_path -> Nullable<Text>,
         phonetic_transcription -> Nullable<Text>,
-        native_audio_path -> Nullable<Text>,
         difficulty -> Nullable<Int2>,
         focus_sounds -> Nullable<Jsonb>,
         common_mistakes -> Nullable<Jsonb>,
@@ -147,7 +147,6 @@ diesel::table! {
         content_en -> Text,
         content_zh -> Text,
         audio_path -> Nullable<Text>,
-        phonetic_transcription -> Nullable<Text>,
         asset_phrases -> Nullable<Jsonb>,
         notes -> Nullable<Text>,
     }

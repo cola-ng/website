@@ -1073,7 +1073,7 @@ export type ReadSentence = {
   content_en: string
   content_zh: string
   phonetic_transcription: string | null
-  native_audio_path: string | null
+  audio_path: string | null
   difficulty: number | null
   focus_sounds: string[] | null
   common_mistakes: string[] | null
