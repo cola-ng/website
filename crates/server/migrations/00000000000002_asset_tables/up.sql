@@ -81,6 +81,7 @@ CREATE TABLE IF NOT EXISTS asset_scripts (
 
 CREATE INDEX IF NOT EXISTS idx_asset_scripts_stage ON asset_scripts(stage_id);
 
+drop table if exists asset_script_turns;
 CREATE TABLE IF NOT EXISTS asset_script_turns (
     id BIGSERIAL PRIMARY KEY,
     script_id BIGINT NOT NULL,
