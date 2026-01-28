@@ -147,6 +147,7 @@ diesel::table! {
         content_en -> Text,
         content_zh -> Text,
         audio_path -> Nullable<Text>,
+        phonetic_transcription -> Nullable<Text>,
         asset_phrases -> Nullable<Jsonb>,
         notes -> Nullable<Text>,
     }
