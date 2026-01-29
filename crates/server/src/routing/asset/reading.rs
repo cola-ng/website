@@ -1,9 +1,12 @@
-use base64::prelude::{Engine, BASE64_STANDARD as BASE64};
+use std::path::PathBuf;
+
+use base64::prelude::{BASE64_STANDARD as BASE64, Engine};
 use diesel::prelude::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::AppResult;
+use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
@@ -146,6 +149,52 @@ pub async fn list_read_sentences(req: &mut Request, res: &mut Response) -> AppRe
 }
 
 // ============================================================================
+// Sentence Audio
+// ============================================================================
+
+/// Serve audio file for a read sentence
+///
+/// This is a public endpoint (no auth required) since it serves reference audio.
+/// Path: /asset/read/sentences/{id}/audio
+#[handler]
+pub async fn serve_sentence_audio(req: &mut Request, res: &mut Response) -> AppResult<()> {
+    let sentence_id: i64 = req
+        .param::<i64>("id")
+        .ok_or_else(|| StatusError::bad_request().brief("missing sentence id"))?;
+
+    // Get the sentence from database to find audio_path
+    let sentence: ReadSentence = with_conn(move |conn| {
+        asset_read_sentences::table
+            .find(sentence_id)
+            .first::<ReadSentence>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("sentence not found"))?;
+
+    // Check if audio_path exists
+    let audio_path = sentence
+        .audio_path
+        .ok_or_else(|| StatusError::not_found().brief("no audio available for this sentence"))?;
+
+    println!("audio_path: {:?}", audio_path);
+    // Build the full file path
+    let file_path = PathBuf::from(&AppConfig::get().space_path).join(&audio_path);
+    println!("file_path: {:?}", file_path);
+
+    // Check if file exists
+    if !file_path.exists() {
+        tracing::warn!("Sentence audio file not found: {:?}", file_path);
+        return Err(StatusError::not_found()
+            .brief("audio file not found")
+            .into());
+    }
+
+    res.send_file(file_path, req.headers()).await;
+
+    Ok(())
+}
+
+// ============================================================================
 // Pronunciation Evaluation
 // ============================================================================
 
@@ -211,19 +260,19 @@ pub async fn evaluate_pronunciation(req: &mut Request, res: &mut Response) -> Ap
         .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
 
     // Get ASR service
-    let asr = provider.asr().ok_or_else(|| {
-        StatusError::internal_server_error().brief("ASR service not available")
-    })?;
+    let asr = provider
+        .asr()
+        .ok_or_else(|| StatusError::internal_server_error().brief("ASR service not available"))?;
 
     // Transcribe audio
     tracing::info!("Evaluating pronunciation using {} ASR...", provider.name());
-    let asr_result: AsrResponse = asr
-        .transcribe(audio_data, Some("en"))
-        .await
-        .map_err(|e: AiProviderError| {
-            tracing::error!("{} ASR error: {:?}", provider.name(), e);
-            StatusError::internal_server_error().brief(e.to_string())
-        })?;
+    let asr_result: AsrResponse =
+        asr.transcribe(audio_data, Some("en"))
+            .await
+            .map_err(|e: AiProviderError| {
+                tracing::error!("{} ASR error: {:?}", provider.name(), e);
+                StatusError::internal_server_error().brief(e.to_string())
+            })?;
 
     let transcribed_text = asr_result.text.trim().to_string();
     tracing::info!("ASR result: {}", transcribed_text);

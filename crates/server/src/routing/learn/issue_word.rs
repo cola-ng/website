@@ -3,7 +3,7 @@ use diesel::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
@@ -24,18 +24,30 @@ pub struct CreateIssueWordRequest {
     context: Option<String>,
 }
 
+#[derive(Serialize, ToSchema)]
+pub struct PaginatedIssueWords {
+    pub items: Vec<IssueWord>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
 /// List issue words for current user
 #[endpoint(tags("Learn"))]
-pub async fn list_issue_words(req: &mut Request, depot: &mut Depot) -> JsonResult<Vec<IssueWord>> {
+pub async fn list_issue_words(req: &mut Request, depot: &mut Depot) -> JsonResult<PaginatedIssueWords> {
     let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
+    let page = req.query::<i64>("page").unwrap_or(1).max(1);
+    let per_page = req.query::<i64>("per_page").unwrap_or(50).clamp(1, 200);
+    let offset = (page - 1) * per_page;
 
-    let words: Vec<IssueWord> = with_conn(move |conn| {
+    let (items, total): (Vec<IssueWord>, i64) = with_conn(move |conn| {
         let mut query = learn_issue_words::table
             .filter(learn_issue_words::user_id.eq(user_id))
-            .order(learn_issue_words::created_at.desc())
-            .limit(limit)
+            .into_boxed();
+
+        let mut count_query = learn_issue_words::table
+            .filter(learn_issue_words::user_id.eq(user_id))
             .into_boxed();
 
         if due_only {
@@ -45,14 +57,32 @@ pub async fn list_issue_words(req: &mut Request, depot: &mut Depot) -> JsonResul
                     .is_null()
                     .or(learn_issue_words::next_review_at.le(now)),
             );
+            count_query = count_query.filter(
+                learn_issue_words::next_review_at
+                    .is_null()
+                    .or(learn_issue_words::next_review_at.le(now)),
+            );
         }
 
-        query.load::<IssueWord>(conn)
+        let total: i64 = count_query.count().get_result(conn)?;
+
+        let items = query
+            .order(learn_issue_words::created_at.desc())
+            .offset(offset)
+            .limit(per_page)
+            .load::<IssueWord>(conn)?;
+
+        Ok((items, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list issue words"))?;
 
-    json_ok(words)
+    json_ok(PaginatedIssueWords {
+        items,
+        total,
+        page,
+        per_page,
+    })
 }
 
 /// Create a new issue word

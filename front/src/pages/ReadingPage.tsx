@@ -18,34 +18,11 @@ import {
 import {
   ensureAudioContextRunning,
   queueAudioFromBase64,
+  queueAudio,
+  fetchAndQueueAudio,
   onPlayingStateChange,
   stopAudio
 } from '../lib/audio'
-
-interface ScoreDetail {
-  label: string
-  score: number
-  color: string
-}
-
-function ScoreBar({ label, score, color }: ScoreDetail) {
-  return (
-    <div className="flex items-center gap-3">
-      <span className="text-sm text-gray-600 w-20">{label}</span>
-      <div className="flex-1 h-2 bg-gray-200 rounded-full">
-        <div
-          className={cn('h-2 rounded-full transition-all', color)}
-          style={{ width: `${score}%` }}
-        />
-      </div>
-      <span className={cn('text-sm font-semibold w-12 text-right',
-        score >= 80 ? 'text-green-600' : score >= 60 ? 'text-amber-600' : 'text-red-600'
-      )}>
-        {score}%
-      </span>
-    </div>
-  )
-}
 
 export function ReadingPage() {
   const { token } = useAuth()
@@ -54,12 +31,13 @@ export function ReadingPage() {
   const [selectedSubject, setSelectedSubject] = useState<ReadSubject | null>(null)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
-  const [isPlaying, setIsPlaying] = useState(false)
+  const [playingType, setPlayingType] = useState<'standard' | 'user' | null>(null)
   const [loading, setLoading] = useState(true)
-  const [ttsLoading, setTtsLoading] = useState(false)
+  const [audioLoading, setAudioLoading] = useState(false)
   const [evaluating, setEvaluating] = useState(false)
   const [evaluationResult, setEvaluationResult] = useState<EvaluatePronunciationResponse | null>(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
+  const [userAudioData, setUserAudioData] = useState<ArrayBuffer | null>(null)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -70,7 +48,13 @@ export function ReadingPage() {
   // Subscribe to global audio playing state
   useEffect(() => {
     return onPlayingStateChange((id) => {
-      setIsPlaying(id === 'tts-playback')
+      if (id === 'standard-audio') {
+        setPlayingType('standard')
+      } else if (id === 'user-audio') {
+        setPlayingType('user')
+      } else {
+        setPlayingType(null)
+      }
     })
   }, [])
 
@@ -102,6 +86,7 @@ export function ReadingPage() {
         setSentences(response.items)
         setCurrentIndex(0)
         setEvaluationResult(null)
+        setUserAudioData(null)
       } catch (err) {
         console.error('Failed to fetch sentences:', err)
       }
@@ -110,45 +95,88 @@ export function ReadingPage() {
   }, [selectedSubject])
 
   const currentSentence = sentences[currentIndex]
-  const progress = sentences.length > 0 ? ((currentIndex + 1) / sentences.length) * 100 : 0
+
+  // Stop recording and discard results
+  const stopRecordingAndDiscard = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      // Remove the onstop handler to prevent evaluation
+      mediaRecorderRef.current.onstop = null
+      mediaRecorderRef.current.stop()
+    }
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(track => track.stop())
+      streamRef.current = null
+    }
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current)
+      recordingTimerRef.current = null
+    }
+    setIsRecording(false)
+    setRecordingDuration(0)
+  }
 
   const handleNext = () => {
     if (currentIndex < sentences.length - 1) {
+      if (isRecording) {
+        stopRecordingAndDiscard()
+      }
       setCurrentIndex(currentIndex + 1)
       setEvaluationResult(null)
+      setUserAudioData(null)
     }
   }
 
   const handlePrev = () => {
     if (currentIndex > 0) {
+      if (isRecording) {
+        stopRecordingAndDiscard()
+      }
       setCurrentIndex(currentIndex - 1)
       setEvaluationResult(null)
+      setUserAudioData(null)
     }
   }
 
-  // Play TTS for current sentence
-  const handlePlayTts = useCallback(async () => {
-    if (!currentSentence || !token || ttsLoading) return
+  // Play standard audio for current sentence
+  const handlePlayStandard = useCallback(async () => {
+    if (!currentSentence || !token || audioLoading) return
 
-    // If already playing, stop
-    if (isPlaying) {
+    if (playingType === 'standard') {
       stopAudio()
       return
     }
 
-    // Activate AudioContext on user interaction
     await ensureAudioContextRunning()
+    setAudioLoading(true)
 
-    setTtsLoading(true)
     try {
-      const response = await textToSpeech(token, currentSentence.content_en)
-      queueAudioFromBase64(response.audio_base64, 'tts-playback')
-    } catch (err) {
-      console.error('TTS error:', err)
+      const audioUrl = `/api/asset/read/sentences/${currentSentence.id}/audio`
+      await fetchAndQueueAudio(audioUrl, 'standard-audio')
+    } catch {
+      console.log('Pre-recorded audio not available, falling back to TTS')
+      try {
+        const response = await textToSpeech(token, currentSentence.content_en)
+        queueAudioFromBase64(response.audio_base64, 'standard-audio')
+      } catch (err) {
+        console.error('TTS error:', err)
+      }
     } finally {
-      setTtsLoading(false)
+      setAudioLoading(false)
     }
-  }, [currentSentence, token, ttsLoading, isPlaying])
+  }, [currentSentence, token, audioLoading, playingType])
+
+  // Play user's recorded audio
+  const handlePlayUserAudio = useCallback(async () => {
+    if (!userAudioData) return
+
+    if (playingType === 'user') {
+      stopAudio()
+      return
+    }
+
+    await ensureAudioContextRunning()
+    queueAudio(userAudioData, 'user-audio')
+  }, [userAudioData, playingType])
 
   // Convert Blob to base64
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -156,7 +184,6 @@ export function ReadingPage() {
       const reader = new FileReader()
       reader.onloadend = () => {
         const base64 = reader.result as string
-        // Remove data URL prefix (e.g., "data:audio/webm;base64,")
         const base64Data = base64.split(',')[1]
         resolve(base64Data)
       }
@@ -172,50 +199,32 @@ export function ReadingPage() {
 
     try {
       const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
-
-      // Create WAV file
       const numberOfChannels = audioBuffer.numberOfChannels
       const sampleRate = audioBuffer.sampleRate
       const length = audioBuffer.length
 
-      // Create buffer for WAV file
       const wavBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2)
       const view = new DataView(wavBuffer)
 
-      // Write WAV header
-      // "RIFF"
+      // WAV header
       view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46)
-      // File size - 8
       view.setUint32(4, 36 + length * numberOfChannels * 2, true)
-      // "WAVE"
       view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45)
-      // "fmt "
       view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20)
-      // Subchunk1Size (16 for PCM)
       view.setUint32(16, 16, true)
-      // AudioFormat (1 for PCM)
       view.setUint16(20, 1, true)
-      // NumChannels
       view.setUint16(22, numberOfChannels, true)
-      // SampleRate
       view.setUint32(24, sampleRate, true)
-      // ByteRate
       view.setUint32(28, sampleRate * numberOfChannels * 2, true)
-      // BlockAlign
       view.setUint16(32, numberOfChannels * 2, true)
-      // BitsPerSample
       view.setUint16(34, 16, true)
-      // "data"
       view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61)
-      // Subchunk2Size
       view.setUint32(40, length * numberOfChannels * 2, true)
 
-      // Write audio data
       let offset = 44
       for (let i = 0; i < length; i++) {
         for (let channel = 0; channel < numberOfChannels; channel++) {
           const sample = audioBuffer.getChannelData(channel)[i]
-          // Convert to 16-bit PCM
           const s = Math.max(-1, Math.min(1, sample))
           view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
           offset += 2
@@ -233,14 +242,11 @@ export function ReadingPage() {
   // Start/stop recording
   const handleRecord = async () => {
     if (isRecording) {
-      // Stop recording
       if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
         mediaRecorderRef.current.stop()
       }
       setIsRecording(false)
     } else {
-      // Start recording
-      // Activate AudioContext on user interaction
       await ensureAudioContextRunning()
 
       try {
@@ -261,32 +267,31 @@ export function ReadingPage() {
         }
 
         mediaRecorder.onstop = async () => {
-          // Stop all tracks
           stream.getTracks().forEach(track => track.stop())
           streamRef.current = null
 
-          // Clear recording timer
           if (recordingTimerRef.current) {
             clearInterval(recordingTimerRef.current)
             recordingTimerRef.current = null
           }
           setRecordingDuration(0)
 
-          // Process audio
           const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
           if (audioBlob.size === 0) {
             console.error('No audio recorded')
             return
           }
 
-          // Evaluate pronunciation
           if (!token || !currentSentence) return
 
           setEvaluating(true)
           try {
-            // Convert to WAV for better ASR compatibility
             const wavBlob = await convertToWav(audioBlob)
             const base64Audio = await blobToBase64(wavBlob)
+
+            // Store WAV data for playback
+            const wavArrayBuffer = await wavBlob.arrayBuffer()
+            setUserAudioData(wavArrayBuffer)
 
             const result = await evaluatePronunciation(
               token,
@@ -301,11 +306,8 @@ export function ReadingPage() {
           }
         }
 
-        // Start recording
         mediaRecorder.start()
         setIsRecording(true)
-
-        // Start recording timer
         setRecordingDuration(0)
         recordingTimerRef.current = setInterval(() => {
           setRecordingDuration(d => d + 1)
@@ -329,11 +331,22 @@ export function ReadingPage() {
     }
   }, [])
 
-  // Format recording duration
   const formatDuration = (seconds: number) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  const getScoreColor = (score: number) => {
+    if (score >= 80) return 'text-green-600'
+    if (score >= 60) return 'text-amber-600'
+    return 'text-red-600'
+  }
+
+  const getScoreBg = (score: number) => {
+    if (score >= 80) return 'bg-green-500'
+    if (score >= 60) return 'bg-amber-500'
+    return 'bg-red-500'
   }
 
   if (!token) {
@@ -344,9 +357,7 @@ export function ReadingPage() {
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
             <div className="text-6xl mb-4">🎤</div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">大声跟读</h1>
-            <p className="text-gray-600 mb-6">
-              AI 智能评分，纠正发音，提升口语流利度
-            </p>
+            <p className="text-gray-600 mb-6">AI 智能评分，纠正发音，提升口语流利度</p>
             <Button asChild>
               <a href="/login?redirectTo=/read">登录开始练习</a>
             </Button>
@@ -376,310 +387,229 @@ export function ReadingPage() {
       <Header />
 
       <main className="mx-auto max-w-6xl p-4">
-        {/* Header */}
-        <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
-          <div className="flex items-baseline gap-3 mb-4">
-            <h1 className="text-2xl font-bold text-gray-900">
-              <span className="mr-2">🎤</span>
-              跟读练习
-            </h1>
-            <p className="text-gray-500">发音纠正 · 音波对比 · AI 智能评分</p>
+        {/* Header with horizontal scrollable tabs */}
+        <div className="bg-white rounded-xl shadow-lg mb-4 overflow-hidden">
+          {/* Title bar */}
+          <div className="flex items-center justify-between px-4 py-2 border-b">
+            <h1 className="text-lg font-bold text-gray-900">🎤 跟读练习</h1>
+            <span className="text-sm text-gray-500">
+              {sentences.length > 0 ? `${currentIndex + 1}/${sentences.length}` : ''}
+            </span>
           </div>
 
-          {/* Subject selector */}
+          {/* Subject tabs grid */}
           {subjects.length > 0 && (
-            <div className="flex gap-2 mb-4 flex-wrap">
+            <div className="flex flex-wrap gap-1.5 px-3 py-2">
               {subjects.map((subject) => (
                 <button
                   key={subject.id}
                   onClick={() => setSelectedSubject(subject)}
                   className={cn(
-                    'px-3 py-1.5 rounded-lg text-sm font-medium transition-colors',
+                    'w-20 py-1.5 rounded-lg text-xs text-center transition-all truncate',
                     selectedSubject?.id === subject.id
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-orange-50'
+                      ? 'bg-orange-500 text-white font-medium shadow-sm'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   )}
+                  title={subject.title_zh}
                 >
                   {subject.title_zh}
                 </button>
               ))}
             </div>
           )}
-
-          {/* Progress */}
-          <div className="flex items-center gap-3">
-            <span className="text-sm text-gray-500">练习进度</span>
-            <div className="flex-1 h-2 bg-gray-200 rounded-full">
-              <div
-                className="h-2 bg-green-500 rounded-full transition-all"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
-            <span className="text-sm font-semibold text-gray-700">
-              {sentences.length > 0 ? `${currentIndex + 1}/${sentences.length} 句` : '0/0 句'}
-            </span>
-          </div>
         </div>
 
-        {/* Sentence Display */}
+        {/* Main content */}
         {currentSentence ? (
-          <>
-            <div className="bg-white rounded-xl shadow-lg p-6 mb-4 text-center">
-              <div className="text-xs text-gray-400 mb-2">
-                {selectedSubject?.title_zh || '今日练习'}
-              </div>
-              <h2 className="text-2xl font-semibold text-gray-900 mb-2">
+          <div className="bg-white rounded-xl shadow-lg p-5 mb-4">
+            {/* Sentence */}
+            <div className="text-center mb-4">
+              <h2 className="text-xl font-semibold text-gray-900 mb-1">
                 {currentSentence.content_en}
               </h2>
-              <p className="text-gray-500">{currentSentence.content_zh}</p>
-              {currentSentence.phonetic_transcription && (
-                <p className="text-sm text-orange-600 mt-2">🔊 {currentSentence.phonetic_transcription}</p>
-              )}
+              <p className="text-gray-500 text-sm">{currentSentence.content_zh}</p>
             </div>
 
-            {/* Audio Controls */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
-              {/* Native Audio */}
-              <div className="bg-white rounded-xl shadow-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-700">
-                    <Volume2 className="h-4 w-4 inline mr-2" />
-                    标准发音
-                  </span>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={handlePlayTts}
-                    disabled={ttsLoading}
-                  >
-                    {ttsLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : isPlaying ? (
-                      <Pause className="h-4 w-4" />
-                    ) : (
-                      <Play className="h-4 w-4" />
-                    )}
-                  </Button>
-                </div>
-                <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-                  <div className="flex items-end gap-1 h-12">
-                    {Array.from({ length: 30 }).map((_, i) => (
-                      <div
-                        key={i}
-                        className={cn(
-                          'w-1 rounded-full transition-all',
-                          isPlaying ? 'bg-green-500' : 'bg-green-300'
-                        )}
-                        style={{
-                          height: `${isPlaying ? 20 + Math.sin(i * 0.5 + Date.now() / 200) * 40 + Math.random() * 20 : 20 + Math.random() * 30}%`,
-                          transition: isPlaying ? 'height 0.1s' : 'none'
-                        }}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* User Audio */}
-              <div className="bg-white rounded-xl shadow-lg p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-700">
-                    <Mic className="h-4 w-4 inline mr-2" />
-                    你的发音
-                    {isRecording && (
-                      <span className="ml-2 text-red-500 text-xs">
-                        {formatDuration(recordingDuration)}
-                      </span>
-                    )}
-                  </span>
-                </div>
-                <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-                  {evaluating ? (
-                    <div className="flex items-center gap-2 text-gray-500">
-                      <Loader2 className="h-5 w-5 animate-spin" />
-                      <span className="text-sm">正在评估...</span>
-                    </div>
-                  ) : isRecording ? (
-                    <div className="flex items-end gap-1 h-12">
-                      {Array.from({ length: 30 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="w-1 bg-red-400 rounded-full animate-pulse"
-                          style={{
-                            height: `${20 + Math.random() * 60}%`,
-                            animationDelay: `${i * 50}ms`
-                          }}
-                        />
-                      ))}
-                    </div>
-                  ) : evaluationResult ? (
-                    <div className="flex items-end gap-1 h-12">
-                      {Array.from({ length: 30 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className="w-1 bg-orange-400 rounded-full"
-                          style={{ height: `${20 + Math.random() * 60}%` }}
-                        />
-                      ))}
-                    </div>
-                  ) : (
-                    <span className="text-sm text-gray-400">点击录音开始</span>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Score Card (shown after evaluation) */}
-            {evaluationResult && (
-              <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
-                <h3 className="font-semibold text-gray-900 mb-4">
-                  <span className="mr-2">🧠</span>
-                  AI 评分与建议
-                </h3>
-                <div className="flex items-start gap-6">
-                  {/* Overall Score */}
-                  <div className="text-center">
-                    <div className={cn(
-                      'w-20 h-20 rounded-full border-4 flex items-center justify-center',
-                      evaluationResult.overall_score >= 80
-                        ? 'border-green-500 bg-green-50'
-                        : evaluationResult.overall_score >= 60
-                          ? 'border-amber-500 bg-amber-50'
-                          : 'border-red-500 bg-red-50'
-                    )}>
-                      <span className={cn(
-                        'text-3xl font-bold',
-                        evaluationResult.overall_score >= 80
-                          ? 'text-green-600'
-                          : evaluationResult.overall_score >= 60
-                            ? 'text-amber-600'
-                            : 'text-red-600'
-                      )}>
-                        {evaluationResult.overall_score}
-                      </span>
-                    </div>
-                    <span className="text-sm text-gray-500 mt-2 block">总分</span>
-                  </div>
-
-                  {/* Detailed Scores */}
-                  <div className="flex-1 space-y-3">
-                    <ScoreBar
-                      label="发音准确度"
-                      score={evaluationResult.pronunciation_score}
-                      color={evaluationResult.pronunciation_score >= 80 ? 'bg-green-500' : evaluationResult.pronunciation_score >= 60 ? 'bg-amber-500' : 'bg-red-500'}
-                    />
-                    <ScoreBar
-                      label="流畅度"
-                      score={evaluationResult.fluency_score}
-                      color={evaluationResult.fluency_score >= 80 ? 'bg-green-500' : evaluationResult.fluency_score >= 60 ? 'bg-amber-500' : 'bg-red-500'}
-                    />
-                    <ScoreBar
-                      label="语调"
-                      score={evaluationResult.intonation_score}
-                      color={evaluationResult.intonation_score >= 80 ? 'bg-green-500' : evaluationResult.intonation_score >= 60 ? 'bg-amber-500' : 'bg-red-500'}
-                    />
-                  </div>
-                </div>
-
-                {/* Transcribed Text */}
-                {evaluationResult.transcribed_text && (
-                  <div className="mt-4 pt-4 border-t">
-                    <div className="text-sm text-gray-500 mb-1">识别结果:</div>
-                    <div className="text-gray-700 bg-gray-50 rounded-lg p-3">
-                      {evaluationResult.transcribed_text}
-                    </div>
-                  </div>
-                )}
-
-                {/* Feedback */}
-                {evaluationResult.feedback.length > 0 && (
-                  <div className="mt-4 pt-4 border-t space-y-2">
-                    {evaluationResult.feedback.map((item, index) => (
-                      <div key={index} className="flex items-start gap-2 text-sm">
-                        {item.type === 'good' ? (
-                          <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                        ) : (
-                          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                        )}
-                        <span className={item.type === 'good' ? 'text-green-700' : 'text-gray-700'}>
-                          {item.message}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex items-center justify-center gap-3">
+            {/* Audio controls with navigation */}
+            <div className="flex items-center justify-center gap-3 mb-4">
+              {/* Prev button */}
               <Button
-                variant="outline"
+                variant="ghost"
+                size="sm"
                 onClick={handlePrev}
                 disabled={currentIndex === 0}
               >
-                <SkipBack className="h-4 w-4 mr-2" />
+                <SkipBack className="h-4 w-4 mr-1" />
                 上一句
               </Button>
 
+              {/* Standard audio */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handlePlayStandard}
+                disabled={audioLoading}
+                className="gap-2"
+              >
+                {audioLoading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : playingType === 'standard' ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Volume2 className="h-4 w-4" />
+                )}
+                原声
+              </Button>
+
+              {/* Record button */}
               <Button
                 size="lg"
                 onClick={handleRecord}
                 disabled={evaluating}
                 className={cn(
-                  'px-8',
+                  'px-6',
                   isRecording && 'bg-red-500 hover:bg-red-600'
                 )}
               >
                 {evaluating ? (
-                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                  <Loader2 className="h-5 w-5 animate-spin" />
                 ) : (
-                  <Mic className={cn('h-5 w-5 mr-2', isRecording && 'animate-pulse')} />
+                  <Mic className={cn('h-5 w-5', isRecording && 'animate-pulse')} />
                 )}
-                {evaluating ? '评估中...' : isRecording ? '停止录音' : evaluationResult ? '重新录音' : '开始录音'}
+                <span className="ml-2">
+                  {evaluating ? '评估中' : isRecording ? formatDuration(recordingDuration) : '录音'}
+                </span>
               </Button>
 
+              {/* User audio playback */}
               <Button
                 variant="outline"
+                size="sm"
+                onClick={handlePlayUserAudio}
+                disabled={!userAudioData}
+                className="gap-2"
+              >
+                {playingType === 'user' ? (
+                  <Pause className="h-4 w-4" />
+                ) : (
+                  <Play className="h-4 w-4" />
+                )}
+                回放
+              </Button>
+
+              {/* Next button */}
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={handleNext}
                 disabled={currentIndex === sentences.length - 1}
               >
                 下一句
-                <SkipForward className="h-4 w-4 ml-2" />
+                <SkipForward className="h-4 w-4 ml-1" />
               </Button>
             </div>
-          </>
+
+            {/* Evaluation result - compact */}
+            {evaluationResult && (
+              <div className="border-t pt-4">
+                <div className="flex items-center gap-4">
+                  {/* Score circle */}
+                  <div className={cn(
+                    'w-14 h-14 rounded-full border-3 flex items-center justify-center shrink-0',
+                    evaluationResult.overall_score >= 80 ? 'border-green-500 bg-green-50' :
+                    evaluationResult.overall_score >= 60 ? 'border-amber-500 bg-amber-50' :
+                    'border-red-500 bg-red-50'
+                  )}>
+                    <span className={cn('text-xl font-bold', getScoreColor(evaluationResult.overall_score))}>
+                      {evaluationResult.overall_score}
+                    </span>
+                  </div>
+
+                  {/* Score bars */}
+                  <div className="flex-1 space-y-1.5">
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-16">发音</span>
+                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full">
+                        <div className={cn('h-1.5 rounded-full', getScoreBg(evaluationResult.pronunciation_score))}
+                          style={{ width: `${evaluationResult.pronunciation_score}%` }} />
+                      </div>
+                      <span className={cn('w-8 text-right font-medium', getScoreColor(evaluationResult.pronunciation_score))}>
+                        {evaluationResult.pronunciation_score}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-16">流畅</span>
+                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full">
+                        <div className={cn('h-1.5 rounded-full', getScoreBg(evaluationResult.fluency_score))}
+                          style={{ width: `${evaluationResult.fluency_score}%` }} />
+                      </div>
+                      <span className={cn('w-8 text-right font-medium', getScoreColor(evaluationResult.fluency_score))}>
+                        {evaluationResult.fluency_score}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <span className="text-gray-500 w-16">语调</span>
+                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full">
+                        <div className={cn('h-1.5 rounded-full', getScoreBg(evaluationResult.intonation_score))}
+                          style={{ width: `${evaluationResult.intonation_score}%` }} />
+                      </div>
+                      <span className={cn('w-8 text-right font-medium', getScoreColor(evaluationResult.intonation_score))}>
+                        {evaluationResult.intonation_score}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transcription & feedback */}
+                <div className="mt-3 text-xs">
+                  {evaluationResult.transcribed_text && (
+                    <div className="text-gray-600 bg-gray-50 rounded px-2 py-1.5 mb-2">
+                      <span className="text-gray-400">识别: </span>
+                      {evaluationResult.transcribed_text}
+                    </div>
+                  )}
+                  {evaluationResult.feedback.length > 0 && (
+                    <div className="flex flex-wrap gap-2">
+                      {evaluationResult.feedback.map((item, index) => (
+                        <span
+                          key={index}
+                          className={cn(
+                            'inline-flex items-center gap-1 px-2 py-0.5 rounded-full',
+                            item.type === 'good' ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'
+                          )}
+                        >
+                          {item.type === 'good' ? (
+                            <CheckCircle className="h-3 w-3" />
+                          ) : (
+                            <AlertCircle className="h-3 w-3" />
+                          )}
+                          {item.message}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+          </div>
         ) : (
           <div className="bg-white rounded-xl shadow-lg p-8 text-center">
-            <div className="text-6xl mb-4">📝</div>
-            <h3 className="text-lg font-medium text-gray-900 mb-2">
-              暂无练习内容
-            </h3>
-            <p className="text-gray-500">
-              请稍后再试或选择其他练习
-            </p>
+            <div className="text-5xl mb-3">📝</div>
+            <h3 className="text-lg font-medium text-gray-900 mb-1">暂无练习内容</h3>
+            <p className="text-gray-500 text-sm">请稍后再试或选择其他练习</p>
           </div>
         )}
 
-        {/* Tips */}
-        <div className="mt-6 bg-white rounded-xl shadow-lg p-6">
-          <h3 className="font-semibold text-gray-900 mb-3">
-            <span className="mr-2">💡</span>
-            跟读技巧
-          </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="font-medium text-gray-800 mb-1">🎯 模仿语调</div>
-              <p className="text-sm text-gray-600">注意句子的升降调</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="font-medium text-gray-800 mb-1">🔗 注意连读</div>
-              <p className="text-sm text-gray-600">单词之间的自然衔接</p>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <div className="font-medium text-gray-800 mb-1">⏱️ 控制节奏</div>
-              <p className="text-sm text-gray-600">不要太快或太慢</p>
-            </div>
+        {/* Tips - more compact */}
+        <div className="bg-white rounded-xl shadow-lg p-4">
+          <div className="flex items-center gap-4 text-sm">
+            <span className="text-gray-400">💡 技巧:</span>
+            <span className="text-gray-600">模仿语调</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-600">注意连读</span>
+            <span className="text-gray-300">·</span>
+            <span className="text-gray-600">控制节奏</span>
           </div>
         </div>
       </main>

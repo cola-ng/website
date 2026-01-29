@@ -15,21 +15,29 @@ pub struct CreateVocabularyRequest {
     word_zh: Option<String>,
 }
 
-#[handler]
-pub async fn list_vocabulary(
-    req: &mut Request,
-    depot: &mut Depot,
-    res: &mut Response,
-) -> AppResult<()> {
+#[derive(Serialize, ToSchema)]
+pub struct PaginatedVocabulary {
+    pub items: Vec<UserVocabulary>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
+#[endpoint(tags("Learn"))]
+pub async fn list_vocabulary(req: &mut Request, depot: &mut Depot) -> JsonResult<PaginatedVocabulary> {
     let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
+    let page = req.query::<i64>("page").unwrap_or(1).max(1);
+    let per_page = req.query::<i64>("per_page").unwrap_or(50).clamp(1, 200);
+    let offset = (page - 1) * per_page;
 
-    let vocab: Vec<UserVocabulary> = with_conn(move |conn| {
+    let (items, total): (Vec<UserVocabulary>, i64) = with_conn(move |conn| {
         let mut query = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
-            .order(learn_vocabularies::first_seen_at.desc())
-            .limit(limit)
+            .into_boxed();
+
+        let mut count_query = learn_vocabularies::table
+            .filter(learn_vocabularies::user_id.eq(user_id))
             .into_boxed();
 
         if due_only {
@@ -39,15 +47,32 @@ pub async fn list_vocabulary(
                     .is_null()
                     .or(learn_vocabularies::next_review_at.le(now)),
             );
+            count_query = count_query.filter(
+                learn_vocabularies::next_review_at
+                    .is_null()
+                    .or(learn_vocabularies::next_review_at.le(now)),
+            );
         }
 
-        query.load::<UserVocabulary>(conn)
+        let total: i64 = count_query.count().get_result(conn)?;
+
+        let items = query
+            .order(learn_vocabularies::first_seen_at.desc())
+            .offset(offset)
+            .limit(per_page)
+            .load::<UserVocabulary>(conn)?;
+
+        Ok((items, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list vocabulary"))?;
 
-    res.render(Json(vocab));
-    Ok(())
+    json_ok(PaginatedVocabulary {
+        items,
+        total,
+        page,
+        per_page,
+    })
 }
 
 #[handler]

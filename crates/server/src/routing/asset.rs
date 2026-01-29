@@ -42,7 +42,11 @@ pub fn router() -> Router {
                         .get(reading::list_read_subjects)
                         .push(Router::with_path("{id}/sentences").get(reading::get_read_sentences)),
                 )
-                .push(Router::with_path("sentences").get(reading::list_read_sentences))
+                .push(
+                    Router::with_path("sentences")
+                        .get(reading::list_read_sentences)
+                        .push(Router::with_path("{id}/audio").get(reading::serve_sentence_audio)),
+                )
                 .push(Router::with_path("evaluate").post(reading::evaluate_pronunciation)),
         )
 }
