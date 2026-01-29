@@ -1073,40 +1073,80 @@ export type ReadSentence = {
   content_en: string
   content_zh: string
   phonetic_transcription: string | null
-  audio_path: string | null
   difficulty: number | null
   focus_sounds: string[] | null
   common_mistakes: string[] | null
 }
 
+/** Paginated response for subjects */
+export type PaginatedSubjects = {
+  items: ReadSubject[]
+  total: number
+  page: number
+  per_page: number
+}
+
+/** Paginated response for sentences */
+export type PaginatedSentences = {
+  items: ReadSentence[]
+  total: number
+  page: number
+  per_page: number
+}
+
 /**
- * List reading subjects (exercises)
- * @param difficulty Optional difficulty filter
- * @param subjectType Optional subject type filter
- * @param limit Max number of subjects to return
+ * List reading subjects (exercises) with pagination
  */
 export function listReadSubjects(params?: {
   difficulty?: number
   type?: string
-  limit?: number
-}): Promise<ReadSubject[]> {
+  page?: number
+  per_page?: number
+}): Promise<PaginatedSubjects> {
   const searchParams = new URLSearchParams()
   if (params?.difficulty !== undefined) searchParams.set('difficulty', params.difficulty.toString())
   if (params?.type) searchParams.set('type', params.type)
-  if (params?.limit !== undefined) searchParams.set('limit', params.limit.toString())
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString())
+  if (params?.per_page !== undefined) searchParams.set('per_page', params.per_page.toString())
 
   const query = searchParams.toString()
-  return requestJson<ReadSubject[]>(`/api/asset/read/subjects${query ? `?${query}` : ''}`, {
+  return requestJson<PaginatedSubjects>(`/api/asset/read/subjects${query ? `?${query}` : ''}`, {
     method: 'GET',
   })
 }
 
 /**
- * Get sentences for a reading subject
- * @param subjectId Subject ID
+ * Get sentences for a reading subject with pagination
  */
-export function getReadSentences(subjectId: number): Promise<ReadSentence[]> {
-  return requestJson<ReadSentence[]>(`/api/asset/read/subjects/${subjectId}/sentences`, {
+export function getReadSentences(subjectId: number, params?: {
+  page?: number
+  per_page?: number
+}): Promise<PaginatedSentences> {
+  const searchParams = new URLSearchParams()
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString())
+  if (params?.per_page !== undefined) searchParams.set('per_page', params.per_page.toString())
+
+  const query = searchParams.toString()
+  return requestJson<PaginatedSentences>(`/api/asset/read/subjects/${subjectId}/sentences${query ? `?${query}` : ''}`, {
+    method: 'GET',
+  })
+}
+
+/**
+ * List reading sentences with optional subject filter and pagination
+ */
+export function listReadSentences(params?: {
+  subject?: number
+  page?: number
+  per_page?: number
+}): Promise<PaginatedSentences> {
+  const searchParams = new URLSearchParams()
+  if (params?.subject !== undefined) searchParams.set('subject', params.subject.toString())
+  if (params?.page !== undefined) searchParams.set('page', params.page.toString())
+  if (params?.per_page !== undefined) searchParams.set('per_page', params.per_page.toString())
+
+  const query = searchParams.toString()
+  return requestJson<PaginatedSentences>(`/api/asset/read/sentences${query ? `?${query}` : ''}`, {
     method: 'GET',
   })
 }

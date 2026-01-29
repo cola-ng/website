@@ -250,8 +250,9 @@ pub struct ReadSentence {
     pub sentence_order: i32,
     pub content_en: String,
     pub content_zh: String,
-    pub phonetic_transcription: Option<String>,
+    #[serde(skip_serializing)]
     pub audio_path: Option<String>,
+    pub phonetic_transcription: Option<String>,
     pub difficulty: Option<i16>,
     pub focus_sounds: Option<Value>,
     pub common_mistakes: Option<Value>,

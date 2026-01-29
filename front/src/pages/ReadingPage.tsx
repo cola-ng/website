@@ -49,10 +49,10 @@ export function ReadingPage() {
     async function fetchSubjects() {
       try {
         setLoading(true)
-        const data = await listReadSubjects()
-        setSubjects(data)
-        if (data.length > 0) {
-          setSelectedSubject(data[0])
+        const response = await listReadSubjects({ per_page: 100 })
+        setSubjects(response.items)
+        if (response.items.length > 0) {
+          setSelectedSubject(response.items[0])
         }
       } catch (err) {
         console.error('Failed to fetch subjects:', err)
@@ -68,8 +68,8 @@ export function ReadingPage() {
     async function fetchSentences() {
       if (!selectedSubject) return
       try {
-        const data = await getReadSentences(selectedSubject.id)
-        setSentences(data)
+        const response = await getReadSentences(selectedSubject.id, { per_page: 200 })
+        setSentences(response.items)
         setCurrentIndex(0)
         setHasRecorded(false)
       } catch (err) {
