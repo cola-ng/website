@@ -10,6 +10,7 @@ import {
   Loader2,
   RotateCcw,
   Trophy,
+  ArrowUp,
 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
@@ -23,7 +24,10 @@ import {
   getRecommendedSentences,
   submitReadPractice,
   resetPronunciationLevel,
+  advancePronunciationLevel,
+  listReadSubjects,
   type ReadSentence,
+  type ReadSubject,
   type EvaluatePronunciationResponse,
 } from '../lib/api'
 import {
@@ -52,6 +56,11 @@ export function ReadingPage() {
   const [userLevel, setUserLevel] = useState(5)
   const [allCompleted, setAllCompleted] = useState(false)
   const [resetting, setResetting] = useState(false)
+  const [advancing, setAdvancing] = useState(false)
+  const [levelUpNotification, setLevelUpNotification] = useState<number | null>(null)
+  const [subjects, setSubjects] = useState<ReadSubject[]>([])
+  const [selectedSubjectId, setSelectedSubjectId] = useState<number | undefined>(undefined)
+  const [subjectCompleted, setSubjectCompleted] = useState(false)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -72,16 +81,24 @@ export function ReadingPage() {
     })
   }, [])
 
+  // Fetch subjects on mount
+  useEffect(() => {
+    listReadSubjects({ per_page: 100 })
+      .then((res) => setSubjects(res.items))
+      .catch((err) => console.error('Failed to fetch subjects:', err))
+  }, [])
+
   // Fetch recommended sentences
   const fetchRecommendedSentences = useCallback(async () => {
     if (!token) return
 
     setLoading(true)
     try {
-      const response = await getRecommendedSentences(token, 10)
+      const response = await getRecommendedSentences(token, 10, selectedSubjectId)
       setSentences(response.items)
       setUserLevel(response.user_level)
       setAllCompleted(response.all_completed || response.items.length === 0)
+      setSubjectCompleted(response.subject_completed)
       setCurrentIndex(0)
       setEvaluationResult(null)
       setUserAudioData(null)
@@ -90,7 +107,7 @@ export function ReadingPage() {
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, selectedSubjectId])
 
   useEffect(() => {
     fetchRecommendedSentences()
@@ -307,7 +324,7 @@ export function ReadingPage() {
 
             // Submit practice result to backend
             try {
-              await submitReadPractice(token, {
+              const submitResult = await submitReadPractice(token, {
                 sentence_id: currentSentence.id,
                 practice_id: `read_${Date.now()}`,
                 overall_score: result.overall_score,
@@ -315,6 +332,13 @@ export function ReadingPage() {
                 fluency_score: result.fluency_score,
                 intonation_score: result.intonation_score,
               })
+              // Check if user leveled up
+              if (submitResult.leveled_up && submitResult.new_level) {
+                setUserLevel(submitResult.new_level)
+                setLevelUpNotification(submitResult.new_level)
+                // Auto-hide notification after 3 seconds
+                setTimeout(() => setLevelUpNotification(null), 3000)
+              }
             } catch (err) {
               console.error('Failed to submit practice:', err)
             }
@@ -350,6 +374,25 @@ export function ReadingPage() {
       console.error('Failed to reset level:', err)
     } finally {
       setResetting(false)
+    }
+  }
+
+  // Handle advance level
+  const handleAdvanceLevel = async () => {
+    if (!token || advancing || userLevel >= 10) return
+
+    setAdvancing(true)
+    try {
+      const result = await advancePronunciationLevel(token)
+      setUserLevel(result.new_level)
+      setLevelUpNotification(result.new_level)
+      setTimeout(() => setLevelUpNotification(null), 3000)
+      // Refetch recommendations for new level
+      await fetchRecommendedSentences()
+    } catch (err) {
+      console.error('Failed to advance level:', err)
+    } finally {
+      setAdvancing(false)
     }
   }
 
@@ -452,6 +495,30 @@ export function ReadingPage() {
       <Header />
 
       <main className="mx-auto max-w-6xl p-4">
+        {/* Level up notification */}
+        {levelUpNotification && (
+          <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl shadow-lg mb-4 p-4 text-white animate-pulse">
+            <div className="flex items-center justify-center gap-3">
+              <ArrowUp className="h-6 w-6" />
+              <span className="text-lg font-bold">恭喜升级！你的发音等级提升到 Lv.{levelUpNotification}</span>
+              <ArrowUp className="h-6 w-6" />
+            </div>
+          </div>
+        )}
+
+        {/* Subject completed notification */}
+        {subjectCompleted && selectedSubjectId && (
+          <div className="bg-gradient-to-r from-green-500 to-emerald-500 rounded-xl shadow-lg mb-4 p-4 text-white">
+            <div className="flex items-center justify-center gap-3">
+              <Trophy className="h-6 w-6" />
+              <span className="text-lg font-bold">
+                恭喜！你已完成本主题当前水平 (Lv.{userLevel}) 的所有练习
+              </span>
+              <Trophy className="h-6 w-6" />
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="bg-white rounded-xl shadow-lg mb-4 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3">
@@ -460,11 +527,44 @@ export function ReadingPage() {
               <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">
                 Lv.{userLevel}
               </span>
+              {userLevel < 10 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleAdvanceLevel}
+                  disabled={advancing}
+                  className="text-xs text-gray-500 hover:text-orange-600 h-6 px-2"
+                >
+                  {advancing ? (
+                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                  ) : (
+                    <ArrowUp className="h-3 w-3 mr-1" />
+                  )}
+                  进入下一档
+                </Button>
+              )}
             </div>
             <span className="text-sm text-gray-500">
               {sentences.length > 0 ? `${currentIndex + 1}/${sentences.length}` : ''}
             </span>
           </div>
+          {/* Subject selection */}
+          {subjects.length > 0 && (
+            <div className="px-4 py-2 border-t bg-gray-50">
+              <select
+                value={selectedSubjectId ?? ''}
+                onChange={(e) => setSelectedSubjectId(e.target.value ? Number(e.target.value) : undefined)}
+                className="text-sm border rounded-md px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
+              >
+                <option value="">全部主题</option>
+                {subjects.map((subject) => (
+                  <option key={subject.id} value={subject.id}>
+                    {subject.title_zh || subject.title_en}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
 
         {/* Main content */}

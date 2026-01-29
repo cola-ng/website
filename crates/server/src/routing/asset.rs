@@ -66,6 +66,11 @@ pub fn router() -> Router {
                     Router::with_path("reset-level")
                         .hoop(hoops::require_auth)
                         .post(reading::reset_pronunciation_level),
+                )
+                .push(
+                    Router::with_path("advance-level")
+                        .hoop(hoops::require_auth)
+                        .post(reading::advance_pronunciation_level),
                 ),
         )
 }

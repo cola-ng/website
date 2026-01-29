@@ -1198,23 +1198,30 @@ export type RecommendedSentencesResponse = {
   user_level: number
   total_available: number
   all_completed: boolean
+  /** If subject_id was provided, indicates if all sentences in that subject are completed */
+  subject_completed: boolean
+  /** The subject_id that was filtered by (if any) */
+  subject_id: number | null
 }
 
 /**
  * Get recommended sentences for reading practice
  * Filters by user level and excludes sentences where user scored >= 90
+ * Optionally filter by subject_id
  */
 export function getRecommendedSentences(
   token: string,
-  limit: number = 10
+  limit: number = 10,
+  subjectId?: number
 ): Promise<RecommendedSentencesResponse> {
-  return requestJson<RecommendedSentencesResponse>(
-    `/api/asset/read/recommended?limit=${limit}`,
-    {
-      method: 'GET',
-      token,
-    }
-  )
+  let url = `/api/asset/read/recommended?limit=${limit}`
+  if (subjectId !== undefined) {
+    url += `&subject_id=${subjectId}`
+  }
+  return requestJson<RecommendedSentencesResponse>(url, {
+    method: 'GET',
+    token,
+  })
 }
 
 /** Request to submit reading practice result */
@@ -1231,6 +1238,10 @@ export type SubmitReadPracticeRequest = {
 export type SubmitReadPracticeResponse = {
   success: boolean
   practice_id: number
+  /** Whether user leveled up after this practice */
+  leveled_up: boolean
+  /** User's new level (if leveled up) */
+  new_level: number | null
 }
 
 /**
@@ -1259,6 +1270,17 @@ export type ResetLevelResponse = {
  */
 export function resetPronunciationLevel(token: string): Promise<ResetLevelResponse> {
   return requestJson<ResetLevelResponse>('/api/asset/read/reset-level', {
+    method: 'POST',
+    token,
+  })
+}
+
+/**
+ * Advance user's pronunciation level by 1 (max 10)
+ * Allows user to manually skip to harder content
+ */
+export function advancePronunciationLevel(token: string): Promise<ResetLevelResponse> {
+  return requestJson<ResetLevelResponse>('/api/asset/read/advance-level', {
     method: 'POST',
     token,
   })

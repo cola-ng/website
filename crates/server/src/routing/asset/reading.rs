@@ -425,6 +425,10 @@ pub struct RecommendedSentencesResponse {
     pub user_level: i32,
     pub total_available: i64,
     pub all_completed: bool,
+    /// If subject_id was provided, indicates if all sentences in that subject are completed
+    pub subject_completed: bool,
+    /// The subject_id that was filtered by (if any)
+    pub subject_id: Option<i64>,
 }
 
 /// Get recommended sentences for reading practice
@@ -432,6 +436,7 @@ pub struct RecommendedSentencesResponse {
 /// Returns sentences filtered by:
 /// 1. Difficulty >= user_level - 1
 /// 2. Excludes sentences where user scored >= 90
+/// 3. Optionally filter by subject_id
 #[endpoint(tags("Reading"))]
 pub async fn get_recommended_sentences(
     req: &mut Request,
@@ -439,6 +444,7 @@ pub async fn get_recommended_sentences(
 ) -> JsonResult<RecommendedSentencesResponse> {
     let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(10).clamp(1, 20);
+    let subject_id = req.query::<i64>("subject_id");
 
     let result = with_conn(move |conn| {
         // Get user's pronunciation level (default to 5)
@@ -472,6 +478,11 @@ pub async fn get_recommended_sentences(
             )
             .into_boxed();
 
+        // Apply subject filter if provided
+        if let Some(sid) = subject_id {
+            count_query = count_query.filter(asset_read_sentences::subject_id.eq(sid));
+        }
+
         if !mastered_sentence_ids.is_empty() {
             count_query = count_query.filter(
                 asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()),
@@ -489,9 +500,14 @@ pub async fn get_recommended_sentences(
             )
             .into_boxed();
 
+        // Apply subject filter if provided
+        if let Some(sid) = subject_id {
+            query = query.filter(asset_read_sentences::subject_id.eq(sid));
+        }
+
         if !mastered_sentence_ids.is_empty() {
             query = query.filter(
-                asset_read_sentences::id.ne_all(mastered_sentence_ids),
+                asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()),
             );
         }
 
@@ -500,12 +516,34 @@ pub async fn get_recommended_sentences(
             .limit(limit)
             .load::<ReadSentence>(conn)?;
 
-        Ok::<_, diesel::result::Error>((items, user_level, total_available))
+        // Check if all sentences in the subject at current level are completed
+        let subject_completed = if let Some(sid) = subject_id {
+            // Get all sentence IDs in this subject at current difficulty level
+            let subject_sentences: Vec<i64> = asset_read_sentences::table
+                .filter(asset_read_sentences::subject_id.eq(sid))
+                .filter(
+                    asset_read_sentences::difficulty
+                        .is_null()
+                        .or(asset_read_sentences::difficulty.ge(min_difficulty)),
+                )
+                .select(asset_read_sentences::id)
+                .load::<i64>(conn)?;
+
+            // Check if all are mastered
+            !subject_sentences.is_empty()
+                && subject_sentences
+                    .iter()
+                    .all(|sid| mastered_sentence_ids.contains(sid))
+        } else {
+            false
+        };
+
+        Ok::<_, diesel::result::Error>((items, user_level, total_available, subject_completed, subject_id))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to get recommended sentences"))?;
 
-    let (items, user_level, total_available) = result;
+    let (items, user_level, total_available, subject_completed, subject_id) = result;
     let all_completed = items.is_empty() && total_available == 0;
 
     json_ok(RecommendedSentencesResponse {
@@ -513,6 +551,8 @@ pub async fn get_recommended_sentences(
         user_level,
         total_available,
         all_completed,
+        subject_completed,
+        subject_id,
     })
 }
 
@@ -704,6 +744,51 @@ pub async fn reset_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLev
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset level"))?;
+
+    json_ok(ResetLevelResponse {
+        success: true,
+        new_level,
+    })
+}
+
+/// Advance user's pronunciation level by 1 (max 10)
+/// Allows user to manually skip to harder content
+#[endpoint(tags("Reading"))]
+pub async fn advance_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLevelResponse> {
+    let user_id = depot.user_id()?;
+    let now = Utc::now();
+
+    let new_level = with_conn(move |conn| {
+        // Get current level
+        let current_level: i32 = learn_levels::table
+            .filter(learn_levels::user_id.eq(user_id))
+            .filter(learn_levels::skill_type.eq("pronunciation"))
+            .select(learn_levels::level)
+            .first::<i32>(conn)
+            .unwrap_or(DEFAULT_PRONUNCIATION_LEVEL);
+
+        // Cap at level 10
+        let next_level = (current_level + 1).min(10);
+
+        // Upsert user level
+        diesel::insert_into(learn_levels::table)
+            .values(&NewUserLevel {
+                user_id,
+                skill_type: "pronunciation".to_string(),
+                level: next_level,
+            })
+            .on_conflict((learn_levels::user_id, learn_levels::skill_type))
+            .do_update()
+            .set((
+                learn_levels::level.eq(next_level),
+                learn_levels::updated_at.eq(now),
+            ))
+            .execute(conn)?;
+
+        Ok::<_, diesel::result::Error>(next_level)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to advance level"))?;
 
     json_ok(ResetLevelResponse {
         success: true,
