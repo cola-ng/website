@@ -6,6 +6,7 @@
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::Instant;
 
 use colang::db::pool::DieselPool;
@@ -169,26 +170,98 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("Progress: {}/{} turns", idx + 1, total);
         }
 
-        let filename = format!("script_{}_turn_{}.wav", turn.script_id, turn.turn_number);
-        let file_path = output_dir.join(&filename);
-        let relative_path = format!("script_turns/{}", filename);
+        let mp3_filename = format!("script_{}_turn_{}.mp3", turn.script_id, turn.turn_number);
+        let mp3_path = output_dir.join(&mp3_filename);
+        let relative_path = format!("script_turns/{}", mp3_filename);
+
+        // Temporary WAV file path
+        let wav_filename = format!("script_{}_turn_{}.wav", turn.script_id, turn.turn_number);
+        let wav_path = output_dir.join(&wav_filename);
+
+        // Check if MP3 or WAV file already exists on disk (skip if exists and not force)
+        if !force {
+            if mp3_path.exists() {
+                println!(
+                    "  Skipping turn {} (script={}, turn={}): MP3 file already exists",
+                    turn.id, turn.script_id, turn.turn_number
+                );
+                // Update database if audio_path is not set
+                if turn.audio_path.is_none() {
+                    if let Err(e) = update_audio_path(&mut conn, turn.id, &relative_path) {
+                        eprintln!("  Error updating database for turn {}: {}", turn.id, e);
+                    }
+                }
+                stats.skipped += 1;
+                continue;
+            }
+            if wav_path.exists() {
+                println!(
+                    "  Skipping turn {} (script={}, turn={}): WAV file already exists",
+                    turn.id, turn.script_id, turn.turn_number
+                );
+                stats.skipped += 1;
+                continue;
+            }
+        }
 
         // Generate TTS
         use colang::services::ai_provider::TtsService;
         match zhipu.synthesize(&turn.content_en, None, None).await {
             Ok(response) => {
-                // Save audio file
-                match File::create(&file_path) {
+                // Save audio file as WAV first
+                match File::create(&wav_path) {
                     Ok(mut file) => {
                         if let Err(e) = file.write_all(&response.audio_data) {
-                            eprintln!("  Error writing file for turn {}: {}", turn.id, e);
+                            eprintln!("  Error writing WAV file for turn {}: {}", turn.id, e);
                             stats.errors += 1;
                             continue;
                         }
                     }
                     Err(e) => {
-                        eprintln!("  Error creating file for turn {}: {}", turn.id, e);
+                        eprintln!("  Error creating WAV file for turn {}: {}", turn.id, e);
                         stats.errors += 1;
+                        continue;
+                    }
+                }
+
+                // Convert WAV to MP3 using ffmpeg
+                let ffmpeg_result = Command::new("ffmpeg")
+                    .args([
+                        "-y",           // Overwrite output file
+                        "-i",
+                        wav_path.to_str().unwrap(),
+                        "-codec:a",
+                        "libmp3lame",
+                        "-qscale:a",
+                        "2",            // High quality VBR
+                        mp3_path.to_str().unwrap(),
+                    ])
+                    .output();
+
+                match ffmpeg_result {
+                    Ok(output) => {
+                        if !output.status.success() {
+                            eprintln!(
+                                "  Error converting to MP3 for turn {}: {}",
+                                turn.id,
+                                String::from_utf8_lossy(&output.stderr)
+                            );
+                            stats.errors += 1;
+                            // Clean up WAV file
+                            let _ = fs::remove_file(&wav_path);
+                            continue;
+                        }
+                        // Remove temporary WAV file after successful conversion
+                        let _ = fs::remove_file(&wav_path);
+                    }
+                    Err(e) => {
+                        eprintln!(
+                            "  Error running ffmpeg for turn {}: {} (is ffmpeg installed?)",
+                            turn.id, e
+                        );
+                        stats.errors += 1;
+                        // Clean up WAV file
+                        let _ = fs::remove_file(&wav_path);
                         continue;
                     }
                 }
@@ -231,7 +304,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 fn load_script_turns(
     conn: &mut PgConnection,
     script_id_filter: Option<i64>,
-    force: bool,
+    _force: bool,
     limit: Option<usize>,
 ) -> Result<Vec<ScriptTurn>, Box<dyn std::error::Error>> {
     use colang::db::schema::asset_script_turns;
@@ -255,10 +328,8 @@ fn load_script_turns(
         query = query.filter(asset_script_turns::script_id.eq(sid));
     }
 
-    // Skip turns that already have audio (unless force)
-    if !force {
-        query = query.filter(asset_script_turns::audio_path.is_null());
-    }
+    // Note: We load all turns and check file existence on disk instead of
+    // filtering by audio_path, since the file might have been deleted.
 
     // Apply limit
     if let Some(l) = limit {
@@ -298,7 +369,7 @@ fn print_usage() {
     );
     println!("  -s, --script <ID>      Only process turns for specific script ID");
     println!("  -l, --limit <N>        Limit number of turns to process");
-    println!("  -f, --force            Regenerate audio even if already exists");
+    println!("  -f, --force            Regenerate audio even if file already exists");
     println!("  --dry-run              Preview without generating audio");
     println!("  -h, --help             Show this help message");
     println!();
@@ -306,12 +377,16 @@ fn print_usage() {
     println!("  DATABASE_URL           PostgreSQL connection URL (required)");
     println!("  ZHIPU_API_KEY          Zhipu API key (required)");
     println!();
+    println!("Dependencies:");
+    println!("  ffmpeg                 Required for WAV to MP3 conversion");
+    println!();
     println!("Examples:");
     println!("  cargo run --bin scripts_audio --dry-run");
     println!("  cargo run --bin scripts_audio --script 1");
     println!("  cargo run --bin scripts_audio --limit 50");
     println!("  cargo run --bin scripts_audio --force");
     println!();
-    println!("Note: Zhipu TTS returns WAV format audio, saved with .mp3 extension.");
+    println!("Note: Audio is generated as WAV and converted to MP3 using ffmpeg.");
+    println!("      Skips generation if MP3 or WAV file already exists (use --force to override).");
     println!("      Audio files are saved to: script_turns/script_{{id}}_turn_{{n}}.mp3");
 }

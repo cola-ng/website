@@ -1187,3 +1187,95 @@ export function evaluatePronunciation(
     }),
   })
 }
+
+// ============================================================================
+// Review API
+// ============================================================================
+
+/** A single item to review */
+export type ReviewItem = {
+  id: number
+  word: string
+  word_zh: string | null
+  phonetic: string | null
+  example: string | null
+  example_zh: string | null
+  review_type: string
+  mastery_level: number
+  source: 'vocabulary' | 'issue_word'
+  source_id: number
+}
+
+/** Response from get review items */
+export type ReviewItemsResponse = {
+  items: ReviewItem[]
+  total: number
+}
+
+/** Review statistics by type */
+export type ReviewStats = {
+  pronunciation: number
+  meaning: number
+  spelling: number
+  recognition: number
+  phrase: number
+  total: number
+}
+
+/** Request to submit review result */
+export type SubmitReviewRequest = {
+  source: 'vocabulary' | 'issue_word'
+  source_id: number
+  review_type: string
+  result: 'correct' | 'partial' | 'incorrect'
+  score?: number
+  time_spent_ms: number
+}
+
+/** Response after submitting review */
+export type SubmitReviewResponse = {
+  success: boolean
+  new_mastery_level: number | null
+  next_review_at: string | null
+}
+
+/**
+ * Get review items by type
+ * @param token Auth token
+ * @param type Review type (pronunciation, meaning, spelling, recognition, phrase)
+ * @param limit Maximum items to return (default: 20)
+ */
+export function getReviewItems(
+  token: string,
+  type: string,
+  limit: number = 20
+): Promise<ReviewItemsResponse> {
+  const params = new URLSearchParams({ type, limit: String(limit) })
+  return requestJson<ReviewItemsResponse>(`/api/learn/review/items?${params}`, {
+    token,
+  })
+}
+
+/**
+ * Get review statistics by type
+ * @param token Auth token
+ */
+export function getReviewStats(token: string): Promise<ReviewStats> {
+  return requestJson<ReviewStats>('/api/learn/review/stats', { token })
+}
+
+/**
+ * Submit review result
+ * @param token Auth token
+ * @param data Review result data
+ */
+export function submitReview(
+  token: string,
+  data: SubmitReviewRequest
+): Promise<SubmitReviewResponse> {
+  return requestJson<SubmitReviewResponse>('/api/learn/review/submit', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}

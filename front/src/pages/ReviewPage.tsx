@@ -1,6 +1,18 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { RotateCcw, CheckCircle, XCircle, TrendingUp, Clock, Target } from 'lucide-react'
+import {
+  RotateCcw,
+  CheckCircle,
+  XCircle,
+  TrendingUp,
+  Clock,
+  Target,
+  Mic,
+  BookOpen,
+  PenLine,
+  Layers,
+  Puzzle,
+} from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -12,10 +24,13 @@ import {
   getLearnSummary,
   listVocabulary,
   listIssueWords,
+  getReviewStats,
   type LearnSummary,
   type UserVocabulary,
   type IssueWord,
+  type ReviewStats,
 } from '../lib/api'
+import { REVIEW_TYPES, type ReviewType } from '../types/review'
 
 interface ReviewWord {
   id: string
@@ -127,6 +142,60 @@ function WordCard({ word, showDue = false }: { word: ReviewWord; showDue?: boole
   )
 }
 
+const REVIEW_TYPE_ICONS: Record<ReviewType, React.ReactNode> = {
+  pronunciation: <Mic className="h-6 w-6" />,
+  meaning: <BookOpen className="h-6 w-6" />,
+  spelling: <PenLine className="h-6 w-6" />,
+  recognition: <Layers className="h-6 w-6" />,
+  phrase: <Puzzle className="h-6 w-6" />,
+}
+
+const REVIEW_TYPE_COLORS: Record<ReviewType, { bg: string; text: string; border: string }> = {
+  pronunciation: { bg: 'bg-red-50', text: 'text-red-600', border: 'border-red-200' },
+  meaning: { bg: 'bg-blue-50', text: 'text-blue-600', border: 'border-blue-200' },
+  spelling: { bg: 'bg-purple-50', text: 'text-purple-600', border: 'border-purple-200' },
+  recognition: { bg: 'bg-green-50', text: 'text-green-600', border: 'border-green-200' },
+  phrase: { bg: 'bg-amber-50', text: 'text-amber-600', border: 'border-amber-200' },
+}
+
+interface ReviewTypeCardProps {
+  type: ReviewType
+  title: string
+  description: string
+  count: number
+}
+
+function ReviewTypeCard({ type, title, description, count }: ReviewTypeCardProps) {
+  const colors = REVIEW_TYPE_COLORS[type]
+  const icon = REVIEW_TYPE_ICONS[type]
+
+  return (
+    <Link
+      to={`/review/session/${type}`}
+      className={cn(
+        'block rounded-xl border-2 p-4 transition-all hover:shadow-lg hover:scale-[1.02]',
+        colors.bg,
+        colors.border
+      )}
+    >
+      <div className="flex items-start gap-3">
+        <div className={cn('p-2 rounded-lg', colors.bg, colors.text)}>{icon}</div>
+        <div className="flex-1">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-gray-900">{title}</h3>
+            {count > 0 && (
+              <span className={cn('text-sm font-medium px-2 py-0.5 rounded-full', colors.bg, colors.text)}>
+                {count}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500 mt-1">{description}</p>
+        </div>
+      </div>
+    </Link>
+  )
+}
+
 interface StatsPanelProps {
   summary: LearnSummary | null
 }
@@ -157,6 +226,7 @@ function StatsPanel({ summary }: StatsPanelProps) {
 export function ReviewPage() {
   const { token } = useAuth()
   const [summary, setSummary] = useState<LearnSummary | null>(null)
+  const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null)
   const [dueWords, setDueWords] = useState<ReviewWord[]>([])
   const [masteredWords, setMasteredWords] = useState<ReviewWord[]>([])
   const [mistakes, setMistakes] = useState<ReviewWord[]>([])
@@ -168,13 +238,15 @@ export function ReviewPage() {
     const fetchData = async () => {
       setLoading(true)
       try {
-        const [summaryData, vocabData, issueData] = await Promise.all([
+        const [summaryData, statsData, vocabData, issueData] = await Promise.all([
           getLearnSummary(token),
+          getReviewStats(token),
           listVocabulary(token, false, 100),
           listIssueWords(token, false, 50),
         ])
 
         setSummary(summaryData)
+        setReviewStats(statsData)
 
         // Split vocabulary into due and mastered
         const due = vocabData
@@ -232,14 +304,24 @@ export function ReviewPage() {
               </h1>
               <p className="text-gray-500">科学复习，牢记所学</p>
             </div>
-            <Button asChild>
-              <Link to="/review/session">
-                <RotateCcw className="h-4 w-4 mr-2" />
-                开始复习
-              </Link>
-            </Button>
           </div>
           <StatsPanel summary={summary} />
+        </div>
+
+        {/* Review Type Selection */}
+        <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">选择练习类型</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {REVIEW_TYPES.map((typeInfo) => (
+              <ReviewTypeCard
+                key={typeInfo.type}
+                type={typeInfo.type}
+                title={typeInfo.title}
+                description={typeInfo.description}
+                count={reviewStats?.[typeInfo.type] ?? 0}
+              />
+            ))}
+          </div>
         </div>
 
         {loading ? (

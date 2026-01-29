@@ -13,12 +13,12 @@ import {
   ArrowLeftRight,
 } from 'lucide-react'
 
-import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
-import { ensureAudioContextRunning, stopAudio as globalStopAudio, queueAudio, onPlayingStateChange } from '../lib/audio'
+import { ensureAudioContextRunning, stopAudio as globalStopAudio, onPlayingStateChange } from '../lib/audio'
+import { evaluatePronunciation } from '../lib/api'
 
 // Stage matches backend asset_stages table
 interface Stage {
@@ -152,11 +152,58 @@ async function saveRecordingsToStorage(scriptId: number, recordings: Map<number,
   }
 }
 
+// Helper: Convert audio blob to WAV format using Web Audio API
+async function convertToWav(audioBlob: Blob): Promise<Blob> {
+  const audioContext = new AudioContext()
+  const arrayBuffer = await audioBlob.arrayBuffer()
+
+  try {
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+    const numberOfChannels = audioBuffer.numberOfChannels
+    const sampleRate = audioBuffer.sampleRate
+    const length = audioBuffer.length
+
+    const wavBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2)
+    const view = new DataView(wavBuffer)
+
+    // WAV header
+    view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46)
+    view.setUint32(4, 36 + length * numberOfChannels * 2, true)
+    view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45)
+    view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20)
+    view.setUint32(16, 16, true)
+    view.setUint16(20, 1, true)
+    view.setUint16(22, numberOfChannels, true)
+    view.setUint32(24, sampleRate, true)
+    view.setUint32(28, sampleRate * numberOfChannels * 2, true)
+    view.setUint16(32, numberOfChannels * 2, true)
+    view.setUint16(34, 16, true)
+    view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61)
+    view.setUint32(40, length * numberOfChannels * 2, true)
+
+    let offset = 44
+    for (let i = 0; i < length; i++) {
+      for (let channel = 0; channel < numberOfChannels; channel++) {
+        const sample = audioBuffer.getChannelData(channel)[i]
+        const s = Math.max(-1, Math.min(1, sample))
+        view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+        offset += 2
+      }
+    }
+
+    await audioContext.close()
+    return new Blob([wavBuffer], { type: 'audio/wav' })
+  } catch (err) {
+    await audioContext.close()
+    throw err
+  }
+}
+
 export function StageDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  useAuth() // Ensure user is authenticated
+  const { token } = useAuth() // Ensure user is authenticated
 
   const [stage, setStage] = useState<Stage | null>(null)
   const [scripts, setScripts] = useState<Script[]>([])
@@ -183,6 +230,12 @@ export function StageDetailPage() {
 
   // Practice session state
   const [isStarted, setIsStarted] = useState(false)
+  // Current turn index - tracks dialogue progress (which turn we're at)
+  const [currentTurnIndex, setCurrentTurnIndex] = useState<number>(0)
+  // Whether we're waiting for AI audio to finish
+  const [isPlayingAiTurn, setIsPlayingAiTurn] = useState(false)
+  // Whether we're evaluating pronunciation
+  const [isEvaluating, setIsEvaluating] = useState(false)
 
   // Subscribe to global audio playing state
   useEffect(() => {
@@ -264,6 +317,8 @@ export function StageDetailPage() {
         // Load recordings from localStorage for this script
         setRecordings(loadRecordingsFromStorage(selectedScript.id))
         setIsStarted(false) // Reset start state when script changes
+        setCurrentTurnIndex(0)
+        setIsPlayingAiTurn(false)
         // Auto-select first role as the user's role
         const uniqueRoles = [...new Set(data.map(t => t.speaker_role))]
         const defaultRole = uniqueRoles.find(r => r === 'user') || uniqueRoles[0] || null
@@ -328,28 +383,107 @@ export function StageDetailPage() {
     }
   }, [playingAudioId])
 
-  // Handle start practice - activates AudioContext and plays first AI turn if applicable
+  // Play AI turn audio and advance to next turn when finished
+  const playAiTurnAudio = useCallback(async (turnIndex: number, onComplete?: () => void) => {
+    if (turnIndex >= turns.length) {
+      onComplete?.()
+      return
+    }
+
+    const turn = turns[turnIndex]
+    if (turn.speaker_role === selectedRole) {
+      // This is user's turn, don't play audio
+      onComplete?.()
+      return
+    }
+
+    setIsPlayingAiTurn(true)
+    try {
+      const audioUrl = `/api/asset/scripts/turns/${turn.id}/audio`
+      const response = await fetch(audioUrl)
+      if (response.ok) {
+        const arrayBuffer = await response.arrayBuffer()
+        // Create audio element for playback with onended callback
+        const audioContext = new AudioContext()
+        const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+        const source = audioContext.createBufferSource()
+        source.buffer = audioBuffer
+        source.connect(audioContext.destination)
+
+        source.onended = () => {
+          setIsPlayingAiTurn(false)
+          setPlayingAudioId(null)
+          audioContext.close()
+          onComplete?.()
+        }
+
+        setPlayingAudioId(`original-${turn.id}`)
+        source.start()
+      } else {
+        setIsPlayingAiTurn(false)
+        onComplete?.()
+      }
+    } catch (err) {
+      console.error('Failed to play AI turn audio:', err)
+      setIsPlayingAiTurn(false)
+      onComplete?.()
+    }
+  }, [turns, selectedRole])
+
+  // Advance dialogue to next turn, playing AI audio if needed
+  const advanceToNextTurn = useCallback((fromIndex: number) => {
+    const nextIndex = fromIndex + 1
+    if (nextIndex >= turns.length) {
+      // Dialogue complete
+      setCurrentTurnIndex(turns.length)
+      setActiveTurnIndex(null)
+      return
+    }
+
+    setCurrentTurnIndex(nextIndex)
+    const nextTurn = turns[nextIndex]
+
+    if (nextTurn.speaker_role === selectedRole) {
+      // Next turn is user's turn - set active and wait for recording
+      setActiveTurnIndex(nextIndex)
+    } else {
+      // Next turn is AI's turn - play audio then advance further
+      setActiveTurnIndex(null) // No active turn while AI is speaking
+      playAiTurnAudio(nextIndex, () => {
+        // After AI finishes, advance to the next turn
+        advanceToNextTurn(nextIndex)
+      })
+    }
+  }, [turns, selectedRole, playAiTurnAudio])
+
+  // Handle start practice - activates AudioContext and starts dialogue from turn 0
   const handleStart = useCallback(async () => {
     // Activate AudioContext on user interaction
     await ensureAudioContextRunning()
-    setIsStarted(true)
 
-    // Check if first turn is AI (not user's role)
-    if (turns.length > 0 && turns[0].speaker_role !== selectedRole) {
-      const firstTurn = turns[0]
-      // Fetch and play first AI turn's audio
-      try {
-        const audioUrl = `/api/asset/scripts/turns/${firstTurn.id}/audio`
-        const response = await fetch(audioUrl)
-        if (response.ok) {
-          const arrayBuffer = await response.arrayBuffer()
-          queueAudio(arrayBuffer, `original-${firstTurn.id}`)
-        }
-      } catch (err) {
-        console.error('Failed to play first AI turn audio:', err)
-      }
+    // Clear all previous recordings for this script
+    if (selectedScript) {
+      localStorage.removeItem(getRecordingsKey(selectedScript.id))
+      setRecordings(new Map())
     }
-  }, [turns, selectedRole])
+
+    setIsStarted(true)
+    setCurrentTurnIndex(0)
+
+    if (turns.length === 0) return
+
+    const firstTurn = turns[0]
+    if (firstTurn.speaker_role === selectedRole) {
+      // First turn is user's turn - set active and wait for recording
+      setActiveTurnIndex(0)
+    } else {
+      // First turn is AI's turn - play audio then advance
+      setActiveTurnIndex(null)
+      playAiTurnAudio(0, () => {
+        advanceToNextTurn(0)
+      })
+    }
+  }, [turns, selectedRole, selectedScript, playAiTurnAudio, advanceToNextTurn])
 
   // Start recording
   const startRecording = useCallback(async (turnIndex: number) => {
@@ -379,29 +513,51 @@ export function StageDetailPage() {
         const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
         if (audioBlob.size > 0) {
           const turn = turns[turnIndex]
-          const result: RecordingResult = {
-            turnId: turn.id,
-            audioBlob,
-            audioUrl: URL.createObjectURL(audioBlob),
-            // Mock score for now - in real implementation, this would come from ASR evaluation
-            score: Math.floor(Math.random() * 30) + 70,
-            feedback: '发音清晰，语调自然。',
+
+          // Evaluate pronunciation using backend API
+          const evaluateAndSave = async () => {
+            setIsEvaluating(true)
+            let score: number | undefined
+            let feedback: string | undefined
+
+            try {
+              // Convert to WAV for API
+              const wavBlob = await convertToWav(audioBlob)
+              const audioBase64 = await blobToBase64(wavBlob)
+
+              if (token) {
+                const response = await evaluatePronunciation(token, audioBase64, turn.content_en)
+                score = response.overall_score
+                // Combine feedback items into a string
+                feedback = response.feedback?.map(f => f.message).join(' ') || '发音不错！'
+              }
+            } catch (err) {
+              console.error('Failed to evaluate pronunciation:', err)
+              // Fallback to no score if evaluation fails
+            } finally {
+              setIsEvaluating(false)
+            }
+
+            const result: RecordingResult = {
+              turnId: turn.id,
+              audioBlob,
+              audioUrl: URL.createObjectURL(audioBlob),
+              score,
+              feedback,
+            }
+            setRecordings(prev => {
+              const next = new Map(prev).set(turn.id, result)
+              // Save to localStorage
+              if (selectedScript) {
+                saveRecordingsToStorage(selectedScript.id, next)
+              }
+              return next
+            })
+            // Advance to next turn in dialogue (may play AI audio)
+            advanceToNextTurn(turnIndex)
           }
-          setRecordings(prev => {
-            const next = new Map(prev).set(turn.id, result)
-            // Save to localStorage
-            if (selectedScript) {
-              saveRecordingsToStorage(selectedScript.id, next)
-            }
-            // Auto-advance to next unrecorded user turn
-            const nextUserTurnIndex = turns.findIndex((t, i) =>
-              i > turnIndex && t.speaker_role === selectedRole && !next.has(t.id)
-            )
-            if (nextUserTurnIndex >= 0) {
-              setActiveTurnIndex(nextUserTurnIndex)
-            }
-            return next
-          })
+
+          evaluateAndSave()
         }
       }
 
@@ -417,7 +573,7 @@ export function StageDetailPage() {
       console.error('Failed to start recording:', err)
       alert('无法访问麦克风。请确保已授予麦克风权限。')
     }
-  }, [turns, selectedRole, selectedScript])
+  }, [turns, selectedScript, token, advanceToNextTurn])
 
   // Stop recording
   const stopRecording = useCallback(() => {
@@ -432,6 +588,8 @@ export function StageDetailPage() {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger if user is typing in an input field
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return
+      // Don't trigger if AI is playing
+      if (isPlayingAiTurn) return
       if (e.code === 'Space' && activeTurnIndex !== null) {
         e.preventDefault()
         if (isRecording) {
@@ -443,13 +601,15 @@ export function StageDetailPage() {
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [activeTurnIndex, isRecording, startRecording, stopRecording])
+  }, [activeTurnIndex, isRecording, isPlayingAiTurn, startRecording, stopRecording])
 
   // Handle restart
   const handleRestart = () => {
     setRecordings(new Map())
     setActiveTurnIndex(null)
+    setCurrentTurnIndex(0)
     setIsStarted(false)
+    setIsPlayingAiTurn(false)
     // Clear localStorage recordings for this script
     if (selectedScript) {
       localStorage.removeItem(getRecordingsKey(selectedScript.id))
@@ -467,18 +627,22 @@ export function StageDetailPage() {
   // Handle role switch
   const handleSwitchRole = () => {
     if (roles.length < 2) return
-    const currentIndex = roles.findIndex(r => r.role === selectedRole)
-    const nextIndex = (currentIndex + 1) % roles.length
-    const newRole = roles[nextIndex].role
+    const currentRoleIndex = roles.findIndex(r => r.role === selectedRole)
+    const nextRoleIndex = (currentRoleIndex + 1) % roles.length
+    const newRole = roles[nextRoleIndex].role
     setSelectedRole(newRole)
     setRecordings(new Map()) // Clear recordings when switching roles
+    setCurrentTurnIndex(0)
+    setIsStarted(false)
+    setIsPlayingAiTurn(false)
     // Clear localStorage recordings for this script
     if (selectedScript) {
       localStorage.removeItem(getRecordingsKey(selectedScript.id))
     }
-    // Auto-select first turn of the new role
-    const firstTurnIndex = turns.findIndex(t => t.speaker_role === newRole)
-    setActiveTurnIndex(firstTurnIndex >= 0 ? firstTurnIndex : null)
+    // Reset active turn
+    setActiveTurnIndex(null)
+    // Stop any playing audio
+    globalStopAudio()
   }
 
   if (loading) {
@@ -490,7 +654,6 @@ export function StageDetailPage() {
             <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
           </div>
         </main>
-        <Footer />
       </div>
     )
   }
@@ -509,7 +672,6 @@ export function StageDetailPage() {
             </Button>
           </div>
         </main>
-        <Footer />
       </div>
     )
   }
@@ -814,10 +976,22 @@ export function StageDetailPage() {
                     <div className="flex items-center gap-4">
                       {/* Left: Sentence info - full text with wrapping */}
                       <div className="flex-1 min-w-0">
-                        {activeTurnIndex !== null ? (
+                        {isPlayingAiTurn ? (
+                          /* AI is speaking */
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-medium text-orange-600">🔊 对方正在说话...</span>
+                              <span className="text-sm text-gray-500">第 {currentTurnIndex + 1}/{turns.length} 句</span>
+                            </div>
+                            <p className="text-sm text-gray-500 break-words">
+                              {turns[currentTurnIndex]?.content_en}
+                            </p>
+                          </div>
+                        ) : activeTurnIndex !== null ? (
                           <div className="space-y-1">
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className="text-sm font-medium text-gray-700">第 {turns[activeTurnIndex].turn_number} 句</span>
+                              <span className="text-xs text-gray-400">({currentTurnIndex + 1}/{turns.length})</span>
                               {/* Recording timer */}
                               {isRecording && (
                                 <span className="text-sm font-mono text-red-500">
@@ -851,15 +1025,26 @@ export function StageDetailPage() {
                               {turns[activeTurnIndex].content_en}
                             </p>
                           </div>
+                        ) : isEvaluating ? (
+                          /* Evaluating pronunciation */
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                            <span className="text-sm text-blue-600 font-medium">正在评估发音...</span>
+                          </div>
+                        ) : currentTurnIndex >= turns.length ? (
+                          /* Dialogue complete */
+                          <div className="text-sm text-green-600 font-medium">
+                            🎉 对话完成！点击"重新开始"再练一次
+                          </div>
                         ) : (
                           <div className="text-sm text-gray-500">
-                            点击蓝色对话框选择要录制的台词
+                            等待中...
                           </div>
                         )}
                       </div>
 
                     {/* Right: Audio controls and recording button */}
-                    {activeTurnIndex !== null && (
+                    {activeTurnIndex !== null && !isPlayingAiTurn && !isEvaluating && (
                       <div className="flex items-center gap-3 flex-shrink-0">
                         {/* Play original audio */}
                         <button
@@ -938,8 +1123,6 @@ export function StageDetailPage() {
           </div>
         </div>
       </main>
-
-      <Footer />
     </div>
   )
 }

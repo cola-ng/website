@@ -27,6 +27,7 @@ function AppRoutes() {
       <Route path="/chat/:chatId" element={<ChatPage />} />
       <Route path="/review" element={<ReviewPage />} />
       <Route path="/review/session" element={<ReviewSessionPage />} />
+      <Route path="/review/session/:type" element={<ReviewSessionPage />} />
       <Route path="/stages" element={<StagesPage />} />
       <Route path="/stages/:id" element={<StageDetailPage />} />
       <Route path="/read" element={<ReadingPage />} />

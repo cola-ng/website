@@ -8,6 +8,7 @@ mod daily_stat;
 mod issue_word;
 mod practice;
 mod reset;
+mod review;
 mod suggestion;
 mod summary;
 mod vocabulary;
@@ -79,5 +80,11 @@ pub fn router() -> Router {
                 .get(suggestion::list_suggestions)
                 .post(suggestion::create_suggestion)
                 .delete(reset::reset_suggestions),
+        )
+        .push(
+            Router::with_path("review")
+                .push(Router::with_path("items").get(review::get_review_items))
+                .push(Router::with_path("stats").get(review::get_review_stats))
+                .push(Router::with_path("submit").post(review::submit_review)),
         )
 }
