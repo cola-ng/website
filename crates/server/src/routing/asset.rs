@@ -32,7 +32,8 @@ pub fn router() -> Router {
         .push(
             Router::with_path("scripts")
                 .get(script::list_scripts)
-                .push(Router::with_path("{script_id}/turns").get(script::get_script_turns)),
+                .push(Router::with_path("{script_id}/turns").get(script::get_script_turns))
+                .push(Router::with_path("turns/{id}/audio").get(script::serve_turn_audio)),
         )
         // Reading subjects and sentences
         .push(

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Search, Play, ChevronRight, Film, Tv, Mic2 } from 'lucide-react'
+import { Search, Play, ChevronRight } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -19,19 +19,6 @@ interface Stage {
   difficulty: number | null
   is_active: boolean | null
   created_at: string
-}
-
-interface ClassicSource {
-  id: number
-  source_type: string
-  title: string
-  year: number | null
-  description_en: string | null
-  description_zh: string | null
-  thumbnail_url: string | null
-  difficulty: string | null
-  icon_emoji?: string | null
-  is_featured?: boolean
 }
 
 const categories = [
@@ -86,38 +73,10 @@ function StageCard({ stage }: { stage: Stage }) {
   )
 }
 
-function ClassicCard({ source }: { source: ClassicSource }) {
-  const sourceIcons: Record<string, React.ReactNode> = {
-    movie: <Film className="h-4 w-4" />,
-    tv_show: <Tv className="h-4 w-4" />,
-    ted_talk: <Mic2 className="h-4 w-4" />,
-    documentary: <Film className="h-4 w-4" />,
-  }
-
-  return (
-    <div className="bg-white border rounded-xl p-4 hover:shadow-lg hover:border-orange-200 transition-all cursor-pointer flex items-center gap-4">
-      <div className="w-16 h-16 bg-gray-900 rounded-lg flex items-center justify-center text-2xl shrink-0">
-        {source.icon_emoji || '🎬'}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <h3 className="font-semibold text-gray-900 truncate">{source.title}</h3>
-          <span className="text-gray-400">{sourceIcons[source.source_type]}</span>
-        </div>
-        <p className="text-sm text-orange-600 mt-1">
-          {source.description_zh || source.description_en || '经典对白学习'}
-        </p>
-      </div>
-      <ChevronRight className="h-5 w-5 text-gray-300" />
-    </div>
-  )
-}
-
 export function StagesPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [stages, setStages] = useState<Stage[]>([])
-  const [classicSources, setClassicSources] = useState<ClassicSource[]>([])
   const [loading, setLoading] = useState(true)
 
   // Fetch stage from API
@@ -125,19 +84,11 @@ export function StagesPage() {
     async function fetchData() {
       try {
         setLoading(true)
-        const [stagesRes, classicsRes] = await Promise.all([
-          fetch('/api/asset/stages'),
-          fetch('/api/asset/classic-sources'),
-        ])
+        const stagesRes = await fetch('/api/asset/stages')
 
         if (stagesRes.ok) {
           const stagesData = await stagesRes.json()
           setStages(stagesData)
-        }
-
-        if (classicsRes.ok) {
-          const classicsData = await classicsRes.json()
-          setClassicSources(classicsData)
         }
       } catch (err) {
         console.error('Failed to fetch data:', err)
@@ -158,9 +109,6 @@ export function StagesPage() {
 
   const displayStages = filteredStages.slice(0, 8)
   const otherStages = filteredStages.slice(8)
-
-  const featuredClassics = classicSources.filter((s) => s.is_featured)
-  const displayClassics = featuredClassics.length > 0 ? featuredClassics : classicSources.slice(0, 4)
 
   if (loading) {
     return (
@@ -187,7 +135,7 @@ export function StagesPage() {
             <span className="mr-2">🎭</span>
             角色扮演
           </h1>
-          <p className="text-gray-500">沉浸式场景模拟 · AI智能推荐 · 经典对白学习</p>
+          <p className="text-gray-500">沉浸式场景模拟 · AI智能推荐</p>
         </div>
 
         {/* Search, Filters & Continue Learning - Compact Layout */}
@@ -275,28 +223,6 @@ export function StagesPage() {
             </div>
           </div>
         )}
-
-        {/* Classic Dialogues */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-900">
-              <span className="mr-2">🎬</span>
-              经典对白
-            </h2>
-            <span className="text-sm text-gray-500">从电影/美剧中学习地道表达</span>
-          </div>
-          {displayClassics.length > 0 ? (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {displayClassics.map((source) => (
-                <ClassicCard key={source.id} source={source} />
-              ))}
-            </div>
-          ) : (
-            <div className="bg-white rounded-xl p-8 text-center text-gray-500">
-              暂无经典对白数据
-            </div>
-          )}
-        </div>
       </main>
       <Footer />
     </div>

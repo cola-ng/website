@@ -2348,7 +2348,7 @@ dependencies = [
 [[package]]
 name = "outfox-doubao"
 version = "0.3.0"
-source = "git+https://github.com/outfox-ai/outfox.git?branch=next#11bb0647aeedda5d2f493ca7d12de877278399ff"
+source = "git+https://github.com/outfox-ai/outfox.git?branch=next#635a3a52a207663b3c41409f4071acfc29f27a76"
 dependencies = [
  "base64",
  "bytes",
@@ -2371,7 +2371,7 @@ dependencies = [
 [[package]]
 name = "outfox-zhipu"
 version = "0.3.0"
-source = "git+https://github.com/outfox-ai/outfox.git?branch=next#11bb0647aeedda5d2f493ca7d12de877278399ff"
+source = "git+https://github.com/outfox-ai/outfox.git?branch=next#635a3a52a207663b3c41409f4071acfc29f27a76"
 dependencies = [
  "base64",
  "bytes",

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { useParams, useNavigate, Link } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
   RotateCcw,
@@ -57,13 +57,12 @@ interface ScriptTurn {
   speaker_name: string | null
   content_en: string
   content_zh: string
-  audio_path: string | null
   phonetic_transcription: string | null
   asset_phrases: unknown | null
   notes: string | null
 }
 
-// User's recording result
+// User's recording result (in memory)
 interface RecordingResult {
   turnId: number
   audioBlob: Blob
@@ -72,9 +71,91 @@ interface RecordingResult {
   feedback?: string
 }
 
+// Stored recording in localStorage (base64 encoded)
+interface StoredRecording {
+  turnId: number
+  audioBase64: string
+  mimeType: string
+  score?: number
+  feedback?: string
+}
+
+// Helper: Convert Blob to base64
+async function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onloadend = () => {
+      const base64 = (reader.result as string).split(',')[1]
+      resolve(base64)
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(blob)
+  })
+}
+
+// Helper: Convert base64 to Blob
+function base64ToBlob(base64: string, mimeType: string): Blob {
+  const binaryString = atob(base64)
+  const bytes = new Uint8Array(binaryString.length)
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i)
+  }
+  return new Blob([bytes], { type: mimeType })
+}
+
+// Helper: Get localStorage key for recordings
+function getRecordingsKey(scriptId: number): string {
+  return `stage_recordings_${scriptId}`
+}
+
+// Helper: Load recordings from localStorage
+function loadRecordingsFromStorage(scriptId: number): Map<number, RecordingResult> {
+  const map = new Map<number, RecordingResult>()
+  try {
+    const stored = localStorage.getItem(getRecordingsKey(scriptId))
+    if (stored) {
+      const recordings: StoredRecording[] = JSON.parse(stored)
+      for (const rec of recordings) {
+        const blob = base64ToBlob(rec.audioBase64, rec.mimeType)
+        map.set(rec.turnId, {
+          turnId: rec.turnId,
+          audioBlob: blob,
+          audioUrl: URL.createObjectURL(blob),
+          score: rec.score,
+          feedback: rec.feedback,
+        })
+      }
+    }
+  } catch (e) {
+    console.error('Failed to load recordings from localStorage:', e)
+  }
+  return map
+}
+
+// Helper: Save recordings to localStorage
+async function saveRecordingsToStorage(scriptId: number, recordings: Map<number, RecordingResult>) {
+  try {
+    const stored: StoredRecording[] = []
+    for (const [, rec] of recordings) {
+      const base64 = await blobToBase64(rec.audioBlob)
+      stored.push({
+        turnId: rec.turnId,
+        audioBase64: base64,
+        mimeType: rec.audioBlob.type,
+        score: rec.score,
+        feedback: rec.feedback,
+      })
+    }
+    localStorage.setItem(getRecordingsKey(scriptId), JSON.stringify(stored))
+  } catch (e) {
+    console.error('Failed to save recordings to localStorage:', e)
+  }
+}
+
 export function StageDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
+  const [searchParams, setSearchParams] = useSearchParams()
   useAuth() // Ensure user is authenticated
 
   const [stage, setStage] = useState<Stage | null>(null)
@@ -156,13 +237,19 @@ export function StageDetailPage() {
         const data = await response.json()
         setScripts(data)
         if (data.length > 0) {
-          setSelectedScript(data[0])
+          // Check URL for script parameter on initial load
+          const scriptIdFromUrl = searchParams.get('script')
+          const targetScript = scriptIdFromUrl
+            ? data.find((s: Script) => s.id === Number(scriptIdFromUrl))
+            : null
+          setSelectedScript(targetScript || data[0])
         }
       } catch (err) {
         console.error('Failed to fetch scripts:', err)
       }
     }
     fetchScripts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id])
 
   // Fetch turns for selected script
@@ -174,7 +261,8 @@ export function StageDetailPage() {
         if (!response.ok) throw new Error('Failed to fetch turns')
         const data: ScriptTurn[] = await response.json()
         setTurns(data)
-        setRecordings(new Map())
+        // Load recordings from localStorage for this script
+        setRecordings(loadRecordingsFromStorage(selectedScript.id))
         setIsStarted(false) // Reset start state when script changes
         // Auto-select first role as the user's role
         const uniqueRoles = [...new Set(data.map(t => t.speaker_role))]
@@ -251,7 +339,7 @@ export function StageDetailPage() {
       const firstTurn = turns[0]
       // Fetch and play first AI turn's audio
       try {
-        const audioUrl = `/api/tts?text=${encodeURIComponent(firstTurn.content_en)}`
+        const audioUrl = `/api/asset/scripts/turns/${firstTurn.id}/audio`
         const response = await fetch(audioUrl)
         if (response.ok) {
           const arrayBuffer = await response.arrayBuffer()
@@ -301,6 +389,10 @@ export function StageDetailPage() {
           }
           setRecordings(prev => {
             const next = new Map(prev).set(turn.id, result)
+            // Save to localStorage
+            if (selectedScript) {
+              saveRecordingsToStorage(selectedScript.id, next)
+            }
             // Auto-advance to next unrecorded user turn
             const nextUserTurnIndex = turns.findIndex((t, i) =>
               i > turnIndex && t.speaker_role === selectedRole && !next.has(t.id)
@@ -325,7 +417,7 @@ export function StageDetailPage() {
       console.error('Failed to start recording:', err)
       alert('无法访问麦克风。请确保已授予麦克风权限。')
     }
-  }, [turns, selectedRole])
+  }, [turns, selectedRole, selectedScript])
 
   // Stop recording
   const stopRecording = useCallback(() => {
@@ -358,6 +450,10 @@ export function StageDetailPage() {
     setRecordings(new Map())
     setActiveTurnIndex(null)
     setIsStarted(false)
+    // Clear localStorage recordings for this script
+    if (selectedScript) {
+      localStorage.removeItem(getRecordingsKey(selectedScript.id))
+    }
     // Stop any playing audio using global audio manager
     globalStopAudio()
   }
@@ -376,6 +472,10 @@ export function StageDetailPage() {
     const newRole = roles[nextIndex].role
     setSelectedRole(newRole)
     setRecordings(new Map()) // Clear recordings when switching roles
+    // Clear localStorage recordings for this script
+    if (selectedScript) {
+      localStorage.removeItem(getRecordingsKey(selectedScript.id))
+    }
     // Auto-select first turn of the new role
     const firstTurnIndex = turns.findIndex(t => t.speaker_role === newRole)
     setActiveTurnIndex(firstTurnIndex >= 0 ? firstTurnIndex : null)
@@ -476,7 +576,10 @@ export function StageDetailPage() {
               {scripts.map((script) => (
                 <button
                   key={script.id}
-                  onClick={() => setSelectedScript(script)}
+                  onClick={() => {
+                    setSelectedScript(script)
+                    setSearchParams({ script: String(script.id) })
+                  }}
                   className={cn(
                     'w-full text-left p-2 rounded-lg transition-colors text-sm',
                     selectedScript?.id === script.id
@@ -590,7 +693,7 @@ export function StageDetailPage() {
                             <button
                               onClick={(e) => {
                                 e.stopPropagation()
-                                playAudio(`original-${turn.id}`, `/api/tts?text=${encodeURIComponent(turn.content_en)}`)
+                                playAudio(`original-${turn.id}`, `/api/asset/scripts/turns/${turn.id}/audio`)
                               }}
                               className={cn(
                                 'p-1 rounded-full transition-colors',
@@ -729,6 +832,10 @@ export function StageDetailPage() {
                                     setRecordings(prev => {
                                       const next = new Map(prev)
                                       next.delete(turnId)
+                                      // Update localStorage
+                                      if (selectedScript) {
+                                        saveRecordingsToStorage(selectedScript.id, next)
+                                      }
                                       return next
                                     })
                                   }}
@@ -756,7 +863,7 @@ export function StageDetailPage() {
                       <div className="flex items-center gap-3 flex-shrink-0">
                         {/* Play original audio */}
                         <button
-                          onClick={() => playAudio(`original-${turns[activeTurnIndex].id}`, `/api/tts?text=${encodeURIComponent(turns[activeTurnIndex].content_en)}`)}
+                          onClick={() => playAudio(`original-${turns[activeTurnIndex].id}`, `/api/asset/scripts/turns/${turns[activeTurnIndex].id}/audio`)}
                           className={cn(
                             'p-2 rounded-full transition-colors',
                             playingAudioId === `original-${turns[activeTurnIndex].id}`

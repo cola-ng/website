@@ -186,6 +186,7 @@ pub struct ScriptTurn {
     pub speaker_name: Option<String>,
     pub content_en: String,
     pub content_zh: String,
+    #[serde(skip_serializing)]
     pub audio_path: Option<String>,
     pub phonetic_transcription: Option<String>,
     pub asset_phrases: Option<Value>,
