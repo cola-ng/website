@@ -44,6 +44,7 @@ async fn main() {
 
     db::init(&app_config.database);
 
+    salvo::http::request::set_global_secure_max_size(100_000_000);
     let router = routing::router();
     let doc = OpenApi::new("Cola API", env!("CARGO_PKG_VERSION")).merge_router(&router);
 

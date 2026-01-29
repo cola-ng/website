@@ -1150,3 +1150,40 @@ export function listReadSentences(params?: {
     method: 'GET',
   })
 }
+
+/** Feedback item for pronunciation evaluation */
+export type PronunciationFeedback = {
+  type: 'good' | 'warning'
+  message: string
+}
+
+/** Response from pronunciation evaluation */
+export type EvaluatePronunciationResponse = {
+  transcribed_text: string
+  overall_score: number
+  pronunciation_score: number
+  fluency_score: number
+  intonation_score: number
+  feedback: PronunciationFeedback[]
+}
+
+/**
+ * Evaluate pronunciation by comparing recorded audio with reference text
+ * @param token Auth token
+ * @param audioBase64 Base64 encoded audio data
+ * @param referenceText The reference text to compare against
+ */
+export function evaluatePronunciation(
+  token: string,
+  audioBase64: string,
+  referenceText: string
+): Promise<EvaluatePronunciationResponse> {
+  return requestJson<EvaluatePronunciationResponse>('/api/asset/read/evaluate', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      audio_base64: audioBase64,
+      reference_text: referenceText,
+    }),
+  })
+}

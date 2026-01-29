@@ -1,12 +1,26 @@
-import { useState, useEffect } from 'react'
-import { Mic, Play, Pause, SkipBack, SkipForward, Volume2, CheckCircle, AlertCircle } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Mic, Play, Pause, SkipBack, SkipForward, Volume2, CheckCircle, AlertCircle, Loader2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { listReadSubjects, getReadSentences, type ReadSubject, type ReadSentence } from '../lib/api'
+import {
+  listReadSubjects,
+  getReadSentences,
+  textToSpeech,
+  evaluatePronunciation,
+  type ReadSubject,
+  type ReadSentence,
+  type EvaluatePronunciationResponse
+} from '../lib/api'
+import {
+  ensureAudioContextRunning,
+  queueAudioFromBase64,
+  onPlayingStateChange,
+  stopAudio
+} from '../lib/audio'
 
 interface ScoreDetail {
   label: string
@@ -41,8 +55,24 @@ export function ReadingPage() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isRecording, setIsRecording] = useState(false)
   const [isPlaying, setIsPlaying] = useState(false)
-  const [hasRecorded, setHasRecorded] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [ttsLoading, setTtsLoading] = useState(false)
+  const [evaluating, setEvaluating] = useState(false)
+  const [evaluationResult, setEvaluationResult] = useState<EvaluatePronunciationResponse | null>(null)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+
+  // Recording refs
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const audioChunksRef = useRef<Blob[]>([])
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const streamRef = useRef<MediaStream | null>(null)
+
+  // Subscribe to global audio playing state
+  useEffect(() => {
+    return onPlayingStateChange((id) => {
+      setIsPlaying(id === 'tts-playback')
+    })
+  }, [])
 
   // Fetch subjects from API
   useEffect(() => {
@@ -71,7 +101,7 @@ export function ReadingPage() {
         const response = await getReadSentences(selectedSubject.id, { per_page: 200 })
         setSentences(response.items)
         setCurrentIndex(0)
-        setHasRecorded(false)
+        setEvaluationResult(null)
       } catch (err) {
         console.error('Failed to fetch sentences:', err)
       }
@@ -85,26 +115,225 @@ export function ReadingPage() {
   const handleNext = () => {
     if (currentIndex < sentences.length - 1) {
       setCurrentIndex(currentIndex + 1)
-      setHasRecorded(false)
+      setEvaluationResult(null)
     }
   }
 
   const handlePrev = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1)
-      setHasRecorded(false)
+      setEvaluationResult(null)
     }
   }
 
-  const handleRecord = () => {
-    setIsRecording(!isRecording)
+  // Play TTS for current sentence
+  const handlePlayTts = useCallback(async () => {
+    if (!currentSentence || !token || ttsLoading) return
+
+    // If already playing, stop
+    if (isPlaying) {
+      stopAudio()
+      return
+    }
+
+    // Activate AudioContext on user interaction
+    await ensureAudioContextRunning()
+
+    setTtsLoading(true)
+    try {
+      const response = await textToSpeech(token, currentSentence.content_en)
+      queueAudioFromBase64(response.audio_base64, 'tts-playback')
+    } catch (err) {
+      console.error('TTS error:', err)
+    } finally {
+      setTtsLoading(false)
+    }
+  }, [currentSentence, token, ttsLoading, isPlaying])
+
+  // Convert Blob to base64
+  const blobToBase64 = (blob: Blob): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        const base64 = reader.result as string
+        // Remove data URL prefix (e.g., "data:audio/webm;base64,")
+        const base64Data = base64.split(',')[1]
+        resolve(base64Data)
+      }
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  // Convert audio blob to WAV format using Web Audio API
+  const convertToWav = async (audioBlob: Blob): Promise<Blob> => {
+    const audioContext = new AudioContext()
+    const arrayBuffer = await audioBlob.arrayBuffer()
+
+    try {
+      const audioBuffer = await audioContext.decodeAudioData(arrayBuffer)
+
+      // Create WAV file
+      const numberOfChannels = audioBuffer.numberOfChannels
+      const sampleRate = audioBuffer.sampleRate
+      const length = audioBuffer.length
+
+      // Create buffer for WAV file
+      const wavBuffer = new ArrayBuffer(44 + length * numberOfChannels * 2)
+      const view = new DataView(wavBuffer)
+
+      // Write WAV header
+      // "RIFF"
+      view.setUint8(0, 0x52); view.setUint8(1, 0x49); view.setUint8(2, 0x46); view.setUint8(3, 0x46)
+      // File size - 8
+      view.setUint32(4, 36 + length * numberOfChannels * 2, true)
+      // "WAVE"
+      view.setUint8(8, 0x57); view.setUint8(9, 0x41); view.setUint8(10, 0x56); view.setUint8(11, 0x45)
+      // "fmt "
+      view.setUint8(12, 0x66); view.setUint8(13, 0x6d); view.setUint8(14, 0x74); view.setUint8(15, 0x20)
+      // Subchunk1Size (16 for PCM)
+      view.setUint32(16, 16, true)
+      // AudioFormat (1 for PCM)
+      view.setUint16(20, 1, true)
+      // NumChannels
+      view.setUint16(22, numberOfChannels, true)
+      // SampleRate
+      view.setUint32(24, sampleRate, true)
+      // ByteRate
+      view.setUint32(28, sampleRate * numberOfChannels * 2, true)
+      // BlockAlign
+      view.setUint16(32, numberOfChannels * 2, true)
+      // BitsPerSample
+      view.setUint16(34, 16, true)
+      // "data"
+      view.setUint8(36, 0x64); view.setUint8(37, 0x61); view.setUint8(38, 0x74); view.setUint8(39, 0x61)
+      // Subchunk2Size
+      view.setUint32(40, length * numberOfChannels * 2, true)
+
+      // Write audio data
+      let offset = 44
+      for (let i = 0; i < length; i++) {
+        for (let channel = 0; channel < numberOfChannels; channel++) {
+          const sample = audioBuffer.getChannelData(channel)[i]
+          // Convert to 16-bit PCM
+          const s = Math.max(-1, Math.min(1, sample))
+          view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true)
+          offset += 2
+        }
+      }
+
+      await audioContext.close()
+      return new Blob([wavBuffer], { type: 'audio/wav' })
+    } catch (err) {
+      await audioContext.close()
+      throw err
+    }
+  }
+
+  // Start/stop recording
+  const handleRecord = async () => {
     if (isRecording) {
-      setHasRecorded(true)
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+        mediaRecorderRef.current.stop()
+      }
+      setIsRecording(false)
+    } else {
+      // Start recording
+      // Activate AudioContext on user interaction
+      await ensureAudioContextRunning()
+
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+        streamRef.current = stream
+
+        const mediaRecorder = new MediaRecorder(stream, {
+          mimeType: MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : 'audio/mp4'
+        })
+
+        mediaRecorderRef.current = mediaRecorder
+        audioChunksRef.current = []
+
+        mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            audioChunksRef.current.push(event.data)
+          }
+        }
+
+        mediaRecorder.onstop = async () => {
+          // Stop all tracks
+          stream.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+
+          // Clear recording timer
+          if (recordingTimerRef.current) {
+            clearInterval(recordingTimerRef.current)
+            recordingTimerRef.current = null
+          }
+          setRecordingDuration(0)
+
+          // Process audio
+          const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType })
+          if (audioBlob.size === 0) {
+            console.error('No audio recorded')
+            return
+          }
+
+          // Evaluate pronunciation
+          if (!token || !currentSentence) return
+
+          setEvaluating(true)
+          try {
+            // Convert to WAV for better ASR compatibility
+            const wavBlob = await convertToWav(audioBlob)
+            const base64Audio = await blobToBase64(wavBlob)
+
+            const result = await evaluatePronunciation(
+              token,
+              base64Audio,
+              currentSentence.content_en
+            )
+            setEvaluationResult(result)
+          } catch (err) {
+            console.error('Evaluation error:', err)
+          } finally {
+            setEvaluating(false)
+          }
+        }
+
+        // Start recording
+        mediaRecorder.start()
+        setIsRecording(true)
+
+        // Start recording timer
+        setRecordingDuration(0)
+        recordingTimerRef.current = setInterval(() => {
+          setRecordingDuration(d => d + 1)
+        }, 1000)
+
+      } catch (err) {
+        console.error('Failed to start recording:', err)
+      }
     }
   }
 
-  const handlePlay = () => {
-    setIsPlaying(!isPlaying)
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (recordingTimerRef.current) {
+        clearInterval(recordingTimerRef.current)
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
+    }
+  }, [])
+
+  // Format recording duration
+  const formatDuration = (seconds: number) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
   if (!token) {
@@ -208,7 +437,7 @@ export function ReadingPage() {
               )}
             </div>
 
-            {/* Waveforms */}
+            {/* Audio Controls */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               {/* Native Audio */}
               <div className="bg-white rounded-xl shadow-lg p-4">
@@ -217,8 +446,19 @@ export function ReadingPage() {
                     <Volume2 className="h-4 w-4 inline mr-2" />
                     标准发音
                   </span>
-                  <Button size="sm" variant="ghost" onClick={handlePlay}>
-                    {isPlaying ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handlePlayTts}
+                    disabled={ttsLoading}
+                  >
+                    {ttsLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : isPlaying ? (
+                      <Pause className="h-4 w-4" />
+                    ) : (
+                      <Play className="h-4 w-4" />
+                    )}
                   </Button>
                 </div>
                 <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
@@ -226,8 +466,14 @@ export function ReadingPage() {
                     {Array.from({ length: 30 }).map((_, i) => (
                       <div
                         key={i}
-                        className="w-1 bg-green-400 rounded-full"
-                        style={{ height: `${Math.random() * 100}%` }}
+                        className={cn(
+                          'w-1 rounded-full transition-all',
+                          isPlaying ? 'bg-green-500' : 'bg-green-300'
+                        )}
+                        style={{
+                          height: `${isPlaying ? 20 + Math.sin(i * 0.5 + Date.now() / 200) * 40 + Math.random() * 20 : 20 + Math.random() * 30}%`,
+                          transition: isPlaying ? 'height 0.1s' : 'none'
+                        }}
                       />
                     ))}
                   </div>
@@ -240,21 +486,39 @@ export function ReadingPage() {
                   <span className="text-sm font-medium text-gray-700">
                     <Mic className="h-4 w-4 inline mr-2" />
                     你的发音
+                    {isRecording && (
+                      <span className="ml-2 text-red-500 text-xs">
+                        {formatDuration(recordingDuration)}
+                      </span>
+                    )}
                   </span>
-                  {hasRecorded && (
-                    <Button size="sm" variant="ghost">
-                      <Play className="h-4 w-4" />
-                    </Button>
-                  )}
                 </div>
                 <div className="h-20 bg-gray-100 rounded-lg flex items-center justify-center">
-                  {hasRecorded ? (
+                  {evaluating ? (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      <span className="text-sm">正在评估...</span>
+                    </div>
+                  ) : isRecording ? (
+                    <div className="flex items-end gap-1 h-12">
+                      {Array.from({ length: 30 }).map((_, i) => (
+                        <div
+                          key={i}
+                          className="w-1 bg-red-400 rounded-full animate-pulse"
+                          style={{
+                            height: `${20 + Math.random() * 60}%`,
+                            animationDelay: `${i * 50}ms`
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : evaluationResult ? (
                     <div className="flex items-end gap-1 h-12">
                       {Array.from({ length: 30 }).map((_, i) => (
                         <div
                           key={i}
                           className="w-1 bg-orange-400 rounded-full"
-                          style={{ height: `${Math.random() * 100}%` }}
+                          style={{ height: `${20 + Math.random() * 60}%` }}
                         />
                       ))}
                     </div>
@@ -265,8 +529,8 @@ export function ReadingPage() {
               </div>
             </div>
 
-            {/* Score Card (shown after recording) */}
-            {hasRecorded && (
+            {/* Score Card (shown after evaluation) */}
+            {evaluationResult && (
               <div className="bg-white rounded-xl shadow-lg p-6 mb-4">
                 <h3 className="font-semibold text-gray-900 mb-4">
                   <span className="mr-2">🧠</span>
@@ -275,35 +539,75 @@ export function ReadingPage() {
                 <div className="flex items-start gap-6">
                   {/* Overall Score */}
                   <div className="text-center">
-                    <div className="w-20 h-20 rounded-full border-4 border-green-500 flex items-center justify-center bg-green-50">
-                      <span className="text-3xl font-bold text-green-600">85</span>
+                    <div className={cn(
+                      'w-20 h-20 rounded-full border-4 flex items-center justify-center',
+                      evaluationResult.overall_score >= 80
+                        ? 'border-green-500 bg-green-50'
+                        : evaluationResult.overall_score >= 60
+                          ? 'border-amber-500 bg-amber-50'
+                          : 'border-red-500 bg-red-50'
+                    )}>
+                      <span className={cn(
+                        'text-3xl font-bold',
+                        evaluationResult.overall_score >= 80
+                          ? 'text-green-600'
+                          : evaluationResult.overall_score >= 60
+                            ? 'text-amber-600'
+                            : 'text-red-600'
+                      )}>
+                        {evaluationResult.overall_score}
+                      </span>
                     </div>
                     <span className="text-sm text-gray-500 mt-2 block">总分</span>
                   </div>
 
                   {/* Detailed Scores */}
                   <div className="flex-1 space-y-3">
-                    <ScoreBar label="发音准确度" score={90} color="bg-green-500" />
-                    <ScoreBar label="流畅度" score={80} color="bg-amber-500" />
-                    <ScoreBar label="语调" score={85} color="bg-green-500" />
+                    <ScoreBar
+                      label="发音准确度"
+                      score={evaluationResult.pronunciation_score}
+                      color={evaluationResult.pronunciation_score >= 80 ? 'bg-green-500' : evaluationResult.pronunciation_score >= 60 ? 'bg-amber-500' : 'bg-red-500'}
+                    />
+                    <ScoreBar
+                      label="流畅度"
+                      score={evaluationResult.fluency_score}
+                      color={evaluationResult.fluency_score >= 80 ? 'bg-green-500' : evaluationResult.fluency_score >= 60 ? 'bg-amber-500' : 'bg-red-500'}
+                    />
+                    <ScoreBar
+                      label="语调"
+                      score={evaluationResult.intonation_score}
+                      color={evaluationResult.intonation_score >= 80 ? 'bg-green-500' : evaluationResult.intonation_score >= 60 ? 'bg-amber-500' : 'bg-red-500'}
+                    />
                   </div>
                 </div>
 
+                {/* Transcribed Text */}
+                {evaluationResult.transcribed_text && (
+                  <div className="mt-4 pt-4 border-t">
+                    <div className="text-sm text-gray-500 mb-1">识别结果:</div>
+                    <div className="text-gray-700 bg-gray-50 rounded-lg p-3">
+                      {evaluationResult.transcribed_text}
+                    </div>
+                  </div>
+                )}
+
                 {/* Feedback */}
-                <div className="mt-4 pt-4 border-t space-y-2">
-                  <div className="flex items-start gap-2 text-sm">
-                    <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
-                    <span className="text-gray-700">
-                      需要注意: 注意单词之间的连读和停顿
-                    </span>
+                {evaluationResult.feedback.length > 0 && (
+                  <div className="mt-4 pt-4 border-t space-y-2">
+                    {evaluationResult.feedback.map((item, index) => (
+                      <div key={index} className="flex items-start gap-2 text-sm">
+                        {item.type === 'good' ? (
+                          <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
+                        ) : (
+                          <AlertCircle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
+                        )}
+                        <span className={item.type === 'good' ? 'text-green-700' : 'text-gray-700'}>
+                          {item.message}
+                        </span>
+                      </div>
+                    ))}
                   </div>
-                  <div className="flex items-start gap-2 text-sm">
-                    <CheckCircle className="h-4 w-4 text-green-500 shrink-0 mt-0.5" />
-                    <span className="text-green-700">
-                      做得好: 发音清晰，语速适中！
-                    </span>
-                  </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -321,13 +625,18 @@ export function ReadingPage() {
               <Button
                 size="lg"
                 onClick={handleRecord}
+                disabled={evaluating}
                 className={cn(
                   'px-8',
                   isRecording && 'bg-red-500 hover:bg-red-600'
                 )}
               >
-                <Mic className={cn('h-5 w-5 mr-2', isRecording && 'animate-pulse')} />
-                {isRecording ? '停止录音' : hasRecorded ? '重新录音' : '开始录音'}
+                {evaluating ? (
+                  <Loader2 className="h-5 w-5 mr-2 animate-spin" />
+                ) : (
+                  <Mic className={cn('h-5 w-5 mr-2', isRecording && 'animate-pulse')} />
+                )}
+                {evaluating ? '评估中...' : isRecording ? '停止录音' : evaluationResult ? '重新录音' : '开始录音'}
               </Button>
 
               <Button
