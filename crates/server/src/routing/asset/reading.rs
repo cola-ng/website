@@ -1,7 +1,9 @@
 use std::path::PathBuf;
 
 use base64::prelude::{BASE64_STANDARD as BASE64, Engine};
+use chrono::Utc;
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -10,8 +12,10 @@ use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
+use crate::models::learn::{NewReadPractice, NewUserLevel};
 use crate::services::ai_provider::{AiProviderError, AsrResponse};
 use crate::services::create_provider_from_env;
+use crate::{json_ok, DepotExt, JsonResult};
 
 #[derive(Serialize, ToSchema)]
 pub struct PaginatedSubjects {
@@ -406,4 +410,303 @@ fn calculate_pronunciation_score(
         intonation_score.clamp(0, 100),
         feedback,
     )
+}
+
+// ============================================================================
+// Recommended Sentences API (requires auth)
+// ============================================================================
+
+const DEFAULT_PRONUNCIATION_LEVEL: i32 = 5;
+
+/// Response for recommended sentences
+#[derive(Serialize, ToSchema)]
+pub struct RecommendedSentencesResponse {
+    pub items: Vec<ReadSentence>,
+    pub user_level: i32,
+    pub total_available: i64,
+    pub all_completed: bool,
+}
+
+/// Get recommended sentences for reading practice
+///
+/// Returns sentences filtered by:
+/// 1. Difficulty >= user_level - 1
+/// 2. Excludes sentences where user scored >= 90
+#[endpoint(tags("Reading"))]
+pub async fn get_recommended_sentences(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<RecommendedSentencesResponse> {
+    let user_id = depot.user_id()?;
+    let limit = req.query::<i64>("limit").unwrap_or(10).clamp(1, 20);
+
+    let result = with_conn(move |conn| {
+        // Get user's pronunciation level (default to 5)
+        let user_level: i32 = learn_levels::table
+            .filter(learn_levels::user_id.eq(user_id))
+            .filter(learn_levels::skill_type.eq("pronunciation"))
+            .select(learn_levels::level)
+            .first::<i32>(conn)
+            .unwrap_or(DEFAULT_PRONUNCIATION_LEVEL);
+
+        // Minimum difficulty threshold (user_level - 1, but at least 1)
+        let min_difficulty = (user_level - 1).max(1) as i16;
+
+        // Get sentence IDs where user scored >= 90
+        let mastered_sentence_ids: Vec<i64> = learn_read_practices::table
+            .filter(learn_read_practices::user_id.eq(user_id))
+            .filter(learn_read_practices::overall_score.ge(90))
+            .select(learn_read_practices::sentence_id)
+            .distinct()
+            .load::<Option<i64>>(conn)?
+            .into_iter()
+            .flatten()
+            .collect();
+
+        // Count total available sentences (meeting difficulty threshold, excluding mastered)
+        let mut count_query = asset_read_sentences::table
+            .filter(
+                asset_read_sentences::difficulty
+                    .is_null()
+                    .or(asset_read_sentences::difficulty.ge(min_difficulty)),
+            )
+            .into_boxed();
+
+        if !mastered_sentence_ids.is_empty() {
+            count_query = count_query.filter(
+                asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()),
+            );
+        }
+
+        let total_available: i64 = count_query.count().get_result(conn)?;
+
+        // Get recommended sentences
+        let mut query = asset_read_sentences::table
+            .filter(
+                asset_read_sentences::difficulty
+                    .is_null()
+                    .or(asset_read_sentences::difficulty.ge(min_difficulty)),
+            )
+            .into_boxed();
+
+        if !mastered_sentence_ids.is_empty() {
+            query = query.filter(
+                asset_read_sentences::id.ne_all(mastered_sentence_ids),
+            );
+        }
+
+        let items = query
+            .order(asset_read_sentences::difficulty.asc().nulls_last())
+            .limit(limit)
+            .load::<ReadSentence>(conn)?;
+
+        Ok::<_, diesel::result::Error>((items, user_level, total_available))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to get recommended sentences"))?;
+
+    let (items, user_level, total_available) = result;
+    let all_completed = items.is_empty() && total_available == 0;
+
+    json_ok(RecommendedSentencesResponse {
+        items,
+        user_level,
+        total_available,
+        all_completed,
+    })
+}
+
+/// Request to submit reading practice result
+#[derive(Deserialize, ToSchema)]
+pub struct SubmitReadPracticeRequest {
+    pub sentence_id: i64,
+    pub practice_id: String,
+    pub overall_score: i32,
+    pub pronunciation_score: Option<i32>,
+    pub fluency_score: Option<i32>,
+    pub intonation_score: Option<i32>,
+}
+
+/// Response after submitting practice
+#[derive(Serialize, ToSchema)]
+pub struct SubmitReadPracticeResponse {
+    pub success: bool,
+    pub practice_id: i64,
+    /// Whether user leveled up after this practice
+    pub leveled_up: bool,
+    /// User's new level (if leveled up)
+    pub new_level: Option<i32>,
+}
+
+/// Submit reading practice result
+#[endpoint(tags("Reading"))]
+pub async fn submit_read_practice(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<SubmitReadPracticeResponse> {
+    let user_id = depot.user_id()?;
+    let input: SubmitReadPracticeRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+    let overall_score = input.overall_score;
+    let sentence_id = input.sentence_id;
+
+    let (practice_id, leveled_up, new_level) = with_conn(move |conn| {
+        // Save the practice record
+        let new_practice = NewReadPractice {
+            user_id,
+            sentence_id: Some(sentence_id),
+            practice_id: input.practice_id,
+            user_audio_path: None,
+            pronunciation_score: input.pronunciation_score,
+            fluency_score: input.fluency_score,
+            intonation_score: input.intonation_score,
+            overall_score: Some(overall_score),
+            detected_errors: None,
+            ai_feedback_en: None,
+            ai_feedback_zh: None,
+            waveform_data: None,
+        };
+
+        let practice_id = diesel::insert_into(learn_read_practices::table)
+            .values(&new_practice)
+            .returning(learn_read_practices::id)
+            .get_result::<i64>(conn)?;
+
+        // Check if we should level up (only if score > 90)
+        let mut leveled_up = false;
+        let mut new_level: Option<i32> = None;
+
+        if overall_score > 90 {
+            // Get user's current pronunciation level
+            let user_level: i32 = learn_levels::table
+                .filter(learn_levels::user_id.eq(user_id))
+                .filter(learn_levels::skill_type.eq("pronunciation"))
+                .select(learn_levels::level)
+                .first::<i32>(conn)
+                .unwrap_or(DEFAULT_PRONUNCIATION_LEVEL);
+
+            // Get the difficulty of all sentences at the current user level
+            // Find sentences where user has NOT scored >= 90
+            // i.e., sentences at current difficulty that are not mastered yet
+            let current_level_difficulty = user_level as i16;
+
+            // Get all sentence IDs at current difficulty level
+            let sentences_at_level: Vec<i64> = asset_read_sentences::table
+                .filter(asset_read_sentences::difficulty.eq(current_level_difficulty))
+                .select(asset_read_sentences::id)
+                .load::<i64>(conn)?;
+
+            if !sentences_at_level.is_empty() {
+                // Get sentence IDs where user scored >= 90
+                let mastered_ids: Vec<i64> = learn_read_practices::table
+                    .filter(learn_read_practices::user_id.eq(user_id))
+                    .filter(learn_read_practices::sentence_id.is_not_null())
+                    .filter(learn_read_practices::overall_score.ge(90))
+                    .select(learn_read_practices::sentence_id)
+                    .distinct()
+                    .load::<Option<i64>>(conn)?
+                    .into_iter()
+                    .flatten()
+                    .collect();
+
+                // Check if all sentences at current level are mastered
+                let all_mastered = sentences_at_level
+                    .iter()
+                    .all(|sid| mastered_ids.contains(sid));
+
+                if all_mastered && user_level < 10 {
+                    // Level up!
+                    let next_level = user_level + 1;
+                    let now = Utc::now();
+
+                    diesel::insert_into(learn_levels::table)
+                        .values(&NewUserLevel {
+                            user_id,
+                            skill_type: "pronunciation".to_string(),
+                            level: next_level,
+                        })
+                        .on_conflict((learn_levels::user_id, learn_levels::skill_type))
+                        .do_update()
+                        .set((
+                            learn_levels::level.eq(next_level),
+                            learn_levels::updated_at.eq(now),
+                        ))
+                        .execute(conn)?;
+
+                    leveled_up = true;
+                    new_level = Some(next_level);
+                    tracing::info!(
+                        "User {} leveled up pronunciation from {} to {}",
+                        user_id,
+                        user_level,
+                        next_level
+                    );
+                }
+            }
+        }
+
+        Ok::<_, diesel::result::Error>((practice_id, leveled_up, new_level))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to save practice"))?;
+
+    json_ok(SubmitReadPracticeResponse {
+        success: true,
+        practice_id,
+        leveled_up,
+        new_level,
+    })
+}
+
+/// Response for reset level
+#[derive(Serialize, ToSchema)]
+pub struct ResetLevelResponse {
+    pub success: bool,
+    pub new_level: i32,
+}
+
+/// Reset user's pronunciation level to default (5)
+/// This also allows the user to practice sentences they've already mastered
+#[endpoint(tags("Reading"))]
+pub async fn reset_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLevelResponse> {
+    let user_id = depot.user_id()?;
+    let new_level = DEFAULT_PRONUNCIATION_LEVEL;
+    let now = Utc::now();
+
+    with_conn(move |conn| {
+        // Upsert user level
+        diesel::insert_into(learn_levels::table)
+            .values(&NewUserLevel {
+                user_id,
+                skill_type: "pronunciation".to_string(),
+                level: new_level,
+            })
+            .on_conflict((learn_levels::user_id, learn_levels::skill_type))
+            .do_update()
+            .set((
+                learn_levels::level.eq(new_level),
+                learn_levels::updated_at.eq(now),
+            ))
+            .execute(conn)?;
+
+        // Delete all practice records with score >= 90 to "reset" progress
+        diesel::delete(
+            learn_read_practices::table
+                .filter(learn_read_practices::user_id.eq(user_id))
+                .filter(learn_read_practices::overall_score.ge(90)),
+        )
+        .execute(conn)?;
+
+        Ok::<_, diesel::result::Error>(())
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to reset level"))?;
+
+    json_ok(ResetLevelResponse {
+        success: true,
+        new_level,
+    })
 }

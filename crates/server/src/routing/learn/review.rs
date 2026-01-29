@@ -172,20 +172,84 @@ pub async fn get_review_items(req: &mut Request, depot: &mut Depot) -> JsonResul
                     });
                 }
             }
-            _ => {
-                // Default: get all due vocabulary
-                let vocabs: Vec<UserVocabulary> = learn_vocabularies::table
+            "smart" | _ => {
+                // Smart mode: mix items from all types based on priority
+                let items_per_type = (limit / 5).max(2);
+
+                // 1. Pronunciation issues (highest priority)
+                let pronunciation_issues: Vec<IssueWord> = learn_issue_words::table
+                    .filter(learn_issue_words::user_id.eq(user_id))
+                    .filter(learn_issue_words::issue_type.eq("pronunciation"))
+                    .filter(
+                        learn_issue_words::next_review_at
+                            .is_null()
+                            .or(learn_issue_words::next_review_at.le(now)),
+                    )
+                    .order(learn_issue_words::next_review_at.asc().nulls_first())
+                    .limit(items_per_type)
+                    .load::<IssueWord>(conn)?;
+
+                for iw in pronunciation_issues {
+                    result.push(ReviewItem {
+                        id: iw.id,
+                        word: iw.word.clone(),
+                        word_zh: iw.description_zh.clone(),
+                        phonetic: None,
+                        example: iw.context.clone(),
+                        example_zh: None,
+                        review_type: "pronunciation".to_string(),
+                        mastery_level: iw.difficulty.unwrap_or(3),
+                        source: "issue_word".to_string(),
+                        source_id: iw.id,
+                    });
+                }
+
+                // 2. Phrase (usage) issues
+                let phrase_issues: Vec<IssueWord> = learn_issue_words::table
+                    .filter(learn_issue_words::user_id.eq(user_id))
+                    .filter(learn_issue_words::issue_type.eq("usage"))
+                    .filter(
+                        learn_issue_words::next_review_at
+                            .is_null()
+                            .or(learn_issue_words::next_review_at.le(now)),
+                    )
+                    .order(learn_issue_words::next_review_at.asc().nulls_first())
+                    .limit(items_per_type)
+                    .load::<IssueWord>(conn)?;
+
+                for iw in phrase_issues {
+                    result.push(ReviewItem {
+                        id: iw.id,
+                        word: iw.word.clone(),
+                        word_zh: iw.description_zh.clone(),
+                        phonetic: None,
+                        example: iw.context.clone(),
+                        example_zh: None,
+                        review_type: "phrase".to_string(),
+                        mastery_level: iw.difficulty.unwrap_or(3),
+                        source: "issue_word".to_string(),
+                        source_id: iw.id,
+                    });
+                }
+
+                // 3. Vocabulary items - distribute across meaning, spelling, recognition
+                let remaining_slots = (limit as usize).saturating_sub(result.len());
+                let vocab_items: Vec<UserVocabulary> = learn_vocabularies::table
                     .filter(learn_vocabularies::user_id.eq(user_id))
                     .filter(
                         learn_vocabularies::next_review_at
                             .is_null()
                             .or(learn_vocabularies::next_review_at.le(now)),
                     )
+                    .filter(learn_vocabularies::mastery_level.lt(4))
                     .order(learn_vocabularies::next_review_at.asc().nulls_first())
-                    .limit(limit)
+                    .limit(remaining_slots as i64)
                     .load::<UserVocabulary>(conn)?;
 
-                for v in vocabs {
+                // Rotate through review types for vocabulary
+                let vocab_types = ["meaning", "spelling", "recognition"];
+                for (i, v) in vocab_items.iter().enumerate() {
+                    let review_type = vocab_types[i % vocab_types.len()];
                     result.push(ReviewItem {
                         id: v.id,
                         word: v.word.clone(),
@@ -193,7 +257,7 @@ pub async fn get_review_items(req: &mut Request, depot: &mut Depot) -> JsonResul
                         phonetic: None,
                         example: None,
                         example_zh: None,
-                        review_type: "recognition".to_string(),
+                        review_type: review_type.to_string(),
                         mastery_level: v.mastery_level.unwrap_or(0),
                         source: "vocabulary".to_string(),
                         source_id: v.id,

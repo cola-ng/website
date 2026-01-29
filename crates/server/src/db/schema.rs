@@ -620,6 +620,17 @@ diesel::table! {
 }
 
 diesel::table! {
+    learn_levels (id) {
+        id -> Int8,
+        user_id -> Int8,
+        skill_type -> Text,
+        level -> Int4,
+        updated_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_practices (id) {
         id -> Int8,
         user_id -> Int8,
@@ -809,6 +820,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_chats,
     learn_daily_stats,
     learn_issue_words,
+    learn_levels,
     learn_practices,
     learn_read_practices,
     learn_read_progress,

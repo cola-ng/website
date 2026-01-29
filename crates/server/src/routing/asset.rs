@@ -1,5 +1,7 @@
 use salvo::prelude::*;
 
+use crate::hoops;
+
 mod context;
 mod reading;
 mod script;
@@ -48,6 +50,22 @@ pub fn router() -> Router {
                         .get(reading::list_read_sentences)
                         .push(Router::with_path("{id}/audio").get(reading::serve_sentence_audio)),
                 )
-                .push(Router::with_path("evaluate").post(reading::evaluate_pronunciation)),
+                .push(Router::with_path("evaluate").post(reading::evaluate_pronunciation))
+                // Authenticated reading practice endpoints
+                .push(
+                    Router::with_path("recommended")
+                        .hoop(hoops::require_auth)
+                        .get(reading::get_recommended_sentences),
+                )
+                .push(
+                    Router::with_path("practice")
+                        .hoop(hoops::require_auth)
+                        .post(reading::submit_read_practice),
+                )
+                .push(
+                    Router::with_path("reset-level")
+                        .hoop(hoops::require_auth)
+                        .post(reading::reset_pronunciation_level),
+                ),
         )
 }

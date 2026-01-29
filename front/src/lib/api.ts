@@ -1189,6 +1189,82 @@ export function evaluatePronunciation(
 }
 
 // ============================================================================
+// Recommended Reading Practice API (requires auth)
+// ============================================================================
+
+/** Response for recommended sentences */
+export type RecommendedSentencesResponse = {
+  items: ReadSentence[]
+  user_level: number
+  total_available: number
+  all_completed: boolean
+}
+
+/**
+ * Get recommended sentences for reading practice
+ * Filters by user level and excludes sentences where user scored >= 90
+ */
+export function getRecommendedSentences(
+  token: string,
+  limit: number = 10
+): Promise<RecommendedSentencesResponse> {
+  return requestJson<RecommendedSentencesResponse>(
+    `/api/asset/read/recommended?limit=${limit}`,
+    {
+      method: 'GET',
+      token,
+    }
+  )
+}
+
+/** Request to submit reading practice result */
+export type SubmitReadPracticeRequest = {
+  sentence_id: number
+  practice_id: string
+  overall_score: number
+  pronunciation_score?: number
+  fluency_score?: number
+  intonation_score?: number
+}
+
+/** Response after submitting practice */
+export type SubmitReadPracticeResponse = {
+  success: boolean
+  practice_id: number
+}
+
+/**
+ * Submit reading practice result
+ */
+export function submitReadPractice(
+  token: string,
+  data: SubmitReadPracticeRequest
+): Promise<SubmitReadPracticeResponse> {
+  return requestJson<SubmitReadPracticeResponse>('/api/asset/read/practice', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/** Response for reset level */
+export type ResetLevelResponse = {
+  success: boolean
+  new_level: number
+}
+
+/**
+ * Reset user's pronunciation level to default (5)
+ * This also clears practice records with score >= 90
+ */
+export function resetPronunciationLevel(token: string): Promise<ResetLevelResponse> {
+  return requestJson<ResetLevelResponse>('/api/asset/read/reset-level', {
+    method: 'POST',
+    token,
+  })
+}
+
+// ============================================================================
 // Review API
 // ============================================================================
 

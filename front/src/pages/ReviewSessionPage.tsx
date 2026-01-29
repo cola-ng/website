@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
-import { X, Clock, Trophy, Flame, ArrowLeft, RotateCcw, Loader2 } from 'lucide-react'
+import { X, Clock, Trophy, Flame, ArrowLeft, RotateCcw, Loader2, Sparkles } from 'lucide-react'
 
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
@@ -32,9 +32,14 @@ export function ReviewSessionPage() {
   const [sessionComplete, setSessionComplete] = useState(false)
   const [startTime] = useState(() => Date.now())
 
-  // Validate and get review type
-  const reviewType = (type as ReviewType) || 'recognition'
+  // Check if smart mode (no type specified)
+  const isSmartMode = !type
+  const reviewType = (type as ReviewType) || 'smart'
   const typeInfo = REVIEW_TYPES.find((t) => t.type === reviewType)
+
+  // Get current item's review type (for smart mode)
+  const currentItem = items[currentIndex]
+  const currentItemReviewType = (currentItem?.review_type as ReviewType) || 'recognition'
 
   // Fetch items
   useEffect(() => {
@@ -55,7 +60,6 @@ export function ReviewSessionPage() {
     fetchItems()
   }, [token, reviewType])
 
-  const currentItem = items[currentIndex]
   const progress = items.length > 0 ? (currentIndex / items.length) * 100 : 0
 
   // Handle practice completion
@@ -66,12 +70,12 @@ export function ReviewSessionPage() {
       // Save result locally
       setResults((prev) => [...prev, result])
 
-      // Submit to backend
+      // Submit to backend - use the item's review type
       try {
         const submitData: SubmitReviewRequest = {
           source: currentItem.source,
           source_id: currentItem.source_id,
-          review_type: reviewType,
+          review_type: currentItem.review_type,
           result: result.result,
           score: result.score,
           time_spent_ms: result.time_spent_ms,
@@ -88,7 +92,7 @@ export function ReviewSessionPage() {
         setSessionComplete(true)
       }
     },
-    [token, currentItem, currentIndex, items.length, reviewType]
+    [token, currentItem, currentIndex, items.length]
   )
 
   // Handle skip
@@ -121,6 +125,12 @@ export function ReviewSessionPage() {
     return { correct, partial, incorrect, totalTime, avgScore }
   }
 
+  // Get display title
+  const getTitle = () => {
+    if (isSmartMode) return '智能选择'
+    return typeInfo?.title || '复习'
+  }
+
   if (!token) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
@@ -131,7 +141,9 @@ export function ReviewSessionPage() {
             <h1 className="text-2xl font-bold text-gray-900 mb-2">开始复习</h1>
             <p className="text-gray-600 mb-6">登录后开始你的复习之旅</p>
             <Button asChild>
-              <a href={`/login?redirectTo=/review/session/${reviewType}`}>登录开始复习</a>
+              <a href={`/login?redirectTo=/review/session${type ? `/${type}` : ''}`}>
+                登录开始复习
+              </a>
             </Button>
           </div>
         </div>
@@ -162,7 +174,8 @@ export function ReviewSessionPage() {
             <div className="text-6xl mb-4">🎉</div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">暂无待复习内容</h1>
             <p className="text-gray-600 mb-6">
-              {typeInfo?.title || '该类型'}的复习内容已全部完成，继续学习新内容吧！
+              {isSmartMode ? '所有' : typeInfo?.title || '该类型'}
+              的复习内容已全部完成，继续学习新内容吧！
             </p>
             <Button asChild>
               <a href="/review">返回复习中心</a>
@@ -188,7 +201,7 @@ export function ReviewSessionPage() {
               <div className="inline-flex items-center justify-center w-20 h-20 bg-white/20 rounded-full mb-4">
                 <Trophy className="h-10 w-10" />
               </div>
-              <h1 className="text-3xl font-bold mb-2">{typeInfo?.title}完成!</h1>
+              <h1 className="text-3xl font-bold mb-2">{getTitle()}完成!</h1>
               <p className="text-orange-100">太棒了，你完成了这轮复习</p>
             </div>
 
@@ -252,7 +265,7 @@ export function ReviewSessionPage() {
     )
   }
 
-  // Render appropriate practice component
+  // Render appropriate practice component based on current item's review type
   const renderPractice = () => {
     if (!currentItem) return null
 
@@ -263,7 +276,10 @@ export function ReviewSessionPage() {
       onSkip: handleSkip,
     }
 
-    switch (reviewType) {
+    // Use the item's review_type to determine the component
+    const itemType = currentItem.review_type as ReviewType
+
+    switch (itemType) {
       case 'pronunciation':
         return <PronunciationPractice {...commonProps} />
       case 'meaning':
@@ -279,6 +295,9 @@ export function ReviewSessionPage() {
     }
   }
 
+  // Get current item type info for display
+  const currentTypeInfo = REVIEW_TYPES.find((t) => t.type === currentItemReviewType)
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       <Header />
@@ -292,9 +311,15 @@ export function ReviewSessionPage() {
               退出
             </Button>
             <div className="text-center">
-              <span className="text-sm font-medium text-gray-900">{typeInfo?.title}</span>
+              <div className="flex items-center justify-center gap-2">
+                {isSmartMode && <Sparkles className="h-4 w-4 text-orange-500" />}
+                <span className="text-sm font-medium text-gray-900">{getTitle()}</span>
+              </div>
               <div className="text-xs text-gray-500">
                 {currentIndex + 1} / {items.length}
+                {isSmartMode && currentTypeInfo && (
+                  <span className="ml-2 text-orange-500">· {currentTypeInfo.title}</span>
+                )}
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm text-gray-500">

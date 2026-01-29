@@ -7,6 +7,35 @@ use serde_json::Value;
 use crate::db::schema::*;
 
 // ============================================================================
+// User Skill Levels
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_levels)]
+pub struct UserLevel {
+    pub id: i64,
+    pub user_id: i64,
+    pub skill_type: String,
+    pub level: i32,
+    pub updated_at: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = learn_levels)]
+pub struct NewUserLevel {
+    pub user_id: i64,
+    pub skill_type: String,
+    pub level: i32,
+}
+
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = learn_levels)]
+pub struct UpdateUserLevel {
+    pub level: Option<i32>,
+}
+
+// ============================================================================
 // Issue Words (user-specific vocabulary issues)
 // ============================================================================
 
