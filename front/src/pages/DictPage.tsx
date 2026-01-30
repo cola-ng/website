@@ -761,8 +761,6 @@ function getNavGroups(result: WordQueryResponse): NavGroup[] {
   const hasDefinitions = zhDefs.length > 0 || enDefs.length > 0
 
   const hasSentences = (result.sentences?.length ?? 0) > 0
-  const hasMemory = !!result.word.memory
-  const hasExamples = hasSentences || hasMemory
 
   const relations = result.relations ?? []
   const synonyms = relations.filter(r => r.relation_type === 'synonym' || r.relation_type === 'similar')
@@ -770,13 +768,17 @@ function getNavGroups(result: WordQueryResponse): NavGroup[] {
   const relatedWords = relations.filter(r =>
     r.relation_type !== 'synonym' && r.relation_type !== 'similar' && r.relation_type !== 'antonym'
   )
+  const hasRelated = synonyms.length > 0 || antonyms.length > 0 || relatedWords.length > 0
+
   const hasEtymologies = (result.etymologies?.length ?? 0) > 0
-  const hasRelated = synonyms.length > 0 || antonyms.length > 0 || relatedWords.length > 0 || hasEtymologies
+  const hasMemory = !!result.word.memory
+  const hasOther = hasEtymologies || hasMemory
 
   return [
     { id: 'definitions', label: '释义', anchorId: 'section-definitions', available: hasDefinitions },
-    { id: 'examples', label: '例句', anchorId: 'section-examples', available: hasExamples },
+    { id: 'examples', label: '例句', anchorId: 'section-examples', available: hasSentences },
     { id: 'related', label: '相关', anchorId: 'section-related', available: hasRelated },
+    { id: 'other', label: '其他', anchorId: 'section-other', available: hasOther },
   ].filter(item => item.available)
 }
 
@@ -845,8 +847,6 @@ function WordResult({
   const hasDefinitions = hasZhDefs || hasEnDefs
 
   const hasSentences = (result.sentences?.length ?? 0) > 0
-  const hasMemory = !!result.word.memory
-  const hasExamples = hasSentences || hasMemory
 
   const relations = result.relations ?? []
   const synonyms = relations.filter(r => r.relation_type === 'synonym' || r.relation_type === 'similar')
@@ -857,8 +857,11 @@ function WordResult({
   const hasSynonyms = synonyms.length > 0
   const hasAntonyms = antonyms.length > 0
   const hasRelatedWords = relatedWords.length > 0
+  const hasRelated = hasSynonyms || hasAntonyms || hasRelatedWords
+
   const hasEtymologies = (result.etymologies?.length ?? 0) > 0
-  const hasRelated = hasSynonyms || hasAntonyms || hasRelatedWords || hasEtymologies
+  const hasMemory = !!result.word.memory
+  const hasOther = hasEtymologies || hasMemory
 
   const displayedSentences = showMoreSentences
     ? (result.sentences ?? [])
@@ -968,187 +971,195 @@ function WordResult({
 
       {/* Definitions Section */}
       {hasDefinitions && (
-        <div id="section-definitions" className="bg-white rounded-xl shadow-lg p-5 space-y-4">
-          {/* Chinese Definitions */}
-          {hasZhDefs && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">中文释义</h3>
-              <div className="space-y-3">
-                {zhDefs.map((def) => (
-                  <div key={def.id} className="pl-3 border-l-2 border-orange-500">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      {def.part_of_speech && (
-                        <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
-                          {def.part_of_speech}
-                        </span>
-                      )}
-                      {def.register && (
-                        <span className="text-xs text-gray-500">{def.register}</span>
-                      )}
-                      {def.region && (
-                        <span className="text-xs text-gray-500">{def.region}</span>
-                      )}
-                    </div>
-                    <p className="text-base text-gray-800">{def.definition}</p>
-                    {def.usage_notes && (
-                      <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        <div id="section-definitions" className="bg-white rounded-xl shadow-lg p-5">
+          <Tabs defaultValue={hasZhDefs ? 'zh' : 'en'}>
+            <TabsList className="mb-4">
+              {hasZhDefs && <TabsTrigger value="zh">中文释义</TabsTrigger>}
+              {hasEnDefs && <TabsTrigger value="en">英文释义</TabsTrigger>}
+            </TabsList>
 
-          {/* English Definitions */}
-          {hasEnDefs && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">英文释义</h3>
-              <div className="space-y-3">
-                {enDefs.map((def) => (
-                  <div key={def.id} className="pl-3 border-l-2 border-blue-500">
-                    <div className="flex items-center gap-2 mb-0.5">
-                      {def.part_of_speech && (
-                        <span className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded text-xs font-medium">
-                          {def.part_of_speech}
-                        </span>
-                      )}
-                      {def.register && (
-                        <span className="text-xs text-gray-500">{def.register}</span>
-                      )}
-                      {def.region && (
-                        <span className="text-xs text-gray-500">{def.region}</span>
+            {hasZhDefs && (
+              <TabsContent value="zh">
+                <div className="space-y-3">
+                  {zhDefs.map((def) => (
+                    <div key={def.id} className="pl-3 border-l-2 border-orange-500">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        {def.part_of_speech && (
+                          <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
+                            {def.part_of_speech}
+                          </span>
+                        )}
+                        {def.register && (
+                          <span className="text-xs text-gray-500">{def.register}</span>
+                        )}
+                        {def.region && (
+                          <span className="text-xs text-gray-500">{def.region}</span>
+                        )}
+                      </div>
+                      <p className="text-base text-gray-800">{def.definition}</p>
+                      {def.usage_notes && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
                       )}
                     </div>
-                    <p className="text-base text-gray-800">{def.definition}</p>
-                    {def.usage_notes && (
-                      <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
-                    )}
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {hasEnDefs && (
+              <TabsContent value="en">
+                <div className="space-y-3">
+                  {enDefs.map((def) => (
+                    <div key={def.id} className="pl-3 border-l-2 border-blue-500">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        {def.part_of_speech && (
+                          <span className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded text-xs font-medium">
+                            {def.part_of_speech}
+                          </span>
+                        )}
+                        {def.register && (
+                          <span className="text-xs text-gray-500">{def.register}</span>
+                        )}
+                        {def.region && (
+                          <span className="text-xs text-gray-500">{def.region}</span>
+                        )}
+                      </div>
+                      <p className="text-base text-gray-800">{def.definition}</p>
+                      {def.usage_notes && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
+        </div>
+      )}
+
+      {/* Example Sentences Section */}
+      {hasSentences && (
+        <div id="section-examples" className="bg-white rounded-xl shadow-lg p-5">
+          <h3 className="text-sm font-medium text-gray-500 mb-3">使用例句</h3>
+          <div className="space-y-2">
+            {displayedSentences.map((sentence) => (
+              <div key={sentence.id} className="bg-gray-50 rounded-lg p-3">
+                <p
+                  className="text-gray-800 text-sm"
+                  dangerouslySetInnerHTML={{
+                    __html: highlightWord(sentence.sentence, result.word.word)
+                  }}
+                />
+                {sentence.source && (
+                  <p className="text-gray-500 text-xs mt-1">— {sentence.source}</p>
+                )}
               </div>
-            </div>
+            ))}
+          </div>
+          {(result.sentences ?? []).length > 10 && (
+            <button
+              onClick={() => setShowMoreSentences(!showMoreSentences)}
+              className="mt-3 w-full py-2 text-orange-600 hover:text-orange-800 text-sm font-medium transition-colors"
+            >
+              {showMoreSentences ? '收起' : `查看更多 (${((result.sentences ?? []).length - 10)} 条)`}
+            </button>
           )}
         </div>
       )}
 
-      {/* Examples & Memory Section */}
-      {hasExamples && (
-        <div id="section-examples" className="bg-white rounded-xl shadow-lg p-5 space-y-4">
-          {/* Example Sentences */}
-          {hasSentences && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">使用例句</h3>
-              <div className="space-y-2">
-                {displayedSentences.map((sentence) => (
-                  <div key={sentence.id} className="bg-gray-50 rounded-lg p-3">
-                    <p
-                      className="text-gray-800 text-sm"
-                      dangerouslySetInnerHTML={{
-                        __html: highlightWord(sentence.sentence, result.word.word)
-                      }}
-                    />
-                    {sentence.source && (
-                      <p className="text-gray-500 text-xs mt-1">— {sentence.source}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-              {(result.sentences ?? []).length > 10 && (
-                <button
-                  onClick={() => setShowMoreSentences(!showMoreSentences)}
-                  className="mt-3 w-full py-2 text-orange-600 hover:text-orange-800 text-sm font-medium transition-colors"
-                >
-                  {showMoreSentences ? '收起' : `查看更多 (${((result.sentences ?? []).length - 10)} 条)`}
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Memory Tips */}
-          {hasMemory && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">记忆技巧</h3>
-              <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                <p className="text-gray-800 whitespace-pre-wrap">{result.word.memory}</p>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Related Section (Synonyms, Antonyms, Related Words, Etymology) */}
+      {/* Related Section (Synonyms, Antonyms, Related Words) */}
       {hasRelated && (
-        <div id="section-related" className="bg-white rounded-xl shadow-lg p-5 space-y-4">
-          {/* Synonyms */}
-          {hasSynonyms && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">近义词</h3>
-              <div className="flex flex-wrap gap-2">
-                {synonyms.map((rel) => (
-                  <Link
-                    key={rel.id}
-                    to={`/dict/${encodeURIComponent(rel.related_word)}`}
-                    className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
-                  >
-                    {rel.related_word}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+        <div id="section-related" className="bg-white rounded-xl shadow-lg p-5">
+          <Tabs defaultValue={hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : 'related'}>
+            <TabsList className="mb-4">
+              {hasSynonyms && <TabsTrigger value="synonyms">近义词</TabsTrigger>}
+              {hasAntonyms && <TabsTrigger value="antonyms">反义词</TabsTrigger>}
+              {hasRelatedWords && <TabsTrigger value="related">相关词</TabsTrigger>}
+            </TabsList>
 
-          {/* Antonyms */}
-          {hasAntonyms && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">反义词</h3>
-              <div className="flex flex-wrap gap-2">
-                {antonyms.map((rel) => (
-                  <Link
-                    key={rel.id}
-                    to={`/dict/${encodeURIComponent(rel.related_word)}`}
-                    className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
-                  >
-                    {rel.related_word}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+            {hasSynonyms && (
+              <TabsContent value="synonyms">
+                <div className="flex flex-wrap gap-2">
+                  {synonyms.map((rel) => (
+                    <Link
+                      key={rel.id}
+                      to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                      className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
+                    >
+                      {rel.related_word}
+                    </Link>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
 
-          {/* Related Words */}
-          {hasRelatedWords && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">相关词</h3>
-              <div className="flex flex-wrap gap-2">
-                {relatedWords.map((rel) => (
-                  <Link
-                    key={rel.id}
-                    to={`/dict/${encodeURIComponent(rel.related_word)}`}
-                    className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
-                  >
-                    {rel.related_word}
-                  </Link>
-                ))}
-              </div>
-            </div>
-          )}
+            {hasAntonyms && (
+              <TabsContent value="antonyms">
+                <div className="flex flex-wrap gap-2">
+                  {antonyms.map((rel) => (
+                    <Link
+                      key={rel.id}
+                      to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                      className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
+                    >
+                      {rel.related_word}
+                    </Link>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
 
-          {/* Etymology */}
-          {hasEtymologies && (
-            <div>
-              <h3 className="text-sm font-medium text-gray-500 mb-3">词源</h3>
-              <div className="space-y-2">
-                {(result.etymologies ?? []).map((etym) => (
-                  <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                    <p className="text-sm text-gray-800">{etym.etymology}</p>
-                    {etym.origin_language && (
-                      <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+            {hasRelatedWords && (
+              <TabsContent value="related">
+                <div className="flex flex-wrap gap-2">
+                  {relatedWords.map((rel) => (
+                    <Link
+                      key={rel.id}
+                      to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                      className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
+                    >
+                      {rel.related_word}
+                    </Link>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
+        </div>
+      )}
+
+      {/* Other Section (Etymology, Memory) */}
+      {hasOther && (
+        <div id="section-other" className="bg-white rounded-xl shadow-lg p-5">
+          <Tabs defaultValue={hasEtymologies ? 'etymology' : 'memory'}>
+            <TabsList className="mb-4">
+              {hasEtymologies && <TabsTrigger value="etymology">词源</TabsTrigger>}
+              {hasMemory && <TabsTrigger value="memory">记忆技巧</TabsTrigger>}
+            </TabsList>
+
+            {hasEtymologies && (
+              <TabsContent value="etymology">
+                <div className="space-y-2">
+                  {(result.etymologies ?? []).map((etym) => (
+                    <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+                      <p className="text-sm text-gray-800">{etym.etymology}</p>
+                      {etym.origin_language && (
+                        <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {hasMemory && (
+              <TabsContent value="memory">
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                  <p className="text-gray-800 whitespace-pre-wrap">{result.word.memory}</p>
+                </div>
+              </TabsContent>
+            )}
+          </Tabs>
         </div>
       )}
 
