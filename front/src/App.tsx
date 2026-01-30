@@ -18,6 +18,9 @@ import { StageDetailPage } from './pages/StageDetailPage'
 import { ReadingPage } from './pages/ReadingPage'
 import { FavoritesPage } from './pages/FavoritesPage'
 import { AdminPage } from './pages/AdminPage'
+import { AdminUserDetailPage } from './pages/AdminUserDetailPage'
+import { AdminDictPage } from './pages/AdminDictPage'
+import { AdminTaxonomyPage } from './pages/AdminTaxonomyPage'
 import { SubscriptionPage } from './pages/SubscriptionPage'
 
 function AppRoutes() {
@@ -41,6 +44,10 @@ function AppRoutes() {
       <Route path="/me" element={token ? <MePage /> : <Navigate to="/" replace />} />
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/users" element={<AdminPage />} />
+      <Route path="/admin/users/:userId" element={<AdminUserDetailPage />} />
+      <Route path="/admin/dict" element={<AdminDictPage />} />
+      <Route path="/admin/dict/:wordId" element={<AdminDictPage />} />
+      <Route path="/admin/taxonomy" element={<AdminTaxonomyPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/favorites" element={<FavoritesPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />

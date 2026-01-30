@@ -16,6 +16,9 @@ pub fn router() -> Router {
         .hoop(require_auth)
         .hoop(require_admin)
         .push(Router::with_path("stats").get(dashboard_stats))
+        .push(Router::with_path("stats/users/daily").get(user_stats_daily))
+        .push(Router::with_path("stats/ai/today").get(ai_usage_today))
+        .push(Router::with_path("stats/ai/top-users").get(ai_top_users))
         .push(
             Router::with_path("users")
                 .get(list_users)
@@ -200,6 +203,7 @@ pub struct UserDetailResponse {
     subscription: Option<SubscriptionInfo>,
     wallet: Option<WalletAccount>,
     recent_payments: Vec<PaymentOrder>,
+    recent_activities: Vec<UserActivityResponse>,
 }
 
 #[derive(Serialize, ToSchema)]
@@ -270,12 +274,19 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
             .limit(10)
             .load(conn)?;
 
-        Ok::<_, diesel::result::Error>((user, admin, subscription_info, wallet, recent_payments))
+        // Get recent activities
+        let recent_activities: Vec<UserActivity> = user_activities::table
+            .filter(user_activities::user_id.eq(user_id))
+            .order(user_activities::created_at.desc())
+            .limit(50)
+            .load(conn)?;
+
+        Ok::<_, diesel::result::Error>((user, admin, subscription_info, wallet, recent_payments, recent_activities))
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
 
-    let (user, admin, subscription, wallet, recent_payments) = result;
+    let (user, admin, subscription, wallet, recent_payments, recent_activities) = result;
 
     let admin_info = admin.map(|a| AdminInfo {
         granted_at: a.granted_at,
@@ -290,6 +301,7 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
         subscription,
         wallet,
         recent_payments,
+        recent_activities: recent_activities.into_iter().map(|a| a.into()).collect(),
     })
 }
 
@@ -434,4 +446,320 @@ pub async fn revoke_admin(
     .map_err(|_| StatusError::internal_server_error().brief("failed to revoke admin"))?;
 
     json_ok(())
+}
+
+// ============================================================================
+// User Statistics API
+// ============================================================================
+
+#[derive(Serialize, ToSchema)]
+pub struct DailyUserStats {
+    /// Date in YYYY-MM-DD format
+    date: String,
+    /// Number of new users registered on this date
+    new_users: i64,
+    /// Cumulative total users up to this date
+    total_users: i64,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct UserStatsQuery {
+    /// Number of days to look back (default 30, max 365)
+    days: Option<i32>,
+}
+
+/// Get daily user registration statistics
+#[endpoint(tags("Admin"))]
+pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStats>> {
+    let query: UserStatsQuery = req.parse_queries().unwrap_or(UserStatsQuery { days: None });
+    let days = query.days.unwrap_or(30).clamp(1, 365);
+
+    let stats = with_conn(move |conn| {
+        // Get daily registration counts for the last N days
+        let results: Vec<(String, i64)> = diesel::sql_query(format!(
+            r#"
+            SELECT
+                to_char(created_at::date, 'YYYY-MM-DD') as date,
+                COUNT(*) as count
+            FROM base_users
+            WHERE created_at >= CURRENT_DATE - INTERVAL '{} days'
+            GROUP BY created_at::date
+            ORDER BY created_at::date ASC
+            "#,
+            days
+        ))
+        .load::<DailyCount>(conn)?;
+
+        // Get total users before the period
+        let start_date = chrono::Utc::now().date_naive() - chrono::Duration::days(days as i64);
+        let users_before: i64 = base_users::table
+            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(
+                &format!("DATE(created_at) < '{}'", start_date),
+            ))
+            .select(count(base_users::id))
+            .first(conn)?;
+
+        // Build cumulative stats
+        let mut cumulative = users_before;
+        let stats: Vec<DailyUserStats> = results
+            .into_iter()
+            .map(|(date, new_users)| {
+                cumulative += new_users;
+                DailyUserStats {
+                    date,
+                    new_users,
+                    total_users: cumulative,
+                }
+            })
+            .collect();
+
+        Ok::<_, diesel::result::Error>(stats)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to get user stats"))?;
+
+    json_ok(stats)
+}
+
+#[derive(QueryableByName)]
+struct DailyCount {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    date: String,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    count: i64,
+}
+
+// ============================================================================
+// AI Usage Statistics API
+// ============================================================================
+
+#[derive(Serialize, ToSchema)]
+pub struct ServiceUsage {
+    service_type: String,
+    requests: i64,
+    tokens: i64,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct HourlyUsage {
+    hour: i32,
+    requests: i64,
+    tokens: i64,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TodayAiUsage {
+    /// Total number of AI requests today
+    total_requests: i64,
+    /// Total tokens used today
+    total_tokens: i64,
+    /// Total ASR seconds used today
+    total_asr_seconds: f64,
+    /// Total TTS seconds used today
+    total_tts_seconds: f64,
+    /// Usage breakdown by service type
+    by_service: Vec<ServiceUsage>,
+    /// Usage breakdown by hour
+    by_hour: Vec<HourlyUsage>,
+}
+
+/// Get today's AI usage statistics
+#[endpoint(tags("Admin"))]
+pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
+    let stats = with_conn(move |conn| {
+        let today = chrono::Utc::now().date_naive();
+
+        // Get totals for today
+        let totals: (i64, i64, f64, f64) = diesel::sql_query(format!(
+            r#"
+            SELECT
+                COALESCE(COUNT(*), 0)::bigint as total_requests,
+                COALESCE(SUM(COALESCE(tokens_used, 0)), 0)::bigint as total_tokens,
+                COALESCE(SUM(CASE WHEN service_type = 'asr' THEN COALESCE(duration_seconds, 0) ELSE 0 END), 0)::float8 as total_asr_seconds,
+                COALESCE(SUM(CASE WHEN service_type = 'tts' THEN COALESCE(duration_seconds, 0) ELSE 0 END), 0)::float8 as total_tts_seconds
+            FROM ai_usage_records
+            WHERE DATE(created_at) = '{}'
+            "#,
+            today
+        ))
+        .get_result::<AiTotals>(conn)?;
+
+        // Get breakdown by service type
+        let by_service: Vec<ServiceUsage> = diesel::sql_query(format!(
+            r#"
+            SELECT
+                service_type,
+                COUNT(*)::bigint as requests,
+                COALESCE(SUM(COALESCE(tokens_used, 0)), 0)::bigint as tokens
+            FROM ai_usage_records
+            WHERE DATE(created_at) = '{}'
+            GROUP BY service_type
+            ORDER BY requests DESC
+            "#,
+            today
+        ))
+        .load::<ServiceUsageRow>(conn)?
+        .into_iter()
+        .map(|r| ServiceUsage {
+            service_type: r.service_type,
+            requests: r.requests,
+            tokens: r.tokens,
+        })
+        .collect();
+
+        // Get breakdown by hour
+        let by_hour: Vec<HourlyUsage> = diesel::sql_query(format!(
+            r#"
+            SELECT
+                EXTRACT(HOUR FROM created_at)::int as hour,
+                COUNT(*)::bigint as requests,
+                COALESCE(SUM(COALESCE(tokens_used, 0)), 0)::bigint as tokens
+            FROM ai_usage_records
+            WHERE DATE(created_at) = '{}'
+            GROUP BY EXTRACT(HOUR FROM created_at)
+            ORDER BY hour ASC
+            "#,
+            today
+        ))
+        .load::<HourlyUsageRow>(conn)?
+        .into_iter()
+        .map(|r| HourlyUsage {
+            hour: r.hour,
+            requests: r.requests,
+            tokens: r.tokens,
+        })
+        .collect();
+
+        Ok::<_, diesel::result::Error>(TodayAiUsage {
+            total_requests: totals.0,
+            total_tokens: totals.1,
+            total_asr_seconds: totals.2,
+            total_tts_seconds: totals.3,
+            by_service,
+            by_hour,
+        })
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to get AI usage stats"))?;
+
+    json_ok(stats)
+}
+
+#[derive(QueryableByName)]
+struct AiTotals {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_requests: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_tokens: i64,
+    #[diesel(sql_type = diesel::sql_types::Double)]
+    total_asr_seconds: f64,
+    #[diesel(sql_type = diesel::sql_types::Double)]
+    total_tts_seconds: f64,
+}
+
+#[derive(QueryableByName)]
+struct ServiceUsageRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    service_type: String,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    requests: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    tokens: i64,
+}
+
+#[derive(QueryableByName)]
+struct HourlyUsageRow {
+    #[diesel(sql_type = diesel::sql_types::Integer)]
+    hour: i32,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    requests: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    tokens: i64,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct TopAiUser {
+    user_id: i64,
+    user_name: String,
+    total_requests: i64,
+    total_tokens: i64,
+    chat_requests: i64,
+    asr_requests: i64,
+    tts_requests: i64,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct TopUsersQuery {
+    /// Maximum number of users to return (default 10, max 50)
+    limit: Option<i64>,
+}
+
+/// Get top AI users today
+#[endpoint(tags("Admin"))]
+pub async fn ai_top_users(req: &mut Request) -> JsonResult<Vec<TopAiUser>> {
+    let query: TopUsersQuery = req.parse_queries().unwrap_or(TopUsersQuery { limit: None });
+    let limit = query.limit.unwrap_or(10).clamp(1, 50);
+
+    let users = with_conn(move |conn| {
+        let today = chrono::Utc::now().date_naive();
+
+        // Get top users by token usage
+        let top_users: Vec<TopAiUserRow> = diesel::sql_query(format!(
+            r#"
+            SELECT
+                a.user_id,
+                u.name as user_name,
+                COUNT(*)::bigint as total_requests,
+                COALESCE(SUM(COALESCE(a.tokens_used, 0)), 0)::bigint as total_tokens,
+                COUNT(CASE WHEN a.service_type = 'chat' THEN 1 END)::bigint as chat_requests,
+                COUNT(CASE WHEN a.service_type = 'asr' THEN 1 END)::bigint as asr_requests,
+                COUNT(CASE WHEN a.service_type = 'tts' THEN 1 END)::bigint as tts_requests
+            FROM ai_usage_records a
+            JOIN base_users u ON u.id = a.user_id
+            WHERE DATE(a.created_at) = '{}'
+            GROUP BY a.user_id, u.name
+            ORDER BY total_tokens DESC
+            LIMIT {}
+            "#,
+            today, limit
+        ))
+        .load::<TopAiUserRow>(conn)?;
+
+        let users: Vec<TopAiUser> = top_users
+            .into_iter()
+            .map(|r| TopAiUser {
+                user_id: r.user_id,
+                user_name: r.user_name,
+                total_requests: r.total_requests,
+                total_tokens: r.total_tokens,
+                chat_requests: r.chat_requests,
+                asr_requests: r.asr_requests,
+                tts_requests: r.tts_requests,
+            })
+            .collect();
+
+        Ok::<_, diesel::result::Error>(users)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to get top AI users"))?;
+
+    json_ok(users)
+}
+
+#[derive(QueryableByName)]
+struct TopAiUserRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    user_id: i64,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    user_name: String,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_requests: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_tokens: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    chat_requests: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    asr_requests: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    tts_requests: i64,
 }

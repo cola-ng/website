@@ -10,12 +10,33 @@ mod taxonomy;
 
 pub fn router() -> Router {
     Router::with_path("asset")
-        // Taxonomy
-        .push(Router::with_path("domains").get(taxonomy::list_domains))
+        // Taxonomy Domains
+        .push(
+            Router::with_path("domains")
+                .get(taxonomy::list_domains)
+                .post(taxonomy::create_domain),
+        )
+        .push(
+            Router::with_path("domains/{id}")
+                .get(taxonomy::get_domain)
+                .put(taxonomy::update_domain)
+                .delete(taxonomy::delete_domain),
+        )
+        .push(
+            Router::with_path("domains/{domain_id}/categories")
+                .get(taxonomy::get_categories_by_domain),
+        )
+        // Taxonomy Categories
         .push(
             Router::with_path("categories")
                 .get(taxonomy::list_categories)
-                .push(Router::with_path("{domain_id}").get(taxonomy::get_categories_by_domain)),
+                .post(taxonomy::create_category),
+        )
+        .push(
+            Router::with_path("categories/{id}")
+                .get(taxonomy::get_category)
+                .put(taxonomy::update_category)
+                .delete(taxonomy::delete_category),
         )
         // Contexts
         .push(

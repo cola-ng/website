@@ -1002,8 +1002,24 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    user_activities (id) {
+        id -> Int8,
+        user_id -> Int8,
+        #[max_length = 32]
+        activity_type -> Varchar,
+        description -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
+        #[max_length = 45]
+        ip_address -> Nullable<Varchar>,
+        user_agent -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
 diesel::joinable!(ai_usage_records -> base_users (user_id));
 diesel::joinable!(ai_usage_quotas -> base_users (user_id));
+diesel::joinable!(user_activities -> base_users (user_id));
 diesel::joinable!(payment_orders -> base_users (user_id));
 diesel::joinable!(payment_refunds -> payment_orders (order_id));
 diesel::joinable!(user_ai_providers -> base_users (user_id));
@@ -1076,6 +1092,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     subscription_plans,
     taxon_categories,
     taxon_domains,
+    user_activities,
     user_ai_providers,
     user_subscriptions,
     wallet_accounts,

@@ -66,12 +66,18 @@ pub fn router() -> Router {
                 .post(definition::create_definition),
         )
         .push(
+            Router::with_path("words/{id}/definitions/{definition_id}")
+                .put(definition::update_definition)
+                .delete(definition::delete_definition),
+        )
+        .push(
             Router::with_path("words/{id}/pronunciations")
                 .get(pronunciation::list_pronunciations)
                 .post(pronunciation::create_pronunciation),
         )
         .push(
             Router::with_path("words/{id}/pronunciations/{pronunciation_id}")
+                .put(pronunciation::update_pronunciation)
                 .delete(pronunciation::delete_pronunciation),
         )
         .push(

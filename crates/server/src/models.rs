@@ -1,4 +1,5 @@
 pub mod achievement;
+pub mod activity;
 pub mod ai_provider;
 pub mod ai_usage;
 pub mod asset;
@@ -10,6 +11,7 @@ pub mod learn;
 pub mod payment;
 
 pub use achievement::*;
+pub use activity::*;
 pub use ai_provider::*;
 pub use ai_usage::*;
 pub use auth::*;

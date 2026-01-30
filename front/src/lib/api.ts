@@ -1898,6 +1898,16 @@ export type SubscriptionInfo = UserSubscription & {
   plan: SubscriptionPlan
 }
 
+/** User activity record */
+export type UserActivity = {
+  id: number
+  activity_type: string
+  description: string | null
+  metadata: unknown | null
+  ip_address: string | null
+  created_at: string
+}
+
 /** User detail response */
 export type UserDetailResponse = User & {
   is_admin: boolean
@@ -1905,6 +1915,7 @@ export type UserDetailResponse = User & {
   subscription: SubscriptionInfo | null
   wallet: WalletAccount | null
   recent_payments: PaymentOrder[]
+  recent_activities: UserActivity[]
 }
 
 /** Admin list item */
@@ -2001,6 +2012,267 @@ export function revokeAdmin(token: string, userId: number): Promise<void> {
     token,
     body: JSON.stringify({ user_id: userId }),
   })
+}
+
+// ============================================================================
+// Dictionary Admin API
+// ============================================================================
+
+/**
+ * List words with search and pagination
+ */
+export function listWords(
+  token: string,
+  options?: { search?: string; limit?: number; offset?: number }
+): Promise<Word[]> {
+  const params = new URLSearchParams()
+  if (options?.search) params.set('search', options.search)
+  if (options?.limit) params.set('limit', String(options.limit))
+  if (options?.offset) params.set('offset', String(options.offset))
+  const query = params.toString()
+  return requestJson<Word[]>(`/api/dict/words${query ? `?${query}` : ''}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get definitions for a word
+ */
+export function getDefinitions(token: string, wordId: number): Promise<Definition[]> {
+  return requestJson<Definition[]>(`/api/dict/words/${wordId}/definitions`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export type CreateDefinitionRequest = {
+  language: string
+  definition: string
+  part_of_speech?: string
+  definition_order?: number
+  register?: string
+  region?: string
+  context?: string
+  usage_notes?: string
+  is_primary?: boolean
+}
+
+/**
+ * Create a new definition for a word
+ */
+export function createDefinition(
+  token: string,
+  wordId: number,
+  data: CreateDefinitionRequest
+): Promise<Definition> {
+  return requestJson<Definition>(`/api/dict/words/${wordId}/definitions`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update a definition
+ */
+export function updateDefinition(
+  token: string,
+  wordId: number,
+  definitionId: number,
+  data: Partial<CreateDefinitionRequest>
+): Promise<Definition> {
+  return requestJson<Definition>(
+    `/api/dict/words/${wordId}/definitions/${definitionId}`,
+    {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(data),
+    }
+  )
+}
+
+/**
+ * Delete a definition
+ */
+export function deleteDefinition(
+  token: string,
+  wordId: number,
+  definitionId: number
+): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(
+    `/api/dict/words/${wordId}/definitions/${definitionId}`,
+    {
+      method: 'DELETE',
+      token,
+    }
+  )
+}
+
+/**
+ * Delete a word
+ */
+export function deleteWord(
+  token: string,
+  wordId: number
+): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/dict/words/${wordId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+export type UpdateWordRequest = {
+  word?: string
+  word_type?: string
+  language?: string
+  frequency?: number
+  difficulty?: number
+  syllable_count?: number
+  is_lemma?: boolean
+  word_count?: number
+  is_active?: boolean
+  memory?: string
+  notes?: string
+}
+
+/**
+ * Update a word
+ */
+export function updateWord(
+  token: string,
+  wordId: number,
+  data: UpdateWordRequest
+): Promise<Word> {
+  return requestJson<Word>(`/api/dict/words/${wordId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Batch delete words
+ */
+export async function batchDeleteWords(
+  token: string,
+  wordIds: number[]
+): Promise<{ deleted: number }> {
+  let deleted = 0
+  for (const id of wordIds) {
+    try {
+      await deleteWord(token, id)
+      deleted++
+    } catch {
+      // Continue with other deletions
+    }
+  }
+  return { deleted }
+}
+
+/**
+ * Batch update words
+ */
+export async function batchUpdateWords(
+  token: string,
+  wordIds: number[],
+  data: UpdateWordRequest
+): Promise<{ updated: number }> {
+  let updated = 0
+  for (const id of wordIds) {
+    try {
+      await updateWord(token, id, data)
+      updated++
+    } catch {
+      // Continue with other updates
+    }
+  }
+  return { updated }
+}
+
+// ============================================================================
+// Pronunciation Admin API
+// ============================================================================
+
+/**
+ * Get pronunciations for a word
+ */
+export function getPronunciations(token: string, wordId: number): Promise<Pronunciation[]> {
+  return requestJson<Pronunciation[]>(`/api/dict/words/${wordId}/pronunciations`, {
+    method: 'GET',
+    token,
+  })
+}
+
+export type CreatePronunciationRequest = {
+  ipa: string
+  definition_id?: number
+  audio_url?: string
+  audio_path?: string
+  dialect?: string
+  gender?: string
+  is_primary?: boolean
+}
+
+/**
+ * Create a new pronunciation for a word
+ */
+export function createPronunciation(
+  token: string,
+  wordId: number,
+  data: CreatePronunciationRequest
+): Promise<Pronunciation> {
+  return requestJson<Pronunciation>(`/api/dict/words/${wordId}/pronunciations`, {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+export type UpdatePronunciationRequest = {
+  ipa?: string
+  definition_id?: number
+  audio_url?: string
+  audio_path?: string
+  dialect?: string
+  gender?: string
+  is_primary?: boolean
+}
+
+/**
+ * Update a pronunciation
+ */
+export function updatePronunciation(
+  token: string,
+  wordId: number,
+  pronunciationId: number,
+  data: UpdatePronunciationRequest
+): Promise<Pronunciation> {
+  return requestJson<Pronunciation>(
+    `/api/dict/words/${wordId}/pronunciations/${pronunciationId}`,
+    {
+      method: 'PUT',
+      token,
+      body: JSON.stringify(data),
+    }
+  )
+}
+
+/**
+ * Delete a pronunciation
+ */
+export function deletePronunciation(
+  token: string,
+  wordId: number,
+  pronunciationId: number
+): Promise<void> {
+  return requestJson<void>(
+    `/api/dict/words/${wordId}/pronunciations/${pronunciationId}`,
+    {
+      method: 'DELETE',
+      token,
+    }
+  )
 }
 
 // ============================================================================
@@ -2217,5 +2489,254 @@ export function cancelSubscription(
     method: 'POST',
     token,
     body: JSON.stringify({ reason }),
+  })
+}
+
+// ============================================================================
+// Taxonomy API (Domains & Categories)
+// ============================================================================
+
+/** Taxon Domain */
+export type TaxonDomain = {
+  id: number
+  code: string
+  name_en: string
+  name_zh: string
+  created_at: string
+}
+
+/** Taxon Category */
+export type TaxonCategory = {
+  id: number
+  code: string
+  name_en: string
+  name_zh: string
+  domain_id: number
+  parent_id: number | null
+  created_at: string
+}
+
+/** Create Domain Request */
+export type CreateDomainRequest = {
+  code: string
+  name_en: string
+  name_zh: string
+}
+
+/** Update Domain Request */
+export type UpdateDomainRequest = {
+  code?: string
+  name_en?: string
+  name_zh?: string
+}
+
+/** Create Category Request */
+export type CreateCategoryRequest = {
+  code: string
+  name_en: string
+  name_zh: string
+  domain_id: number
+  parent_id?: number
+}
+
+/** Update Category Request */
+export type UpdateCategoryRequest = {
+  code?: string
+  name_en?: string
+  name_zh?: string
+  domain_id?: number
+  parent_id?: number | null
+}
+
+/**
+ * List all domains
+ */
+export function listDomains(token: string): Promise<TaxonDomain[]> {
+  return requestJson<TaxonDomain[]>('/api/asset/domains', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Create a new domain
+ */
+export function createDomain(
+  token: string,
+  data: CreateDomainRequest
+): Promise<TaxonDomain> {
+  return requestJson<TaxonDomain>('/api/asset/domains', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update a domain
+ */
+export function updateDomain(
+  token: string,
+  domainId: number,
+  data: UpdateDomainRequest
+): Promise<TaxonDomain> {
+  return requestJson<TaxonDomain>(`/api/asset/domains/${domainId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete a domain
+ */
+export function deleteDomain(
+  token: string,
+  domainId: number
+): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/asset/domains/${domainId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+/**
+ * List categories with optional domain filter
+ */
+export function listCategories(
+  token: string,
+  options?: { domain_id?: number; parent_id?: number }
+): Promise<TaxonCategory[]> {
+  const params = new URLSearchParams()
+  if (options?.domain_id) params.set('domain_id', options.domain_id.toString())
+  if (options?.parent_id) params.set('parent_id', options.parent_id.toString())
+  const query = params.toString()
+  return requestJson<TaxonCategory[]>(`/api/asset/categories${query ? `?${query}` : ''}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Create a new category
+ */
+export function createCategory(
+  token: string,
+  data: CreateCategoryRequest
+): Promise<TaxonCategory> {
+  return requestJson<TaxonCategory>('/api/asset/categories', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update a category
+ */
+export function updateCategory(
+  token: string,
+  categoryId: number,
+  data: UpdateCategoryRequest
+): Promise<TaxonCategory> {
+  return requestJson<TaxonCategory>(`/api/asset/categories/${categoryId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete a category
+ */
+export function deleteCategory(
+  token: string,
+  categoryId: number
+): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/asset/categories/${categoryId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+// ============================================================================
+// Admin Stats API (for charts)
+// ============================================================================
+
+/** Daily user statistics */
+export type DailyUserStats = {
+  date: string
+  new_users: number
+  total_users: number
+}
+
+/** Service usage statistics */
+export type ServiceUsage = {
+  service_type: string
+  requests: number
+  tokens: number
+}
+
+/** Hourly usage statistics */
+export type HourlyUsage = {
+  hour: number
+  requests: number
+  tokens: number
+}
+
+/** Today's AI usage summary */
+export type TodayAiUsage = {
+  total_requests: number
+  total_tokens: number
+  total_asr_seconds: number
+  total_tts_seconds: number
+  by_service: ServiceUsage[]
+  by_hour: HourlyUsage[]
+}
+
+/** Top AI user */
+export type TopAiUser = {
+  user_id: number
+  user_name: string
+  total_requests: number
+  total_tokens: number
+  chat_requests: number
+  asr_requests: number
+  tts_requests: number
+}
+
+/**
+ * Get daily user registration statistics
+ */
+export function getAdminUserStats(
+  token: string,
+  days: number = 30
+): Promise<DailyUserStats[]> {
+  return requestJson<DailyUserStats[]>(`/api/admin/stats/users/daily?days=${days}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get today's AI usage statistics
+ */
+export function getAiUsageToday(token: string): Promise<TodayAiUsage> {
+  return requestJson<TodayAiUsage>('/api/admin/stats/ai/today', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get top AI users today
+ */
+export function getTopAiUsers(
+  token: string,
+  limit: number = 10
+): Promise<TopAiUser[]> {
+  return requestJson<TopAiUser[]>(`/api/admin/stats/ai/top-users?limit=${limit}`, {
+    method: 'GET',
+    token,
   })
 }

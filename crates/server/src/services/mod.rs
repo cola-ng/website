@@ -7,6 +7,7 @@
 //! Both providers now offer full ASR/TTS/Chat capabilities.
 //! You can use either provider independently, or combine them.
 
+pub mod activity;
 pub mod ai_provider;
 pub mod doubao;
 pub mod zhipu;

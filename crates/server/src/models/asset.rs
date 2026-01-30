@@ -28,6 +28,14 @@ pub struct NewTaxonDomain {
     pub name_zh: String,
 }
 
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = taxon_domains)]
+pub struct UpdateTaxonDomain {
+    pub code: Option<String>,
+    pub name_en: Option<String>,
+    pub name_zh: Option<String>,
+}
+
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = taxon_categories)]
 pub struct TaxonCategory {
@@ -47,6 +55,16 @@ pub struct NewTaxonCategory {
     pub name_en: String,
     pub name_zh: String,
     pub domain_id: i64,
+    pub parent_id: Option<i64>,
+}
+
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = taxon_categories)]
+pub struct UpdateTaxonCategory {
+    pub code: Option<String>,
+    pub name_en: Option<String>,
+    pub name_zh: Option<String>,
+    pub domain_id: Option<i64>,
     pub parent_id: Option<i64>,
 }
 

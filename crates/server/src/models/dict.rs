@@ -96,6 +96,21 @@ pub struct NewDefinition {
     pub usage_notes: Option<String>,
     pub is_primary: Option<bool>,
 }
+
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = dict_definitions)]
+pub struct UpdateDefinition {
+    pub language: Option<String>,
+    pub definition: Option<String>,
+    pub part_of_speech: Option<String>,
+    pub definition_order: Option<i32>,
+    pub register: Option<String>,
+    pub region: Option<String>,
+    pub context: Option<String>,
+    pub usage_notes: Option<String>,
+    pub is_primary: Option<bool>,
+}
+
 #[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
 #[diesel(table_name = dict_sentences)]
 pub struct Sentence {
@@ -163,6 +178,18 @@ pub struct NewPronunciation {
     pub word_id: i64,
     pub definition_id: Option<i64>,
     pub ipa: String,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub dialect: Option<String>,
+    pub gender: Option<String>,
+    pub is_primary: Option<bool>,
+}
+
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = dict_pronunciations)]
+pub struct UpdatePronunciation {
+    pub definition_id: Option<i64>,
+    pub ipa: Option<String>,
     pub audio_url: Option<String>,
     pub audio_path: Option<String>,
     pub dialect: Option<String>,

@@ -65,6 +65,55 @@ pub async fn create_pronunciation(req: &mut Request) -> JsonResult<Pronunciation
     json_ok(created)
 }
 
+#[derive(Deserialize)]
+pub struct UpdatePronunciationRequest {
+    pub definition_id: Option<i64>,
+    pub ipa: Option<String>,
+    pub audio_url: Option<String>,
+    pub audio_path: Option<String>,
+    pub dialect: Option<String>,
+    pub gender: Option<String>,
+    pub is_primary: Option<bool>,
+}
+
+#[handler]
+pub async fn update_pronunciation(req: &mut Request) -> JsonResult<Pronunciation> {
+    let pronunciation_id = super::get_path_id(req, "pronunciation_id")?;
+    let input: UpdatePronunciationRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+    // Validate IPA if provided
+    if let Some(ref ipa) = input.ipa {
+        if ipa.trim().is_empty() {
+            return Err(StatusError::bad_request()
+                .brief("ipa cannot be empty")
+                .into());
+        }
+    }
+
+    let changes = UpdatePronunciation {
+        definition_id: input.definition_id,
+        ipa: input.ipa.map(|i| i.trim().to_string()),
+        audio_url: input.audio_url,
+        audio_path: input.audio_path,
+        dialect: input.dialect,
+        gender: input.gender,
+        is_primary: input.is_primary,
+    };
+
+    let updated: Pronunciation = with_conn(move |conn| {
+        diesel::update(dict_pronunciations::table.filter(dict_pronunciations::id.eq(pronunciation_id)))
+            .set(changes)
+            .get_result::<Pronunciation>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to update pronunciation"))?;
+
+    json_ok(updated)
+}
+
 #[handler]
 pub async fn delete_pronunciation(req: &mut Request) -> JsonResult<()> {
     let pronunciation_id = super::get_path_id(req, "pronunciation_id")?;
