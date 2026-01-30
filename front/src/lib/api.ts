@@ -1717,28 +1717,41 @@ export function activateAiProvider(token: string, providerId: number): Promise<U
 // ============================================================================
 
 /** Supported entity types for favorites */
-export type FavoriteEntity = 'word' | 'sentence' | string
+export type FavoriteEntity = 'word' | 'sentence'
 
-/** Favorite item with optional entity details */
-export type Favorite = {
+/** Pronunciation info for favorites */
+export type PronunciationInfo = {
+  id: number
+  ipa: string
+  dialect?: string
+}
+
+/** Favorite word with details */
+export type FavoriteWord = {
+  entity: 'word'
   id: number
   user_id: number
-  entity: FavoriteEntity
   record_id: number
   created_at: string
-  /** Word string (only present when entity is "word") */
-  word?: string
-  /** Chinese definition (only present when entity is "word") */
+  word: string
   word_zh?: string
-  /** Pronunciation ID for audio playback (only present when entity is "word" and audio exists) */
-  pronunciation_id?: number
-  /** English sentence (only present when entity is "sentence") */
-  sentence_en?: string
-  /** Chinese sentence (only present when entity is "sentence") */
+  pronunciation?: PronunciationInfo
+}
+
+/** Favorite sentence with details */
+export type FavoriteSentence = {
+  entity: 'sentence'
+  id: number
+  user_id: number
+  record_id: number
+  created_at: string
+  sentence_en: string
   sentence_zh?: string
-  /** Audio URL for sentence playback (only present when entity is "sentence" and audio exists) */
   audio_url?: string
 }
+
+/** Favorite item (discriminated union) */
+export type Favorite = FavoriteWord | FavoriteSentence
 
 /** Toggle favorite response */
 export type ToggleFavoriteResponse = {

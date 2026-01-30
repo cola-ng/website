@@ -35,32 +35,49 @@ pub struct ListFavoritesQuery {
     pub offset: Option<i64>,
 }
 
-/// Favorite with entity details
+/// Pronunciation info for favorites
+#[derive(Debug, Serialize, ToSchema, Clone)]
+pub struct PronunciationInfo {
+    pub id: i64,
+    pub ipa: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub dialect: Option<String>,
+}
+
+/// Favorite word with details
 #[derive(Debug, Serialize, ToSchema)]
-pub struct FavoriteWithDetails {
+pub struct FavoriteWord {
     pub id: i64,
     pub user_id: i64,
-    pub entity: String,
     pub record_id: i64,
     pub created_at: DateTime<Utc>,
-    /// Word string (only present when entity is "word")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub word: Option<String>,
-    /// Chinese definition (only present when entity is "word")
+    pub word: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub word_zh: Option<String>,
-    /// Pronunciation ID for audio playback (only present when entity is "word" and audio exists)
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub pronunciation_id: Option<i64>,
-    /// English sentence (only present when entity is "sentence")
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sentence_en: Option<String>,
-    /// Chinese sentence (only present when entity is "sentence")
+    pub pronunciation: Option<PronunciationInfo>,
+}
+
+/// Favorite sentence with details
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FavoriteSentence {
+    pub id: i64,
+    pub user_id: i64,
+    pub record_id: i64,
+    pub created_at: DateTime<Utc>,
+    pub sentence_en: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sentence_zh: Option<String>,
-    /// Audio URL for sentence playback (only present when entity is "sentence" and audio exists)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub audio_url: Option<String>,
+}
+
+/// Favorite with entity details (discriminated union)
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(tag = "entity", rename_all = "snake_case")]
+pub enum FavoriteWithDetails {
+    Word(FavoriteWord),
+    Sentence(FavoriteSentence),
 }
 
 /// List favorites for the authenticated user with entity details
@@ -112,34 +129,41 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
             let def_map: std::collections::HashMap<i64, String> =
                 definitions.into_iter().collect();
 
-            // Fetch pronunciation IDs (primary or first one with audio)
-            let pronunciations: Vec<(i64, i64)> = dict_pronunciations::table
+            // Fetch pronunciation info (primary or first one with audio)
+            let pronunciations: Vec<(i64, i64, String, Option<String>)> = dict_pronunciations::table
                 .filter(dict_pronunciations::word_id.eq_any(&word_ids))
                 .filter(dict_pronunciations::audio_path.is_not_null())
-                .select((dict_pronunciations::word_id, dict_pronunciations::id))
+                .select((
+                    dict_pronunciations::word_id,
+                    dict_pronunciations::id,
+                    dict_pronunciations::ipa,
+                    dict_pronunciations::dialect,
+                ))
                 .order(dict_pronunciations::is_primary.desc())
-                .load::<(i64, i64)>(conn)?;
+                .load::<(i64, i64, String, Option<String>)>(conn)?;
 
             // Keep only the first pronunciation per word
-            let mut pron_map: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
-            for (word_id, pron_id) in pronunciations {
-                pron_map.entry(word_id).or_insert(pron_id);
+            let mut pron_map: std::collections::HashMap<i64, PronunciationInfo> = std::collections::HashMap::new();
+            for (word_id, pron_id, ipa, dialect) in pronunciations {
+                pron_map.entry(word_id).or_insert(PronunciationInfo {
+                    id: pron_id,
+                    ipa,
+                    dialect,
+                });
             }
 
             for fav in favorites {
-                result.push(FavoriteWithDetails {
-                    id: fav.id,
-                    user_id: fav.user_id,
-                    entity: fav.entity,
-                    record_id: fav.record_id,
-                    created_at: fav.created_at,
-                    word: word_map.get(&fav.record_id).cloned(),
-                    word_zh: def_map.get(&fav.record_id).cloned(),
-                    pronunciation_id: pron_map.get(&fav.record_id).copied(),
-                    sentence_en: None,
-                    sentence_zh: None,
-                    audio_url: None,
-                });
+                if let Some(word) = word_map.get(&fav.record_id).cloned() {
+                    result.push(FavoriteWithDetails::Word(FavoriteWord {
+                        id: fav.id,
+                        user_id: fav.user_id,
+                        record_id: fav.record_id,
+                        created_at: fav.created_at,
+                        word,
+                        word_zh: def_map.get(&fav.record_id).cloned(),
+                        pronunciation: pron_map.get(&fav.record_id).cloned(),
+                    }));
+                }
             }
         } else if entity_filter.as_deref() == Some("sentence") && !favorites.is_empty() {
             // Fetch sentence details from learn_chat_turns
@@ -159,45 +183,117 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                 turns.into_iter().map(|(id, en, zh, audio)| (id, (en, zh, audio))).collect();
 
             for fav in favorites {
-                let (sentence_en, sentence_zh, audio_url) = turn_map
-                    .get(&fav.record_id)
-                    .map(|(en, zh, audio)| {
-                        // Convert audio_path to API URL using turn ID endpoint
-                        let url = audio.as_ref().map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
-                        (Some(en.clone()), Some(zh.clone()), url)
-                    })
-                    .unwrap_or((None, None, None));
-
-                result.push(FavoriteWithDetails {
-                    id: fav.id,
-                    user_id: fav.user_id,
-                    entity: fav.entity,
-                    record_id: fav.record_id,
-                    created_at: fav.created_at,
-                    word: None,
-                    word_zh: None,
-                    pronunciation_id: None,
-                    sentence_en,
-                    sentence_zh,
-                    audio_url,
-                });
+                if let Some((sentence_en, sentence_zh, audio_path)) = turn_map.get(&fav.record_id) {
+                    let audio_url = audio_path.as_ref().map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
+                    result.push(FavoriteWithDetails::Sentence(FavoriteSentence {
+                        id: fav.id,
+                        user_id: fav.user_id,
+                        record_id: fav.record_id,
+                        created_at: fav.created_at,
+                        sentence_en: sentence_en.clone(),
+                        sentence_zh: Some(sentence_zh.clone()),
+                        audio_url,
+                    }));
+                }
             }
-        } else {
-            // No specific entity filter or empty results
+        } else if !favorites.is_empty() {
+            // No specific entity filter - need to fetch details for both types
+            let word_favs: Vec<&Favorite> = favorites.iter().filter(|f| f.entity == "word").collect();
+            let sentence_favs: Vec<&Favorite> = favorites.iter().filter(|f| f.entity == "sentence").collect();
+
+            // Fetch word details
+            let mut word_map: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+            let mut def_map: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
+            let mut pron_map: std::collections::HashMap<i64, PronunciationInfo> = std::collections::HashMap::new();
+
+            if !word_favs.is_empty() {
+                let word_ids: Vec<i64> = word_favs.iter().map(|f| f.record_id).collect();
+
+                let words: Vec<(i64, String)> = dict_words::table
+                    .filter(dict_words::id.eq_any(&word_ids))
+                    .select((dict_words::id, dict_words::word))
+                    .load::<(i64, String)>(conn)?;
+                word_map = words.into_iter().collect();
+
+                let definitions: Vec<(i64, String)> = dict_definitions::table
+                    .filter(dict_definitions::word_id.eq_any(&word_ids))
+                    .filter(dict_definitions::language.eq("zh"))
+                    .select((dict_definitions::word_id, dict_definitions::definition))
+                    .load::<(i64, String)>(conn)?;
+                def_map = definitions.into_iter().collect();
+
+                let pronunciations: Vec<(i64, i64, String, Option<String>)> = dict_pronunciations::table
+                    .filter(dict_pronunciations::word_id.eq_any(&word_ids))
+                    .filter(dict_pronunciations::audio_path.is_not_null())
+                    .select((
+                        dict_pronunciations::word_id,
+                        dict_pronunciations::id,
+                        dict_pronunciations::ipa,
+                        dict_pronunciations::dialect,
+                    ))
+                    .order(dict_pronunciations::is_primary.desc())
+                    .load::<(i64, i64, String, Option<String>)>(conn)?;
+
+                for (word_id, pron_id, ipa, dialect) in pronunciations {
+                    pron_map.entry(word_id).or_insert(PronunciationInfo {
+                        id: pron_id,
+                        ipa,
+                        dialect,
+                    });
+                }
+            }
+
+            // Fetch sentence details
+            let mut turn_map: std::collections::HashMap<i64, (String, String, Option<String>)> = std::collections::HashMap::new();
+
+            if !sentence_favs.is_empty() {
+                let turn_ids: Vec<i64> = sentence_favs.iter().map(|f| f.record_id).collect();
+
+                let turns: Vec<(i64, String, String, Option<String>)> = learn_chat_turns::table
+                    .filter(learn_chat_turns::id.eq_any(&turn_ids))
+                    .select((
+                        learn_chat_turns::id,
+                        learn_chat_turns::content_en,
+                        learn_chat_turns::content_zh,
+                        learn_chat_turns::audio_path,
+                    ))
+                    .load::<(i64, String, String, Option<String>)>(conn)?;
+
+                turn_map = turns.into_iter().map(|(id, en, zh, audio)| (id, (en, zh, audio))).collect();
+            }
+
+            // Build results maintaining original order
             for fav in favorites {
-                result.push(FavoriteWithDetails {
-                    id: fav.id,
-                    user_id: fav.user_id,
-                    entity: fav.entity,
-                    record_id: fav.record_id,
-                    created_at: fav.created_at,
-                    word: None,
-                    word_zh: None,
-                    pronunciation_id: None,
-                    sentence_en: None,
-                    sentence_zh: None,
-                    audio_url: None,
-                });
+                match fav.entity.as_str() {
+                    "word" => {
+                        if let Some(word) = word_map.get(&fav.record_id).cloned() {
+                            result.push(FavoriteWithDetails::Word(FavoriteWord {
+                                id: fav.id,
+                                user_id: fav.user_id,
+                                record_id: fav.record_id,
+                                created_at: fav.created_at,
+                                word,
+                                word_zh: def_map.get(&fav.record_id).cloned(),
+                                pronunciation: pron_map.get(&fav.record_id).cloned(),
+                            }));
+                        }
+                    }
+                    "sentence" => {
+                        if let Some((sentence_en, sentence_zh, audio_path)) = turn_map.get(&fav.record_id) {
+                            let audio_url = audio_path.as_ref().map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
+                            result.push(FavoriteWithDetails::Sentence(FavoriteSentence {
+                                id: fav.id,
+                                user_id: fav.user_id,
+                                record_id: fav.record_id,
+                                created_at: fav.created_at,
+                                sentence_en: sentence_en.clone(),
+                                sentence_zh: Some(sentence_zh.clone()),
+                                audio_url,
+                            }));
+                        }
+                    }
+                    _ => {} // Skip unknown entity types
+                }
             }
         }
 

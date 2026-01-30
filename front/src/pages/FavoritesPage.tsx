@@ -12,6 +12,8 @@ import {
   listFavorites,
   removeFavorite,
   type Favorite,
+  type FavoriteWord,
+  type FavoriteSentence,
 } from '../lib/api'
 
 // Entity type configuration
@@ -93,8 +95,8 @@ export function FavoritesPage() {
     let url: string | undefined
     let needsAuth = false
 
-    if (favorite.entity === 'word' && favorite.pronunciation_id) {
-      url = `/api/dict/pronunciations/${favorite.pronunciation_id}/audio`
+    if (favorite.entity === 'word' && favorite.pronunciation?.id) {
+      url = `/api/dict/pronunciations/${favorite.pronunciation.id}/audio`
     } else if (favorite.entity === 'sentence' && favorite.audio_url) {
       url = favorite.audio_url
       needsAuth = true // sentence audio requires auth
@@ -197,45 +199,53 @@ export function FavoritesPage() {
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {favorites.map((favorite) => {
-                    const isRemoving = removingIds.has(favorite.id)
+                  {favorites
+                    .filter((f): f is FavoriteWord => f.entity === 'word')
+                    .map((favorite) => {
+                      const isRemoving = removingIds.has(favorite.id)
 
-                    return (
-                      <div
-                        key={favorite.id}
-                        className="group relative bg-gray-50 rounded-lg p-4 hover:bg-orange-50 transition-colors border border-gray-100 hover:border-orange-200"
-                      >
-                        <div className="flex items-start justify-between">
-                          <Link
-                            to={favorite.word ? `/dict/${encodeURIComponent(favorite.word)}` : '#'}
-                            className="flex-1 min-w-0"
-                          >
-                            <div className="font-medium text-gray-900 hover:text-orange-600 transition-colors truncate">
-                              {favorite.word || `单词 #${favorite.record_id}`}
+                      return (
+                        <div
+                          key={favorite.id}
+                          className="group relative bg-gray-50 rounded-lg p-4 hover:bg-orange-50 transition-colors border border-gray-100 hover:border-orange-200"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2">
+                                <Link
+                                  to={`/dict/${encodeURIComponent(favorite.word)}`}
+                                  className="font-medium text-gray-900 hover:text-orange-600 transition-colors truncate"
+                                >
+                                  {favorite.word}
+                                </Link>
+                                {favorite.pronunciation && (
+                                  <>
+                                    <span className="text-sm text-gray-500 font-mono">
+                                      /{favorite.pronunciation.ipa}/
+                                    </span>
+                                    <button
+                                      onClick={() => playAudio(favorite)}
+                                      className="p-1 text-gray-400 hover:text-orange-500 hover:bg-orange-100 rounded transition-colors"
+                                      title="播放发音"
+                                    >
+                                      <Volume2 className="h-4 w-4" />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                              {favorite.word_zh && (
+                                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                  {favorite.word_zh}
+                                </p>
+                              )}
+                              <div className="text-xs text-gray-400 mt-2">
+                                收藏于 {new Date(favorite.created_at).toLocaleDateString('zh-CN')}
+                              </div>
                             </div>
-                            {favorite.word_zh && (
-                              <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                                {favorite.word_zh}
-                              </p>
-                            )}
-                            <div className="text-xs text-gray-400 mt-2">
-                              收藏于 {new Date(favorite.created_at).toLocaleDateString('zh-CN')}
-                            </div>
-                          </Link>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {favorite.pronunciation_id && (
-                              <button
-                                onClick={() => playAudio(favorite)}
-                                className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition-colors opacity-0 group-hover:opacity-100"
-                                title="播放发音"
-                              >
-                                <Volume2 className="h-4 w-4" />
-                              </button>
-                            )}
                             <button
                               onClick={() => handleRemove(favorite)}
                               disabled={isRemoving}
-                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
                               title="移除收藏"
                             >
                               {isRemoving ? (
@@ -246,9 +256,8 @@ export function FavoritesPage() {
                             </button>
                           </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
                 </div>
               )}
             </TabsContent>
@@ -270,57 +279,53 @@ export function FavoritesPage() {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {favorites.map((favorite) => {
-                    const isRemoving = removingIds.has(favorite.id)
+                  {favorites
+                    .filter((f): f is FavoriteSentence => f.entity === 'sentence')
+                    .map((favorite) => {
+                      const isRemoving = removingIds.has(favorite.id)
 
-                    return (
-                      <div
-                        key={favorite.id}
-                        className="group relative bg-gray-50 rounded-lg p-4 hover:bg-orange-50 transition-colors border border-gray-100 hover:border-orange-200"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div className="flex-1 min-w-0">
-                            {favorite.sentence_en ? (
-                              <>
-                                <p className="text-gray-900">{favorite.sentence_en}</p>
-                                {favorite.sentence_zh && (
-                                  <p className="text-sm text-gray-600 mt-1">{favorite.sentence_zh}</p>
+                      return (
+                        <div
+                          key={favorite.id}
+                          className="group relative bg-gray-50 rounded-lg p-4 hover:bg-orange-50 transition-colors border border-gray-100 hover:border-orange-200"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-gray-900">{favorite.sentence_en}</p>
+                              {favorite.sentence_zh && (
+                                <p className="text-sm text-gray-600 mt-1">{favorite.sentence_zh}</p>
+                              )}
+                              <div className="text-xs text-gray-400 mt-2">
+                                收藏于 {new Date(favorite.created_at).toLocaleDateString('zh-CN')}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 flex-shrink-0">
+                              {favorite.audio_url && (
+                                <button
+                                  onClick={() => playAudio(favorite)}
+                                  className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                  title="播放音频"
+                                >
+                                  <Volume2 className="h-4 w-4" />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleRemove(favorite)}
+                                disabled={isRemoving}
+                                className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                title="移除收藏"
+                              >
+                                {isRemoving ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Trash2 className="h-4 w-4" />
                                 )}
-                              </>
-                            ) : (
-                              <p className="text-gray-500 italic">句子 #{favorite.record_id}</p>
-                            )}
-                            <div className="text-xs text-gray-400 mt-2">
-                              收藏于 {new Date(favorite.created_at).toLocaleDateString('zh-CN')}
+                              </button>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1 flex-shrink-0">
-                            {favorite.audio_url && (
-                              <button
-                                onClick={() => playAudio(favorite)}
-                                className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition-colors opacity-0 group-hover:opacity-100"
-                                title="播放音频"
-                              >
-                                <Volume2 className="h-4 w-4" />
-                              </button>
-                            )}
-                            <button
-                              onClick={() => handleRemove(favorite)}
-                              disabled={isRemoving}
-                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100"
-                              title="移除收藏"
-                            >
-                              {isRemoving ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Trash2 className="h-4 w-4" />
-                              )}
-                            </button>
-                          </div>
                         </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
                 </div>
               )}
             </TabsContent>
