@@ -13,6 +13,7 @@ use crate::{DepotExt, OkResponse};
 
 mod account;
 mod achievement;
+mod ai_provider;
 mod asset;
 mod auth;
 mod dict;
@@ -44,6 +45,7 @@ pub fn router() -> Router {
                 .get(health)
                 .push(account::router())
                 .push(achievement::router())
+                .push(ai_provider::router())
                 .push(auth::router())
                 .push(asset::router())
                 .push(dict::router())

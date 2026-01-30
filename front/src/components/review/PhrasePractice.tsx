@@ -25,7 +25,7 @@ function parsePhrase(phrase: string, targetWord: string): { before: string; afte
   }
 }
 
-export function PhrasePractice({ item, token, onComplete, onSkip }: PhrasePracticeProps) {
+export function PhrasePractice({ item, token: _token, onComplete, onSkip }: PhrasePracticeProps) {
   const [userInput, setUserInput] = useState('')
   const [showResult, setShowResult] = useState(false)
   const [showHint, setShowHint] = useState(false)

@@ -1,6 +1,7 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
 
 import { AuthProvider, useAuth } from './lib/auth'
+import { ToastProvider } from './contexts/ToastContext'
 import { AuthorizePage } from './pages/AuthorizePage'
 import { DictPage } from './pages/DictPage'
 import { HomePage } from './pages/HomePage'
@@ -44,9 +45,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
-        <AppRoutes />
-      </BrowserRouter>
+      <ToastProvider>
+        <BrowserRouter>
+          <AppRoutes />
+        </BrowserRouter>
+      </ToastProvider>
     </AuthProvider>
   )
 }

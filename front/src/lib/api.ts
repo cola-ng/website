@@ -1293,6 +1293,14 @@ export function advanceSkillLevel(token: string, skillType: string): Promise<Res
 // Review API
 // ============================================================================
 
+/** Review types supported by the system */
+export type ReviewType =
+  | 'pronunciation'
+  | 'meaning'
+  | 'spelling'
+  | 'recognition'
+  | 'phrase'
+
 /** A single item to review */
 export type ReviewItem = {
   id: number
@@ -1301,7 +1309,8 @@ export type ReviewItem = {
   phonetic: string | null
   example: string | null
   example_zh: string | null
-  review_type: string
+  audio_url?: string | null
+  review_type: ReviewType
   mastery_level: number
   source: 'vocabulary' | 'issue_word'
   source_id: number
@@ -1378,5 +1387,141 @@ export function submitReview(
     method: 'POST',
     token,
     body: JSON.stringify(data),
+  })
+}
+
+// ============================================================================
+// AI Provider Settings API
+// ============================================================================
+
+/** Supported AI provider types */
+export type AiProviderType = 'zhipu' | 'doubao'
+
+/** User's AI provider configuration */
+export type UserAiProvider = {
+  id: number
+  user_id: number
+  provider_type: AiProviderType
+  is_active: boolean
+  settings: Record<string, unknown>
+  last_tested_at: string | null
+  test_status: 'success' | 'failed' | null
+  test_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Request to create AI provider */
+export type CreateAiProviderRequest = {
+  provider_type: AiProviderType
+  settings: Record<string, unknown>
+  set_active?: boolean
+}
+
+/** Request to update AI provider */
+export type UpdateAiProviderRequest = {
+  settings?: Record<string, unknown>
+  is_active?: boolean
+}
+
+/** Response from testing provider */
+export type TestProviderResponse = {
+  success: boolean
+  error: string | null
+  tested_at: string
+}
+
+/** Zhipu provider settings */
+export type ZhipuSettings = {
+  api_key: string
+  chat_model?: string
+}
+
+/** Doubao provider settings */
+export type DoubaoSettings = {
+  app_id: string
+  access_token: string
+  api_key: string
+  chat_model?: string
+  tts_resource_id?: string
+  voice_type?: string
+}
+
+/**
+ * List all AI providers for the current user
+ */
+export function listAiProviders(token: string): Promise<UserAiProvider[]> {
+  return requestJson<UserAiProvider[]>('/api/ai-providers', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Create a new AI provider configuration
+ */
+export function createAiProvider(
+  token: string,
+  data: CreateAiProviderRequest
+): Promise<UserAiProvider> {
+  return requestJson<UserAiProvider>('/api/ai-providers', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Get a specific AI provider configuration
+ */
+export function getAiProvider(token: string, providerId: number): Promise<UserAiProvider> {
+  return requestJson<UserAiProvider>(`/api/ai-providers/${providerId}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Update an AI provider configuration
+ */
+export function updateAiProvider(
+  token: string,
+  providerId: number,
+  data: UpdateAiProviderRequest
+): Promise<UserAiProvider> {
+  return requestJson<UserAiProvider>(`/api/ai-providers/${providerId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete an AI provider configuration
+ */
+export function deleteAiProvider(token: string, providerId: number): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/ai-providers/${providerId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+/**
+ * Test an AI provider configuration
+ */
+export function testAiProvider(token: string, providerId: number): Promise<TestProviderResponse> {
+  return requestJson<TestProviderResponse>(`/api/ai-providers/${providerId}/test`, {
+    method: 'POST',
+    token,
+  })
+}
+
+/**
+ * Activate an AI provider (deactivate others)
+ */
+export function activateAiProvider(token: string, providerId: number): Promise<UserAiProvider> {
+  return requestJson<UserAiProvider>(`/api/ai-providers/${providerId}/activate`, {
+    method: 'POST',
+    token,
   })
 }

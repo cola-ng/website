@@ -1,17 +1,24 @@
 import { useEffect, useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Camera, Mail, Phone, Calendar, Shield, User, Loader2, Trophy, Zap, Flame, Award, Star, Target } from 'lucide-react'
+import { Camera, Mail, Phone, Calendar, Shield, User, Loader2, Trophy, Zap, Flame, Award, Star, Target, Settings, Bot, CheckCircle, XCircle, Play } from 'lucide-react'
 
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { AvatarCropDialog } from '../components/AvatarCropDialog'
-import { me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl, getUserProfileSummary, getUserAchievements, type UserProfileSummary, type AchievementWithProgress } from '../lib/api'
+import {
+  me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl,
+  getUserProfileSummary, getUserAchievements,
+  listAiProviders, createAiProvider, updateAiProvider, deleteAiProvider, testAiProvider, activateAiProvider,
+  type UserProfileSummary, type AchievementWithProgress, type UserAiProvider, type AiProviderType
+} from '../lib/api'
 import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
+import { useToast } from '../contexts/ToastContext'
 
 function formatDate(value?: string | null) {
   if (!value) return '-'
@@ -26,6 +33,7 @@ function formatDate(value?: string | null) {
 
 export function MePage() {
   const { token, user, setAuth } = useAuth()
+  const toast = useToast()
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -47,6 +55,14 @@ export function MePage() {
   const [profile, setProfile] = useState<UserProfileSummary | null>(null)
   const [achievements, setAchievements] = useState<AchievementWithProgress[]>([])
   const [achievementsLoading, setAchievementsLoading] = useState(false)
+
+  // AI Provider state
+  const [aiProviders, setAiProviders] = useState<UserAiProvider[]>([])
+  const [aiProvidersLoading, setAiProvidersLoading] = useState(false)
+  const [selectedProviderType, setSelectedProviderType] = useState<AiProviderType | null>(null)
+  const [providerFormData, setProviderFormData] = useState<Record<string, string>>({})
+  const [providerSaving, setProviderSaving] = useState(false)
+  const [providerTesting, setProviderTesting] = useState<number | null>(null)
 
   useEffect(() => {
     if (!token) return
@@ -127,6 +143,31 @@ export function MePage() {
     }
   }, [token])
 
+  // Fetch AI providers
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    setAiProvidersLoading(true)
+
+    listAiProviders(token)
+      .then((providers) => {
+        if (cancelled) return
+        setAiProviders(providers)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAiProviders([])
+      })
+      .finally(() => {
+        if (cancelled) return
+        setAiProvidersLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
   const saveProfile = async () => {
     if (!token || !user) return
     setSaving(true)
@@ -155,25 +196,20 @@ export function MePage() {
     const file = e.target.files?.[0]
     if (!file || !token) return
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       setAvatarError('请选择图片文件')
       return
     }
 
-    // Validate file size (max 10MB for cropping - final will be smaller)
     if (file.size > 10 * 1024 * 1024) {
       setAvatarError('图片大小不能超过 10MB')
       return
     }
 
     setAvatarError(null)
-
-    // Create object URL for cropping preview
     const imageUrl = URL.createObjectURL(file)
     setCropDialogImage(imageUrl)
 
-    // Reset file input
     if (fileInputRef.current) {
       fileInputRef.current.value = ''
     }
@@ -182,7 +218,6 @@ export function MePage() {
   const handleCroppedImage = async (croppedBlob: Blob) => {
     if (!token) return
 
-    // Clean up the preview URL
     if (cropDialogImage) {
       URL.revokeObjectURL(cropDialogImage)
     }
@@ -192,7 +227,6 @@ export function MePage() {
     setAvatarError(null)
 
     try {
-      // Convert blob to file
       const croppedFile = new File([croppedBlob], 'avatar.jpg', { type: 'image/jpeg' })
       const updatedUser = await uploadAvatar(token, croppedFile)
       setAuth(token, updatedUser)
@@ -226,6 +260,92 @@ export function MePage() {
     }
   }
 
+  // AI Provider handlers
+  const handleSaveProvider = async () => {
+    if (!token || !selectedProviderType) return
+
+    setProviderSaving(true)
+    try {
+      const existingProvider = aiProviders.find(p => p.provider_type === selectedProviderType)
+
+      if (existingProvider) {
+        const updated = await updateAiProvider(token, existingProvider.id, {
+          settings: providerFormData,
+        })
+        setAiProviders(prev => prev.map(p => p.id === updated.id ? updated : p))
+      } else {
+        const created = await createAiProvider(token, {
+          provider_type: selectedProviderType,
+          settings: providerFormData,
+          set_active: aiProviders.length === 0,
+        })
+        setAiProviders(prev => [...prev, created])
+      }
+      setSelectedProviderType(null)
+      setProviderFormData({})
+      toast.success('保存成功', '配置已保存')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '保存失败'
+      toast.error('保存失败', message)
+    } finally {
+      setProviderSaving(false)
+    }
+  }
+
+  const handleTestProvider = async (providerId: number) => {
+    if (!token) return
+
+    setProviderTesting(providerId)
+    try {
+      const result = await testAiProvider(token, providerId)
+      // Update the provider with test result
+      setAiProviders(prev => prev.map(p =>
+        p.id === providerId
+          ? { ...p, test_status: result.success ? 'success' : 'failed', test_error: result.error, last_tested_at: result.tested_at }
+          : p
+      ))
+      if (result.success) {
+        toast.success('测试成功', 'AI 提供商连接正常')
+      } else {
+        toast.error('测试失败', result.error || '连接失败，请检查配置')
+      }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '测试失败'
+      toast.error('测试失败', message)
+    } finally {
+      setProviderTesting(null)
+    }
+  }
+
+  const handleActivateProvider = async (providerId: number) => {
+    if (!token) return
+
+    try {
+      const activated = await activateAiProvider(token, providerId)
+      setAiProviders(prev => prev.map(p => ({
+        ...p,
+        is_active: p.id === activated.id,
+      })))
+      toast.success('激活成功', '已切换 AI 提供商')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '激活失败'
+      toast.error('激活失败', message)
+    }
+  }
+
+  const handleDeleteProvider = async (providerId: number) => {
+    if (!token) return
+
+    try {
+      await deleteAiProvider(token, providerId)
+      setAiProviders(prev => prev.filter(p => p.id !== providerId))
+      toast.success('删除成功', '配置已删除')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '删除失败'
+      toast.error('删除失败', message)
+    }
+  }
+
   if (!token) {
     return <Navigate to="/" replace />
   }
@@ -237,41 +357,31 @@ export function MePage() {
       <main className="mx-auto max-w-4xl px-4 py-8">
         {/* Profile Header Card */}
         <Card className="mb-6 overflow-hidden border-0 shadow-xl">
-          {/* Banner */}
-          <div className="h-32 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400" />
-
-          {/* Avatar & Name Section */}
-          <CardContent className="relative pb-6">
-            <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-16">
+          <div className="h-24 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400" />
+          <CardContent className="relative pb-4">
+            <div className="flex flex-col sm:flex-row sm:items-end gap-4 -mt-12">
               {/* Avatar */}
               <div className="relative group">
-                <div className="h-32 w-32 rounded-2xl bg-white p-1 shadow-xl">
+                <div className="h-24 w-24 rounded-2xl bg-white p-1 shadow-xl">
                   <div className="h-full w-full rounded-xl bg-gradient-to-br from-orange-500 to-amber-400 flex items-center justify-center overflow-hidden">
                     {avatarUrl ? (
-                      <img
-                        src={avatarUrl}
-                        alt="Avatar"
-                        className="h-full w-full object-cover"
-                      />
+                      <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" />
                     ) : (
-                      <User className="h-16 w-16 text-white" />
+                      <User className="h-12 w-12 text-white" />
                     )}
                   </div>
                 </div>
-
-                {/* Avatar Upload Overlay */}
                 <button
                   onClick={handleAvatarClick}
                   disabled={avatarUploading}
                   className="absolute inset-1 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
                 >
                   {avatarUploading ? (
-                    <Loader2 className="h-8 w-8 text-white animate-spin" />
+                    <Loader2 className="h-6 w-6 text-white animate-spin" />
                   ) : (
-                    <Camera className="h-8 w-8 text-white" />
+                    <Camera className="h-6 w-6 text-white" />
                   )}
                 </button>
-
                 <input
                   ref={fileInputRef}
                   type="file"
@@ -282,334 +392,499 @@ export function MePage() {
               </div>
 
               {/* User Info */}
-              <div className="flex-1 pt-4 sm:pt-0 sm:pb-2">
-                <h1 className="text-2xl font-bold text-gray-900">
+              <div className="flex-1 pt-2 sm:pt-0 sm:pb-1">
+                <h1 className="text-xl font-bold text-gray-900">
                   {user?.name || user?.email?.split('@')[0] || '用户'}
                 </h1>
-                <p className="text-gray-500 mt-1">{user?.email}</p>
-                {avatarError && (
-                  <p className="text-sm text-red-500 mt-2">{avatarError}</p>
-                )}
+                <p className="text-sm text-gray-500">{user?.email}</p>
+                {avatarError && <p className="text-sm text-red-500 mt-1">{avatarError}</p>}
               </div>
 
-              {/* Action Buttons */}
-              <div className="flex gap-2 sm:pb-2">
-                {user?.avatar && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleDeleteAvatar}
-                    disabled={avatarUploading}
-                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
-                  >
-                    删除头像
-                  </Button>
-                )}
-              </div>
+              {user?.avatar && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDeleteAvatar}
+                  disabled={avatarUploading}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                >
+                  删除头像
+                </Button>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Account Information */}
-          <Card className="border-0 shadow-lg">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="h-10 w-10 rounded-lg bg-blue-100 flex items-center justify-center">
-                  <Shield className="h-5 w-5 text-blue-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">账户信息</h2>
-                  <p className="text-sm text-gray-500">您的账户详情</p>
-                </div>
-              </div>
+        {/* Tabs */}
+        <Tabs defaultValue="profile" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3">
+            <TabsTrigger value="profile" className="gap-2">
+              <User className="h-4 w-4" />
+              <span className="hidden sm:inline">个人资料</span>
+            </TabsTrigger>
+            <TabsTrigger value="achievements" className="gap-2">
+              <Trophy className="h-4 w-4" />
+              <span className="hidden sm:inline">成就</span>
+            </TabsTrigger>
+            <TabsTrigger value="settings" className="gap-2">
+              <Settings className="h-4 w-4" />
+              <span className="hidden sm:inline">设置</span>
+            </TabsTrigger>
+          </TabsList>
 
-              <div className="space-y-4">
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                  <Mail className="h-5 w-5 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-500">邮箱地址</p>
-                    <p className="text-sm font-medium text-gray-900 truncate">{user?.email || '-'}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                  <Phone className="h-5 w-5 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-500">手机号码</p>
-                    <p className="text-sm font-medium text-gray-900">{user?.phone || '未设置'}</p>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 p-3 rounded-lg bg-gray-50">
-                  <Calendar className="h-5 w-5 text-gray-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-xs text-gray-500">注册时间</p>
-                    <p className="text-sm font-medium text-gray-900">{formatDate(user?.created_at)}</p>
-                  </div>
-                </div>
-              </div>
-
-              {loading && (
-                <div className="flex items-center gap-2 mt-4 text-sm text-gray-500">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  加载中...
-                </div>
-              )}
-              {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
-            </CardContent>
-          </Card>
-
-          {/* Edit Profile */}
-          <Card className="border-0 shadow-lg">
-            <CardContent className="p-6">
-              <div className="flex items-center gap-3 mb-6">
-                <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
-                  <User className="h-5 w-5 text-orange-600" />
-                </div>
-                <div>
-                  <h2 className="text-lg font-semibold text-gray-900">编辑资料</h2>
-                  <p className="text-sm text-gray-500">更新您的个人信息</p>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="edit-name" className="text-sm font-medium">
-                    显示名称
-                  </Label>
-                  <Input
-                    id="edit-name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="输入您的姓名"
-                    className="h-10"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="edit-phone" className="text-sm font-medium">
-                    手机号码
-                  </Label>
-                  <Input
-                    id="edit-phone"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                    placeholder="输入您的手机号码"
-                    className="h-10"
-                  />
-                </div>
-
-                <div className="pt-2">
-                  <Button
-                    onClick={saveProfile}
-                    disabled={saving}
-                    className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
-                  >
-                    {saving ? (
-                      <>
-                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                        保存中...
-                      </>
-                    ) : (
-                      '保存更改'
-                    )}
-                  </Button>
-
-                  {saved && (
-                    <p className="text-sm text-green-600 text-center mt-3">
-                      资料更新成功！
-                    </p>
-                  )}
-                  {saveError && (
-                    <p className="text-sm text-red-500 text-center mt-3">{saveError}</p>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        {/* Achievements Section */}
-        {achievementsLoading ? (
-          <div className="mt-6 flex items-center justify-center py-12">
-            <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
-          </div>
-        ) : profile && (
-          <div className="mt-6 space-y-6">
-            {/* Rank & XP Card */}
-            <Card className="border-0 shadow-lg overflow-hidden">
-              <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400 p-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-4">
-                    <div
-                      className="h-16 w-16 rounded-full flex items-center justify-center shadow-lg"
-                      style={{ backgroundColor: profile.rank?.color || '#9CA3AF' }}
-                    >
-                      <Trophy className="h-8 w-8 text-white" />
+          {/* Profile Tab */}
+          <TabsContent value="profile">
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Account Information */}
+              <Card className="border-0 shadow-lg">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="h-8 w-8 rounded-lg bg-blue-100 flex items-center justify-center">
+                      <Shield className="h-4 w-4 text-blue-600" />
                     </div>
-                    <div>
-                      <p className="text-2xl font-bold text-white">
-                        {profile.rank?.name_zh || '新手'}
-                      </p>
-                      <p className="text-white/80">Lv.{profile.rank?.level || 1}</p>
-                    </div>
+                    <h2 className="text-base font-semibold text-gray-900">账户信息</h2>
                   </div>
-                  <div className="text-right">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-6 w-6 text-yellow-200" />
-                      <span className="text-3xl font-bold text-white">{profile.total_xp}</span>
-                      <span className="text-white/80">XP</span>
-                    </div>
-                    {profile.current_streak_days > 0 && (
-                      <div className="flex items-center gap-1 mt-1 justify-end">
-                        <Flame className="h-4 w-4 text-yellow-200" />
-                        <span className="text-white/90 font-medium">
-                          {profile.current_streak_days}天连续学习
-                        </span>
+
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                      <Mail className="h-4 w-4 text-gray-400" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500">邮箱地址</p>
+                        <p className="text-sm font-medium text-gray-900 truncate">{user?.email || '-'}</p>
                       </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* XP Progress Bar */}
-                {profile.next_rank && (
-                  <div className="mt-4 space-y-2">
-                    <div className="flex justify-between text-sm text-white/80">
-                      <span>距离 {profile.next_rank.name_zh}</span>
-                      <span>还需 {profile.xp_to_next_rank} XP</span>
                     </div>
-                    <div className="h-3 bg-white/20 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-white rounded-full transition-all"
-                        style={{
-                          width: `${Math.min(100, ((profile.total_xp - (profile.rank?.min_xp || 0)) / (profile.next_rank.min_xp - (profile.rank?.min_xp || 0))) * 100)}%`
-                        }}
+
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                      <Phone className="h-4 w-4 text-gray-400" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500">手机号码</p>
+                        <p className="text-sm font-medium text-gray-900">{user?.phone || '未设置'}</p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3 p-2 rounded-lg bg-gray-50">
+                      <Calendar className="h-4 w-4 text-gray-400" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs text-gray-500">注册时间</p>
+                        <p className="text-sm font-medium text-gray-900">{formatDate(user?.created_at)}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {loading && (
+                    <div className="flex items-center gap-2 mt-4 text-sm text-gray-500">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      加载中...
+                    </div>
+                  )}
+                  {error && <p className="text-sm text-red-500 mt-4">{error}</p>}
+                </CardContent>
+              </Card>
+
+              {/* Edit Profile */}
+              <Card className="border-0 shadow-lg">
+                <CardContent className="p-6">
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="h-8 w-8 rounded-lg bg-orange-100 flex items-center justify-center">
+                      <User className="h-4 w-4 text-orange-600" />
+                    </div>
+                    <h2 className="text-base font-semibold text-gray-900">编辑资料</h2>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-name" className="text-sm font-medium">显示名称</Label>
+                      <Input
+                        id="edit-name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        placeholder="输入您的姓名"
+                        className="h-9"
                       />
                     </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="edit-phone" className="text-sm font-medium">手机号码</Label>
+                      <Input
+                        id="edit-phone"
+                        value={phone}
+                        onChange={(e) => setPhone(e.target.value)}
+                        placeholder="输入您的手机号码"
+                        className="h-9"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={saveProfile}
+                      disabled={saving}
+                      className="w-full bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
+                    >
+                      {saving ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          保存中...
+                        </>
+                      ) : (
+                        '保存更改'
+                      )}
+                    </Button>
+
+                    {saved && <p className="text-sm text-green-600 text-center">资料更新成功！</p>}
+                    {saveError && <p className="text-sm text-red-500 text-center">{saveError}</p>}
                   </div>
-                )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Achievements Tab */}
+          <TabsContent value="achievements">
+            {achievementsLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
               </div>
-
-              {/* Quick Stats */}
-              <CardContent className="p-6">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="text-center p-4 bg-orange-50 rounded-xl">
-                    <Flame className="h-6 w-6 text-orange-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-orange-600">{profile.current_streak_days}</p>
-                    <p className="text-sm text-gray-500">连续天数</p>
-                  </div>
-                  <div className="text-center p-4 bg-green-50 rounded-xl">
-                    <Award className="h-6 w-6 text-green-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-green-600">{profile.completed_achievements}</p>
-                    <p className="text-sm text-gray-500">已获成就</p>
-                  </div>
-                  <div className="text-center p-4 bg-blue-50 rounded-xl">
-                    <Trophy className="h-6 w-6 text-blue-500 mx-auto mb-2" />
-                    <p className="text-2xl font-bold text-blue-600">{profile.rank?.level || 1}</p>
-                    <p className="text-sm text-gray-500">当前等级</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* Achievements List */}
-            <Card className="border-0 shadow-lg">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <div className="flex items-center gap-3">
-                    <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
-                      <Award className="h-5 w-5 text-amber-600" />
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-semibold text-gray-900">成就勋章</h2>
-                      <p className="text-sm text-gray-500">
-                        已解锁 {profile.completed_achievements}/{profile.total_achievements} 个成就
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                {achievements.length > 0 ? (
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {achievements.map((achievement) => (
-                      <div
-                        key={achievement.id}
-                        className={cn(
-                          "p-4 rounded-xl border-2 transition-all",
-                          achievement.is_completed
-                            ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200"
-                            : "bg-gray-50 border-gray-200 opacity-60"
-                        )}
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className={cn(
-                              "h-12 w-12 rounded-xl flex items-center justify-center shrink-0",
-                              achievement.is_completed
-                                ? "bg-gradient-to-br from-amber-400 to-orange-500"
-                                : "bg-gray-300"
-                            )}
-                          >
-                            {achievement.is_completed ? (
-                              <Star className="h-6 w-6 text-white" />
-                            ) : (
-                              <Target className="h-6 w-6 text-gray-500" />
-                            )}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <p className={cn(
-                                "font-semibold truncate",
-                                achievement.is_completed ? "text-gray-900" : "text-gray-500"
-                              )}>
-                                {achievement.name_zh}
-                              </p>
-                              {achievement.is_completed && (
-                                <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full shrink-0">
-                                  已获得
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
-                              {achievement.description_zh}
-                            </p>
-                            <div className="flex items-center gap-4 mt-2">
-                              <span className="text-xs text-amber-600 font-medium">
-                                +{achievement.xp_reward} XP
-                              </span>
-                              {!achievement.is_completed && achievement.requirement_value > 0 && (
-                                <div className="flex-1">
-                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                                    <span>进度</span>
-                                    <span>{achievement.progress}/{achievement.requirement_value}</span>
-                                  </div>
-                                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
-                                    <div
-                                      className="h-full bg-orange-400 rounded-full"
-                                      style={{
-                                        width: `${Math.min(100, (achievement.progress / achievement.requirement_value) * 100)}%`
-                                      }}
-                                    />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
+            ) : profile ? (
+              <div className="space-y-6">
+                {/* Rank & XP Card */}
+                <Card className="border-0 shadow-lg overflow-hidden">
+                  <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400 p-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-4">
+                        <div
+                          className="h-14 w-14 rounded-full flex items-center justify-center shadow-lg"
+                          style={{ backgroundColor: profile.rank?.color || '#9CA3AF' }}
+                        >
+                          <Trophy className="h-7 w-7 text-white" />
+                        </div>
+                        <div>
+                          <p className="text-xl font-bold text-white">{profile.rank?.name_zh || '新手'}</p>
+                          <p className="text-white/80">Lv.{profile.rank?.level || 1}</p>
                         </div>
                       </div>
-                    ))}
+                      <div className="text-right">
+                        <div className="flex items-center gap-2">
+                          <Zap className="h-5 w-5 text-yellow-200" />
+                          <span className="text-2xl font-bold text-white">{profile.total_xp}</span>
+                          <span className="text-white/80">XP</span>
+                        </div>
+                        {profile.current_streak_days > 0 && (
+                          <div className="flex items-center gap-1 mt-1 justify-end">
+                            <Flame className="h-4 w-4 text-yellow-200" />
+                            <span className="text-sm text-white/90 font-medium">
+                              {profile.current_streak_days}天连续学习
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {profile.next_rank && (
+                      <div className="mt-4 space-y-2">
+                        <div className="flex justify-between text-sm text-white/80">
+                          <span>距离 {profile.next_rank.name_zh}</span>
+                          <span>还需 {profile.xp_to_next_rank} XP</span>
+                        </div>
+                        <div className="h-2 bg-white/20 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-white rounded-full transition-all"
+                            style={{
+                              width: `${Math.min(100, ((profile.total_xp - (profile.rank?.min_xp || 0)) / (profile.next_rank.min_xp - (profile.rank?.min_xp || 0))) * 100)}%`
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="text-center p-3 bg-orange-50 rounded-xl">
+                        <Flame className="h-5 w-5 text-orange-500 mx-auto mb-1" />
+                        <p className="text-xl font-bold text-orange-600">{profile.current_streak_days}</p>
+                        <p className="text-xs text-gray-500">连续天数</p>
+                      </div>
+                      <div className="text-center p-3 bg-green-50 rounded-xl">
+                        <Award className="h-5 w-5 text-green-500 mx-auto mb-1" />
+                        <p className="text-xl font-bold text-green-600">{profile.completed_achievements}</p>
+                        <p className="text-xs text-gray-500">已获成就</p>
+                      </div>
+                      <div className="text-center p-3 bg-blue-50 rounded-xl">
+                        <Trophy className="h-5 w-5 text-blue-500 mx-auto mb-1" />
+                        <p className="text-xl font-bold text-blue-600">{profile.rank?.level || 1}</p>
+                        <p className="text-xs text-gray-500">当前等级</p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Achievements List */}
+                <Card className="border-0 shadow-lg">
+                  <CardContent className="p-6">
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-lg bg-amber-100 flex items-center justify-center">
+                          <Award className="h-4 w-4 text-amber-600" />
+                        </div>
+                        <div>
+                          <h2 className="text-base font-semibold text-gray-900">成就勋章</h2>
+                          <p className="text-xs text-gray-500">
+                            已解锁 {profile.completed_achievements}/{profile.total_achievements} 个成就
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {achievements.length > 0 ? (
+                      <div className="grid gap-3 sm:grid-cols-2">
+                        {achievements.map((achievement) => (
+                          <div
+                            key={achievement.id}
+                            className={cn(
+                              "p-3 rounded-xl border-2 transition-all",
+                              achievement.is_completed
+                                ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200"
+                                : "bg-gray-50 border-gray-200 opacity-60"
+                            )}
+                          >
+                            <div className="flex items-start gap-3">
+                              <div
+                                className={cn(
+                                  "h-10 w-10 rounded-xl flex items-center justify-center shrink-0",
+                                  achievement.is_completed
+                                    ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                                    : "bg-gray-300"
+                                )}
+                              >
+                                {achievement.is_completed ? (
+                                  <Star className="h-5 w-5 text-white" />
+                                ) : (
+                                  <Target className="h-5 w-5 text-gray-500" />
+                                )}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <p className={cn(
+                                    "font-semibold truncate text-sm",
+                                    achievement.is_completed ? "text-gray-900" : "text-gray-500"
+                                  )}>
+                                    {achievement.name_zh}
+                                  </p>
+                                  {achievement.is_completed && (
+                                    <span className="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full shrink-0">
+                                      已获得
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-gray-500 mt-0.5 line-clamp-1">
+                                  {achievement.description_zh}
+                                </p>
+                                <div className="flex items-center gap-3 mt-1">
+                                  <span className="text-xs text-amber-600 font-medium">
+                                    +{achievement.xp_reward} XP
+                                  </span>
+                                  {!achievement.is_completed && achievement.requirement_value > 0 && (
+                                    <div className="flex-1">
+                                      <div className="h-1 bg-gray-200 rounded-full overflow-hidden">
+                                        <div
+                                          className="h-full bg-orange-400 rounded-full"
+                                          style={{
+                                            width: `${Math.min(100, (achievement.progress / achievement.requirement_value) * 100)}%`
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="text-center py-8 text-gray-500">
+                        <Award className="h-10 w-10 mx-auto mb-3 text-gray-300" />
+                        <p>暂无成就数据</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            ) : (
+              <div className="text-center py-12 text-gray-500">
+                <Award className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                <p>无法加载成就数据</p>
+              </div>
+            )}
+          </TabsContent>
+
+          {/* Settings Tab */}
+          <TabsContent value="settings">
+            <Card className="border-0 shadow-lg">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <Bot className="h-4 w-4 text-purple-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900">AI 提供商设置</h2>
+                    <p className="text-xs text-gray-500">配置您的 AI 服务提供商</p>
+                  </div>
+                </div>
+
+                {aiProvidersLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
                   </div>
                 ) : (
-                  <div className="text-center py-12 text-gray-500">
-                    <Award className="h-12 w-12 mx-auto mb-4 text-gray-300" />
-                    <p>暂无成就数据</p>
+                  <div className="space-y-4">
+                    {/* Provider Cards */}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {/* Zhipu Provider */}
+                      <ProviderCard
+                        type="zhipu"
+                        name="智谱 AI"
+                        description="GLM 系列大模型"
+                        provider={aiProviders.find(p => p.provider_type === 'zhipu')}
+                        isSelected={selectedProviderType === 'zhipu'}
+                        isTesting={providerTesting}
+                        onSelect={() => {
+                          setSelectedProviderType(selectedProviderType === 'zhipu' ? null : 'zhipu')
+                          const existing = aiProviders.find(p => p.provider_type === 'zhipu')
+                          setProviderFormData(existing?.settings as Record<string, string> || {})
+                        }}
+                        onTest={handleTestProvider}
+                        onActivate={handleActivateProvider}
+                        onDelete={handleDeleteProvider}
+                      />
+
+                      {/* Doubao Provider */}
+                      <ProviderCard
+                        type="doubao"
+                        name="豆包"
+                        description="字节跳动大模型"
+                        provider={aiProviders.find(p => p.provider_type === 'doubao')}
+                        isSelected={selectedProviderType === 'doubao'}
+                        isTesting={providerTesting}
+                        onSelect={() => {
+                          setSelectedProviderType(selectedProviderType === 'doubao' ? null : 'doubao')
+                          const existing = aiProviders.find(p => p.provider_type === 'doubao')
+                          setProviderFormData(existing?.settings as Record<string, string> || {})
+                        }}
+                        onTest={handleTestProvider}
+                        onActivate={handleActivateProvider}
+                        onDelete={handleDeleteProvider}
+                      />
+                    </div>
+
+                    {/* Configuration Form */}
+                    {selectedProviderType && (
+                      <Card className="border border-purple-200 bg-purple-50/50">
+                        <CardContent className="p-4">
+                          <h3 className="text-sm font-semibold text-gray-900 mb-4">
+                            配置 {selectedProviderType === 'zhipu' ? '智谱 AI' : '豆包'}
+                          </h3>
+
+                          {selectedProviderType === 'zhipu' ? (
+                            <div className="space-y-3">
+                              <div>
+                                <Label className="text-xs">API Key</Label>
+                                <Input
+                                  type="password"
+                                  value={providerFormData.api_key || ''}
+                                  onChange={(e) => setProviderFormData(prev => ({ ...prev, api_key: e.target.value }))}
+                                  placeholder="输入 Zhipu API Key"
+                                  className="h-9 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Chat Model</Label>
+                                <Input
+                                  value={providerFormData.chat_model || 'glm-4-flash'}
+                                  onChange={(e) => setProviderFormData(prev => ({ ...prev, chat_model: e.target.value }))}
+                                  placeholder="glm-4-flash"
+                                  className="h-9 mt-1"
+                                />
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="space-y-3">
+                              <div>
+                                <Label className="text-xs">App ID</Label>
+                                <Input
+                                  value={providerFormData.app_id || ''}
+                                  onChange={(e) => setProviderFormData(prev => ({ ...prev, app_id: e.target.value }))}
+                                  placeholder="输入 App ID"
+                                  className="h-9 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Access Token</Label>
+                                <Input
+                                  type="password"
+                                  value={providerFormData.access_token || ''}
+                                  onChange={(e) => setProviderFormData(prev => ({ ...prev, access_token: e.target.value }))}
+                                  placeholder="输入 Access Token"
+                                  className="h-9 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">API Key</Label>
+                                <Input
+                                  type="password"
+                                  value={providerFormData.api_key || ''}
+                                  onChange={(e) => setProviderFormData(prev => ({ ...prev, api_key: e.target.value }))}
+                                  placeholder="输入 API Key"
+                                  className="h-9 mt-1"
+                                />
+                              </div>
+                              <div>
+                                <Label className="text-xs">Chat Model</Label>
+                                <Input
+                                  value={providerFormData.chat_model || 'doubao-1-5-pro-32k-250115'}
+                                  onChange={(e) => setProviderFormData(prev => ({ ...prev, chat_model: e.target.value }))}
+                                  placeholder="doubao-1-5-pro-32k-250115"
+                                  className="h-9 mt-1"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          <div className="flex gap-2 mt-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setSelectedProviderType(null)
+                                setProviderFormData({})
+                              }}
+                            >
+                              取消
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={handleSaveProvider}
+                              disabled={providerSaving}
+                              className="bg-purple-600 hover:bg-purple-700"
+                            >
+                              {providerSaving ? (
+                                <>
+                                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                                  保存中...
+                                </>
+                              ) : (
+                                '保存配置'
+                              )}
+                            </Button>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
                   </div>
                 )}
               </CardContent>
             </Card>
-          </div>
-        )}
+          </TabsContent>
+        </Tabs>
       </main>
 
       <Footer />
@@ -621,6 +896,132 @@ export function MePage() {
           onCrop={handleCroppedImage}
           onCancel={handleCropCancel}
         />
+      )}
+    </div>
+  )
+}
+
+// Provider Card Component
+function ProviderCard({
+  type: _type,
+  name,
+  description,
+  provider,
+  isSelected,
+  isTesting,
+  onSelect,
+  onTest,
+  onActivate,
+  onDelete,
+}: {
+  type: AiProviderType
+  name: string
+  description: string
+  provider?: UserAiProvider
+  isSelected: boolean
+  isTesting: number | null
+  onSelect: () => void
+  onTest: (id: number) => void
+  onActivate: (id: number) => void
+  onDelete: (id: number) => void
+}) {
+  const isConfigured = !!provider
+  const isActive = provider?.is_active
+  const testStatus = provider?.test_status
+
+  return (
+    <div
+      className={cn(
+        "p-4 rounded-xl border-2 transition-all cursor-pointer",
+        isSelected
+          ? "border-purple-400 bg-purple-50"
+          : isActive
+            ? "border-green-300 bg-green-50/50"
+            : isConfigured
+              ? "border-gray-200 bg-white hover:border-purple-200"
+              : "border-dashed border-gray-300 bg-gray-50 hover:border-purple-200"
+      )}
+      onClick={onSelect}
+    >
+      <div className="flex items-start justify-between">
+        <div className="flex items-center gap-3">
+          <div className={cn(
+            "h-10 w-10 rounded-lg flex items-center justify-center",
+            isActive ? "bg-green-100" : isConfigured ? "bg-purple-100" : "bg-gray-200"
+          )}>
+            <Bot className={cn(
+              "h-5 w-5",
+              isActive ? "text-green-600" : isConfigured ? "text-purple-600" : "text-gray-400"
+            )} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="font-semibold text-gray-900">{name}</p>
+              {isActive && (
+                <span className="text-xs bg-green-100 text-green-600 px-1.5 py-0.5 rounded-full">
+                  使用中
+                </span>
+              )}
+            </div>
+            <p className="text-xs text-gray-500">{description}</p>
+          </div>
+        </div>
+
+        {testStatus && (
+          <div className="shrink-0">
+            {testStatus === 'success' ? (
+              <CheckCircle className="h-5 w-5 text-green-500" />
+            ) : (
+              <XCircle className="h-5 w-5 text-red-500" />
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Error message display */}
+      {provider?.test_error && testStatus === 'failed' && (
+        <div className="mt-2 p-2 bg-red-50 border border-red-200 rounded-lg">
+          <p className="text-xs text-red-600 break-words">{provider.test_error}</p>
+        </div>
+      )}
+
+      {isConfigured && (
+        <div className="flex gap-2 mt-3" onClick={(e) => e.stopPropagation()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs"
+            onClick={() => onTest(provider.id)}
+            disabled={isTesting === provider.id}
+          >
+            {isTesting === provider.id ? (
+              <Loader2 className="h-3 w-3 animate-spin" />
+            ) : (
+              <>
+                <Play className="h-3 w-3 mr-1" />
+                测试
+              </>
+            )}
+          </Button>
+          {!isActive && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-7 text-xs text-green-600 hover:text-green-700"
+              onClick={() => onActivate(provider.id)}
+            >
+              激活
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-7 text-xs text-red-600 hover:text-red-700"
+            onClick={() => onDelete(provider.id)}
+          >
+            删除
+          </Button>
+        </div>
       )}
     </div>
   )

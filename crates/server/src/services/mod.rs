@@ -13,6 +13,13 @@ pub mod zhipu;
 
 use std::sync::Arc;
 
+use diesel::prelude::*;
+use serde_json::Value;
+
+use crate::db::schema::user_ai_providers;
+use crate::db::with_conn;
+use crate::models::ai_provider::{DoubaoSettings, UserAiProvider, ZhipuSettings};
+
 pub use ai_provider::{
     AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig,
     StructuredChatResponse, TextIssue, TtsService,
@@ -145,4 +152,67 @@ pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
 
     tracing::error!("No AI provider configured. Set ZHIPU_API_KEY or DOUBAO_* env vars.");
     None
+}
+
+/// Get AI provider for a specific user
+///
+/// Priority:
+/// 1. User's active provider configuration from database
+/// 2. System default from environment variables
+pub async fn get_user_provider(user_id: i64) -> Option<Arc<dyn AiProvider>> {
+    // Try to get user's active provider from database
+    let user_provider = with_conn(move |conn| {
+        user_ai_providers::table
+            .filter(user_ai_providers::user_id.eq(user_id))
+            .filter(user_ai_providers::is_active.eq(true))
+            .first::<UserAiProvider>(conn)
+            .optional()
+    })
+    .await
+    .ok()
+    .flatten();
+
+    if let Some(provider) = user_provider {
+        if let Some(ai_provider) = create_provider_from_user_config(&provider.provider_type, &provider.settings) {
+            tracing::info!(
+                "Using user's {} provider for user_id={}",
+                provider.provider_type,
+                user_id
+            );
+            return Some(ai_provider);
+        }
+    }
+
+    // Fall back to system default
+    tracing::info!("Using system default provider for user_id={}", user_id);
+    create_provider_from_env()
+}
+
+/// Create AI provider from user configuration stored in database
+fn create_provider_from_user_config(provider_type: &str, settings: &Value) -> Option<Arc<dyn AiProvider>> {
+    match provider_type {
+        "zhipu" => {
+            let zhipu_settings: ZhipuSettings = serde_json::from_value(settings.clone()).ok()?;
+            let config = ProviderConfig::Zhipu {
+                api_key: zhipu_settings.api_key,
+                chat_model: Some(zhipu_settings.chat_model),
+                asr_model: None,
+                tts_model: None,
+            };
+            Some(create_provider(&config))
+        }
+        "doubao" => {
+            let doubao_settings: DoubaoSettings = serde_json::from_value(settings.clone()).ok()?;
+            let config = ProviderConfig::Doubao {
+                app_id: doubao_settings.app_id,
+                access_token: doubao_settings.access_token,
+                api_key: doubao_settings.api_key,
+                chat_model: Some(doubao_settings.chat_model),
+                tts_resource_id: doubao_settings.tts_resource_id,
+                voice_type: doubao_settings.voice_type,
+            };
+            Some(create_provider(&config))
+        }
+        _ => None,
+    }
 }

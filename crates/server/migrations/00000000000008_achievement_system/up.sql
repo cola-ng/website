@@ -100,38 +100,29 @@ CREATE INDEX IF NOT EXISTS idx_archive_user_xp_history_user ON archive_user_xp_h
 -- ============================================================================
 
 INSERT INTO archive_achievement_definitions (code, name_en, name_zh, description_en, description_zh, icon, category, rarity, xp_reward, requirement_type, requirement_value, requirement_field, sort_order) VALUES
--- Learning Milestones
-('first_conversation', 'First Chat', '初次对话', 'Complete your first conversation', '完成你的第一次对话', 'message-circle', 'milestone', 'common', 10, 'count', 1, 'total_stages', 1),
-('conversations_10', 'Chatty Learner', '健谈学者', 'Complete 10 conversations', '完成10次对话', 'message-circle', 'milestone', 'common', 50, 'count', 10, 'total_stages', 2),
-('conversations_50', 'Social Butterfly', '社交达人', 'Complete 50 conversations', '完成50次对话', 'messages', 'milestone', 'uncommon', 150, 'count', 50, 'total_stages', 3),
-('conversations_100', 'Chat Master', '对话大师', 'Complete 100 conversations', '完成100次对话', 'crown', 'milestone', 'rare', 300, 'count', 100, 'total_stages', 4),
+-- Milestone: Getting Started
+('first_conversation', 'First Chat', '初次对话', 'Complete your first conversation', '完成你的第一次对话', 'message-circle', 'milestone', 'common', 50, 'count', 1, 'total_stages', 1),
 
--- Vocabulary Achievements
-('vocab_first', 'First Word', '首个单词', 'Learn your first word', '学会你的第一个单词', 'book-open', 'learning', 'common', 10, 'count', 1, 'total_words_mastered', 10),
-('vocab_50', 'Word Collector', '单词收集者', 'Master 50 words', '掌握50个单词', 'library', 'learning', 'common', 100, 'count', 50, 'total_words_mastered', 11),
-('vocab_100', 'Vocabulary Builder', '词汇建设者', 'Master 100 words', '掌握100个单词', 'book-marked', 'learning', 'uncommon', 200, 'count', 100, 'total_words_mastered', 12),
-('vocab_500', 'Word Wizard', '单词魔法师', 'Master 500 words', '掌握500个单词', 'sparkles', 'learning', 'rare', 500, 'count', 500, 'total_words_mastered', 13),
-('vocab_1000', 'Lexicon Legend', '词典传奇', 'Master 1000 words', '掌握1000个单词', 'trophy', 'learning', 'epic', 1000, 'count', 1000, 'total_words_mastered', 14),
+-- Milestone: Major Progress
+('conversations_100', 'Chat Master', '对话大师', 'Complete 100 conversations', '完成100次对话', 'crown', 'milestone', 'rare', 500, 'count', 100, 'total_stages', 2),
 
--- Streak Achievements
-('streak_3', 'Getting Started', '坚持不懈', '3-day learning streak', '连续学习3天', 'flame', 'streak', 'common', 30, 'streak', 3, 'current_streak_days', 20),
-('streak_7', 'Weekly Warrior', '周学习战士', '7-day learning streak', '连续学习7天', 'flame', 'streak', 'uncommon', 100, 'streak', 7, 'current_streak_days', 21),
-('streak_30', 'Monthly Master', '月度大师', '30-day learning streak', '连续学习30天', 'flame', 'streak', 'rare', 500, 'streak', 30, 'current_streak_days', 22),
-('streak_100', 'Century Learner', '百日学者', '100-day learning streak', '连续学习100天', 'flame', 'streak', 'epic', 2000, 'streak', 100, 'current_streak_days', 23),
-('streak_365', 'Year of Dedication', '年度奉献', '365-day learning streak', '连续学习365天', 'star', 'streak', 'legendary', 10000, 'streak', 365, 'current_streak_days', 24),
+-- Vocabulary: Foundation
+('vocab_100', 'Vocabulary Builder', '词汇达人', 'Master 100 words', '掌握100个单词', 'book-marked', 'learning', 'uncommon', 200, 'count', 100, 'total_words_mastered', 3),
 
--- Study Time Achievements
-('time_60', 'Hour Hero', '一小时英雄', 'Study for 1 hour total', '累计学习1小时', 'clock', 'mastery', 'common', 20, 'time', 60, 'total_study_minutes', 30),
-('time_300', 'Dedicated Student', '专注学生', 'Study for 5 hours total', '累计学习5小时', 'clock', 'mastery', 'common', 50, 'time', 300, 'total_study_minutes', 31),
-('time_600', 'Persistent Learner', '坚韧学习者', 'Study for 10 hours total', '累计学习10小时', 'clock', 'mastery', 'uncommon', 100, 'time', 600, 'total_study_minutes', 32),
-('time_3000', 'Time Investor', '时间投资者', 'Study for 50 hours total', '累计学习50小时', 'hourglass', 'mastery', 'rare', 500, 'time', 3000, 'total_study_minutes', 33),
-('time_6000', 'Century of Learning', '学习世纪', 'Study for 100 hours total', '累计学习100小时', 'hourglass', 'mastery', 'epic', 1500, 'time', 6000, 'total_study_minutes', 34),
+-- Vocabulary: Mastery
+('vocab_1000', 'Lexicon Legend', '词汇大师', 'Master 1000 words', '掌握1000个单词', 'trophy', 'learning', 'epic', 1000, 'count', 1000, 'total_words_mastered', 4),
 
--- Special Achievements
-('early_bird', 'Early Bird', '早起鸟儿', 'Complete a session before 7 AM', '早上7点前完成一次学习', 'sun', 'special', 'uncommon', 50, 'special', 1, NULL, 40),
-('night_owl', 'Night Owl', '夜猫子', 'Complete a session after 11 PM', '晚上11点后完成一次学习', 'moon', 'special', 'uncommon', 50, 'special', 1, NULL, 41),
-('perfect_score', 'Perfectionist', '完美主义者', 'Get 100% on a reading practice', '跟读练习获得满分', 'target', 'special', 'rare', 100, 'score', 100, NULL, 42),
-('weekend_warrior', 'Weekend Warrior', '周末战士', 'Study on both Saturday and Sunday', '周六周日都有学习', 'calendar', 'special', 'common', 30, 'special', 1, NULL, 43)
+-- Streak: Weekly Commitment
+('streak_7', 'Weekly Warrior', '周学习战士', '7-day learning streak', '连续学习7天', 'flame', 'streak', 'uncommon', 150, 'streak', 7, 'current_streak_days', 5),
+
+-- Streak: Monthly Dedication
+('streak_30', 'Monthly Master', '月度大师', '30-day learning streak', '连续学习30天', 'flame', 'streak', 'rare', 500, 'streak', 30, 'current_streak_days', 6),
+
+-- Time Investment
+('time_600', 'Time Investor', '时间达人', 'Study for 10 hours total', '累计学习10小时', 'clock', 'mastery', 'uncommon', 200, 'time', 600, 'total_study_minutes', 7),
+
+-- Special Challenge
+('perfect_score', 'Perfectionist', '完美主义者', 'Get 100% on a reading practice', '跟读练习获得满分', 'target', 'special', 'rare', 200, 'score', 100, NULL, 8)
 ON CONFLICT (code) DO NOTHING;
 
 -- ============================================================================

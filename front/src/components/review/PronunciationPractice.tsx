@@ -44,7 +44,7 @@ export function PronunciationPractice({ item, token, onComplete, onSkip }: Pronu
   }, [])
 
   const handleRecordingComplete = useCallback(
-    async (_wavBlob: Blob, wavArrayBuffer: ArrayBuffer, base64Audio: string) => {
+    async (_wavBlob: Blob, _wavArrayBuffer: ArrayBuffer, base64Audio: string) => {
       setEvaluating(true)
       try {
         const result = await evaluatePronunciation(token, base64Audio, item.word)

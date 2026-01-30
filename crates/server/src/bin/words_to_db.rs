@@ -6,9 +6,10 @@ use std::time::Instant;
 
 use colang::db::pool::DieselPool;
 use diesel::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
-const DEFAULT_WORDS_DIR: &str = "../words";
+const DEFAULT_WORDS_DIR: &str = "D:/Works/cola-ng/dict/final-en-dict";
+const DEFAULT_PRONUNCIATIONS_DIR: &str = "D:/Works/cola-ng/space/pronunciations";
 const DEFAULT_BATCH_SIZE: usize = 100;
 
 #[derive(Debug, Deserialize)]
@@ -39,8 +40,37 @@ enum DictionaryRef {
     Name(String),
     Full {
         name: String,
+        #[serde(default, deserialize_with = "deserialize_optional_i32_from_string")]
         priority_order: Option<i32>,
     },
+}
+
+/// Deserialize Option<i32> that may be a number, null, or empty string
+fn deserialize_optional_i32_from_string<'de, D>(deserializer: D) -> Result<Option<i32>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    use serde::de::Error;
+
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum StringOrInt {
+        Int(i32),
+        String(String),
+        Null,
+    }
+
+    match Option::<StringOrInt>::deserialize(deserializer)? {
+        None | Some(StringOrInt::Null) => Ok(None),
+        Some(StringOrInt::Int(i)) => Ok(Some(i)),
+        Some(StringOrInt::String(s)) => {
+            if s.is_empty() {
+                Ok(None)
+            } else {
+                s.parse::<i32>().map(Some).map_err(D::Error::custom)
+            }
+        }
+    }
 }
 
 impl DictionaryRef {
@@ -218,6 +248,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let args: Vec<String> = std::env::args().collect();
     let mut words_dir = PathBuf::from(DEFAULT_WORDS_DIR);
+    let mut pronunciations_dir = PathBuf::from(DEFAULT_PRONUNCIATIONS_DIR);
     let mut batch_size = DEFAULT_BATCH_SIZE;
     let mut limit: Option<usize> = None;
     let mut skip_existing = true;
@@ -231,6 +262,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     i += 2;
                 } else {
                     eprintln!("Error: --words-dir requires a path argument");
+                    std::process::exit(1);
+                }
+            }
+            "--pronunciations-dir" => {
+                if i + 1 < args.len() {
+                    pronunciations_dir = PathBuf::from(&args[i + 1]);
+                    i += 2;
+                } else {
+                    eprintln!("Error: --pronunciations-dir requires a path argument");
                     std::process::exit(1);
                 }
             }
@@ -272,6 +312,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Words JSON to Database Import Tool");
     println!("===============================================");
     println!("Words directory: {}", words_dir.display());
+    println!("Pronunciations directory: {}", pronunciations_dir.display());
     println!("Batch size: {}", batch_size);
     println!("Skip existing: {}", skip_existing);
     if let Some(l) = limit {
@@ -311,6 +352,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         skip_existing,
         &mut dictionaries_cache,
         &mut categories_cache,
+        &pronunciations_dir,
     )?;
 
     let elapsed = start_time.elapsed();
@@ -398,6 +440,7 @@ fn import_words(
     skip_existing: bool,
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
+    pronunciations_dir: &Path,
 ) -> Result<ImportStats, Box<dyn std::error::Error>> {
     let mut stats = ImportStats {
         files_processed: 0,
@@ -417,6 +460,7 @@ fn import_words(
                 skip_existing,
                 dictionaries_cache,
                 categories_cache,
+                pronunciations_dir,
             )
         });
 
@@ -447,6 +491,7 @@ fn process_json_file(
     _skip_existing: bool,
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
+    pronunciations_dir: &Path,
 ) -> Result<bool, Box<dyn std::error::Error>> {
     use colang::db::schema::dict_words;
 
@@ -483,7 +528,7 @@ fn process_json_file(
         // - For existing words: only insert missing related data (each function checks internally)
         let mut has_errors = false;
 
-        if let Err(e) = insert_pronunciations(conn, word_id, &entry) {
+        if let Err(e) = insert_pronunciations(conn, word_id, &word_lower, &entry, pronunciations_dir) {
             eprintln!(
                 "  Warning: failed to insert pronunciations for '{}': {}",
                 word, e
@@ -633,33 +678,85 @@ fn normalize_word_type(word_type: &str) -> Option<String> {
 fn insert_pronunciations(
     conn: &mut PgConnection,
     word_id: i64,
+    word_lower: &str,
     entry: &WordEntry,
+    pronunciations_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use colang::db::schema::dict_pronunciations;
 
+    // Delete existing pronunciations for this word (we'll re-insert fresh data)
+    diesel::delete(dict_pronunciations::table.filter(dict_pronunciations::word_id.eq(word_id)))
+        .execute(conn)?;
+
+    // Check for pronunciation MP3 files
+    let mp3_filename = format!("{}.mp3", word_lower);
+    let uk_path = pronunciations_dir.join("uk").join(&mp3_filename);
+    let us_path = pronunciations_dir.join("us").join(&mp3_filename);
+    let has_uk_audio = uk_path.exists();
+    let has_us_audio = us_path.exists();
+
+    // Insert pronunciations from JSON if available
     if let Some(pronunciations) = &entry.pronunciations {
-        // Check if pronunciations already exist for this word
-        let existing_count: i64 = dict_pronunciations::table
-            .filter(dict_pronunciations::word_id.eq(word_id))
-            .count()
-            .get_result(conn)?;
-
-        if existing_count > 0 {
-            return Ok(()); // Already has pronunciations, skip
-        }
-
         let mut is_first = true;
         for pron in pronunciations {
+            // Determine dialect and audio_path
+            let dialect = pron.dialect.clone();
+            let audio_path = match dialect.as_deref() {
+                Some("uk") | Some("UK") | Some("british") | Some("British") if has_uk_audio => {
+                    Some(format!("uk/{}", mp3_filename))
+                }
+                Some("us") | Some("US") | Some("american") | Some("American") if has_us_audio => {
+                    Some(format!("us/{}", mp3_filename))
+                }
+                _ => {
+                    // Default: try UK first, then US
+                    if has_uk_audio {
+                        Some(format!("uk/{}", mp3_filename))
+                    } else if has_us_audio {
+                        Some(format!("us/{}", mp3_filename))
+                    } else {
+                        None
+                    }
+                }
+            };
+
             diesel::insert_into(dict_pronunciations::table)
                 .values((
                     dict_pronunciations::word_id.eq(word_id),
                     dict_pronunciations::ipa.eq(&pron.ipa),
                     dict_pronunciations::dialect.eq(&pron.dialect),
                     dict_pronunciations::audio_url.eq(&pron.audio_url),
+                    dict_pronunciations::audio_path.eq(&audio_path),
                     dict_pronunciations::is_primary.eq(is_first),
                 ))
                 .execute(conn)?;
             is_first = false;
+        }
+    }
+
+    // If no pronunciations in JSON but we have audio files, create entries for them
+    if entry.pronunciations.is_none() || entry.pronunciations.as_ref().map(|p| p.is_empty()).unwrap_or(true) {
+        if has_uk_audio {
+            diesel::insert_into(dict_pronunciations::table)
+                .values((
+                    dict_pronunciations::word_id.eq(word_id),
+                    dict_pronunciations::ipa.eq(""),
+                    dict_pronunciations::dialect.eq(Some("uk")),
+                    dict_pronunciations::audio_path.eq(Some(format!("uk/{}", mp3_filename))),
+                    dict_pronunciations::is_primary.eq(true),
+                ))
+                .execute(conn)?;
+        }
+        if has_us_audio {
+            diesel::insert_into(dict_pronunciations::table)
+                .values((
+                    dict_pronunciations::word_id.eq(word_id),
+                    dict_pronunciations::ipa.eq(""),
+                    dict_pronunciations::dialect.eq(Some("us")),
+                    dict_pronunciations::audio_path.eq(Some(format!("us/{}", mp3_filename))),
+                    dict_pronunciations::is_primary.eq(!has_uk_audio),
+                ))
+                .execute(conn)?;
         }
     }
 
@@ -674,15 +771,9 @@ fn insert_definitions(
     use colang::db::schema::dict_definitions;
 
     if let Some(definitions) = &entry.definitions {
-        // Check if definitions already exist for this word
-        let existing_count: i64 = dict_definitions::table
-            .filter(dict_definitions::word_id.eq(word_id))
-            .count()
-            .get_result(conn)?;
-
-        if existing_count > 0 {
-            return Ok(()); // Already has definitions, skip
-        }
+        // Delete existing definitions for this word
+        diesel::delete(dict_definitions::table.filter(dict_definitions::word_id.eq(word_id)))
+            .execute(conn)?;
 
         let mut order = 1;
         for def in definitions {
@@ -754,15 +845,9 @@ fn insert_forms(
     use colang::db::schema::dict_forms;
 
     if let Some(forms) = &entry.forms {
-        // Check if forms already exist for this word
-        let existing_count: i64 = dict_forms::table
-            .filter(dict_forms::word_id.eq(word_id))
-            .count()
-            .get_result(conn)?;
-
-        if existing_count > 0 {
-            return Ok(()); // Already has forms, skip
-        }
+        // Delete existing forms for this word
+        diesel::delete(dict_forms::table.filter(dict_forms::word_id.eq(word_id)))
+            .execute(conn)?;
 
         for form in forms {
             let form_type = form.form_type.as_ref().and_then(|t| normalize_form_type(t));
@@ -807,15 +892,9 @@ fn insert_sentences(
     use colang::db::schema::*;
 
     if let Some(sentences) = &entry.sentences {
-        // Check if sentences already exist for this word
-        let existing_count: i64 = dict_word_sentences::table
-            .filter(dict_word_sentences::word_id.eq(word_id))
-            .count()
-            .get_result(conn)?;
-
-        if existing_count > 0 {
-            return Ok(()); // Already has sentences, skip
-        }
+        // Delete existing word-sentence links for this word
+        diesel::delete(dict_word_sentences::table.filter(dict_word_sentences::word_id.eq(word_id)))
+            .execute(conn)?;
 
         let mut order = 1;
         for sent in sentences {
@@ -854,15 +933,9 @@ fn insert_etymologies(
     use colang::db::schema::*;
 
     if let Some(etymologies) = &entry.etymologies {
-        // Check if etymologies already exist for this word
-        let existing_count: i64 = dict_word_etymologies::table
-            .filter(dict_word_etymologies::word_id.eq(word_id))
-            .count()
-            .get_result(conn)?;
-
-        if existing_count > 0 {
-            return Ok(()); // Already has etymologies, skip
-        }
+        // Delete existing word-etymology links for this word
+        diesel::delete(dict_word_etymologies::table.filter(dict_word_etymologies::word_id.eq(word_id)))
+            .execute(conn)?;
 
         let mut order = 1;
         for etym in etymologies {
@@ -910,6 +983,10 @@ fn insert_categories(
     use colang::db::schema::{dict_word_categories, taxon_categories, taxon_domains};
 
     if let Some(categories) = &entry.categories {
+        // Delete existing word-category links for this word
+        diesel::delete(dict_word_categories::table.filter(dict_word_categories::word_id.eq(word_id)))
+            .execute(conn)?;
+
         for cat in categories {
             let category_id = if let Some(&id) = categories_cache.get(&cat.name) {
                 id
@@ -952,7 +1029,13 @@ fn insert_relations(
     word_id: i64,
     entry: &WordEntry,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use colang::db::schema::dict_relations;
+
     if let Some(relations) = &entry.relations {
+        // Delete existing relations for this word
+        diesel::delete(dict_relations::table.filter(dict_relations::word_id.eq(word_id)))
+            .execute(conn)?;
+
         insert_relation_type(conn, word_id, "synonym", &relations.synonyms)?;
         insert_relation_type(conn, word_id, "antonym", &relations.antonyms)?;
         insert_relation_type(conn, word_id, "related", &relations.related)?;
@@ -1025,6 +1108,10 @@ fn insert_frequencies(
     use colang::db::schema::dict_frequencies;
 
     if let Some(frequencies) = &entry.frequencies {
+        // Delete existing frequencies for this word
+        diesel::delete(dict_frequencies::table.filter(dict_frequencies::word_id.eq(word_id)))
+            .execute(conn)?;
+
         for freq in frequencies {
             let corpus_type = freq
                 .corpus_type
@@ -1085,6 +1172,10 @@ fn insert_word_dictionaries(
     use colang::db::schema::{dict_dictionaries, dict_word_dictionaries};
 
     if let Some(dictionaries) = &entry.dictionaries {
+        // Delete existing word-dictionary links for this word
+        diesel::delete(dict_word_dictionaries::table.filter(dict_word_dictionaries::word_id.eq(word_id)))
+            .execute(conn)?;
+
         for dict_ref in dictionaries {
             // Handle dictionary ID directly
             let dictionary_id = if let Some(id) = dict_ref.id() {
@@ -1167,23 +1258,27 @@ fn print_usage() {
     println!();
     println!("Options:");
     println!(
-        "  --words-dir <PATH>   Source directory with word JSON files (default: {})",
+        "  --words-dir <PATH>           Source directory with word JSON files (default: {})",
         DEFAULT_WORDS_DIR
     );
     println!(
-        "  --batch-size <N>     Batch size for transactions (default: {})",
+        "  --pronunciations-dir <PATH>  Directory with pronunciation MP3 files (default: {})",
+        DEFAULT_PRONUNCIATIONS_DIR
+    );
+    println!(
+        "  --batch-size <N>             Batch size for transactions (default: {})",
         DEFAULT_BATCH_SIZE
     );
-    println!("  --limit <N>          Limit number of files to process");
-    println!("  --force              Force re-import existing words (skip check)");
-    println!("  --help               Show this help message");
+    println!("  --limit <N>                  Limit number of files to process");
+    println!("  --force                      Force re-import existing words (skip check)");
+    println!("  --help                       Show this help message");
     println!();
     println!("Environment:");
-    println!("  DATABASE_URL         PostgreSQL connection URL");
+    println!("  DATABASE_URL                 PostgreSQL connection URL");
     println!();
     println!("Examples:");
     println!("  cargo run --bin words_to_db");
     println!("  cargo run --bin words_to_db --limit 100");
-    println!("  cargo run --bin words_to_db --words-dir ../../../words --batch-size 50");
+    println!("  cargo run --bin words_to_db --words-dir D:/Works/cola-ng/dict/final-en-dict --batch-size 50");
     println!("  cargo run --bin words_to_db --force");
 }

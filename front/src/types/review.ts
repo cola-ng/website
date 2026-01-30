@@ -11,9 +11,10 @@ export interface ReviewItem {
   id: number
   word: string
   word_zh: string | null
-  phonetic?: string
-  example?: string
-  example_zh?: string
+  phonetic: string | null
+  example: string | null
+  example_zh: string | null
+  audio_url?: string | null
   review_type: ReviewType
   mastery_level: number
   source: 'vocabulary' | 'issue_word'
