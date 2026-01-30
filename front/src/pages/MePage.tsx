@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Camera, Mail, Phone, Calendar, Shield, User, Loader2 } from 'lucide-react'
+import { Camera, Mail, Phone, Calendar, Shield, User, Loader2, Trophy, Zap, Flame, Award, Star, Target } from 'lucide-react'
 
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -9,7 +9,8 @@ import { Label } from '../components/ui/label'
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { AvatarCropDialog } from '../components/AvatarCropDialog'
-import { me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl } from '../lib/api'
+import { me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl, getUserProfileSummary, getUserAchievements, type UserProfileSummary, type AchievementWithProgress } from '../lib/api'
+import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
 
 function formatDate(value?: string | null) {
@@ -41,6 +42,11 @@ export function MePage() {
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
   const [cropDialogImage, setCropDialogImage] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  // Achievement state
+  const [profile, setProfile] = useState<UserProfileSummary | null>(null)
+  const [achievements, setAchievements] = useState<AchievementWithProgress[]>([])
+  const [achievementsLoading, setAchievementsLoading] = useState(false)
 
   useEffect(() => {
     if (!token) return
@@ -90,6 +96,36 @@ export function MePage() {
       cancelled = true
     }
   }, [token, user?.avatar])
+
+  // Fetch achievements data
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    setAchievementsLoading(true)
+
+    Promise.all([
+      getUserProfileSummary(token),
+      getUserAchievements(token),
+    ])
+      .then(([profileData, achievementsData]) => {
+        if (cancelled) return
+        setProfile(profileData)
+        setAchievements(achievementsData)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setProfile(null)
+        setAchievements([])
+      })
+      .finally(() => {
+        if (cancelled) return
+        setAchievementsLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [token])
 
   const saveProfile = async () => {
     if (!token || !user) return
@@ -393,6 +429,187 @@ export function MePage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Achievements Section */}
+        {achievementsLoading ? (
+          <div className="mt-6 flex items-center justify-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-orange-500" />
+          </div>
+        ) : profile && (
+          <div className="mt-6 space-y-6">
+            {/* Rank & XP Card */}
+            <Card className="border-0 shadow-lg overflow-hidden">
+              <div className="bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400 p-6">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div
+                      className="h-16 w-16 rounded-full flex items-center justify-center shadow-lg"
+                      style={{ backgroundColor: profile.rank?.color || '#9CA3AF' }}
+                    >
+                      <Trophy className="h-8 w-8 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold text-white">
+                        {profile.rank?.name_zh || '新手'}
+                      </p>
+                      <p className="text-white/80">Lv.{profile.rank?.level || 1}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-6 w-6 text-yellow-200" />
+                      <span className="text-3xl font-bold text-white">{profile.total_xp}</span>
+                      <span className="text-white/80">XP</span>
+                    </div>
+                    {profile.current_streak_days > 0 && (
+                      <div className="flex items-center gap-1 mt-1 justify-end">
+                        <Flame className="h-4 w-4 text-yellow-200" />
+                        <span className="text-white/90 font-medium">
+                          {profile.current_streak_days}天连续学习
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* XP Progress Bar */}
+                {profile.next_rank && (
+                  <div className="mt-4 space-y-2">
+                    <div className="flex justify-between text-sm text-white/80">
+                      <span>距离 {profile.next_rank.name_zh}</span>
+                      <span>还需 {profile.xp_to_next_rank} XP</span>
+                    </div>
+                    <div className="h-3 bg-white/20 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-white rounded-full transition-all"
+                        style={{
+                          width: `${Math.min(100, ((profile.total_xp - (profile.rank?.min_xp || 0)) / (profile.next_rank.min_xp - (profile.rank?.min_xp || 0))) * 100)}%`
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Stats */}
+              <CardContent className="p-6">
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-orange-50 rounded-xl">
+                    <Flame className="h-6 w-6 text-orange-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-orange-600">{profile.current_streak_days}</p>
+                    <p className="text-sm text-gray-500">连续天数</p>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-xl">
+                    <Award className="h-6 w-6 text-green-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-green-600">{profile.completed_achievements}</p>
+                    <p className="text-sm text-gray-500">已获成就</p>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 rounded-xl">
+                    <Trophy className="h-6 w-6 text-blue-500 mx-auto mb-2" />
+                    <p className="text-2xl font-bold text-blue-600">{profile.rank?.level || 1}</p>
+                    <p className="text-sm text-gray-500">当前等级</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Achievements List */}
+            <Card className="border-0 shadow-lg">
+              <CardContent className="p-6">
+                <div className="flex items-center justify-between mb-6">
+                  <div className="flex items-center gap-3">
+                    <div className="h-10 w-10 rounded-lg bg-amber-100 flex items-center justify-center">
+                      <Award className="h-5 w-5 text-amber-600" />
+                    </div>
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">成就勋章</h2>
+                      <p className="text-sm text-gray-500">
+                        已解锁 {profile.completed_achievements}/{profile.total_achievements} 个成就
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                {achievements.length > 0 ? (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    {achievements.map((achievement) => (
+                      <div
+                        key={achievement.id}
+                        className={cn(
+                          "p-4 rounded-xl border-2 transition-all",
+                          achievement.is_completed
+                            ? "bg-gradient-to-br from-amber-50 to-orange-50 border-amber-200"
+                            : "bg-gray-50 border-gray-200 opacity-60"
+                        )}
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className={cn(
+                              "h-12 w-12 rounded-xl flex items-center justify-center shrink-0",
+                              achievement.is_completed
+                                ? "bg-gradient-to-br from-amber-400 to-orange-500"
+                                : "bg-gray-300"
+                            )}
+                          >
+                            {achievement.is_completed ? (
+                              <Star className="h-6 w-6 text-white" />
+                            ) : (
+                              <Target className="h-6 w-6 text-gray-500" />
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2">
+                              <p className={cn(
+                                "font-semibold truncate",
+                                achievement.is_completed ? "text-gray-900" : "text-gray-500"
+                              )}>
+                                {achievement.name_zh}
+                              </p>
+                              {achievement.is_completed && (
+                                <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full shrink-0">
+                                  已获得
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-sm text-gray-500 mt-1 line-clamp-2">
+                              {achievement.description_zh}
+                            </p>
+                            <div className="flex items-center gap-4 mt-2">
+                              <span className="text-xs text-amber-600 font-medium">
+                                +{achievement.xp_reward} XP
+                              </span>
+                              {!achievement.is_completed && achievement.requirement_value > 0 && (
+                                <div className="flex-1">
+                                  <div className="flex justify-between text-xs text-gray-500 mb-1">
+                                    <span>进度</span>
+                                    <span>{achievement.progress}/{achievement.requirement_value}</span>
+                                  </div>
+                                  <div className="h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full bg-orange-400 rounded-full"
+                                      style={{
+                                        width: `${Math.min(100, (achievement.progress / achievement.requirement_value) * 100)}%`
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-gray-500">
+                    <Award className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+                    <p>暂无成就数据</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </main>
 
       <Footer />

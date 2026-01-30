@@ -779,6 +779,23 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    user_ai_providers (id) {
+        id -> Int8,
+        user_id -> Int8,
+        provider_type -> Text,
+        is_active -> Bool,
+        settings -> Jsonb,
+        last_tested_at -> Nullable<Timestamptz>,
+        test_status -> Nullable<Text>,
+        test_error -> Nullable<Text>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::joinable!(user_ai_providers -> base_users (user_id));
+
 diesel::allow_tables_to_appear_in_same_query!(
     archive_achievement_definitions,
     archive_rank_definitions,
@@ -835,4 +852,5 @@ diesel::allow_tables_to_appear_in_same_query!(
     oauth_login_sessions,
     taxon_categories,
     taxon_domains,
+    user_ai_providers,
 );
