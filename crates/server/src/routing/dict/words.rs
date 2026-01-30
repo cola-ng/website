@@ -56,6 +56,8 @@ pub struct CreateWordRequest {
     pub is_lemma: Option<bool>,
     pub word_count: Option<i32>,
     pub is_active: Option<bool>,
+    pub memory: Option<String>,
+    pub notes: Option<String>,
 }
 
 #[handler]
@@ -84,6 +86,8 @@ pub async fn create_word(req: &mut Request) -> JsonResult<Word> {
                 is_lemma: input.is_lemma,
                 word_count: input.word_count,
                 is_active: input.is_active,
+                memory: input.memory,
+                notes: input.notes,
                 created_by: None,
                 updated_by: None,
             })

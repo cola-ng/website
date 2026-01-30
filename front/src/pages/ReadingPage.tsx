@@ -23,8 +23,8 @@ import {
   evaluatePronunciation,
   getRecommendedSentences,
   submitReadPractice,
-  resetPronunciationLevel,
-  advancePronunciationLevel,
+  resetSkillLevel,
+  advanceSkillLevel,
   listReadSubjects,
   type ReadSentence,
   type ReadSubject,
@@ -367,7 +367,7 @@ export function ReadingPage() {
 
     setResetting(true)
     try {
-      await resetPronunciationLevel(token)
+      await resetSkillLevel(token, 'pronunciation')
       // Refetch recommendations
       await fetchRecommendedSentences()
     } catch (err) {
@@ -383,7 +383,7 @@ export function ReadingPage() {
 
     setAdvancing(true)
     try {
-      const result = await advancePronunciationLevel(token)
+      const result = await advanceSkillLevel(token, 'pronunciation')
       setUserLevel(result.new_level)
       setLevelUpNotification(result.new_level)
       setTimeout(() => setLevelUpNotification(null), 3000)

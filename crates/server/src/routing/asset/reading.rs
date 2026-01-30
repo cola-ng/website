@@ -416,8 +416,6 @@ fn calculate_pronunciation_score(
 // Recommended Sentences API (requires auth)
 // ============================================================================
 
-const DEFAULT_PRONUNCIATION_LEVEL: i32 = 5;
-
 /// Response for recommended sentences
 #[derive(Serialize, ToSchema)]
 pub struct RecommendedSentencesResponse {
@@ -453,7 +451,7 @@ pub async fn get_recommended_sentences(
             .filter(learn_levels::skill_type.eq("pronunciation"))
             .select(learn_levels::level)
             .first::<i32>(conn)
-            .unwrap_or(DEFAULT_PRONUNCIATION_LEVEL);
+            .unwrap_or(1);
 
         // Minimum difficulty threshold (user_level - 1, but at least 1)
         let min_difficulty = (user_level - 1).max(1) as i16;
@@ -626,7 +624,7 @@ pub async fn submit_read_practice(
                 .filter(learn_levels::skill_type.eq("pronunciation"))
                 .select(learn_levels::level)
                 .first::<i32>(conn)
-                .unwrap_or(DEFAULT_PRONUNCIATION_LEVEL);
+                .unwrap_or(1);
 
             // Get the difficulty of all sentences at the current user level
             // Find sentences where user has NOT scored >= 90
@@ -701,27 +699,45 @@ pub async fn submit_read_practice(
     })
 }
 
+/// Request for resetting skill level
+#[derive(Deserialize, ToSchema)]
+pub struct ResetLevelRequest {
+    /// The skill type to reset (e.g., "pronunciation", "speaking", "listening")
+    pub skill_type: String,
+}
+
 /// Response for reset level
 #[derive(Serialize, ToSchema)]
 pub struct ResetLevelResponse {
     pub success: bool,
     pub new_level: i32,
+    pub skill_type: String,
 }
 
-/// Reset user's pronunciation level to default (5)
-/// This also allows the user to practice sentences they've already mastered
+/// Reset user's skill level to 1
+/// This also clears practice records for the corresponding skill
 #[endpoint(tags("Reading"))]
-pub async fn reset_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLevelResponse> {
+pub async fn reset_pronunciation_level(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<ResetLevelResponse> {
     let user_id = depot.user_id()?;
-    let new_level = DEFAULT_PRONUNCIATION_LEVEL;
+    let input: ResetLevelRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+    let skill_type = input.skill_type;
+    let new_level = 1;
     let now = Utc::now();
 
+    let skill_type_clone = skill_type.clone();
     with_conn(move |conn| {
         // Upsert user level
         diesel::insert_into(learn_levels::table)
             .values(&NewUserLevel {
                 user_id,
-                skill_type: "pronunciation".to_string(),
+                skill_type: skill_type_clone.clone(),
                 level: new_level,
             })
             .on_conflict((learn_levels::user_id, learn_levels::skill_type))
@@ -733,12 +749,15 @@ pub async fn reset_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLev
             .execute(conn)?;
 
         // Delete all practice records with score >= 90 to "reset" progress
-        diesel::delete(
-            learn_read_practices::table
-                .filter(learn_read_practices::user_id.eq(user_id))
-                .filter(learn_read_practices::overall_score.ge(90)),
-        )
-        .execute(conn)?;
+        // Only for pronunciation skill type (reading practices)
+        if skill_type_clone == "pronunciation" {
+            diesel::delete(
+                learn_read_practices::table
+                    .filter(learn_read_practices::user_id.eq(user_id))
+                    .filter(learn_read_practices::overall_score.ge(90)),
+            )
+            .execute(conn)?;
+        }
 
         Ok::<_, diesel::result::Error>(())
     })
@@ -748,24 +767,42 @@ pub async fn reset_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLev
     json_ok(ResetLevelResponse {
         success: true,
         new_level,
+        skill_type,
     })
 }
 
-/// Advance user's pronunciation level by 1 (max 10)
+/// Request for advancing skill level
+#[derive(Deserialize, ToSchema)]
+pub struct AdvanceLevelRequest {
+    /// The skill type to advance (e.g., "pronunciation", "speaking", "listening")
+    pub skill_type: String,
+}
+
+/// Advance user's skill level by 1 (max 10)
 /// Allows user to manually skip to harder content
 #[endpoint(tags("Reading"))]
-pub async fn advance_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetLevelResponse> {
+pub async fn advance_pronunciation_level(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<ResetLevelResponse> {
     let user_id = depot.user_id()?;
+    let input: AdvanceLevelRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+    let skill_type = input.skill_type;
     let now = Utc::now();
 
+    let skill_type_clone = skill_type.clone();
     let new_level = with_conn(move |conn| {
         // Get current level
         let current_level: i32 = learn_levels::table
             .filter(learn_levels::user_id.eq(user_id))
-            .filter(learn_levels::skill_type.eq("pronunciation"))
+            .filter(learn_levels::skill_type.eq(&skill_type_clone))
             .select(learn_levels::level)
             .first::<i32>(conn)
-            .unwrap_or(DEFAULT_PRONUNCIATION_LEVEL);
+            .unwrap_or(1);
 
         // Cap at level 10
         let next_level = (current_level + 1).min(10);
@@ -774,7 +811,7 @@ pub async fn advance_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetL
         diesel::insert_into(learn_levels::table)
             .values(&NewUserLevel {
                 user_id,
-                skill_type: "pronunciation".to_string(),
+                skill_type: skill_type_clone.clone(),
                 level: next_level,
             })
             .on_conflict((learn_levels::user_id, learn_levels::skill_type))
@@ -793,5 +830,6 @@ pub async fn advance_pronunciation_level(depot: &mut Depot) -> JsonResult<ResetL
     json_ok(ResetLevelResponse {
         success: true,
         new_level,
+        skill_type,
     })
 }

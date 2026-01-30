@@ -1258,31 +1258,34 @@ export function submitReadPractice(
   })
 }
 
-/** Response for reset level */
+/** Response for reset/advance level */
 export type ResetLevelResponse = {
   success: boolean
   new_level: number
+  skill_type: string
 }
 
 /**
- * Reset user's pronunciation level to default (5)
- * This also clears practice records with score >= 90
+ * Reset user's skill level to 1
+ * This also clears practice records for the corresponding skill
  */
-export function resetPronunciationLevel(token: string): Promise<ResetLevelResponse> {
+export function resetSkillLevel(token: string, skillType: string): Promise<ResetLevelResponse> {
   return requestJson<ResetLevelResponse>('/api/asset/read/reset-level', {
     method: 'POST',
     token,
+    body: JSON.stringify({ skill_type: skillType }),
   })
 }
 
 /**
- * Advance user's pronunciation level by 1 (max 10)
+ * Advance user's skill level by 1 (max 10)
  * Allows user to manually skip to harder content
  */
-export function advancePronunciationLevel(token: string): Promise<ResetLevelResponse> {
+export function advanceSkillLevel(token: string, skillType: string): Promise<ResetLevelResponse> {
   return requestJson<ResetLevelResponse>('/api/asset/read/advance-level', {
     method: 'POST',
     token,
+    body: JSON.stringify({ skill_type: skillType }),
   })
 }
 

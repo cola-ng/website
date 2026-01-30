@@ -19,6 +19,8 @@ pub struct Word {
     pub is_lemma: Option<bool>,
     pub word_count: Option<i32>,
     pub is_active: Option<bool>,
+    pub memory: Option<String>,
+    pub notes: Option<String>,
     pub created_by: Option<i64>,
     pub updated_by: Option<i64>,
     pub updated_at: DateTime<Utc>,
@@ -38,6 +40,8 @@ pub struct NewWord {
     pub is_lemma: Option<bool>,
     pub word_count: Option<i32>,
     pub is_active: Option<bool>,
+    pub memory: Option<String>,
+    pub notes: Option<String>,
     pub created_by: Option<i64>,
     pub updated_by: Option<i64>,
 }
@@ -55,6 +59,8 @@ pub struct UpdateWord {
     pub is_lemma: Option<bool>,
     pub word_count: Option<i32>,
     pub is_active: Option<bool>,
+    pub memory: Option<String>,
+    pub notes: Option<String>,
     pub created_by: Option<i64>,
     pub updated_by: Option<i64>,
 }
@@ -427,4 +433,32 @@ pub struct SearchedWord {
 pub struct NewSearchedWord {
     pub user_id: i64,
     pub word: String,
+}
+
+// ============================================================================
+// Translations
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = dict_translations)]
+pub struct Translation {
+    pub id: i64,
+    pub origin_entity: String,
+    pub origin_id: i64,
+    pub origin_field: Option<String>,
+    pub language: String,
+    pub translation: String,
+    pub context: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = dict_translations)]
+pub struct NewTranslation {
+    pub origin_entity: String,
+    pub origin_id: i64,
+    pub origin_field: Option<String>,
+    pub language: String,
+    pub translation: String,
+    pub context: Option<String>,
 }

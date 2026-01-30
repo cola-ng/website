@@ -91,10 +91,12 @@ CREATE TABLE IF NOT EXISTS dict_definitions (
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_word ON dict_definitions(word_id, definition_order);
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_pos ON dict_definitions(part_of_speech);
 
+drop table if exists dict_translations;
 CREATE TABLE IF NOT EXISTS dict_translations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     origin_entity TEXT NOT NULL, -- 来源实体（单词或释义）
     origin_id BIGINT NOT NULL,                         -- 关联 ID
+    origin_field TEXT, -- 来源字段
     language TEXT NOT NULL,                         -- 语言
     translation TEXT NOT NULL,                        -- 释义
     context TEXT,                                       -- 使用语境
@@ -144,6 +146,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_sentences_definition ON dict_word_sentences(
 drop table if exists dict_etymologies;
 CREATE TABLE IF NOT EXISTS dict_etymologies (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    origin_code TEXT,                               -- 起源标识代码, 格式为 language_word
     origin_language TEXT,                               -- 起源语言
     origin_word TEXT,                                   -- 起源单词
     origin_meaning TEXT,                                -- 起源含义
