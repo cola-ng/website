@@ -16,10 +16,50 @@ pub struct TranslateRequest {
     source: String,
     /// Target language: "en" for English, "zh" for Chinese
     target: String,
+    /// Translation options
+    #[serde(default)]
+    options: TranslateOptions,
+}
+
+/// Translation options for customizing the output
+#[derive(Debug, Default, Deserialize, ToSchema)]
+pub struct TranslateOptions {
+    /// Auto-correct grammar and spelling errors in the source text
+    #[serde(default)]
+    pub auto_correct: bool,
+    /// Tone/style for the translation
+    #[serde(default)]
+    pub tone: TranslateTone,
+    /// Whether to preserve original formatting (line breaks, etc.) or reformat
+    #[serde(default = "default_true")]
+    pub preserve_formatting: bool,
+}
+
+/// Tone/style options for translation
+#[derive(Debug, Default, Clone, Copy, Deserialize, ToSchema, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum TranslateTone {
+    /// Keep original tone, no modification
+    #[default]
+    Original,
+    /// Casual, everyday language
+    Casual,
+    /// Business/professional tone
+    Business,
+    /// Academic/formal tone
+    Academic,
+    /// Creative/literary style
+    Literary,
+    /// Simple and easy to understand
+    Simple,
 }
 
 fn default_source() -> String {
     "auto".to_string()
+}
+
+fn default_true() -> bool {
+    true
 }
 
 #[derive(Debug, Serialize, ToSchema)]
@@ -76,18 +116,9 @@ pub async fn translate(
         _ => unreachable!(),
     };
 
-    let system_prompt = format!(
-        r#"You are a professional translator. Translate the given text to {}.
-Rules:
-1. Provide ONLY the translation, no explanations or additional text
-2. Maintain the original meaning and tone
-3. Use natural, idiomatic expressions in the target language
-4. If the text contains proper nouns, keep them as appropriate
-5. For {source_lang} to {target_lang} translation, ensure accuracy and fluency"#,
-        target_lang,
-        source_lang = source_hint,
-        target_lang = target_lang
-    );
+    let system_prompt = build_system_prompt(target_lang, source_hint, &input.options);
+
+    let user_prompt = build_user_prompt(&input.text, &input.options);
 
     let messages = vec![
         ChatMessage {
@@ -96,7 +127,7 @@ Rules:
         },
         ChatMessage {
             role: "user".to_string(),
-            content: format!("Translate the following text:\n\n{}", input.text),
+            content: user_prompt,
         },
     ];
 
@@ -123,4 +154,65 @@ Rules:
             None
         },
     })
+}
+
+/// Build the system prompt based on translation options
+fn build_system_prompt(target_lang: &str, source_lang: &str, options: &TranslateOptions) -> String {
+    let mut rules = Vec::new();
+
+    // Base rule about output format
+    rules.push("Provide ONLY the translation, no explanations or additional text".to_string());
+
+    // Tone-specific rules
+    let tone_instruction = match options.tone {
+        TranslateTone::Original => "Maintain the original meaning and tone accurately".to_string(),
+        TranslateTone::Casual => "Use casual, everyday language that sounds natural and friendly".to_string(),
+        TranslateTone::Business => "Use professional, formal business language appropriate for workplace communication".to_string(),
+        TranslateTone::Academic => "Use formal academic language with precise terminology".to_string(),
+        TranslateTone::Literary => "Use elegant, creative language with literary flair".to_string(),
+        TranslateTone::Simple => "Use simple, easy-to-understand language avoiding complex vocabulary".to_string(),
+    };
+    rules.push(tone_instruction);
+
+    // Auto-correct rule
+    if options.auto_correct {
+        rules.push("Correct any grammar, spelling, or punctuation errors in the source text before translating".to_string());
+    }
+
+    // Formatting rule
+    if options.preserve_formatting {
+        rules.push("Preserve the original formatting including line breaks and paragraph structure".to_string());
+    } else {
+        rules.push("Reformat the text for better readability with proper paragraphs and punctuation".to_string());
+    }
+
+    // General rules
+    rules.push("Use natural, idiomatic expressions in the target language".to_string());
+    rules.push("Keep proper nouns as appropriate for the target language".to_string());
+
+    let rules_text = rules
+        .iter()
+        .enumerate()
+        .map(|(i, r)| format!("{}. {}", i + 1, r))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    format!(
+        r#"You are a professional translator specializing in {source_lang} to {target_lang} translation.
+
+Rules:
+{rules_text}"#
+    )
+}
+
+/// Build the user prompt based on translation options
+fn build_user_prompt(text: &str, options: &TranslateOptions) -> String {
+    let mut prompt = String::from("Translate the following text:\n\n");
+    prompt.push_str(text);
+
+    if options.auto_correct {
+        prompt.push_str("\n\n(Note: Please correct any errors in the source text before translating)");
+    }
+
+    prompt
 }

@@ -435,10 +435,22 @@ export function lookup(word: string): Promise<WordQueryResponse> {
 }
 
 // Translation types and API
+export type TranslateTone = 'original' | 'casual' | 'business' | 'academic' | 'literary' | 'simple'
+
+export type TranslateOptions = {
+  /** Auto-correct grammar and spelling errors in source text */
+  auto_correct?: boolean
+  /** Tone/style for the translation */
+  tone?: TranslateTone
+  /** Preserve original formatting (line breaks, etc.) or reformat */
+  preserve_formatting?: boolean
+}
+
 export type TranslateRequest = {
   text: string
   source?: string  // 'en', 'zh', or 'auto' (default: 'auto')
   target: string   // 'en' or 'zh'
+  options?: TranslateOptions
 }
 
 export type TranslateResponse = {

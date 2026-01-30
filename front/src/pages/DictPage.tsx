@@ -16,6 +16,8 @@ import {
   toggleWordInVocabulary,
   checkWordsInVocabulary,
   type WordQueryResponse,
+  type TranslateOptions,
+  type TranslateTone,
 } from '../lib/api'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Footer } from '../components/Footer'
@@ -66,6 +68,13 @@ export function DictPage() {
   const [translateError, setTranslateError] = useState('')
   const [detectedLang, setDetectedLang] = useState<'en' | 'zh' | null>(null)
   const [copied, setCopied] = useState(false)
+
+  // Translation options state
+  const [translateOptions, setTranslateOptions] = useState<TranslateOptions>({
+    auto_correct: false,
+    tone: 'original',
+    preserve_formatting: true,
+  })
 
   // Search history state
   const [searchHistory, setSearchHistory] = useState<SearchHistoryItem[]>([])
@@ -334,7 +343,12 @@ export function DictPage() {
 
     try {
       const result = await translate(
-        { text: sourceText.trim(), source: 'auto', target: targetLang },
+        {
+          text: sourceText.trim(),
+          source: 'auto',
+          target: targetLang,
+          options: translateOptions,
+        },
         token || undefined
       )
       setTranslatedText(result.translated)
@@ -401,7 +415,7 @@ export function DictPage() {
               {/* Center column - Search and content */}
               <div className="min-w-0">
                 <form onSubmit={handleSearch} className="mb-4">
-                  <div className="flex gap-2 max-w-xl mx-auto">
+                  <div className="flex gap-2 max-w-md mx-auto">
                     <input
                       type="text"
                       value={query}
@@ -526,100 +540,206 @@ export function DictPage() {
 
           {/* Translation Tab */}
           <TabsContent value="translate">
-            <div className="space-y-4">
-              {/* Source text card */}
-              <div className="bg-white rounded-xl shadow-lg p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">输入文本</span>
-                    <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">自动检测语言</span>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
+              {/* Left column - Translation input/output */}
+              <div className="space-y-4">
+                {/* Source text card */}
+                <div className="bg-white rounded-xl shadow-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">输入文本</span>
+                      <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded">自动检测语言</span>
+                    </div>
+                    <span className="text-xs text-gray-400">
+                      {sourceText.length}/5000
+                    </span>
                   </div>
-                  <span className="text-xs text-gray-400">
-                    {sourceText.length}/5000
-                  </span>
-                </div>
-                <textarea
-                  value={sourceText}
-                  onChange={(e) => setSourceText(e.target.value.slice(0, 5000))}
-                  placeholder="输入中文或英文，自动检测并翻译..."
-                  className="w-full h-32 p-4 text-base text-gray-800 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
-                />
-                <div className="flex items-center justify-between mt-3">
-                  <p className="text-xs text-gray-400">
-                    支持中英文互译，AI 自动识别语言
-                  </p>
-                  <button
-                    onClick={handleTranslate}
-                    disabled={translating || !sourceText.trim()}
-                    className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-orange-400 flex items-center gap-2 transition-colors font-medium text-sm"
-                  >
-                    {translating ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        翻译中...
-                      </>
-                    ) : (
-                      <>
-                        <Languages className="w-4 h-4" />
-                        翻译
-                      </>
-                    )}
-                  </button>
-                </div>
-              </div>
-
-              {/* Translated text card */}
-              <div className="bg-white rounded-xl shadow-lg p-5">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-gray-700">翻译结果</span>
-                    {detectedLang && (
-                      <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
-                        {detectedLang === 'zh' ? '中文 → 英文' : '英文 → 中文'}
-                      </span>
-                    )}
-                  </div>
-                  {translatedText && (
+                  <textarea
+                    value={sourceText}
+                    onChange={(e) => setSourceText(e.target.value.slice(0, 5000))}
+                    placeholder="输入中文或英文，自动检测并翻译..."
+                    className="w-full h-32 p-4 text-base text-gray-800 bg-gray-50 rounded-lg border border-gray-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent resize-none"
+                  />
+                  <div className="flex items-center justify-between mt-3">
+                    <p className="text-xs text-gray-400">
+                      支持中英文互译，AI 自动识别语言
+                    </p>
                     <button
-                      onClick={copyToClipboard}
-                      className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                      onClick={handleTranslate}
+                      disabled={translating || !sourceText.trim()}
+                      className="px-6 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 disabled:bg-orange-400 flex items-center gap-2 transition-colors font-medium text-sm"
                     >
-                      {copied ? (
+                      {translating ? (
                         <>
-                          <Check className="w-3.5 h-3.5" />
-                          已复制
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          翻译中...
                         </>
                       ) : (
                         <>
-                          <Copy className="w-3.5 h-3.5" />
-                          复制结果
+                          <Languages className="w-4 h-4" />
+                          翻译
                         </>
                       )}
                     </button>
-                  )}
+                  </div>
                 </div>
-                <div className="w-full min-h-32 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                  {translating ? (
-                    <div className="flex items-center justify-center h-32 text-gray-400">
-                      <Loader2 className="w-6 h-6 animate-spin mr-2" />
-                      正在翻译...
+
+                {/* Translated text card */}
+                <div className="bg-white rounded-xl shadow-lg p-5">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-700">翻译结果</span>
+                      {detectedLang && (
+                        <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
+                          {detectedLang === 'zh' ? '中文 → 英文' : '英文 → 中文'}
+                        </span>
+                      )}
                     </div>
-                  ) : translatedText ? (
-                    <p className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">{translatedText}</p>
-                  ) : (
-                    <p className="text-gray-400 italic h-32 flex items-center justify-center">翻译结果将显示在这里</p>
+                    {translatedText && (
+                      <button
+                        onClick={copyToClipboard}
+                        className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                      >
+                        {copied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            已复制
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            复制结果
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                  <div className="w-full min-h-32 p-4 bg-gray-50 rounded-lg border border-gray-200">
+                    {translating ? (
+                      <div className="flex items-center justify-center h-32 text-gray-400">
+                        <Loader2 className="w-6 h-6 animate-spin mr-2" />
+                        正在翻译...
+                      </div>
+                    ) : translatedText ? (
+                      <p className="text-base text-gray-800 whitespace-pre-wrap leading-relaxed">{translatedText}</p>
+                    ) : (
+                      <p className="text-gray-400 italic h-32 flex items-center justify-center">翻译结果将显示在这里</p>
+                    )}
+                  </div>
+                  {translateError && (
+                    <p className="mt-2 text-sm text-red-600">{translateError}</p>
                   )}
                 </div>
-                {translateError && (
-                  <p className="mt-2 text-sm text-red-600">{translateError}</p>
-                )}
+
+                {/* Tips */}
+                <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-sm text-amber-800">
+                    <strong>提示：</strong>翻译功能使用 AI 模型，自动检测输入语言并翻译为对应语言。如果您在设置中配置了自己的 AI 提供商，将使用您的配置进行翻译。
+                  </p>
+                </div>
               </div>
 
-              {/* Tips */}
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                <p className="text-sm text-amber-800">
-                  <strong>提示：</strong>翻译功能使用 AI 模型，自动检测输入语言并翻译为对应语言。如果您在设置中配置了自己的 AI 提供商，将使用您的配置进行翻译。
-                </p>
+              {/* Right column - Translation options panel */}
+              <div className="hidden lg:block">
+                <div className="bg-white rounded-xl shadow-lg p-4 sticky top-4">
+                  {/* Tone selection */}
+                  <div className="mb-4">
+                    <label className="block text-xs font-medium text-gray-600 mb-2">语言风格</label>
+                    <div className="space-y-1.5">
+                      {([
+                        { value: 'original', label: '保持原样', desc: '忠实原文风格' },
+                        { value: 'casual', label: '日常口语', desc: '轻松自然' },
+                        { value: 'business', label: '商务职场', desc: '正式专业' },
+                        { value: 'academic', label: '学术正式', desc: '严谨规范' },
+                        { value: 'literary', label: '文学优美', desc: '富有文采' },
+                        { value: 'simple', label: '简单易懂', desc: '通俗直白' },
+                      ] as { value: TranslateTone; label: string; desc: string }[]).map((option) => (
+                        <label
+                          key={option.value}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                            translateOptions.tone === option.value
+                              ? 'bg-orange-50 border border-orange-200'
+                              : 'hover:bg-gray-50 border border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="radio"
+                              name="tone"
+                              value={option.value}
+                              checked={translateOptions.tone === option.value}
+                              onChange={(e) => setTranslateOptions(prev => ({ ...prev, tone: e.target.value as TranslateTone }))}
+                              className="w-3.5 h-3.5 text-orange-600 focus:ring-orange-500"
+                            />
+                            <span className="text-sm text-gray-700">{option.label}</span>
+                          </div>
+                          <span className="text-xs text-gray-400">{option.desc}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Format options */}
+                  <div className="mb-4 pt-3 border-t border-gray-100">
+                    <label className="block text-xs font-medium text-gray-600 mb-2">格式处理</label>
+                    <div className="space-y-1.5">
+                      <label
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                          translateOptions.preserve_formatting
+                            ? 'bg-orange-50 border border-orange-200'
+                            : 'hover:bg-gray-50 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="formatting"
+                            checked={translateOptions.preserve_formatting === true}
+                            onChange={() => setTranslateOptions(prev => ({ ...prev, preserve_formatting: true }))}
+                            className="w-3.5 h-3.5 text-orange-600 focus:ring-orange-500"
+                          />
+                          <span className="text-sm text-gray-700">保留格式</span>
+                        </div>
+                        <span className="text-xs text-gray-400">保持原有结构</span>
+                      </label>
+                      <label
+                        className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                          !translateOptions.preserve_formatting
+                            ? 'bg-orange-50 border border-orange-200'
+                            : 'hover:bg-gray-50 border border-transparent'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="radio"
+                            name="formatting"
+                            checked={translateOptions.preserve_formatting === false}
+                            onChange={() => setTranslateOptions(prev => ({ ...prev, preserve_formatting: false }))}
+                            className="w-3.5 h-3.5 text-orange-600 focus:ring-orange-500"
+                          />
+                          <span className="text-sm text-gray-700">重新排版</span>
+                        </div>
+                        <span className="text-xs text-gray-400">优化可读性</span>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Auto-correct option */}
+                  <div className="pt-3 border-t border-gray-100">
+                    <label className="flex items-center justify-between cursor-pointer group">
+                      <div>
+                        <span className="text-sm text-gray-700">自动纠错</span>
+                        <p className="text-xs text-gray-400">修正原文语法拼写错误</p>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={translateOptions.auto_correct}
+                        onChange={(e) => setTranslateOptions(prev => ({ ...prev, auto_correct: e.target.checked }))}
+                        className="w-4 h-4 text-orange-600 rounded focus:ring-orange-500"
+                      />
+                    </label>
+                  </div>
+                </div>
               </div>
             </div>
           </TabsContent>
