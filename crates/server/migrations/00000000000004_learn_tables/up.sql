@@ -3,6 +3,7 @@
 -- ============================================================================
 
 -- Table: learn_issue_words - Words that the user has problems with
+drop table if exists learn_issue_words;
 CREATE TABLE IF NOT EXISTS learn_issue_words (
     id BIGSERIAL PRIMARY KEY,
     user_id BIGINT NOT NULL,
@@ -14,7 +15,7 @@ CREATE TABLE IF NOT EXISTS learn_issue_words (
     pick_count INTEGER NOT NULL DEFAULT 0,
     next_review_at TIMESTAMPTZ,
     review_interval_days INTEGER DEFAULT 1,
-    difficulty INTEGER DEFAULT 1 CHECK(difficulty BETWEEN 1 AND 5),
+    difficulty INTEGER,-- DEFAULT 1 CHECK(difficulty BETWEEN 1 AND 5),
     context TEXT,
     audio_timestamp INTEGER,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

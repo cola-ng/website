@@ -432,6 +432,29 @@ export function lookup(word: string): Promise<WordQueryResponse> {
   })
 }
 
+// Translation types and API
+export type TranslateRequest = {
+  text: string
+  source?: string  // 'en', 'zh', or 'auto' (default: 'auto')
+  target: string   // 'en' or 'zh'
+}
+
+export type TranslateResponse = {
+  translated: string
+  detected_source: string | null
+}
+
+export function translate(
+  request: TranslateRequest,
+  token?: string
+): Promise<TranslateResponse> {
+  return requestJson<TranslateResponse>('/api/dict/translate', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(request),
+  })
+}
+
 // Search History types
 export type SearchHistory = {
   id: number

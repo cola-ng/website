@@ -19,11 +19,13 @@ mod pronunciation;
 mod relation;
 mod searched_words;
 mod sentence;
+mod translate;
 mod words;
 
 pub fn router() -> Router {
     Router::with_path("dict")
         .push(Router::with_path("lookup").get(lookup))
+        .push(Router::with_path("translate").post(translate::translate))
         .push(
             Router::with_path("dictionaries")
                 .get(dictionary::list_dictionaries)
