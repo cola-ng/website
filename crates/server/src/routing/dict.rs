@@ -38,6 +38,24 @@ pub fn router() -> Router {
                 .put(dictionary::update_dictionary)
                 .delete(dictionary::delete_dictionary),
         )
+        // Note: searched words routes must come BEFORE words/{id} to avoid route conflicts
+        .push(
+            Router::with_path("words/searched")
+                .hoop(maybe_auth)
+                .get(searched_words::list_searched_words)
+                .post(searched_words::create_searched_word)
+                .delete(searched_words::clear_searched_words),
+        )
+        .push(
+            Router::with_path("words/searched/batch")
+                .hoop(maybe_auth)
+                .post(searched_words::batch_create_searched_words),
+        )
+        .push(
+            Router::with_path("words/searched/{id}")
+                .hoop(maybe_auth)
+                .delete(searched_words::delete_searched_word),
+        )
         .push(Router::with_path("words").get(words::list_words))
         .push(Router::with_path("words").post(words::create_word))
         .push(Router::with_path("words/{id}").put(words::update_word))
@@ -79,17 +97,6 @@ pub fn router() -> Router {
                 .post(image::create_image),
         )
         .push(Router::with_path("words/{id}/images/{image_id}").delete(image::delete_image))
-        .push(
-            Router::with_path("words/searched")
-                .get(searched_words::list_searched_words)
-                .post(searched_words::create_searched_word)
-                .delete(searched_words::clear_searched_words),
-        )
-        .push(
-            Router::with_path("words/searched/batch")
-                .post(searched_words::batch_create_searched_words),
-        )
-        .push(Router::with_path("words/searched/{id}").delete(searched_words::delete_searched_word))
 }
 
 pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {

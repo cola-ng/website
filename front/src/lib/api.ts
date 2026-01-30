@@ -723,6 +723,19 @@ export function toggleWordInVocabulary(token: string, word: string): Promise<Tog
   })
 }
 
+// Check if multiple words are in vocabulary (favorites)
+export type CheckVocabularyResponse = {
+  favorites: string[]
+}
+
+export function checkWordsInVocabulary(token: string, words: string[]): Promise<CheckVocabularyResponse> {
+  return requestJson<CheckVocabularyResponse>('/api/learn/vocabulary/check', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ words }),
+  })
+}
+
 // ============================================================================
 // Achievement System Types
 // ============================================================================

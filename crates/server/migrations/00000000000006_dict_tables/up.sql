@@ -74,6 +74,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_word_dicts_dict ON dict_word_dictionaries(di
 CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_word_dicts_unique ON dict_word_dictionaries(word_id, dictionary_id);
 
 -- Table: dict_definitions - Word definitions (multiple per word)
+drop table if exists dict_definitions;
 CREATE TABLE IF NOT EXISTS dict_definitions (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
@@ -104,6 +105,7 @@ CREATE TABLE IF NOT EXISTS dict_translations (
 );
 
 -- Table: dict_pronunciations - Word pronunciations
+drop table if exists dict_pronunciations;
 CREATE TABLE IF NOT EXISTS dict_pronunciations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
@@ -119,6 +121,7 @@ CREATE TABLE IF NOT EXISTS dict_pronunciations (
 CREATE INDEX IF NOT EXISTS idx_dict_pronunciations_word ON dict_pronunciations(word_id, dialect);
 
 -- Table: dict_sentences - Example sentences
+drop table if exists dict_sentences;
 CREATE TABLE IF NOT EXISTS dict_sentences (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     language TEXT NOT NULL,                         -- 语言
@@ -130,6 +133,7 @@ CREATE TABLE IF NOT EXISTS dict_sentences (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 
+drop table if exists dict_word_sentences;
 CREATE TABLE IF NOT EXISTS dict_word_sentences (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
@@ -193,6 +197,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_parts_range ON dict_parts(word_id, part_id);
 
 
 -- Table: dict_forms - Word forms (plurals, tenses, comparatives, etc.)
+drop table if exists dict_forms;
 CREATE TABLE IF NOT EXISTS dict_forms (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
@@ -207,6 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_forms_word ON dict_forms(word_id);
 CREATE INDEX IF NOT EXISTS idx_dict_forms_type ON dict_forms(form_type);
 
 -- Table: dict_relations - Word relations (synonyms, antonyms, related words, etc.)
+drop table if exists dict_relations;
 CREATE TABLE IF NOT EXISTS dict_relations (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID

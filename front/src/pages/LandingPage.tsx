@@ -8,6 +8,18 @@ import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { getLearnSummary, type LearnSummary } from '../lib/api'
 
+// Stage matches backend asset_stages table
+interface Stage {
+  id: number
+  name_en: string
+  name_zh: string
+  description_en: string | null
+  description_zh: string | null
+  icon_emoji: string | null
+  difficulty: number | null
+  is_active: boolean | null
+}
+
 interface StatCardProps {
   value: string
   label: string
@@ -77,6 +89,7 @@ export function LandingPage() {
   const { token, user } = useAuth()
   const [learnSummary, setLearnSummary] = useState<LearnSummary | null>(null)
   const [chartPeriod, setChartPeriod] = useState<'day' | 'week' | 'month'>('day')
+  const [stages, setStages] = useState<Stage[]>([])
 
   useEffect(() => {
     if (token) {
@@ -85,6 +98,22 @@ export function LandingPage() {
         .catch(() => setLearnSummary(null))
     }
   }, [token])
+
+  // Fetch stages for role-play section
+  useEffect(() => {
+    async function fetchStages() {
+      try {
+        const res = await fetch('/api/asset/stages')
+        if (res.ok) {
+          const data = await res.json()
+          setStages(data.slice(0, 6)) // Show first 6 stages
+        }
+      } catch (err) {
+        console.error('Failed to fetch stages:', err)
+      }
+    }
+    fetchStages()
+  }, [])
 
   const greeting = () => {
     const hour = new Date().getHours()
@@ -233,31 +262,38 @@ export function LandingPage() {
               </div>
             </div>
 
-            {/* Recommended Scenes - moved from right column */}
+            {/* Role-play Stages */}
             <div className="bg-white rounded-xl shadow-lg p-6">
-              <h2 className="font-semibold text-gray-900 mb-4">
-                <span className="mr-2">🎯</span>
-                推荐场景
-              </h2>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-semibold text-gray-900">
+                  <span className="mr-2">🎭</span>
+                  角色扮演
+                </h2>
+                <Link to="/stages" className="text-sm text-orange-600 hover:text-orange-700">
+                  查看全部 →
+                </Link>
+              </div>
               <div className="grid grid-cols-3 gap-4">
-                <Link to="/chat?context=hotel_checkin" className="block">
-                  <StageCard icon="🏨" title="酒店入住" subtitle="继续上次" />
-                </Link>
-                <Link to="/chat?context=restaurant_order" className="block">
-                  <StageCard icon="🍽️" title="餐厅点餐" subtitle="新场景" />
-                </Link>
-                <Link to="/chat?context=job_interview" className="block">
-                  <StageCard icon="💼" title="工作面试" subtitle="挑战" />
-                </Link>
-                <Link to="/chat?context=airport_travel" className="block">
-                  <StageCard icon="✈️" title="机场出行" subtitle="实用场景" />
-                </Link>
-                <Link to="/chat?context=shopping_checkout" className="block">
-                  <StageCard icon="🛒" title="购物结账" subtitle="日常对话" />
-                </Link>
-                <Link to="/chat?context=hospital_visit" className="block">
-                  <StageCard icon="🏥" title="医院就诊" subtitle="应急必备" />
-                </Link>
+                {stages.length > 0 ? (
+                  stages.map((stage) => (
+                    <Link key={stage.id} to={`/stages/${stage.id}`} className="block">
+                      <StageCard
+                        icon={stage.icon_emoji || '📚'}
+                        title={stage.name_zh}
+                        subtitle={stage.name_en}
+                      />
+                    </Link>
+                  ))
+                ) : (
+                  // Fallback loading state
+                  Array(6).fill(0).map((_, i) => (
+                    <div key={i} className="bg-gray-50 rounded-lg p-4 text-center animate-pulse">
+                      <div className="text-3xl mb-2 opacity-30">📚</div>
+                      <div className="h-4 bg-gray-200 rounded w-16 mx-auto mb-2" />
+                      <div className="h-3 bg-gray-200 rounded w-12 mx-auto" />
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           </div>

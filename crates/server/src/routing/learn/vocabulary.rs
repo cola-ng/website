@@ -188,3 +188,57 @@ pub async fn toggle_vocabulary(
         added,
     })
 }
+
+/// Request to check multiple words
+#[derive(Deserialize, ToSchema)]
+pub struct CheckVocabularyRequest {
+    words: Vec<String>,
+}
+
+/// Response for batch check
+#[derive(Serialize, ToSchema)]
+pub struct CheckVocabularyResponse {
+    /// Words that are in the user's vocabulary
+    pub favorites: Vec<String>,
+}
+
+/// Check if multiple words are in the user's vocabulary
+#[endpoint(tags("Learn"))]
+pub async fn check_vocabulary(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<CheckVocabularyResponse> {
+    let user_id = depot.user_id()?;
+    let input: CheckVocabularyRequest = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
+
+    if input.words.is_empty() {
+        return json_ok(CheckVocabularyResponse { favorites: vec![] });
+    }
+
+    // Normalize words to lowercase
+    let words: Vec<String> = input
+        .words
+        .iter()
+        .map(|w| w.trim().to_lowercase())
+        .filter(|w| !w.is_empty())
+        .collect();
+
+    if words.is_empty() {
+        return json_ok(CheckVocabularyResponse { favorites: vec![] });
+    }
+
+    let favorites: Vec<String> = with_conn(move |conn| {
+        learn_vocabularies::table
+            .select(learn_vocabularies::word)
+            .filter(learn_vocabularies::user_id.eq(user_id))
+            .filter(learn_vocabularies::word.eq_any(&words))
+            .load::<String>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to check vocabulary"))?;
+
+    json_ok(CheckVocabularyResponse { favorites })
+}

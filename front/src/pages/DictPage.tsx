@@ -14,6 +14,7 @@ import {
   clearLocalSearchHistory,
   syncLocalHistoryToServer,
   toggleWordInVocabulary,
+  checkWordsInVocabulary,
   type WordQueryResponse,
 } from '../lib/api'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
@@ -71,12 +72,15 @@ export function DictPage() {
   const [_loadingHistory, setLoadingHistory] = useState(false)
   const [isFavorite, setIsFavorite] = useState(false)
   const [togglingFavorite, setTogglingFavorite] = useState(false)
+  const [favoriteWords, setFavoriteWords] = useState<Set<string>>(new Set())
+  const [togglingHistoryWord, setTogglingHistoryWord] = useState<string | null>(null)
   const syncedRef = useRef(false)
 
   // Fetch search history on mount and when auth changes
   useEffect(() => {
     const fetchHistory = async () => {
       setLoadingHistory(true)
+      let historyWords: SearchHistoryItem[] = []
       try {
         if (token) {
           // User is logged in - sync local history first (only once)
@@ -86,29 +90,43 @@ export function DictPage() {
           }
           // Then fetch from server
           const words = await getSearchedWords(20, token)
-          setSearchHistory(words.map(w => ({
+          historyWords = words.map(w => ({
             id: w.id,
             word: w.word,
             searched_at: w.searched_at,
-          })))
+          }))
+          setSearchHistory(historyWords)
         } else {
           // User not logged in - use local storage
           const local = getLocalSearchHistory()
-          setSearchHistory(local.map(w => ({
+          historyWords = local.map(w => ({
             word: w.word,
             searched_at: w.searched_at,
-          })))
+          }))
+          setSearchHistory(historyWords)
         }
       } catch {
         // Silently fail - history is optional
         // Fall back to local storage
         const local = getLocalSearchHistory()
-        setSearchHistory(local.map(w => ({
+        historyWords = local.map(w => ({
           word: w.word,
           searched_at: w.searched_at,
-        })))
+        }))
+        setSearchHistory(historyWords)
       } finally {
         setLoadingHistory(false)
+      }
+
+      // Check which words are favorites (only for logged-in users)
+      if (token && historyWords.length > 0) {
+        try {
+          const words = historyWords.map(h => h.word)
+          const res = await checkWordsInVocabulary(token, words)
+          setFavoriteWords(new Set(res.favorites.map(w => w.toLowerCase())))
+        } catch {
+          // Silently fail
+        }
       }
     }
     fetchHistory()
@@ -129,6 +147,26 @@ export function DictPage() {
       const navGroups = getNavGroups(data)
       if (navGroups.length > 0) {
         setActiveGroup(navGroups[0].id)
+      }
+
+      // Check if this word is in favorites (use cached set or check server)
+      const wordLower = word.trim().toLowerCase()
+      if (token) {
+        if (favoriteWords.has(wordLower)) {
+          setIsFavorite(true)
+        } else {
+          // Check server for this specific word
+          try {
+            const res = await checkWordsInVocabulary(token, [word.trim()])
+            const isFav = res.favorites.some(w => w.toLowerCase() === wordLower)
+            setIsFavorite(isFav)
+            if (isFav) {
+              setFavoriteWords(prev => new Set([...prev, wordLower]))
+            }
+          } catch {
+            // Silently fail
+          }
+        }
       }
 
       // Save to search history (skip if clicking from history)
@@ -161,7 +199,7 @@ export function DictPage() {
     } finally {
       setLoading(false)
     }
-  }, [token])
+  }, [token, favoriteWords])
 
   useEffect(() => {
     if (urlWord) {
@@ -216,11 +254,53 @@ export function DictPage() {
     try {
       const res = await toggleWordInVocabulary(token, result.word.word)
       setIsFavorite(res.added)
+      // Update the favoriteWords set
+      const wordLower = result.word.word.toLowerCase()
+      if (res.added) {
+        setFavoriteWords(prev => new Set([...prev, wordLower]))
+      } else {
+        setFavoriteWords(prev => {
+          const next = new Set(prev)
+          next.delete(wordLower)
+          return next
+        })
+      }
       toast.success(res.added ? '已收藏' : '已取消收藏', res.added ? '单词已添加到生词本' : '单词已从生词本移除')
     } catch {
       toast.error('操作失败', '无法更新收藏状态')
     } finally {
       setTogglingFavorite(false)
+    }
+  }
+
+  // Toggle favorite for a word in the history list
+  const handleToggleHistoryFavorite = async (word: string) => {
+    if (!token) {
+      toast.error('请先登录', '收藏功能需要登录后使用')
+      return
+    }
+
+    setTogglingHistoryWord(word)
+    try {
+      const res = await toggleWordInVocabulary(token, word)
+      const wordLower = word.toLowerCase()
+      if (res.added) {
+        setFavoriteWords(prev => new Set([...prev, wordLower]))
+      } else {
+        setFavoriteWords(prev => {
+          const next = new Set(prev)
+          next.delete(wordLower)
+          return next
+        })
+      }
+      // If this is also the current result word, update isFavorite
+      if (result && result.word.word.toLowerCase() === wordLower) {
+        setIsFavorite(res.added)
+      }
+    } catch {
+      toast.error('操作失败', '无法更新收藏状态')
+    } finally {
+      setTogglingHistoryWord(null)
     }
   }
 
@@ -383,36 +463,60 @@ export function DictPage() {
                       </button>
                     </div>
                     <div className="space-y-1 max-h-96 overflow-y-auto">
-                      {searchHistory.map((item, index) => (
-                        <div
-                          key={item.id ?? `local-${index}`}
-                          className={`group flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors ${
-                            item.word.toLowerCase() === result?.word.word.toLowerCase()
-                              ? 'bg-orange-100 text-orange-800 font-medium'
-                              : 'text-gray-700 hover:bg-gray-100'
-                          }`}
-                        >
-                          <button
-                            onClick={() => {
-                              navigate(`/dict/${encodeURIComponent(item.word)}`, { state: { fromHistory: true } })
-                            }}
-                            className="flex-1 truncate text-left"
+                      {searchHistory.map((item, index) => {
+                        const isInFavorites = favoriteWords.has(item.word.toLowerCase())
+                        const isToggling = togglingHistoryWord === item.word
+                        return (
+                          <div
+                            key={item.id ?? `local-${index}`}
+                            className={`group flex items-center justify-between px-3 py-2 text-sm rounded-lg transition-colors ${
+                              item.word.toLowerCase() === result?.word.word.toLowerCase()
+                                ? 'bg-orange-100 text-orange-800 font-medium'
+                                : 'text-gray-700 hover:bg-gray-100'
+                            }`}
                           >
-                            {item.word}
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault()
-                              e.stopPropagation()
-                              handleDeleteHistoryItem(item)
-                            }}
-                            className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all ml-2"
-                            title="删除"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      ))}
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleToggleHistoryFavorite(item.word)
+                              }}
+                              disabled={isToggling}
+                              className={`flex-shrink-0 transition-colors ${
+                                isInFavorites
+                                  ? 'text-yellow-500 hover:text-yellow-600'
+                                  : 'text-gray-300 hover:text-yellow-500'
+                              }`}
+                              title={isInFavorites ? '取消收藏' : '添加到生词本'}
+                            >
+                              {isToggling ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Star className={`w-3.5 h-3.5 ${isInFavorites ? 'fill-current' : ''}`} />
+                              )}
+                            </button>
+                            <button
+                              onClick={() => {
+                                navigate(`/dict/${encodeURIComponent(item.word)}`, { state: { fromHistory: true } })
+                              }}
+                              className="flex-1 truncate text-left ml-1.5"
+                            >
+                              {item.word}
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.preventDefault()
+                                e.stopPropagation()
+                                handleDeleteHistoryItem(item)
+                              }}
+                              className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-500 transition-all ml-2"
+                              title="删除"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 )}
@@ -785,78 +889,76 @@ function WordResult({
 
       {/* Tab Group 1: Definitions */}
       {hasDefinitions && (
-        <div id="section-definitions">
+        <div id="section-definitions" className="bg-white rounded-xl shadow-lg overflow-hidden">
           <Tabs value={activeDefTab} onValueChange={onDefTabChange}>
-            <TabsList className="flex flex-wrap gap-1 bg-white rounded-xl shadow-lg p-2 mb-4">
-              {defTabs.map((item) => (
-                <TabsTrigger
-                  key={item.id}
-                  value={item.id}
-                  className="text-sm px-3 py-1.5"
-                >
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="border-b border-gray-200">
+              <TabsList className="flex gap-0 bg-transparent p-0">
+                {defTabs.map((item) => (
+                  <TabsTrigger
+                    key={item.id}
+                    value={item.id}
+                    className="text-sm px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent data-[state=active]:text-orange-600 data-[state=active]:shadow-none hover:bg-gray-50 transition-colors"
+                  >
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
 
             {/* Chinese Definitions */}
             {hasZhDefs && (
-              <TabsContent value="definitions-zh">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="space-y-3">
-                    {zhDefs.map((def) => (
-                      <div key={def.id} className="pl-3 border-l-2 border-orange-500">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          {def.part_of_speech && (
-                            <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
-                              {def.part_of_speech}
-                            </span>
-                          )}
-                          {def.register && (
-                            <span className="text-xs text-gray-500">{def.register}</span>
-                          )}
-                          {def.region && (
-                            <span className="text-xs text-gray-500">{def.region}</span>
-                          )}
-                        </div>
-                        <p className="text-base text-gray-800">{def.definition}</p>
-                        {def.usage_notes && (
-                          <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
+              <TabsContent value="definitions-zh" className="p-5 mt-0">
+                <div className="space-y-3">
+                  {zhDefs.map((def) => (
+                    <div key={def.id} className="pl-3 border-l-2 border-orange-500">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        {def.part_of_speech && (
+                          <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
+                            {def.part_of_speech}
+                          </span>
+                        )}
+                        {def.register && (
+                          <span className="text-xs text-gray-500">{def.register}</span>
+                        )}
+                        {def.region && (
+                          <span className="text-xs text-gray-500">{def.region}</span>
                         )}
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-base text-gray-800">{def.definition}</p>
+                      {def.usage_notes && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </TabsContent>
             )}
 
             {/* English Definitions */}
             {hasEnDefs && (
-              <TabsContent value="definitions-en">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="space-y-3">
-                    {enDefs.map((def) => (
-                      <div key={def.id} className="pl-3 border-l-2 border-orange-500">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          {def.part_of_speech && (
-                            <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
-                              {def.part_of_speech}
-                            </span>
-                          )}
-                          {def.register && (
-                            <span className="text-xs text-gray-500">{def.register}</span>
-                          )}
-                          {def.region && (
-                            <span className="text-xs text-gray-500">{def.region}</span>
-                          )}
-                        </div>
-                        <p className="text-base text-gray-800">{def.definition}</p>
-                        {def.usage_notes && (
-                          <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
+              <TabsContent value="definitions-en" className="p-5 mt-0">
+                <div className="space-y-3">
+                  {enDefs.map((def) => (
+                    <div key={def.id} className="pl-3 border-l-2 border-orange-500">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        {def.part_of_speech && (
+                          <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
+                            {def.part_of_speech}
+                          </span>
+                        )}
+                        {def.register && (
+                          <span className="text-xs text-gray-500">{def.register}</span>
+                        )}
+                        {def.region && (
+                          <span className="text-xs text-gray-500">{def.region}</span>
                         )}
                       </div>
-                    ))}
-                  </div>
+                      <p className="text-base text-gray-800">{def.definition}</p>
+                      {def.usage_notes && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </TabsContent>
             )}
@@ -866,58 +968,56 @@ function WordResult({
 
       {/* Tab Group 2: Examples & Memory */}
       {hasExamples && (
-        <div id="section-examples">
+        <div id="section-examples" className="bg-white rounded-xl shadow-lg overflow-hidden">
           <Tabs value={activeExampleTab} onValueChange={onExampleTabChange}>
-            <TabsList className="flex flex-wrap gap-1 bg-white rounded-xl shadow-lg p-2 mb-4">
-              {exampleTabs.map((item) => (
-                <TabsTrigger
-                  key={item.id}
-                  value={item.id}
-                  className="text-sm px-3 py-1.5"
-                >
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="border-b border-gray-200">
+              <TabsList className="flex gap-0 bg-transparent p-0">
+                {exampleTabs.map((item) => (
+                  <TabsTrigger
+                    key={item.id}
+                    value={item.id}
+                    className="text-sm px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent data-[state=active]:text-orange-600 data-[state=active]:shadow-none hover:bg-gray-50 transition-colors"
+                  >
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
 
             {/* Example Sentences */}
             {hasSentences && (
-              <TabsContent value="examples">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="space-y-2">
-                    {displayedSentences.map((sentence) => (
-                      <div key={sentence.id} className="bg-gray-50 rounded-lg p-3">
-                        <p
-                          className="text-gray-800 text-sm"
-                          dangerouslySetInnerHTML={{
-                            __html: highlightWord(sentence.sentence, result.word.word)
-                          }}
-                        />
-                        {sentence.source && (
-                          <p className="text-gray-500 text-xs mt-1">— {sentence.source}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                  {(result.sentences ?? []).length > 10 && (
-                    <button
-                      onClick={() => setShowMoreSentences(!showMoreSentences)}
-                      className="mt-3 w-full py-2 text-orange-600 hover:text-orange-800 text-sm font-medium transition-colors"
-                    >
-                      {showMoreSentences ? '收起' : `查看更多 (${((result.sentences ?? []).length - 10)} 条)`}
-                    </button>
-                  )}
+              <TabsContent value="examples" className="p-5 mt-0">
+                <div className="space-y-2">
+                  {displayedSentences.map((sentence) => (
+                    <div key={sentence.id} className="bg-gray-50 rounded-lg p-3">
+                      <p
+                        className="text-gray-800 text-sm"
+                        dangerouslySetInnerHTML={{
+                          __html: highlightWord(sentence.sentence, result.word.word)
+                        }}
+                      />
+                      {sentence.source && (
+                        <p className="text-gray-500 text-xs mt-1">— {sentence.source}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
+                {(result.sentences ?? []).length > 10 && (
+                  <button
+                    onClick={() => setShowMoreSentences(!showMoreSentences)}
+                    className="mt-3 w-full py-2 text-orange-600 hover:text-orange-800 text-sm font-medium transition-colors"
+                  >
+                    {showMoreSentences ? '收起' : `查看更多 (${((result.sentences ?? []).length - 10)} 条)`}
+                  </button>
+                )}
               </TabsContent>
             )}
 
             {/* Memory Tips */}
             {hasMemory && (
-              <TabsContent value="memory">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
-                    <p className="text-gray-800 whitespace-pre-wrap">{result.word.memory}</p>
-                  </div>
+              <TabsContent value="memory" className="p-5 mt-0">
+                <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
+                  <p className="text-gray-800 whitespace-pre-wrap">{result.word.memory}</p>
                 </div>
               </TabsContent>
             )}
@@ -927,91 +1027,85 @@ function WordResult({
 
       {/* Tab Group 3: Related (Synonyms, Antonyms, Related Words, Etymology) */}
       {hasRelated && (
-        <div id="section-related">
+        <div id="section-related" className="bg-white rounded-xl shadow-lg overflow-hidden">
           <Tabs value={activeRelatedTab} onValueChange={onRelatedTabChange}>
-            <TabsList className="flex flex-wrap gap-1 bg-white rounded-xl shadow-lg p-2 mb-4">
-              {relatedTabs.map((item) => (
-                <TabsTrigger
-                  key={item.id}
-                  value={item.id}
-                  className="text-sm px-3 py-1.5"
-                >
-                  {item.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <div className="border-b border-gray-200">
+              <TabsList className="flex gap-0 bg-transparent p-0">
+                {relatedTabs.map((item) => (
+                  <TabsTrigger
+                    key={item.id}
+                    value={item.id}
+                    className="text-sm px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-orange-500 data-[state=active]:bg-transparent data-[state=active]:text-orange-600 data-[state=active]:shadow-none hover:bg-gray-50 transition-colors"
+                  >
+                    {item.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </div>
 
             {/* Synonyms */}
             {hasSynonyms && (
-              <TabsContent value="synonyms">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="flex flex-wrap gap-2">
-                    {synonyms.map((rel) => (
-                      <Link
-                        key={rel.id}
-                        to={`/dict/${encodeURIComponent(rel.related_word)}`}
-                        className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
-                      >
-                        {rel.related_word}
-                      </Link>
-                    ))}
-                  </div>
+              <TabsContent value="synonyms" className="p-5 mt-0">
+                <div className="flex flex-wrap gap-2">
+                  {synonyms.map((rel) => (
+                    <Link
+                      key={rel.id}
+                      to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                      className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-sm cursor-pointer hover:bg-green-200 transition-colors"
+                    >
+                      {rel.related_word}
+                    </Link>
+                  ))}
                 </div>
               </TabsContent>
             )}
 
             {/* Antonyms */}
             {hasAntonyms && (
-              <TabsContent value="antonyms">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="flex flex-wrap gap-2">
-                    {antonyms.map((rel) => (
-                      <Link
-                        key={rel.id}
-                        to={`/dict/${encodeURIComponent(rel.related_word)}`}
-                        className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
-                      >
-                        {rel.related_word}
-                      </Link>
-                    ))}
-                  </div>
+              <TabsContent value="antonyms" className="p-5 mt-0">
+                <div className="flex flex-wrap gap-2">
+                  {antonyms.map((rel) => (
+                    <Link
+                      key={rel.id}
+                      to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                      className="px-3 py-1 bg-red-100 text-red-800 rounded-full text-sm cursor-pointer hover:bg-red-200 transition-colors"
+                    >
+                      {rel.related_word}
+                    </Link>
+                  ))}
                 </div>
               </TabsContent>
             )}
 
             {/* Related Words */}
             {hasRelatedWords && (
-              <TabsContent value="related">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="flex flex-wrap gap-2">
-                    {relatedWords.map((rel) => (
-                      <Link
-                        key={rel.id}
-                        to={`/dict/${encodeURIComponent(rel.related_word)}`}
-                        className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
-                      >
-                        {rel.related_word}
-                      </Link>
-                    ))}
-                  </div>
+              <TabsContent value="related" className="p-5 mt-0">
+                <div className="flex flex-wrap gap-2">
+                  {relatedWords.map((rel) => (
+                    <Link
+                      key={rel.id}
+                      to={`/dict/${encodeURIComponent(rel.related_word)}`}
+                      className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm cursor-pointer hover:bg-blue-200 transition-colors"
+                    >
+                      {rel.related_word}
+                    </Link>
+                  ))}
                 </div>
               </TabsContent>
             )}
 
             {/* Etymology */}
             {hasEtymologies && (
-              <TabsContent value="etymology">
-                <div className="bg-white rounded-xl shadow-lg p-5">
-                  <div className="space-y-2">
-                    {(result.etymologies ?? []).map((etym) => (
-                      <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
-                        <p className="text-sm text-gray-800">{etym.etymology}</p>
-                        {etym.origin_language && (
-                          <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+              <TabsContent value="etymology" className="p-5 mt-0">
+                <div className="space-y-2">
+                  {(result.etymologies ?? []).map((etym) => (
+                    <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
+                      <p className="text-sm text-gray-800">{etym.etymology}</p>
+                      {etym.origin_language && (
+                        <p className="text-xs text-gray-500 mt-1">来源: {etym.origin_language}</p>
+                      )}
+                    </div>
+                  ))}
                 </div>
               </TabsContent>
             )}

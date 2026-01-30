@@ -4,6 +4,7 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
+use chrono::Utc;
 use colang::db::pool::DieselPool;
 use diesel::prelude::*;
 use serde::{Deserialize, Deserializer};
@@ -243,6 +244,13 @@ struct ImportStats {
     errors: usize,
 }
 
+#[derive(Debug)]
+struct WordError {
+    file: String,
+    word: String,
+    error: String,
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
 
@@ -345,7 +353,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut categories_cache = load_categories_cache(&mut conn)?;
     println!("Loaded {} categories", categories_cache.len());
 
-    let stats = import_words(
+    let (stats, word_errors) = import_words(
         &mut conn,
         &json_files,
         batch_size,
@@ -364,7 +372,27 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Words added: {}", stats.words_added);
     println!("Words skipped: {}", stats.words_skipped);
     println!("Errors: {}", stats.errors);
+    println!("Word parse errors: {}", word_errors.len());
     println!("Total time: {:.2}s", elapsed.as_secs_f64());
+
+    // Generate error report if there are word errors
+    if !word_errors.is_empty() {
+        let report_path = words_dir.join("import_errors.txt");
+        let mut report = String::new();
+        report.push_str("# Word Import Error Report\n");
+        report.push_str(&format!("# Generated at: {}\n", Utc::now()));
+        report.push_str(&format!("# Total errors: {}\n\n", word_errors.len()));
+
+        for err in &word_errors {
+            report.push_str(&format!("File: {}\n", err.file));
+            report.push_str(&format!("Word: {}\n", err.word));
+            report.push_str(&format!("Error: {}\n", err.error));
+            report.push_str("\n---\n\n");
+        }
+
+        fs::write(&report_path, &report)?;
+        println!("\nError report written to: {}", report_path.display());
+    }
 
     Ok(())
 }
@@ -441,13 +469,14 @@ fn import_words(
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
     pronunciations_dir: &Path,
-) -> Result<ImportStats, Box<dyn std::error::Error>> {
+) -> Result<(ImportStats, Vec<WordError>), Box<dyn std::error::Error>> {
     let mut stats = ImportStats {
         files_processed: 0,
         words_added: 0,
         words_skipped: 0,
         errors: 0,
     };
+    let mut word_errors: Vec<WordError> = Vec::new();
 
     for json_file in json_files {
         stats.files_processed += 1;
@@ -461,18 +490,16 @@ fn import_words(
                 dictionaries_cache,
                 categories_cache,
                 pronunciations_dir,
+                &mut word_errors,
             )
         });
 
         match result {
-            Ok(added) => {
-                if added {
-                    stats.words_added += 1;
-                    if stats.words_added % 100 == 0 {
-                        println!("  Progress: {} words added", stats.words_added);
-                    }
-                } else {
-                    stats.words_skipped += 1;
+            Ok((added, skipped)) => {
+                stats.words_added += added;
+                stats.words_skipped += skipped;
+                if stats.words_added % 100 == 0 && stats.words_added > 0 {
+                    println!("  Progress: {} words added", stats.words_added);
                 }
             }
             Err(e) => {
@@ -482,7 +509,7 @@ fn import_words(
         }
     }
 
-    Ok(stats)
+    Ok((stats, word_errors))
 }
 
 fn process_json_file(
@@ -492,16 +519,37 @@ fn process_json_file(
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
     pronunciations_dir: &Path,
-) -> Result<bool, Box<dyn std::error::Error>> {
+    word_errors: &mut Vec<WordError>,
+) -> Result<(usize, usize), Box<dyn std::error::Error>> {
     use colang::db::schema::dict_words;
 
     let file = File::open(json_file)?;
     let reader = BufReader::new(file);
-    let json_data: HashMap<String, WordEntry> = serde_json::from_reader(reader)?;
 
-    let mut any_word_processed = false;
+    // Parse as generic JSON Value first to handle individual entry errors
+    let json_value: serde_json::Value = serde_json::from_reader(reader)?;
 
-    for (word, entry) in json_data {
+    let json_obj = json_value.as_object().ok_or("JSON file must be an object")?;
+
+    let mut words_added = 0;
+    let mut words_skipped = 0;
+    let file_name = json_file.file_name()
+        .map(|s| s.to_string_lossy().to_string())
+        .unwrap_or_else(|| json_file.display().to_string());
+
+    for (word, entry_value) in json_obj {
+        // Try to deserialize this specific word entry
+        let entry: WordEntry = match serde_json::from_value(entry_value.clone()) {
+            Ok(e) => e,
+            Err(e) => {
+                word_errors.push(WordError {
+                    file: file_name.clone(),
+                    word: word.clone(),
+                    error: e.to_string(),
+                });
+                continue;
+            }
+        };
         let word_lower = word.to_lowercase();
 
         // Step 1: Check if word already exists
@@ -597,10 +645,14 @@ fn process_json_file(
             );
         }
 
-        any_word_processed = true;
+        if is_new_word {
+            words_added += 1;
+        } else {
+            words_skipped += 1;
+        }
     }
 
-    Ok(any_word_processed)
+    Ok((words_added, words_skipped))
 }
 
 fn insert_word(
@@ -622,14 +674,14 @@ fn insert_word(
 
     // Validate and clamp difficulty to 1-5 range
     let difficulty = entry.difficulty.map(|d| {
-        if d < 1 || d > 5 {
+        if d < 1 || d > 9 {
             eprintln!(
-                "  Warning: difficulty {} for word '{}' is out of range [1-5], clamping to {}",
+                "  Warning: difficulty {} for word '{}' is out of range [1-9], clamping to {}",
                 d,
                 word,
-                d.clamp(1, 5)
+                d.clamp(1, 9)
             );
-            d.clamp(1, 5)
+            d.clamp(1, 9)
         } else {
             d
         }
