@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
-use crate::hoops::require_auth;
+use crate::hoops::{is_user_admin, require_auth};
 use crate::models::*;
 use crate::{AppConfig, DepotExt, JsonResult, json_ok};
 
@@ -48,6 +48,17 @@ pub struct AuthResponse {
     user: User,
     /// JWT access token
     access_token: String,
+    /// Whether user has admin privileges
+    is_admin: bool,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct MeResponse {
+    /// User information
+    #[serde(flatten)]
+    user: User,
+    /// Whether user has admin privileges
+    is_admin: bool,
 }
 
 #[derive(Deserialize, ToSchema)]
@@ -81,9 +92,12 @@ pub async fn login(input: JsonBody<LoginRequest>) -> JsonResult<AuthResponse> {
         crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
+    let is_admin = is_user_admin(user.id).await;
+
     json_ok(AuthResponse {
         user: user.into(),
         access_token,
+        is_admin,
     })
 }
 
@@ -196,15 +210,17 @@ pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthRespon
         crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
+    // New users are never admins
     Ok(Json(AuthResponse {
         user: user.into(),
         access_token,
+        is_admin: false,
     }))
 }
 
 /// Get current user profile
 #[endpoint(tags("Account"))]
-pub async fn me(depot: &mut Depot) -> JsonResult<User> {
+pub async fn me(depot: &mut Depot) -> JsonResult<MeResponse> {
     let user_id = depot.user_id()?;
     let user: User = with_conn(move |conn| {
         base_users::table
@@ -213,7 +229,13 @@ pub async fn me(depot: &mut Depot) -> JsonResult<User> {
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
-    Ok(Json(User::from(user)))
+
+    let is_admin = is_user_admin(user_id).await;
+
+    json_ok(MeResponse {
+        user: user.into(),
+        is_admin,
+    })
 }
 
 #[derive(AsChangeset, Deserialize, ToSchema)]

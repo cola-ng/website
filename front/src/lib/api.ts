@@ -6,11 +6,15 @@ export type User = {
   avatar: string | null
   created_at: string
   updated_at: string
+  /** Whether this user has admin privileges */
+  is_admin?: boolean
 }
 
 export type AuthResponse = {
   user: User
   access_token: string
+  /** Whether user has admin privileges */
+  is_admin: boolean
 }
 
 export type OauthLoginResponse =
@@ -1849,5 +1853,369 @@ export function checkFavorites(
     method: 'POST',
     token,
     body: JSON.stringify({ entity, record_ids: recordIds }),
+  })
+}
+
+// ============================================================================
+// Admin API
+// ============================================================================
+
+/** Dashboard statistics */
+export type DashboardStats = {
+  total_users: number
+  total_admins: number
+  total_words: number
+  users_today: number
+}
+
+/** User list item */
+export type UserListItem = {
+  id: number
+  name: string
+  email: string | null
+  phone: string | null
+  is_admin: boolean
+  created_at: string
+}
+
+/** User list response */
+export type UserListResponse = {
+  users: UserListItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+/** Admin info */
+export type AdminInfo = {
+  granted_at: string
+  granted_by: number | null
+  notes: string | null
+}
+
+/** Subscription info for admin user detail */
+export type SubscriptionInfo = UserSubscription & {
+  plan: SubscriptionPlan
+}
+
+/** User detail response */
+export type UserDetailResponse = User & {
+  is_admin: boolean
+  admin_info: AdminInfo | null
+  subscription: SubscriptionInfo | null
+  wallet: WalletAccount | null
+  recent_payments: PaymentOrder[]
+}
+
+/** Admin list item */
+export type AdminListItem = {
+  id: number
+  user_id: number
+  user_name: string
+  user_email: string | null
+  granted_at: string
+  granted_by: number | null
+  notes: string | null
+}
+
+/** Admin record */
+export type AdminRecord = {
+  id: number
+  user_id: number
+  granted_by: number | null
+  granted_at: string
+  notes: string | null
+}
+
+/**
+ * Get admin dashboard statistics
+ */
+export function getAdminStats(token: string): Promise<DashboardStats> {
+  return requestJson<DashboardStats>('/api/admin/stats', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * List all users with pagination
+ */
+export function listAdminUsers(
+  token: string,
+  page: number = 1,
+  perPage: number = 20,
+  search?: string
+): Promise<UserListResponse> {
+  const params = new URLSearchParams()
+  params.set('page', page.toString())
+  params.set('per_page', perPage.toString())
+  if (search) params.set('search', search)
+
+  return requestJson<UserListResponse>(`/api/admin/users?${params}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get user details by ID
+ */
+export function getAdminUser(token: string, userId: number): Promise<UserDetailResponse> {
+  return requestJson<UserDetailResponse>(`/api/admin/users/${userId}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * List all admins
+ */
+export function listAdmins(token: string): Promise<AdminListItem[]> {
+  return requestJson<AdminListItem[]>('/api/admin/admins', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Grant admin privileges to a user
+ */
+export function grantAdmin(
+  token: string,
+  userId: number,
+  notes?: string
+): Promise<AdminRecord> {
+  return requestJson<AdminRecord>('/api/admin/admins/grant', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ user_id: userId, notes }),
+  })
+}
+
+/**
+ * Revoke admin privileges from a user
+ */
+export function revokeAdmin(token: string, userId: number): Promise<void> {
+  return requestJson<void>('/api/admin/admins/revoke', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ user_id: userId }),
+  })
+}
+
+// ============================================================================
+// Wallet API
+// ============================================================================
+
+/** Wallet account */
+export type WalletAccount = {
+  id: number
+  user_id: number
+  balance: number
+  frozen_balance: number
+  total_deposited: number
+  total_spent: number
+  currency: string
+  created_at: string
+  updated_at: string
+}
+
+/** Wallet transaction */
+export type WalletTransaction = {
+  id: number
+  user_id: number
+  wallet_id: number
+  transaction_type: string
+  amount: number
+  balance_before: number
+  balance_after: number
+  reference_type: string | null
+  reference_id: number | null
+  description: string | null
+  metadata: unknown | null
+  created_at: string
+}
+
+/** Payment order */
+export type PaymentOrder = {
+  id: number
+  user_id: number
+  order_no: string
+  order_type: string
+  amount_credits: number
+  amount_cents: number
+  currency: string
+  provider: string
+  provider_order_id: string | null
+  provider_data: unknown | null
+  status: string
+  paid_at: string | null
+  failed_at: string | null
+  failure_reason: string | null
+  reference_type: string | null
+  reference_id: number | null
+  client_ip: string | null
+  user_agent: string | null
+  expires_at: string | null
+  metadata: unknown | null
+  created_at: string
+  updated_at: string
+}
+
+/** Wallet info with recent transactions */
+export type WalletInfo = {
+  account: WalletAccount
+  recent_transactions: WalletTransaction[]
+}
+
+/** Transactions list response */
+export type TransactionsResponse = {
+  transactions: WalletTransaction[]
+  total: number
+  page: number
+  per_page: number
+}
+
+/**
+ * Get user's wallet info
+ */
+export function getWallet(token: string): Promise<WalletInfo> {
+  return requestJson<WalletInfo>('/api/wallet', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * List wallet transactions
+ */
+export function listWalletTransactions(
+  token: string,
+  page: number = 1,
+  perPage: number = 20,
+  transactionType?: string
+): Promise<TransactionsResponse> {
+  const params = new URLSearchParams()
+  params.set('page', page.toString())
+  params.set('per_page', perPage.toString())
+  if (transactionType) params.set('transaction_type', transactionType)
+
+  return requestJson<TransactionsResponse>(`/api/wallet/transactions?${params}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+// ============================================================================
+// Subscription API
+// ============================================================================
+
+/** Subscription plan */
+export type SubscriptionPlan = {
+  id: number
+  code: string
+  name_en: string
+  name_zh: string
+  description_en: string | null
+  description_zh: string | null
+  tier: string
+  billing_cycle: string | null
+  price_credits: number
+  price_display: string | null
+  features: string[] | null
+  limits: Record<string, number> | null
+  trial_days: number | null
+  is_active: boolean
+  sort_order: number | null
+  created_at: string
+  updated_at: string
+}
+
+/** User subscription */
+export type UserSubscription = {
+  id: number
+  user_id: number
+  plan_id: number
+  status: string
+  started_at: string
+  expires_at: string | null
+  cancelled_at: string | null
+  cancel_reason: string | null
+  auto_renew: boolean
+  trial_ends_at: string | null
+  last_payment_id: number | null
+  next_billing_at: string | null
+  metadata: unknown | null
+  created_at: string
+  updated_at: string
+}
+
+/** Subscription with plan details */
+export type SubscriptionWithPlan = UserSubscription & {
+  plan: SubscriptionPlan
+}
+
+/** Current subscription status */
+export type CurrentSubscription = {
+  has_subscription: boolean
+  subscription: SubscriptionWithPlan | null
+  is_trial: boolean
+  days_remaining: number | null
+}
+
+/** Subscribe response */
+export type SubscribeResponse = {
+  subscription: UserSubscription
+  plan: SubscriptionPlan
+  payment_required: boolean
+  order_no: string | null
+}
+
+/**
+ * List available subscription plans
+ */
+export function listSubscriptionPlans(token?: string): Promise<SubscriptionPlan[]> {
+  return requestJson<SubscriptionPlan[]>('/api/subscription/plans', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get current subscription status
+ */
+export function getCurrentSubscription(token: string): Promise<CurrentSubscription> {
+  return requestJson<CurrentSubscription>('/api/subscription/current', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Subscribe to a plan
+ */
+export function subscribe(
+  token: string,
+  planCode: string,
+  useTrial: boolean = true
+): Promise<SubscribeResponse> {
+  return requestJson<SubscribeResponse>('/api/subscription/subscribe', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ plan_code: planCode, use_trial: useTrial }),
+  })
+}
+
+/**
+ * Cancel subscription
+ */
+export function cancelSubscription(
+  token: string,
+  reason?: string
+): Promise<UserSubscription> {
+  return requestJson<UserSubscription>('/api/subscription/cancel', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ reason }),
   })
 }

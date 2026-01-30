@@ -217,7 +217,7 @@ export function ChatPage() {
         const words = new Set<string>()
         const idMap = new Map<string, number>()
         for (const fav of favorites) {
-          if (fav.word) {
+          if (fav.entity === 'word') {
             const wordLower = fav.word.toLowerCase()
             words.add(wordLower)
             idMap.set(wordLower, fav.record_id)

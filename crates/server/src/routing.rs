@@ -14,11 +14,13 @@ use crate::{DepotExt, OkResponse};
 
 mod account;
 mod achievement;
+mod admin;
 mod ai_provider;
 mod asset;
 mod auth;
 mod dict;
 mod learn;
+mod payment;
 
 pub fn router() -> Router {
     Router::new().hoop(maybe_auth)
@@ -46,11 +48,13 @@ pub fn router() -> Router {
                 .get(health)
                 .push(account::router())
                 .push(achievement::router())
+                .push(admin::router())
                 .push(ai_provider::router())
                 .push(auth::router())
                 .push(asset::router())
                 .push(dict::router())
-                .push(learn::router()),
+                .push(learn::router())
+                .push(payment::router()),
         )
         .push(
             Router::with_path("{**}").get(

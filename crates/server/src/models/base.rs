@@ -134,6 +134,24 @@ pub struct RoleUser {
     pub user_id: i64,
 }
 
+#[derive(Identifiable, Queryable, Serialize, ToSchema, Clone, Debug)]
+#[diesel(table_name = base_admins)]
+pub struct Admin {
+    pub id: i64,
+    pub user_id: i64,
+    pub granted_by: Option<i64>,
+    pub granted_at: DateTime<Utc>,
+    pub notes: Option<String>,
+}
+
+#[derive(Insertable, Debug)]
+#[diesel(table_name = base_admins)]
+pub struct NewAdmin<'a> {
+    pub user_id: i64,
+    pub granted_by: Option<i64>,
+    pub notes: Option<&'a str>,
+}
+
 // #[derive(Identifiable, Insertable, Queryable, Serialize, ToSchema, Clone, Debug)]
 // pub struct Operation {
 //     pub id: i64,

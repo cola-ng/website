@@ -2,7 +2,10 @@ use salvo::prelude::*;
 
 use crate::AppResult;
 
+mod admin;
 mod auth;
+
+pub use admin::{is_user_admin, require_admin};
 pub use auth::{maybe_auth, require_auth};
 
 #[handler]

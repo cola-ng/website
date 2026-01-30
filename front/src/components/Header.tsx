@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { User, LogOut, Settings, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu, Award, Flame, Star, Trophy, Zap, Heart } from 'lucide-react'
+import { User, LogOut, Settings, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu, Award, Flame, Star, Trophy, Zap, Heart, Shield, Crown, LayoutDashboard, Users } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 import { Button } from './ui/button'
@@ -26,6 +26,11 @@ const navItems: NavItem[] = [
   { label: '角色扮演', path: '/stages', icon: <Theater className="h-4 w-4" /> },
   { label: '大声跟读', path: '/read', icon: <Mic className="h-4 w-4" /> },
   { label: '词典翻译', path: '/dict', icon: <BookOpen className="h-4 w-4" /> },
+]
+
+const adminNavItems: NavItem[] = [
+  { label: '仪表盘', path: '/admin', icon: <LayoutDashboard className="h-4 w-4" /> },
+  { label: '用户管理', path: '/admin/users', icon: <Users className="h-4 w-4" /> },
 ]
 
 // Rarity colors for achievements
@@ -84,37 +89,56 @@ export function Header() {
 
   const loginUrl = getLoginUrl()
 
+  const isAdminPage = location.pathname.startsWith('/admin')
+  const currentNavItems = isAdminPage ? adminNavItems : navItems
+
   const isActive = (path: string) => {
     if (path === '/') {
       return location.pathname === '/'
+    }
+    // For admin paths, exact match for /admin, startsWith for others
+    if (path === '/admin') {
+      return location.pathname === '/admin'
     }
     return location.pathname.startsWith(path)
   }
 
   return (
-    <header className="border-b bg-white sticky top-0 z-50 shadow-sm">
+    <header className={cn(
+      "border-b sticky top-0 z-50 shadow-sm",
+      isAdminPage ? "bg-slate-900" : "bg-white"
+    )}>
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
         {/* Logo */}
-        <Link to="/" className="flex items-center gap-2 shrink-0 group">
+        <Link to={isAdminPage ? "/admin" : "/"} className="flex items-center gap-2 shrink-0 group">
           <div className="h-9 w-9 flex items-center justify-center transition-transform group-hover:scale-105">
             <img src="/colang-logo.svg" alt="Colang" className="h-9 w-9" />
           </div>
-          <span className="text-lg font-bold bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent hidden sm:block">
+          <span className={cn(
+            "text-lg font-bold hidden sm:block",
+            isAdminPage
+              ? "text-white"
+              : "bg-gradient-to-r from-orange-600 to-amber-500 bg-clip-text text-transparent"
+          )}>
             开朗英语
           </span>
         </Link>
 
         {/* Desktop Navigation */}
         <nav className="hidden md:flex items-center gap-1">
-          {navItems.map((item) => (
+          {currentNavItems.map((item) => (
             <Link
               key={item.path}
               to={item.path}
               className={cn(
                 "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-medium transition-all duration-200",
                 isActive(item.path)
-                  ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm"
-                  : "text-gray-600 hover:text-orange-600 hover:bg-orange-50"
+                  ? isAdminPage
+                    ? "bg-purple-600 text-white shadow-sm"
+                    : "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm"
+                  : isAdminPage
+                    ? "text-slate-300 hover:text-white hover:bg-slate-800"
+                    : "text-gray-600 hover:text-orange-600 hover:bg-orange-50"
               )}
             >
               {item.icon}
@@ -290,11 +314,25 @@ export function Header() {
                     </Link>
                   </DropdownMenuItem>
                   <DropdownMenuItem asChild>
+                    <Link to="/subscription" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg text-amber-600">
+                      <Crown className="h-4 w-4" />
+                      <span>订阅会员</span>
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem asChild>
                     <Link to="/me" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg">
                       <Settings className="h-4 w-4" />
                       <span>账户设置</span>
                     </Link>
                   </DropdownMenuItem>
+                  {user?.is_admin && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/admin" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg text-purple-600">
+                        <Shield className="h-4 w-4" />
+                        <span>管理后台</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
                     onClick={clear}
@@ -316,9 +354,12 @@ export function Header() {
 
       {/* Mobile Navigation */}
       {mobileMenuOpen && (
-        <nav className="md:hidden border-t bg-white px-4 py-2">
+        <nav className={cn(
+          "md:hidden border-t px-4 py-2",
+          isAdminPage ? "bg-slate-800 border-slate-700" : "bg-white"
+        )}>
           <div className="grid grid-cols-3 gap-2">
-            {navItems.map((item) => (
+            {currentNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -326,8 +367,12 @@ export function Header() {
                 className={cn(
                   "flex flex-col items-center gap-1 px-2 py-2 rounded-lg text-xs font-medium transition-all",
                   isActive(item.path)
-                    ? "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm"
-                    : "text-gray-600 hover:text-orange-600 hover:bg-orange-50"
+                    ? isAdminPage
+                      ? "bg-purple-600 text-white shadow-sm"
+                      : "bg-gradient-to-r from-orange-500 to-amber-500 text-white shadow-sm"
+                    : isAdminPage
+                      ? "text-slate-300 hover:text-white hover:bg-slate-700"
+                      : "text-gray-600 hover:text-orange-600 hover:bg-orange-50"
                 )}
               >
                 {item.icon}

@@ -1,6 +1,50 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    ai_usage_records (id) {
+        id -> Int8,
+        user_id -> Int8,
+        #[max_length = 32]
+        service_type -> Varchar,
+        #[max_length = 32]
+        provider_type -> Varchar,
+        is_user_provider -> Bool,
+        tokens_used -> Nullable<Int4>,
+        prompt_tokens -> Nullable<Int4>,
+        completion_tokens -> Nullable<Int4>,
+        duration_seconds -> Nullable<Float8>,
+        characters_count -> Nullable<Int4>,
+        #[max_length = 64]
+        model_name -> Nullable<Varchar>,
+        #[max_length = 16]
+        status -> Varchar,
+        error_message -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    ai_usage_quotas (id) {
+        id -> Int8,
+        user_id -> Int8,
+        period_start -> Date,
+        period_end -> Date,
+        chat_tokens_used -> Int8,
+        asr_seconds_used -> Float8,
+        tts_seconds_used -> Float8,
+        translation_chars_used -> Int8,
+        chat_requests -> Int4,
+        asr_requests -> Int4,
+        tts_requests -> Int4,
+        translation_requests -> Int4,
+        limits_snapshot -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     archive_achievement_definitions (id) {
         id -> Int8,
         code -> Text,
@@ -209,6 +253,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    base_admins (id) {
+        id -> Int8,
+        user_id -> Int8,
+        granted_by -> Nullable<Int8>,
+        granted_at -> Timestamptz,
+        notes -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
     base_passwords (id) {
         id -> Int8,
         user_id -> Int8,
@@ -318,6 +372,7 @@ diesel::table! {
 diesel::table! {
     dict_etymologies (id) {
         id -> Int8,
+        origin_code -> Nullable<Text>,
         origin_language -> Nullable<Text>,
         origin_word -> Nullable<Text>,
         origin_meaning -> Nullable<Text>,
@@ -769,6 +824,93 @@ diesel::table! {
 }
 
 diesel::table! {
+    payment_orders (id) {
+        id -> Int8,
+        user_id -> Int8,
+        #[max_length = 64]
+        order_no -> Varchar,
+        #[max_length = 32]
+        order_type -> Varchar,
+        amount_credits -> Int8,
+        amount_cents -> Int8,
+        #[max_length = 3]
+        currency -> Varchar,
+        #[max_length = 32]
+        provider -> Varchar,
+        #[max_length = 128]
+        provider_order_id -> Nullable<Varchar>,
+        provider_data -> Nullable<Jsonb>,
+        #[max_length = 16]
+        status -> Varchar,
+        paid_at -> Nullable<Timestamptz>,
+        failed_at -> Nullable<Timestamptz>,
+        failure_reason -> Nullable<Text>,
+        #[max_length = 32]
+        reference_type -> Nullable<Varchar>,
+        reference_id -> Nullable<Int8>,
+        #[max_length = 45]
+        client_ip -> Nullable<Varchar>,
+        user_agent -> Nullable<Text>,
+        expires_at -> Nullable<Timestamptz>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    payment_refunds (id) {
+        id -> Int8,
+        user_id -> Int8,
+        order_id -> Int8,
+        #[max_length = 64]
+        refund_no -> Varchar,
+        #[max_length = 128]
+        provider_refund_id -> Nullable<Varchar>,
+        amount_cents -> Int8,
+        amount_credits -> Int8,
+        reason -> Nullable<Text>,
+        #[max_length = 16]
+        status -> Varchar,
+        completed_at -> Nullable<Timestamptz>,
+        failed_at -> Nullable<Timestamptz>,
+        failure_reason -> Nullable<Text>,
+        processed_by -> Nullable<Int8>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    subscription_plans (id) {
+        id -> Int8,
+        #[max_length = 32]
+        code -> Varchar,
+        #[max_length = 100]
+        name_en -> Varchar,
+        #[max_length = 100]
+        name_zh -> Varchar,
+        description_en -> Nullable<Text>,
+        description_zh -> Nullable<Text>,
+        #[max_length = 16]
+        tier -> Varchar,
+        #[max_length = 16]
+        billing_cycle -> Nullable<Varchar>,
+        price_credits -> Int8,
+        #[max_length = 32]
+        price_display -> Nullable<Varchar>,
+        features -> Nullable<Jsonb>,
+        limits -> Nullable<Jsonb>,
+        trial_days -> Nullable<Int4>,
+        is_active -> Bool,
+        sort_order -> Nullable<Int4>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     taxon_categories (id) {
         id -> Int8,
         code -> Text,
@@ -805,9 +947,75 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    user_subscriptions (id) {
+        id -> Int8,
+        user_id -> Int8,
+        plan_id -> Int8,
+        #[max_length = 16]
+        status -> Varchar,
+        started_at -> Timestamptz,
+        expires_at -> Nullable<Timestamptz>,
+        cancelled_at -> Nullable<Timestamptz>,
+        cancel_reason -> Nullable<Text>,
+        auto_renew -> Bool,
+        trial_ends_at -> Nullable<Timestamptz>,
+        last_payment_id -> Nullable<Int8>,
+        next_billing_at -> Nullable<Timestamptz>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    wallet_accounts (id) {
+        id -> Int8,
+        user_id -> Int8,
+        balance -> Int8,
+        frozen_balance -> Int8,
+        total_deposited -> Int8,
+        total_spent -> Int8,
+        #[max_length = 3]
+        currency -> Varchar,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    wallet_transactions (id) {
+        id -> Int8,
+        user_id -> Int8,
+        wallet_id -> Int8,
+        #[max_length = 32]
+        transaction_type -> Varchar,
+        amount -> Int8,
+        balance_before -> Int8,
+        balance_after -> Int8,
+        #[max_length = 32]
+        reference_type -> Nullable<Varchar>,
+        reference_id -> Nullable<Int8>,
+        description -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::joinable!(ai_usage_records -> base_users (user_id));
+diesel::joinable!(ai_usage_quotas -> base_users (user_id));
+diesel::joinable!(payment_orders -> base_users (user_id));
+diesel::joinable!(payment_refunds -> payment_orders (order_id));
 diesel::joinable!(user_ai_providers -> base_users (user_id));
+diesel::joinable!(user_subscriptions -> base_users (user_id));
+diesel::joinable!(user_subscriptions -> subscription_plans (plan_id));
+diesel::joinable!(wallet_accounts -> base_users (user_id));
+diesel::joinable!(wallet_transactions -> base_users (user_id));
+diesel::joinable!(wallet_transactions -> wallet_accounts (wallet_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
+    ai_usage_records,
+    ai_usage_quotas,
     archive_achievement_definitions,
     archive_rank_definitions,
     archive_user_achievements,
@@ -822,6 +1030,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     asset_stages,
     asset_word_sentences,
     auth_codes,
+    base_admins,
     base_passwords,
     base_role_permissions,
     base_role_users,
@@ -862,7 +1071,13 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_write_practices,
     oauth_identities,
     oauth_login_sessions,
+    payment_orders,
+    payment_refunds,
+    subscription_plans,
     taxon_categories,
     taxon_domains,
     user_ai_providers,
+    user_subscriptions,
+    wallet_accounts,
+    wallet_transactions,
 );

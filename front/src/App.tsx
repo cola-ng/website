@@ -17,6 +17,8 @@ import { StagesPage } from './pages/StagesPage'
 import { StageDetailPage } from './pages/StageDetailPage'
 import { ReadingPage } from './pages/ReadingPage'
 import { FavoritesPage } from './pages/FavoritesPage'
+import { AdminPage } from './pages/AdminPage'
+import { SubscriptionPage } from './pages/SubscriptionPage'
 
 function AppRoutes() {
   const { token } = useAuth()
@@ -37,6 +39,9 @@ function AppRoutes() {
       <Route path="/login" element={<HomePage />} />
       <Route path="/auth" element={<AuthorizePage />} />
       <Route path="/me" element={token ? <MePage /> : <Navigate to="/" replace />} />
+      <Route path="/admin" element={<AdminPage />} />
+      <Route path="/admin/users" element={<AdminPage />} />
+      <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/favorites" element={<FavoritesPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />
       <Route path="/terms" element={<TermsPage />} />

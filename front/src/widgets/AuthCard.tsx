@@ -43,10 +43,10 @@ export function AuthCard({ intent, redirectTo: redirectToProp }: { intent?: 'des
     try {
       if (mode === 'login') {
         const resp = await login({ email, password })
-        setAuth(resp.access_token, resp.user)
+        setAuth(resp.access_token, { ...resp.user, is_admin: resp.is_admin })
       } else {
         const resp = await register({ email, password, name: name || undefined })
-        setAuth(resp.access_token, resp.user)
+        setAuth(resp.access_token, { ...resp.user, is_admin: resp.is_admin })
       }
       navigate(redirectTo)
     } catch (e: unknown) {

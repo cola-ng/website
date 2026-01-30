@@ -376,6 +376,7 @@ pub struct NewWorldDictionary {
 #[diesel(table_name = dict_etymologies)]
 pub struct Etymology {
     pub id: i64,
+    pub origin_code: Option<String>,
     pub origin_language: Option<String>,
     pub origin_word: Option<String>,
     pub origin_meaning: Option<String>,
