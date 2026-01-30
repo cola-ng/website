@@ -9,6 +9,7 @@ use salvo::serve_static::StaticDir;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 
+use crate::hoops::maybe_auth;
 use crate::{DepotExt, OkResponse};
 
 mod account;
@@ -20,7 +21,7 @@ mod dict;
 mod learn;
 
 pub fn router() -> Router {
-    Router::new()
+    Router::new().hoop(maybe_auth)
         .push(
             Router::with_path("api")
                 .hoop(

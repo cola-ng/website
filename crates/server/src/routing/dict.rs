@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::db::schema::*;
 use crate::db::with_conn;
+use crate::hoops::{maybe_auth, require_auth};
 use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
@@ -84,6 +85,11 @@ pub fn router() -> Router {
                 .post(searched_words::create_searched_word)
                 .delete(searched_words::clear_searched_words),
         )
+        .push(
+            Router::with_path("words/searched/batch")
+                .post(searched_words::batch_create_searched_words),
+        )
+        .push(Router::with_path("words/searched/{id}").delete(searched_words::delete_searched_word))
 }
 
 pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {

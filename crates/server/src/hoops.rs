@@ -3,7 +3,7 @@ use salvo::prelude::*;
 use crate::AppResult;
 
 mod auth;
-pub use auth::require_auth;
+pub use auth::{maybe_auth, require_auth};
 
 #[handler]
 pub async fn ensure_accept(req: &mut Request) {

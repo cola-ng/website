@@ -110,6 +110,7 @@ CREATE TABLE IF NOT EXISTS asset_read_subjects (
     title_zh TEXT NOT NULL UNIQUE,
     description_en TEXT,
     description_zh TEXT,
+    icon_emoji TEXT,
     difficulty SMALLINT, -- 1-10,
     subject_type TEXT DEFAULT 'sentence',
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()

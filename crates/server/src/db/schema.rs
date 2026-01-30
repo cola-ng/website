@@ -131,6 +131,7 @@ diesel::table! {
         title_zh -> Text,
         description_en -> Nullable<Text>,
         description_zh -> Nullable<Text>,
+        icon_emoji -> Nullable<Text>,
         difficulty -> Nullable<Int2>,
         subject_type -> Nullable<Text>,
         created_at -> Timestamptz,

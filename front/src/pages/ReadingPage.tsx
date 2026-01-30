@@ -10,7 +10,9 @@ import {
   Loader2,
   RotateCcw,
   Trophy,
-  ArrowUp,
+  ChevronRight,
+  X,
+  BookOpen,
 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
@@ -24,7 +26,6 @@ import {
   getRecommendedSentences,
   submitReadPractice,
   resetSkillLevel,
-  advanceSkillLevel,
   listReadSubjects,
   type ReadSentence,
   type ReadSubject,
@@ -56,11 +57,11 @@ export function ReadingPage() {
   const [userLevel, setUserLevel] = useState(5)
   const [allCompleted, setAllCompleted] = useState(false)
   const [resetting, setResetting] = useState(false)
-  const [advancing, setAdvancing] = useState(false)
   const [levelUpNotification, setLevelUpNotification] = useState<number | null>(null)
   const [subjects, setSubjects] = useState<ReadSubject[]>([])
   const [selectedSubjectId, setSelectedSubjectId] = useState<number | undefined>(undefined)
   const [subjectCompleted, setSubjectCompleted] = useState(false)
+  const [showSubjectModal, setShowSubjectModal] = useState(false)
 
   // Recording refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
@@ -377,25 +378,6 @@ export function ReadingPage() {
     }
   }
 
-  // Handle advance level
-  const handleAdvanceLevel = async () => {
-    if (!token || advancing || userLevel >= 10) return
-
-    setAdvancing(true)
-    try {
-      const result = await advanceSkillLevel(token, 'pronunciation')
-      setUserLevel(result.new_level)
-      setLevelUpNotification(result.new_level)
-      setTimeout(() => setLevelUpNotification(null), 3000)
-      // Refetch recommendations for new level
-      await fetchRecommendedSentences()
-    } catch (err) {
-      console.error('Failed to advance level:', err)
-    } finally {
-      setAdvancing(false)
-    }
-  }
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -471,7 +453,7 @@ export function ReadingPage() {
             </div>
             <h1 className="text-2xl font-bold text-gray-900 mb-2">恭喜！全部完成</h1>
             <p className="text-gray-600 mb-2">
-              你已经完成了当前水平 (Lv.{userLevel}) 的所有跟读练习
+              你已经完成了当前水平 (Lv.{userLevel}) 的所有大声跟读练习
             </p>
             <p className="text-gray-500 text-sm mb-6">得分90分以上的句子已被标记为掌握</p>
             <Button onClick={handleResetLevel} disabled={resetting} className="gap-2">
@@ -499,9 +481,9 @@ export function ReadingPage() {
         {levelUpNotification && (
           <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl shadow-lg mb-4 p-4 text-white animate-pulse">
             <div className="flex items-center justify-center gap-3">
-              <ArrowUp className="h-6 w-6" />
+              <Trophy className="h-6 w-6" />
               <span className="text-lg font-bold">恭喜升级！你的发音等级提升到 Lv.{levelUpNotification}</span>
-              <ArrowUp className="h-6 w-6" />
+              <Trophy className="h-6 w-6" />
             </div>
           </div>
         )}
@@ -512,7 +494,7 @@ export function ReadingPage() {
             <div className="flex items-center justify-center gap-3">
               <Trophy className="h-6 w-6" />
               <span className="text-lg font-bold">
-                恭喜！你已完成本主题当前水平 (Lv.{userLevel}) 的所有练习
+                恭喜！你已完成本场景当前水平 (Lv.{userLevel}) 的所有练习
               </span>
               <Trophy className="h-6 w-6" />
             </div>
@@ -523,49 +505,125 @@ export function ReadingPage() {
         <div className="bg-white rounded-xl shadow-lg mb-4 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-3">
-              <h1 className="text-lg font-bold text-gray-900">🎤 跟读练习</h1>
+              <h1 className="text-xl font-bold text-gray-900">🎤 大声跟读</h1>
               <span className="text-xs bg-orange-100 text-orange-600 px-2 py-0.5 rounded-full">
                 Lv.{userLevel}
               </span>
-              {userLevel < 10 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleAdvanceLevel}
-                  disabled={advancing}
-                  className="text-xs text-gray-500 hover:text-orange-600 h-6 px-2"
-                >
-                  {advancing ? (
-                    <Loader2 className="h-3 w-3 animate-spin mr-1" />
-                  ) : (
-                    <ArrowUp className="h-3 w-3 mr-1" />
-                  )}
-                  进入下一档
-                </Button>
-              )}
             </div>
             <span className="text-sm text-gray-500">
               {sentences.length > 0 ? `${currentIndex + 1}/${sentences.length}` : ''}
             </span>
           </div>
-          {/* Subject selection */}
-          {subjects.length > 0 && (
-            <div className="px-4 py-2 border-t bg-gray-50">
-              <select
-                value={selectedSubjectId ?? ''}
-                onChange={(e) => setSelectedSubjectId(e.target.value ? Number(e.target.value) : undefined)}
-                className="text-sm border rounded-md px-2 py-1 bg-white text-gray-700 focus:outline-none focus:ring-2 focus:ring-orange-500"
+          {/* Subject quick selection */}
+          <div className="px-4 py-3 border-t bg-gray-50">
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* All topics button */}
+              <button
+                onClick={() => setSelectedSubjectId(undefined)}
+                className={cn(
+                  'min-w-[5rem] px-3 py-1.5 rounded-full text-sm font-medium transition-all text-center',
+                  selectedSubjectId === undefined
+                    ? 'bg-orange-500 text-white shadow-md'
+                    : 'bg-white text-gray-600 border border-gray-200 hover:border-orange-300 hover:text-orange-600'
+                )}
               >
-                <option value="">全部主题</option>
-                {subjects.map((subject) => (
-                  <option key={subject.id} value={subject.id}>
-                    {subject.title_zh || subject.title_en}
-                  </option>
-                ))}
-              </select>
+                全部场景
+              </button>
+              {/* First 6-8 subjects */}
+              {subjects.slice(0, 7).map((subject) => (
+                <button
+                  key={subject.id}
+                  onClick={() => setSelectedSubjectId(subject.id)}
+                  className={cn(
+                    'min-w-[5rem] px-3 py-1.5 rounded-full text-sm font-medium transition-all text-center',
+                    selectedSubjectId === subject.id
+                      ? 'bg-orange-500 text-white shadow-md'
+                      : 'bg-white text-gray-600 border border-gray-200 hover:border-orange-300 hover:text-orange-600'
+                  )}
+                >
+                  {subject.title_zh || subject.title_en}
+                </button>
+              ))}
+              {/* More subjects button */}
+              {subjects.length > 7 && (
+                <button
+                  onClick={() => setShowSubjectModal(true)}
+                  className="min-w-[5rem] px-3 py-1.5 rounded-full text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 transition-all flex items-center justify-center gap-1"
+                >
+                  更多场景
+                  <ChevronRight className="h-3.5 w-3.5" />
+                </button>
+              )}
             </div>
-          )}
+            {/* Current selection indicator */}
+            {selectedSubjectId && (
+              <div className="mt-2 flex items-center gap-2 text-sm text-orange-600">
+                <BookOpen className="h-4 w-4" />
+                <span>当前场景：{subjects.find(s => s.id === selectedSubjectId)?.title_zh || subjects.find(s => s.id === selectedSubjectId)?.title_en}</span>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Subject Selection Modal */}
+        {showSubjectModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden mx-4">
+              <div className="flex items-center justify-between px-4 py-3 border-b">
+                <h2 className="text-lg font-bold text-gray-900">选择场景</h2>
+                <button
+                  onClick={() => setShowSubjectModal(false)}
+                  className="text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              <div className="p-4 overflow-y-auto max-h-[60vh]">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {/* All topics option */}
+                  <button
+                    onClick={() => {
+                      setSelectedSubjectId(undefined)
+                      setShowSubjectModal(false)
+                    }}
+                    className={cn(
+                      'p-4 rounded-xl border-2 text-left transition-all hover:shadow-md',
+                      selectedSubjectId === undefined
+                        ? 'border-orange-500 bg-orange-50'
+                        : 'border-gray-200 hover:border-orange-300'
+                    )}
+                  >
+                    <div className="text-2xl mb-2">📚</div>
+                    <div className="font-medium text-gray-900">全部场景</div>
+                    <div className="text-xs text-gray-500">所有练习内容</div>
+                  </button>
+                  {/* Subject cards */}
+                  {subjects.map((subject) => (
+                    <button
+                      key={subject.id}
+                      onClick={() => {
+                        setSelectedSubjectId(subject.id)
+                        setShowSubjectModal(false)
+                      }}
+                      className={cn(
+                        'p-4 rounded-xl border-2 text-left transition-all hover:shadow-md',
+                        selectedSubjectId === subject.id
+                          ? 'border-orange-500 bg-orange-50'
+                          : 'border-gray-200 hover:border-orange-300'
+                      )}
+                    >
+                      <div className="text-2xl mb-2">{subject.icon_emoji || '📖'}</div>
+                      <div className="font-medium text-gray-900">{subject.title_zh || subject.title_en}</div>
+                      {subject.title_en && subject.title_zh && (
+                        <div className="text-xs text-gray-500">{subject.title_en}</div>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main content */}
         {currentSentence ? (

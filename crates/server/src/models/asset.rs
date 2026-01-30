@@ -221,6 +221,7 @@ pub struct ReadSubject {
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
+    pub icon_emoji: Option<String>,
     pub difficulty: Option<i16>,
     pub subject_type: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -234,6 +235,7 @@ pub struct NewReadSubject {
     pub title_zh: String,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
+    pub icon_emoji: Option<String>,
     pub difficulty: Option<i16>,
     pub subject_type: Option<String>,
 }

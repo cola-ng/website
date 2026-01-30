@@ -46,6 +46,7 @@ struct SubjectData {
     title_zh: String,
     description_en: Option<String>,
     description_zh: Option<String>,
+    icon_emoji: Option<String>,
     difficulty: Option<i16>,
     subject_type: Option<String>,
     sentences: Vec<SentenceData>,
@@ -73,6 +74,7 @@ struct NewReadSubject {
     title_zh: String,
     description_en: Option<String>,
     description_zh: Option<String>,
+    icon_emoji: Option<String>,
     difficulty: Option<i16>,
     subject_type: Option<String>,
 }
@@ -462,6 +464,7 @@ fn insert_to_database(
             title_zh: subject_data.title_zh.clone(),
             description_en: subject_data.description_en.clone(),
             description_zh: subject_data.description_zh.clone(),
+            icon_emoji: subject_data.icon_emoji.clone(),
             difficulty: subject_data.difficulty,
             subject_type: subject_data.subject_type.clone(),
         };

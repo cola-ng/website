@@ -43,6 +43,8 @@ export type Word = {
   is_lemma: boolean | null
   word_count: number | null
   is_active: boolean | null
+  memory: string | null
+  notes: string | null
   created_by: number | null
   updated_by: number | null
   updated_at: string
@@ -455,34 +457,169 @@ export function translate(
   })
 }
 
-// Search History types
-export type SearchHistory = {
+// Searched Words types
+export type SearchedWord = {
   id: number
   user_id: number
+  word_id: number | null
   word: string
   searched_at: string
 }
 
-export function saveSearchHistory(token: string, word: string): Promise<SearchHistory> {
-  return requestJson<SearchHistory>('/api/dict/history', {
+export type LocalSearchedWord = {
+  word: string
+  searched_at: string
+}
+
+/**
+ * Save a searched word to server (requires authentication)
+ * @param word The word to save
+ * @param token Auth token (required)
+ * @param searchedAt Optional timestamp for when the word was searched
+ */
+export function saveSearchedWord(
+  word: string,
+  token: string,
+  searchedAt?: string
+): Promise<SearchedWord> {
+  return requestJson<SearchedWord>('/api/dict/words/searched', {
     method: 'POST',
     token,
-    body: JSON.stringify({ word }),
+    body: JSON.stringify({ word, searched_at: searchedAt }),
   })
 }
 
-export function getSearchHistory(token: string, limit: number = 10): Promise<SearchHistory[]> {
-  return requestJson<SearchHistory[]>(`/api/dict/history?limit=${limit}`, {
+/**
+ * Batch sync local search history to server (requires authentication)
+ * @param words Array of words with timestamps
+ * @param token Auth token (required)
+ */
+export function batchSaveSearchedWords(
+  words: LocalSearchedWord[],
+  token: string
+): Promise<SearchedWord[]> {
+  return requestJson<SearchedWord[]>('/api/dict/words/searched/batch', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ words }),
+  })
+}
+
+/**
+ * Get searched words from server
+ * Returns empty array if not authenticated
+ */
+export function getSearchedWords(limit: number = 20, token?: string): Promise<SearchedWord[]> {
+  return requestJson<SearchedWord[]>(`/api/dict/words/searched?limit=${limit}`, {
     method: 'GET',
     token,
   })
 }
 
-export function clearSearchHistory(token: string): Promise<{ cleared: boolean }> {
-  return requestJson('/api/dict/history', {
+/**
+ * Delete a single searched word (requires authentication)
+ */
+export function deleteSearchedWord(id: number, token: string): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/dict/words/searched/${id}`, {
     method: 'DELETE',
     token,
   })
+}
+
+/**
+ * Clear all searched words (requires authentication)
+ */
+export function clearSearchedWords(token: string): Promise<{ cleared: boolean; count: number }> {
+  return requestJson<{ cleared: boolean; count: number }>('/api/dict/words/searched', {
+    method: 'DELETE',
+    token,
+  })
+}
+
+// Local storage helpers for search history
+const LOCAL_SEARCH_HISTORY_KEY = 'dict_search_history'
+const MAX_LOCAL_HISTORY = 50
+
+/**
+ * Get search history from local storage
+ */
+export function getLocalSearchHistory(): LocalSearchedWord[] {
+  try {
+    const data = localStorage.getItem(LOCAL_SEARCH_HISTORY_KEY)
+    return data ? JSON.parse(data) : []
+  } catch {
+    return []
+  }
+}
+
+/**
+ * Save a word to local search history
+ */
+export function saveLocalSearchHistory(word: string): LocalSearchedWord[] {
+  const history = getLocalSearchHistory()
+  const normalizedWord = word.toLowerCase()
+
+  // Remove existing entry if present
+  const filtered = history.filter(h => h.word.toLowerCase() !== normalizedWord)
+
+  // Add to front with current timestamp
+  const newEntry: LocalSearchedWord = {
+    word,
+    searched_at: new Date().toISOString(),
+  }
+  const updated = [newEntry, ...filtered].slice(0, MAX_LOCAL_HISTORY)
+
+  try {
+    localStorage.setItem(LOCAL_SEARCH_HISTORY_KEY, JSON.stringify(updated))
+  } catch {
+    // Storage might be full
+  }
+
+  return updated
+}
+
+/**
+ * Delete a word from local search history
+ */
+export function deleteLocalSearchHistory(word: string): LocalSearchedWord[] {
+  const history = getLocalSearchHistory()
+  const normalizedWord = word.toLowerCase()
+  const updated = history.filter(h => h.word.toLowerCase() !== normalizedWord)
+
+  try {
+    localStorage.setItem(LOCAL_SEARCH_HISTORY_KEY, JSON.stringify(updated))
+  } catch {
+    // Ignore
+  }
+
+  return updated
+}
+
+/**
+ * Clear all local search history
+ */
+export function clearLocalSearchHistory(): void {
+  try {
+    localStorage.removeItem(LOCAL_SEARCH_HISTORY_KEY)
+  } catch {
+    // Ignore
+  }
+}
+
+/**
+ * Sync local history to server and clear local storage
+ * Call this after user logs in
+ */
+export async function syncLocalHistoryToServer(token: string): Promise<void> {
+  const localHistory = getLocalSearchHistory()
+  if (localHistory.length === 0) return
+
+  try {
+    await batchSaveSearchedWords(localHistory, token)
+    clearLocalSearchHistory()
+  } catch (err) {
+    console.error('Failed to sync local history to server:', err)
+  }
 }
 
 // Learning Summary types
@@ -1083,6 +1220,7 @@ export type ReadSubject = {
   title_zh: string
   description_en: string | null
   description_zh: string | null
+  icon_emoji: string | null
   difficulty: number | null
   subject_type: string | null
   created_at: string
