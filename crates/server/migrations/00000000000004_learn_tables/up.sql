@@ -162,7 +162,7 @@ CREATE TABLE IF NOT EXISTS learn_vocabularies (
     user_id BIGINT NOT NULL,
     word TEXT NOT NULL,
     word_zh TEXT,
-    mastery_level INTEGER DEFAULT 1 CHECK(mastery_level BETWEEN 1 AND 5),
+    mastery_level INTEGER DEFAULT 1,-- CHECK(mastery_level BETWEEN 1 AND 5),
     first_seen_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_practiced_at TIMESTAMPTZ,
     practice_count INTEGER DEFAULT 0,
@@ -172,6 +172,16 @@ CREATE TABLE IF NOT EXISTS learn_vocabularies (
 );
 CREATE INDEX IF NOT EXISTS idx_user_vocab_user ON learn_vocabularies(user_id, next_review_at);
 CREATE INDEX IF NOT EXISTS idx_user_vocab_review ON learn_vocabularies(next_review_at) WHERE next_review_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS learn_favorites(
+    id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    entity TEXT NOT NULL,
+    record_id BIGINT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE(user_id, entity, record_id)
+);
+CREATE INDEX IF NOT EXISTS idx_learn_favorites_user ON learn_favorites(user_id, entity);
 
 -- Table: learn_suggestions - Log AI suggestions made during real-time assistance
 CREATE TABLE IF NOT EXISTS learn_suggestions (

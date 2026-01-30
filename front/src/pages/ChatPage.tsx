@@ -1,23 +1,23 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Send, Mic, MicOff, MessageCircle, Map, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2, RotateCcw } from 'lucide-react'
+import { Send, Mic, MicOff, MessageCircle, Map as MapIcon, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2, RotateCcw, Heart } from 'lucide-react'
 
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, toggleWordInVocabulary, listVocabulary, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, lookup, toggleFavorite, listFavorites, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
 import { ensureAudioContextRunning, stopAudio as globalStopAudio, queueAudio, queueAudioFromBase64, onPlayingStateChange } from '../lib/audio'
 
 // Component to render English text with clickable words
 interface ClickableTextProps {
   text: string
-  vocabularyWords: Set<string>
+  favoriteWords: Set<string>
   onWordDoubleClick: (word: string) => void
   className?: string
 }
 
-function ClickableText({ text, vocabularyWords, onWordDoubleClick, className }: ClickableTextProps) {
+function ClickableText({ text, favoriteWords, onWordDoubleClick, className }: ClickableTextProps) {
   // Split text into words and non-words (punctuation, spaces)
   const parts = text.split(/(\s+|[^\w'-]+)/g)
 
@@ -31,7 +31,7 @@ function ClickableText({ text, vocabularyWords, onWordDoubleClick, className }: 
         }
 
         const normalizedWord = part.toLowerCase().replace(/[^a-z'-]/g, '')
-        const isInVocabulary = vocabularyWords.has(normalizedWord)
+        const isInFavorites = favoriteWords.has(normalizedWord)
 
         return (
           <span
@@ -43,11 +43,11 @@ function ClickableText({ text, vocabularyWords, onWordDoubleClick, className }: 
             }}
             className={cn(
               'cursor-pointer transition-colors rounded px-0.5 -mx-0.5',
-              isInVocabulary
+              isInFavorites
                 ? 'text-orange-500 font-medium'
                 : 'hover:bg-black/5'
             )}
-            title={isInVocabulary ? '双击移出单词本' : '双击加入单词本'}
+            title={isInFavorites ? '双击移出收藏夹' : '双击加入收藏夹'}
           >
             {part}
           </span>
@@ -153,7 +153,12 @@ export function ChatPage() {
   const [renameValue, setRenameValue] = useState('')
 
   // Vocabulary words that have been added (for highlighting)
-  const [vocabularyWords, setVocabularyWords] = useState<Set<string>>(new Set())
+  const [favoriteWords, setFavoriteWords] = useState<Set<string>>(new Set())
+  // Map word string to word ID for toggling favorites
+  const [wordIdMap, setWordIdMap] = useState<Map<string, number>>(new Map())
+  // Favorite sentence IDs (chat turn IDs)
+  const [favoriteSentenceIds, setFavoriteSentenceIds] = useState<Set<number>>(new Set())
+  const [togglingSentenceId, setTogglingSentenceId] = useState<number | null>(null)
 
   // Display settings - independent toggles for each language (persisted to localStorage)
   const [showBotEn, setShowBotEn] = useState(() => {
@@ -204,44 +209,64 @@ export function ChatPage() {
     localStorage.setItem('conv_showUserZh', String(showUserZh))
   }, [showBotEn, showBotZh, showUserEn, showUserZh])
 
-  // Load user's vocabulary words on mount (for highlighting)
+  // Load user's favorite words on mount (for highlighting)
   useEffect(() => {
     if (!token) return
-    listVocabulary(token, false, 1000)
-      .then((vocab) => {
-        const words = new Set(vocab.map((v) => v.word.toLowerCase()))
-        setVocabularyWords(words)
+    listFavorites(token, 'word', 1000)
+      .then((favorites) => {
+        const words = new Set<string>()
+        const idMap = new Map<string, number>()
+        for (const fav of favorites) {
+          if (fav.word) {
+            const wordLower = fav.word.toLowerCase()
+            words.add(wordLower)
+            idMap.set(wordLower, fav.record_id)
+          }
+        }
+        setFavoriteWords(words)
+        setWordIdMap(idMap)
       })
-      .catch((err) => console.error('Failed to load vocabulary:', err))
+      .catch((err) => console.error('Failed to load favorites:', err))
   }, [token])
 
-  // Handle toggling word in vocabulary on double-click
+  // Handle toggling word in favorites on double-click
   const handleToggleWord = useCallback(async (word: string) => {
     if (!token) return
     const normalizedWord = word.toLowerCase().replace(/[^a-z'-]/g, '')
     if (!normalizedWord || normalizedWord.length < 2) return
 
-    const wasInVocabulary = vocabularyWords.has(normalizedWord)
-
-    // Optimistically toggle local state
-    setVocabularyWords((prev) => {
-      const next = new Set(prev)
-      if (wasInVocabulary) {
-        next.delete(normalizedWord)
-      } else {
-        next.add(normalizedWord)
-      }
-      return next
-    })
+    const wasInFavorites = favoriteWords.has(normalizedWord)
 
     try {
-      await toggleWordInVocabulary(token, normalizedWord)
-    } catch (err) {
-      console.error('Failed to toggle word in vocabulary:', err)
-      // Revert on error
-      setVocabularyWords((prev) => {
+      // Get word ID - either from cache or lookup
+      let wordId = wordIdMap.get(normalizedWord)
+      if (!wordId) {
+        // Look up the word to get its ID
+        const wordData = await lookup(normalizedWord)
+        wordId = wordData.word.id
+        // Cache the word ID
+        setWordIdMap((prev) => new Map(prev).set(normalizedWord, wordId!))
+      }
+
+      // Optimistically toggle local state
+      setFavoriteWords((prev) => {
         const next = new Set(prev)
-        if (wasInVocabulary) {
+        if (wasInFavorites) {
+          next.delete(normalizedWord)
+        } else {
+          next.add(normalizedWord)
+        }
+        return next
+      })
+
+      // Toggle favorite on server
+      await toggleFavorite(token, 'word', wordId)
+    } catch (err) {
+      console.error('Failed to toggle word in favorites:', err)
+      // Revert on error
+      setFavoriteWords((prev) => {
+        const next = new Set(prev)
+        if (wasInFavorites) {
           next.add(normalizedWord)
         } else {
           next.delete(normalizedWord)
@@ -249,7 +274,55 @@ export function ChatPage() {
         return next
       })
     }
-  }, [token, vocabularyWords])
+  }, [token, favoriteWords, wordIdMap])
+
+  // Load user's favorite sentences on mount
+  useEffect(() => {
+    if (!token) return
+    listFavorites(token, 'sentence', 1000)
+      .then((favorites) => {
+        const ids = new Set<number>(favorites.map(fav => fav.record_id))
+        setFavoriteSentenceIds(ids)
+      })
+      .catch((err) => console.error('Failed to load favorite sentences:', err))
+  }, [token])
+
+  // Handle toggling sentence in favorites
+  const handleToggleSentence = useCallback(async (turnId: number) => {
+    if (!token) return
+
+    const wasInFavorites = favoriteSentenceIds.has(turnId)
+    setTogglingSentenceId(turnId)
+
+    // Optimistically toggle local state
+    setFavoriteSentenceIds((prev) => {
+      const next = new Set(prev)
+      if (wasInFavorites) {
+        next.delete(turnId)
+      } else {
+        next.add(turnId)
+      }
+      return next
+    })
+
+    try {
+      await toggleFavorite(token, 'sentence', turnId)
+    } catch (err) {
+      console.error('Failed to toggle sentence in favorites:', err)
+      // Revert on error
+      setFavoriteSentenceIds((prev) => {
+        const next = new Set(prev)
+        if (wasInFavorites) {
+          next.add(turnId)
+        } else {
+          next.delete(turnId)
+        }
+        return next
+      })
+    } finally {
+      setTogglingSentenceId(null)
+    }
+  }, [token, favoriteSentenceIds])
 
   // Load chats from server on mount
   useEffect(() => {
@@ -1439,7 +1512,7 @@ export function ChatPage() {
                   随便聊
                 </Button>
                 <Button onClick={() => setShowContextDialog(true)} size="sm" className="flex-1 gap-1 text-xs">
-                  <Map className="h-3.5 w-3.5" />
+                  <MapIcon className="h-3.5 w-3.5" />
                   选场景
                 </Button>
               </div>
@@ -1687,7 +1760,7 @@ export function ChatPage() {
                           ) : (
                             <ClickableText
                               text={message.contentEn}
-                              vocabularyWords={vocabularyWords}
+                              favoriteWords={favoriteWords}
                               onWordDoubleClick={handleToggleWord}
                             />
                           )}
@@ -1737,6 +1810,32 @@ export function ChatPage() {
                               )}
                             </button>
                           )}
+                          {/* Favorite sentence button for AI messages */}
+                          {!isUser && !isNotification && (() => {
+                            const turnId = parseInt(message.id, 10)
+                            if (isNaN(turnId)) return null
+                            const isFavorite = favoriteSentenceIds.has(turnId)
+                            const isToggling = togglingSentenceId === turnId
+                            return (
+                              <button
+                                onClick={() => handleToggleSentence(turnId)}
+                                disabled={isToggling}
+                                className={cn(
+                                  'p-1 rounded transition-colors',
+                                  isFavorite
+                                    ? 'text-red-500 hover:bg-gray-200'
+                                    : 'hover:bg-gray-200 opacity-0 group-hover:opacity-100'
+                                )}
+                                title={isFavorite ? '取消收藏' : '收藏句子'}
+                              >
+                                {isToggling ? (
+                                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Heart className={cn('h-3.5 w-3.5', isFavorite && 'fill-current')} />
+                                )}
+                              </button>
+                            )
+                          })()}
                           <button
                             onClick={() => handleDeleteMessage(message.id)}
                             className={cn(

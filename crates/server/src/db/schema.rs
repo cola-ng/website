@@ -605,6 +605,16 @@ diesel::table! {
 }
 
 diesel::table! {
+    learn_favorites (id) {
+        id -> Int8,
+        user_id -> Int8,
+        entity -> Text,
+        record_id -> Int8,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_issue_words (id) {
         id -> Int8,
         user_id -> Int8,
@@ -840,6 +850,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_chat_turns,
     learn_chats,
     learn_daily_stats,
+    learn_favorites,
     learn_issue_words,
     learn_levels,
     learn_practices,

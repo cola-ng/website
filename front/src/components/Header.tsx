@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { User, LogOut, Settings, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu, Award, Flame, Star, Trophy, Zap } from 'lucide-react'
+import { User, LogOut, Settings, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu, Award, Flame, Star, Trophy, Zap, Heart } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 import { Button } from './ui/button'
@@ -283,6 +283,12 @@ export function Header() {
 
                 {/* Menu Items */}
                 <div className="p-2">
+                  <DropdownMenuItem asChild>
+                    <Link to="/favorites" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg">
+                      <Heart className="h-4 w-4" />
+                      <span>收藏夹</span>
+                    </Link>
+                  </DropdownMenuItem>
                   <DropdownMenuItem asChild>
                     <Link to="/me" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg">
                       <Settings className="h-4 w-4" />

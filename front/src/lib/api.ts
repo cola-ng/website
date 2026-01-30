@@ -1711,3 +1711,137 @@ export function activateAiProvider(token: string, providerId: number): Promise<U
     token,
   })
 }
+
+// ============================================================================
+// Favorites API
+// ============================================================================
+
+/** Supported entity types for favorites */
+export type FavoriteEntity = 'word' | 'sentence' | string
+
+/** Favorite item with optional entity details */
+export type Favorite = {
+  id: number
+  user_id: number
+  entity: FavoriteEntity
+  record_id: number
+  created_at: string
+  /** Word string (only present when entity is "word") */
+  word?: string
+  /** Chinese definition (only present when entity is "word") */
+  word_zh?: string
+  /** Pronunciation ID for audio playback (only present when entity is "word" and audio exists) */
+  pronunciation_id?: number
+  /** English sentence (only present when entity is "sentence") */
+  sentence_en?: string
+  /** Chinese sentence (only present when entity is "sentence") */
+  sentence_zh?: string
+  /** Audio URL for sentence playback (only present when entity is "sentence" and audio exists) */
+  audio_url?: string
+}
+
+/** Toggle favorite response */
+export type ToggleFavoriteResponse = {
+  is_favorited: boolean
+  favorite_id: number | null
+}
+
+/**
+ * List favorites for the current user
+ * @param token Auth token
+ * @param entity Optional entity type filter (e.g., 'word', 'sentence')
+ * @param limit Max number of results (default 50)
+ * @param offset Offset for pagination
+ */
+export function listFavorites(
+  token: string,
+  entity?: FavoriteEntity,
+  limit: number = 50,
+  offset: number = 0
+): Promise<Favorite[]> {
+  const params = new URLSearchParams()
+  if (entity) params.set('entity', entity)
+  params.set('limit', limit.toString())
+  params.set('offset', offset.toString())
+
+  return requestJson<Favorite[]>(`/api/learn/favorites?${params}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Add a favorite
+ * @param token Auth token
+ * @param entity Entity type (e.g., 'word', 'sentence')
+ * @param recordId ID of the record to favorite
+ */
+export function addFavorite(
+  token: string,
+  entity: FavoriteEntity,
+  recordId: number
+): Promise<Favorite> {
+  return requestJson<Favorite>('/api/learn/favorites', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ entity, record_id: recordId }),
+  })
+}
+
+/**
+ * Remove a favorite
+ * @param token Auth token
+ * @param entity Entity type
+ * @param recordId Record ID
+ */
+export function removeFavorite(
+  token: string,
+  entity: FavoriteEntity,
+  recordId: number
+): Promise<{ deleted: boolean }> {
+  const params = new URLSearchParams()
+  params.set('entity', entity)
+  params.set('record_id', recordId.toString())
+
+  return requestJson<{ deleted: boolean }>(`/api/learn/favorites?${params}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+/**
+ * Toggle a favorite (add if not exists, remove if exists)
+ * @param token Auth token
+ * @param entity Entity type
+ * @param recordId Record ID
+ */
+export function toggleFavorite(
+  token: string,
+  entity: FavoriteEntity,
+  recordId: number
+): Promise<ToggleFavoriteResponse> {
+  return requestJson<ToggleFavoriteResponse>('/api/learn/favorites/toggle', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ entity, record_id: recordId }),
+  })
+}
+
+/**
+ * Check if multiple items are favorited (batch check)
+ * @param token Auth token
+ * @param entity Entity type
+ * @param recordIds List of record IDs to check
+ * @returns List of record IDs that are favorited
+ */
+export function checkFavorites(
+  token: string,
+  entity: FavoriteEntity,
+  recordIds: number[]
+): Promise<number[]> {
+  return requestJson<number[]>('/api/learn/favorites/check', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({ entity, record_ids: recordIds }),
+  })
+}

@@ -5,6 +5,7 @@ use crate::hoops;
 mod achievement;
 mod chat;
 mod daily_stat;
+mod favorite;
 mod issue_word;
 mod practice;
 mod reset;
@@ -42,7 +43,8 @@ pub fn router() -> Router {
                     Router::with_path("turns/{id}")
                         .get(chat::get_turn)
                         .delete(chat::delete_turn)
-                        .push(Router::with_path("issues").get(chat::list_turn_issues)),
+                        .push(Router::with_path("issues").get(chat::list_turn_issues))
+                        .push(Router::with_path("audio").get(chat::serve_turn_audio)),
                 ),
         )
         .push(
@@ -87,5 +89,13 @@ pub fn router() -> Router {
                 .push(Router::with_path("items").get(review::get_review_items))
                 .push(Router::with_path("stats").get(review::get_review_stats))
                 .push(Router::with_path("submit").post(review::submit_review)),
+        )
+        .push(
+            Router::with_path("favorites")
+                .get(favorite::list_favorites)
+                .post(favorite::create_favorite)
+                .delete(favorite::delete_favorite)
+                .push(Router::with_path("toggle").post(favorite::toggle_favorite))
+                .push(Router::with_path("check").post(favorite::check_favorites)),
         )
 }

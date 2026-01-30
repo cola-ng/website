@@ -484,3 +484,25 @@ pub struct NewSuggestion {
     pub suggested_text: String,
     pub was_accepted: Option<bool>,
 }
+
+// ============================================================================
+// Favorites (unified favorites system)
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_favorites)]
+pub struct Favorite {
+    pub id: i64,
+    pub user_id: i64,
+    pub entity: String,
+    pub record_id: i64,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = learn_favorites)]
+pub struct NewFavorite {
+    pub user_id: i64,
+    pub entity: String,
+    pub record_id: i64,
+}

@@ -75,6 +75,10 @@ pub fn router() -> Router {
                 .delete(pronunciation::delete_pronunciation),
         )
         .push(
+            Router::with_path("pronunciations/{id}/audio")
+                .get(pronunciation::serve_pronunciation_audio),
+        )
+        .push(
             Router::with_path("words/{id}/examples")
                 .get(sentence::list_sentences)
                 .post(sentence::create_sentence),

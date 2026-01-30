@@ -147,7 +147,10 @@ pub struct Pronunciation {
     pub word_id: i64,
     pub definition_id: Option<i64>,
     pub ipa: String,
+    #[serde(skip_serializing)]
     pub audio_url: Option<String>,
+    /// Internal storage path, not exposed via API
+    #[serde(skip_serializing)]
     pub audio_path: Option<String>,
     pub dialect: Option<String>,
     pub gender: Option<String>,
