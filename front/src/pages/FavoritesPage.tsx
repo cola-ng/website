@@ -90,40 +90,40 @@ export function FavoritesPage() {
     }
   }
 
-  // Play audio for word (via pronunciation ID) or sentence (via audio_url)
-  const playAudio = async (favorite: Favorite) => {
-    let url: string | undefined
-    let needsAuth = false
-
-    if (favorite.entity === 'word' && favorite.pronunciation?.id) {
-      url = `/api/dict/pronunciations/${favorite.pronunciation.id}/audio`
-    } else if (favorite.entity === 'sentence' && favorite.audio_url) {
-      url = favorite.audio_url
-      needsAuth = true // sentence audio requires auth
-    }
-
-    if (!url) return
+  // Play pronunciation audio by ID
+  const playPronunciation = async (pronunciationId: number) => {
+    const url = `/api/dict/pronunciations/${pronunciationId}/audio`
 
     // Stop any currently playing audio
     stopCurrentAudio()
 
     try {
-      let audio: HTMLAudioElement
-
-      if (needsAuth && token) {
-        // Fetch with auth and play via blob URL
-        const response = await fetch(url, {
-          headers: { Authorization: `Bearer ${token}` },
-        })
-        if (!response.ok) throw new Error('Failed to fetch audio')
-        const blob = await response.blob()
-        const blobUrl = URL.createObjectURL(blob)
-        currentBlobUrlRef.current = blobUrl
-        audio = new Audio(blobUrl)
-      } else {
-        // Public audio, play directly
-        audio = new Audio(url)
+      const audio = new Audio(url)
+      currentAudioRef.current = audio
+      audio.onended = () => {
+        stopCurrentAudio()
       }
+      await audio.play()
+    } catch (err) {
+      console.error('Failed to play audio:', err)
+      toast.error('播放失败', '无法播放音频')
+    }
+  }
+
+  // Play sentence audio (requires auth)
+  const playSentenceAudio = async (audioUrl: string) => {
+    // Stop any currently playing audio
+    stopCurrentAudio()
+
+    try {
+      const response = await fetch(audioUrl, {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      if (!response.ok) throw new Error('Failed to fetch audio')
+      const blob = await response.blob()
+      const blobUrl = URL.createObjectURL(blob)
+      currentBlobUrlRef.current = blobUrl
+      const audio = new Audio(blobUrl)
 
       currentAudioRef.current = audio
       audio.onended = () => {
@@ -211,27 +211,27 @@ export function FavoritesPage() {
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 flex-wrap">
                                 <Link
                                   to={`/dict/${encodeURIComponent(favorite.word)}`}
-                                  className="font-medium text-gray-900 hover:text-orange-600 transition-colors truncate"
+                                  className="font-medium text-gray-900 hover:text-orange-600 transition-colors"
                                 >
                                   {favorite.word}
                                 </Link>
-                                {favorite.pronunciation && (
-                                  <>
+                                {favorite.pronunciations.map((pron) => (
+                                  <span key={pron.id} className="inline-flex items-center gap-1">
                                     <span className="text-sm text-gray-500 font-mono">
-                                      /{favorite.pronunciation.ipa}/
+                                      /{pron.ipa}/
                                     </span>
                                     <button
-                                      onClick={() => playAudio(favorite)}
+                                      onClick={() => playPronunciation(pron.id)}
                                       className="p-1 text-gray-400 hover:text-orange-500 hover:bg-orange-100 rounded transition-colors"
-                                      title="播放发音"
+                                      title={pron.dialect ? `播放发音 (${pron.dialect})` : '播放发音'}
                                     >
                                       <Volume2 className="h-4 w-4" />
                                     </button>
-                                  </>
-                                )}
+                                  </span>
+                                ))}
                               </div>
                               {favorite.word_zh && (
                                 <p className="text-sm text-gray-600 mt-1 line-clamp-2">
@@ -302,7 +302,7 @@ export function FavoritesPage() {
                             <div className="flex items-center gap-1 flex-shrink-0">
                               {favorite.audio_url && (
                                 <button
-                                  onClick={() => playAudio(favorite)}
+                                  onClick={() => playSentenceAudio(favorite.audio_url!)}
                                   className="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded transition-colors opacity-0 group-hover:opacity-100"
                                   title="播放音频"
                                 >

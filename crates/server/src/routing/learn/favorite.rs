@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
+use crate::models::dict::Pronunciation;
 use crate::models::learn::*;
 use crate::{DepotExt, JsonResult, json_ok};
 
@@ -35,15 +36,6 @@ pub struct ListFavoritesQuery {
     pub offset: Option<i64>,
 }
 
-/// Pronunciation info for favorites
-#[derive(Debug, Serialize, ToSchema, Clone)]
-pub struct PronunciationInfo {
-    pub id: i64,
-    pub ipa: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dialect: Option<String>,
-}
-
 /// Favorite word with details
 #[derive(Debug, Serialize, ToSchema)]
 pub struct FavoriteWord {
@@ -54,8 +46,7 @@ pub struct FavoriteWord {
     pub word: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub word_zh: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pronunciation: Option<PronunciationInfo>,
+    pub pronunciations: Vec<Pronunciation>,
 }
 
 /// Favorite sentence with details
@@ -129,27 +120,17 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
             let def_map: std::collections::HashMap<i64, String> =
                 definitions.into_iter().collect();
 
-            // Fetch pronunciation info (primary or first one with audio)
-            let pronunciations: Vec<(i64, i64, String, Option<String>)> = dict_pronunciations::table
+            // Fetch all pronunciations with audio for these words
+            let pronunciations: Vec<Pronunciation> = dict_pronunciations::table
                 .filter(dict_pronunciations::word_id.eq_any(&word_ids))
                 .filter(dict_pronunciations::audio_path.is_not_null())
-                .select((
-                    dict_pronunciations::word_id,
-                    dict_pronunciations::id,
-                    dict_pronunciations::ipa,
-                    dict_pronunciations::dialect,
-                ))
-                .order(dict_pronunciations::is_primary.desc())
-                .load::<(i64, i64, String, Option<String>)>(conn)?;
+                .order((dict_pronunciations::word_id, dict_pronunciations::is_primary.desc()))
+                .load::<Pronunciation>(conn)?;
 
-            // Keep only the first pronunciation per word
-            let mut pron_map: std::collections::HashMap<i64, PronunciationInfo> = std::collections::HashMap::new();
-            for (word_id, pron_id, ipa, dialect) in pronunciations {
-                pron_map.entry(word_id).or_insert(PronunciationInfo {
-                    id: pron_id,
-                    ipa,
-                    dialect,
-                });
+            // Group pronunciations by word_id
+            let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> = std::collections::HashMap::new();
+            for pron in pronunciations {
+                pron_map.entry(pron.word_id).or_default().push(pron);
             }
 
             for fav in favorites {
@@ -161,7 +142,7 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                         created_at: fav.created_at,
                         word,
                         word_zh: def_map.get(&fav.record_id).cloned(),
-                        pronunciation: pron_map.get(&fav.record_id).cloned(),
+                        pronunciations: pron_map.remove(&fav.record_id).unwrap_or_default(),
                     }));
                 }
             }
@@ -204,7 +185,7 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
             // Fetch word details
             let mut word_map: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
             let mut def_map: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-            let mut pron_map: std::collections::HashMap<i64, PronunciationInfo> = std::collections::HashMap::new();
+            let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> = std::collections::HashMap::new();
 
             if !word_favs.is_empty() {
                 let word_ids: Vec<i64> = word_favs.iter().map(|f| f.record_id).collect();
@@ -222,24 +203,14 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                     .load::<(i64, String)>(conn)?;
                 def_map = definitions.into_iter().collect();
 
-                let pronunciations: Vec<(i64, i64, String, Option<String>)> = dict_pronunciations::table
+                let pronunciations: Vec<Pronunciation> = dict_pronunciations::table
                     .filter(dict_pronunciations::word_id.eq_any(&word_ids))
                     .filter(dict_pronunciations::audio_path.is_not_null())
-                    .select((
-                        dict_pronunciations::word_id,
-                        dict_pronunciations::id,
-                        dict_pronunciations::ipa,
-                        dict_pronunciations::dialect,
-                    ))
-                    .order(dict_pronunciations::is_primary.desc())
-                    .load::<(i64, i64, String, Option<String>)>(conn)?;
+                    .order((dict_pronunciations::word_id, dict_pronunciations::is_primary.desc()))
+                    .load::<Pronunciation>(conn)?;
 
-                for (word_id, pron_id, ipa, dialect) in pronunciations {
-                    pron_map.entry(word_id).or_insert(PronunciationInfo {
-                        id: pron_id,
-                        ipa,
-                        dialect,
-                    });
+                for pron in pronunciations {
+                    pron_map.entry(pron.word_id).or_default().push(pron);
                 }
             }
 
@@ -274,7 +245,7 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                                 created_at: fav.created_at,
                                 word,
                                 word_zh: def_map.get(&fav.record_id).cloned(),
-                                pronunciation: pron_map.get(&fav.record_id).cloned(),
+                                pronunciations: pron_map.remove(&fav.record_id).unwrap_or_default(),
                             }));
                         }
                     }

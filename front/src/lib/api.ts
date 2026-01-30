@@ -1719,13 +1719,6 @@ export function activateAiProvider(token: string, providerId: number): Promise<U
 /** Supported entity types for favorites */
 export type FavoriteEntity = 'word' | 'sentence'
 
-/** Pronunciation info for favorites */
-export type PronunciationInfo = {
-  id: number
-  ipa: string
-  dialect?: string
-}
-
 /** Favorite word with details */
 export type FavoriteWord = {
   entity: 'word'
@@ -1735,7 +1728,7 @@ export type FavoriteWord = {
   created_at: string
   word: string
   word_zh?: string
-  pronunciation?: PronunciationInfo
+  pronunciations: Pronunciation[]
 }
 
 /** Favorite sentence with details */
