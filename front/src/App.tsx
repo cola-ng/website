@@ -20,6 +20,7 @@ import { FavoritesPage } from './pages/FavoritesPage'
 import { AdminPage } from './pages/AdminPage'
 import { AdminUserDetailPage } from './pages/AdminUserDetailPage'
 import { AdminDictPage } from './pages/AdminDictPage'
+import { AdminFinancePage } from './pages/AdminFinancePage'
 import { AdminTaxonomyPage } from './pages/AdminTaxonomyPage'
 import { SubscriptionPage } from './pages/SubscriptionPage'
 
@@ -45,9 +46,14 @@ function AppRoutes() {
       <Route path="/admin" element={<AdminPage />} />
       <Route path="/admin/users" element={<AdminPage />} />
       <Route path="/admin/users/:userId" element={<AdminUserDetailPage />} />
+      <Route path="/admin/finance" element={<AdminFinancePage />} />
+      <Route path="/admin/finance/orders" element={<AdminFinancePage />} />
+      <Route path="/admin/finance/subscriptions" element={<AdminFinancePage />} />
       <Route path="/admin/dict" element={<AdminDictPage />} />
       <Route path="/admin/dict/:wordId" element={<AdminDictPage />} />
       <Route path="/admin/taxonomy" element={<AdminTaxonomyPage />} />
+      <Route path="/admin/taxonomy/domains/:domainId" element={<AdminTaxonomyPage />} />
+      <Route path="/admin/taxonomy/categories/:categoryId" element={<AdminTaxonomyPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/favorites" element={<FavoritesPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Navigate } from 'react-router-dom'
+import { Navigate, useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   Loader2,
   Plus,
@@ -46,11 +46,37 @@ import {
   type CreateCategoryRequest,
 } from '../lib/api'
 
+// Format relative time
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+
+  if (diffSec < 60) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  if (diffHour < 24) return `${diffHour}小时前`
+  if (diffDay < 30) return `${diffDay}天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 export function AdminTaxonomyPage() {
   const { token, user } = useAuth()
+  const { domainId, categoryId } = useParams<{ domainId?: string; categoryId?: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+
+  // Determine initial tab based on URL
+  const getInitialTab = (): 'domains' | 'categories' => {
+    if (categoryId || location.pathname.includes('/categories')) return 'categories'
+    return 'domains'
+  }
 
   // Tab state
-  const [activeTab, setActiveTab] = useState<'domains' | 'categories'>('domains')
+  const [activeTab, setActiveTab] = useState<'domains' | 'categories'>(getInitialTab())
 
   // Domain state
   const [domains, setDomains] = useState<TaxonDomain[]>([])
@@ -106,6 +132,44 @@ export function AdminTaxonomyPage() {
     }
   }, [token])
 
+  // Handle deep link for domain edit
+  useEffect(() => {
+    if (domainId && domains.length > 0 && !editDomainDialogOpen) {
+      const id = parseInt(domainId, 10)
+      const domain = domains.find((d) => d.id === id)
+      if (domain) {
+        setSelectedDomain(domain)
+        setDomainForm({
+          code: domain.code,
+          name_en: domain.name_en,
+          name_zh: domain.name_zh,
+        })
+        setEditDomainDialogOpen(true)
+        setActiveTab('domains')
+      }
+    }
+  }, [domainId, domains])
+
+  // Handle deep link for category edit
+  useEffect(() => {
+    if (categoryId && categories.length > 0 && !editCategoryDialogOpen) {
+      const id = parseInt(categoryId, 10)
+      const category = categories.find((c) => c.id === id)
+      if (category) {
+        setSelectedCategory(category)
+        setCategoryForm({
+          code: category.code,
+          name_en: category.name_en,
+          name_zh: category.name_zh,
+          domain_id: category.domain_id,
+          parent_id: category.parent_id ?? undefined,
+        })
+        setEditCategoryDialogOpen(true)
+        setActiveTab('categories')
+      }
+    }
+  }, [categoryId, categories])
+
   // Fetch categories when tab changes or domain filter changes
   useEffect(() => {
     if (token && activeTab === 'categories') {
@@ -145,6 +209,14 @@ export function AdminTaxonomyPage() {
       name_zh: domain.name_zh,
     })
     setEditDomainDialogOpen(true)
+    navigate(`/admin/taxonomy/domains/${domain.id}`)
+  }
+
+  const closeEditDomainDialog = () => {
+    setEditDomainDialogOpen(false)
+    setSelectedDomain(null)
+    setDomainForm({ code: '', name_en: '', name_zh: '' })
+    navigate('/admin/taxonomy')
   }
 
   const handleEditDomain = async () => {
@@ -157,9 +229,7 @@ export function AdminTaxonomyPage() {
         name_zh: domainForm.name_zh.trim(),
       })
       setDomains(domains.map((d) => (d.id === updated.id ? updated : d)))
-      setEditDomainDialogOpen(false)
-      setSelectedDomain(null)
-      setDomainForm({ code: '', name_en: '', name_zh: '' })
+      closeEditDomainDialog()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update domain')
     } finally {
@@ -225,6 +295,14 @@ export function AdminTaxonomyPage() {
       parent_id: category.parent_id ?? undefined,
     })
     setEditCategoryDialogOpen(true)
+    navigate(`/admin/taxonomy/categories/${category.id}`)
+  }
+
+  const closeEditCategoryDialog = () => {
+    setEditCategoryDialogOpen(false)
+    setSelectedCategory(null)
+    setCategoryForm({ code: '', name_en: '', name_zh: '', domain_id: 0, parent_id: undefined })
+    navigate('/admin/taxonomy')
   }
 
   const handleEditCategory = async () => {
@@ -239,9 +317,7 @@ export function AdminTaxonomyPage() {
         parent_id: categoryForm.parent_id ?? null,
       })
       setCategories(categories.map((c) => (c.id === updated.id ? updated : c)))
-      setEditCategoryDialogOpen(false)
-      setSelectedCategory(null)
-      setCategoryForm({ code: '', name_en: '', name_zh: '', domain_id: 0, parent_id: undefined })
+      closeEditCategoryDialog()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to update category')
     } finally {
@@ -343,8 +419,11 @@ export function AdminTaxonomyPage() {
                           <TableCell className="font-mono text-sm">{domain.code}</TableCell>
                           <TableCell>{domain.name_en}</TableCell>
                           <TableCell>{domain.name_zh}</TableCell>
-                          <TableCell className="text-sm text-gray-500">
-                            {new Date(domain.created_at).toLocaleDateString()}
+                          <TableCell
+                            className="text-sm text-gray-500 cursor-help"
+                            title={new Date(domain.created_at).toLocaleString('zh-CN')}
+                          >
+                            {formatRelativeTime(domain.created_at)}
                           </TableCell>
                           <TableCell>
                             <div className="flex items-center gap-1">
@@ -352,6 +431,7 @@ export function AdminTaxonomyPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditDomainDialog(domain)}
+                                title="编辑"
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -363,6 +443,7 @@ export function AdminTaxonomyPage() {
                                   setSelectedDomain(domain)
                                   setDeleteDomainDialogOpen(true)
                                 }}
+                                title="删除"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -439,6 +520,7 @@ export function AdminTaxonomyPage() {
                                 variant="ghost"
                                 size="sm"
                                 onClick={() => openEditCategoryDialog(category)}
+                                title="编辑"
                               >
                                 <Pencil className="h-4 w-4" />
                               </Button>
@@ -450,6 +532,7 @@ export function AdminTaxonomyPage() {
                                   setSelectedCategory(category)
                                   setDeleteCategoryDialogOpen(true)
                                 }}
+                                title="删除"
                               >
                                 <Trash2 className="h-4 w-4" />
                               </Button>
@@ -523,7 +606,7 @@ export function AdminTaxonomyPage() {
         </Dialog>
 
         {/* Edit Domain Dialog */}
-        <Dialog open={editDomainDialogOpen} onOpenChange={setEditDomainDialogOpen}>
+        <Dialog open={editDomainDialogOpen} onOpenChange={(open) => !open && closeEditDomainDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>编辑域</DialogTitle>
@@ -559,7 +642,7 @@ export function AdminTaxonomyPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditDomainDialogOpen(false)}>
+              <Button variant="outline" onClick={closeEditDomainDialog}>
                 取消
               </Button>
               <Button
@@ -673,7 +756,7 @@ export function AdminTaxonomyPage() {
         </Dialog>
 
         {/* Edit Category Dialog */}
-        <Dialog open={editCategoryDialogOpen} onOpenChange={setEditCategoryDialogOpen}>
+        <Dialog open={editCategoryDialogOpen} onOpenChange={(open) => !open && closeEditCategoryDialog()}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>编辑类别</DialogTitle>
@@ -736,7 +819,7 @@ export function AdminTaxonomyPage() {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setEditCategoryDialogOpen(false)}>
+              <Button variant="outline" onClick={closeEditCategoryDialog}>
                 取消
               </Button>
               <Button

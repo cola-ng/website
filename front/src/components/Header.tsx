@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom'
-import { User, LogOut, Settings, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu, Award, Flame, Star, Trophy, Zap, Heart, Shield, Crown, LayoutDashboard, Users, FolderTree } from 'lucide-react'
+import { User, LogOut, Settings, MessageSquare, RotateCcw, Theater, Mic, BookOpen, Menu, Award, Flame, Star, Trophy, Zap, Heart, Shield, Crown, LayoutDashboard, Users, FolderTree, DollarSign } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
 import { Button } from './ui/button'
@@ -31,6 +31,7 @@ const navItems: NavItem[] = [
 const adminNavItems: NavItem[] = [
   { label: '仪表盘', path: '/admin', icon: <LayoutDashboard className="h-4 w-4" /> },
   { label: '用户管理', path: '/admin/users', icon: <Users className="h-4 w-4" /> },
+  { label: '财务管理', path: '/admin/finance', icon: <DollarSign className="h-4 w-4" /> },
   { label: '词典管理', path: '/admin/dict', icon: <BookOpen className="h-4 w-4" /> },
   { label: '分类管理', path: '/admin/taxonomy', icon: <FolderTree className="h-4 w-4" /> },
 ]

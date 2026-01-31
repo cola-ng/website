@@ -2740,3 +2740,136 @@ export function getTopAiUsers(
     token,
   })
 }
+
+// ============================================================================
+// Admin Finance API
+// ============================================================================
+
+/** Order status count */
+export type OrderStatusCount = {
+  status: string
+  count: number
+}
+
+/** Finance statistics */
+export type FinanceStats = {
+  total_revenue_cents: number
+  total_orders: number
+  orders_by_status: OrderStatusCount[]
+  revenue_today_cents: number
+  orders_today: number
+  revenue_month_cents: number
+  orders_month: number
+  active_subscriptions: number
+  trial_subscriptions: number
+}
+
+/** Order list item */
+export type OrderListItem = {
+  id: number
+  user_id: number
+  user_name: string
+  user_email: string | null
+  order_no: string
+  order_type: string
+  amount_cents: number
+  amount_credits: number
+  currency: string
+  provider: string
+  status: string
+  paid_at: string | null
+  created_at: string
+}
+
+/** Order list response */
+export type OrderListResponse = {
+  orders: OrderListItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+/** Subscription list item */
+export type SubscriptionListItem = {
+  id: number
+  user_id: number
+  user_name: string
+  user_email: string | null
+  plan_name: string
+  plan_tier: string
+  status: string
+  started_at: string
+  expires_at: string | null
+  auto_renew: boolean
+  created_at: string
+}
+
+/** Subscription list response */
+export type SubscriptionListResponse = {
+  subscriptions: SubscriptionListItem[]
+  total: number
+  page: number
+  per_page: number
+}
+
+/**
+ * Get finance statistics
+ */
+export function getFinanceStats(token: string): Promise<FinanceStats> {
+  return requestJson<FinanceStats>('/api/admin/stats/finance', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * List all payment orders with pagination and filters
+ */
+export function listOrders(
+  token: string,
+  params: {
+    page?: number
+    per_page?: number
+    status?: string
+    order_type?: string
+    provider?: string
+    search?: string
+  } = {}
+): Promise<OrderListResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.page) searchParams.set('page', params.page.toString())
+  if (params.per_page) searchParams.set('per_page', params.per_page.toString())
+  if (params.status) searchParams.set('status', params.status)
+  if (params.order_type) searchParams.set('order_type', params.order_type)
+  if (params.provider) searchParams.set('provider', params.provider)
+  if (params.search) searchParams.set('search', params.search)
+
+  return requestJson<OrderListResponse>(`/api/admin/orders?${searchParams}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * List all subscriptions with pagination
+ */
+export function listSubscriptions(
+  token: string,
+  params: {
+    page?: number
+    per_page?: number
+    status?: string
+    search?: string
+  } = {}
+): Promise<SubscriptionListResponse> {
+  const searchParams = new URLSearchParams()
+  if (params.page) searchParams.set('page', params.page.toString())
+  if (params.per_page) searchParams.set('per_page', params.per_page.toString())
+  if (params.status) searchParams.set('status', params.status)
+  if (params.search) searchParams.set('search', params.search)
+
+  return requestJson<SubscriptionListResponse>(`/api/admin/subscriptions?${searchParams}`, {
+    method: 'GET',
+    token,
+  })
+}

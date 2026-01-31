@@ -1,3 +1,4 @@
+use chrono::Datelike;
 use diesel::dsl::count;
 use diesel::prelude::*;
 use salvo::oapi::ToSchema;
@@ -19,6 +20,7 @@ pub fn router() -> Router {
         .push(Router::with_path("stats/users/daily").get(user_stats_daily))
         .push(Router::with_path("stats/ai/today").get(ai_usage_today))
         .push(Router::with_path("stats/ai/top-users").get(ai_top_users))
+        .push(Router::with_path("stats/finance").get(finance_stats))
         .push(
             Router::with_path("users")
                 .get(list_users)
@@ -30,6 +32,8 @@ pub fn router() -> Router {
                 .push(Router::with_path("grant").post(grant_admin))
                 .push(Router::with_path("revoke").post(revoke_admin)),
         )
+        .push(Router::with_path("orders").get(list_orders))
+        .push(Router::with_path("subscriptions").get(list_subscriptions))
 }
 
 #[derive(Serialize, ToSchema)]
@@ -762,4 +766,475 @@ struct TopAiUserRow {
     asr_requests: i64,
     #[diesel(sql_type = diesel::sql_types::BigInt)]
     tts_requests: i64,
+}
+
+// ============================================================================
+// Financial Management API
+// ============================================================================
+
+#[derive(Serialize, ToSchema)]
+pub struct FinanceStats {
+    /// Total revenue in cents (paid orders)
+    total_revenue_cents: i64,
+    /// Total number of orders
+    total_orders: i64,
+    /// Orders by status
+    orders_by_status: Vec<OrderStatusCount>,
+    /// Revenue today in cents
+    revenue_today_cents: i64,
+    /// Orders today
+    orders_today: i64,
+    /// Revenue this month in cents
+    revenue_month_cents: i64,
+    /// Orders this month
+    orders_month: i64,
+    /// Active subscriptions count
+    active_subscriptions: i64,
+    /// Trial subscriptions count
+    trial_subscriptions: i64,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct OrderStatusCount {
+    status: String,
+    count: i64,
+}
+
+/// Get financial statistics
+#[endpoint(tags("Admin"))]
+pub async fn finance_stats() -> JsonResult<FinanceStats> {
+    let stats = with_conn(move |conn| {
+        let today = chrono::Utc::now().date_naive();
+        let month_start = today.with_day(1).unwrap_or(today);
+
+        // Get all stats in one query
+        let main_stats: FinanceStatsRow = diesel::sql_query(format!(
+            r#"
+            SELECT
+                COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cents ELSE 0 END), 0)::bigint as total_revenue_cents,
+                COUNT(*)::bigint as total_orders,
+                COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(paid_at) = '{}' THEN amount_cents ELSE 0 END), 0)::bigint as revenue_today_cents,
+                COUNT(CASE WHEN DATE(created_at) = '{}' THEN 1 END)::bigint as orders_today,
+                COALESCE(SUM(CASE WHEN status = 'paid' AND DATE(paid_at) >= '{}' THEN amount_cents ELSE 0 END), 0)::bigint as revenue_month_cents,
+                COUNT(CASE WHEN DATE(created_at) >= '{}' THEN 1 END)::bigint as orders_month
+            FROM payment_orders
+            "#,
+            today, today, month_start, month_start
+        ))
+        .get_result(conn)?;
+
+        // Orders by status
+        let orders_by_status: Vec<OrderStatusCount> = diesel::sql_query(
+            r#"
+            SELECT status, COUNT(*)::bigint as count
+            FROM payment_orders
+            GROUP BY status
+            ORDER BY count DESC
+            "#
+        )
+        .load::<OrderStatusCountRow>(conn)?
+        .into_iter()
+        .map(|r| OrderStatusCount {
+            status: r.status,
+            count: r.count,
+        })
+        .collect();
+
+        // Subscription stats
+        let sub_stats: SubscriptionStatsRow = diesel::sql_query(
+            r#"
+            SELECT
+                COUNT(CASE WHEN status = 'active' THEN 1 END)::bigint as active_count,
+                COUNT(CASE WHEN status = 'trial' THEN 1 END)::bigint as trial_count
+            FROM user_subscriptions
+            "#
+        )
+        .get_result(conn)?;
+
+        Ok::<_, diesel::result::Error>(FinanceStats {
+            total_revenue_cents: main_stats.total_revenue_cents,
+            total_orders: main_stats.total_orders,
+            orders_by_status,
+            revenue_today_cents: main_stats.revenue_today_cents,
+            orders_today: main_stats.orders_today,
+            revenue_month_cents: main_stats.revenue_month_cents,
+            orders_month: main_stats.orders_month,
+            active_subscriptions: sub_stats.active_count,
+            trial_subscriptions: sub_stats.trial_count,
+        })
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to get finance stats"))?;
+
+    json_ok(stats)
+}
+
+#[derive(QueryableByName)]
+struct FinanceStatsRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_revenue_cents: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    total_orders: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    revenue_today_cents: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    orders_today: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    revenue_month_cents: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    orders_month: i64,
+}
+
+#[derive(QueryableByName)]
+struct SubscriptionStatsRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    active_count: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    trial_count: i64,
+}
+
+#[derive(QueryableByName)]
+struct OrderStatusCountRow {
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    status: String,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    count: i64,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct OrderListItem {
+    pub id: i64,
+    pub user_id: i64,
+    pub user_name: String,
+    pub user_email: Option<String>,
+    pub order_no: String,
+    pub order_type: String,
+    pub amount_cents: i64,
+    pub amount_credits: i64,
+    pub currency: String,
+    pub provider: String,
+    pub status: String,
+    pub paid_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct OrderListResponse {
+    orders: Vec<OrderListItem>,
+    total: i64,
+    page: i64,
+    per_page: i64,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ListOrdersQuery {
+    /// Page number (1-indexed)
+    page: Option<i64>,
+    /// Items per page (default 20)
+    per_page: Option<i64>,
+    /// Filter by status (pending, paid, failed, expired, refunded)
+    status: Option<String>,
+    /// Filter by order type (subscription, recharge)
+    order_type: Option<String>,
+    /// Filter by provider (alipay, wechat, etc.)
+    provider: Option<String>,
+    /// Search by order_no or user name
+    search: Option<String>,
+}
+
+/// List all payment orders with pagination and filters
+#[endpoint(tags("Admin"))]
+pub async fn list_orders(req: &mut Request) -> JsonResult<OrderListResponse> {
+    let query: ListOrdersQuery = req.parse_queries().unwrap_or(ListOrdersQuery {
+        page: None,
+        per_page: None,
+        status: None,
+        order_type: None,
+        provider: None,
+        search: None,
+    });
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let status = query.status.clone();
+    let order_type = query.order_type.clone();
+    let provider = query.provider.clone();
+    let search = query.search.clone();
+
+    let (orders, total) = with_conn(move |conn| {
+        // Build WHERE conditions
+        let mut conditions: Vec<String> = vec!["1=1".to_string()];
+
+        if let Some(ref s) = status {
+            conditions.push(format!("status = '{}'", s.replace('\'', "''")));
+        }
+
+        if let Some(ref ot) = order_type {
+            conditions.push(format!("order_type = '{}'", ot.replace('\'', "''")));
+        }
+
+        if let Some(ref p) = provider {
+            conditions.push(format!("provider = '{}'", p.replace('\'', "''")));
+        }
+
+        if let Some(ref s) = search {
+            conditions.push(format!("order_no ILIKE '%{}%'", s.replace('\'', "''").to_lowercase()));
+        }
+
+        let where_clause = conditions.join(" AND ");
+
+        // Count query
+        let count_result: CountRow = diesel::sql_query(format!(
+            "SELECT COUNT(*)::bigint as count FROM payment_orders WHERE {}",
+            where_clause
+        ))
+        .get_result(conn)?;
+
+        let total = count_result.count;
+
+        // Data query with user info
+        let rows: Vec<OrderRow> = diesel::sql_query(format!(
+            r#"
+            SELECT
+                o.id, o.user_id, o.order_no, o.order_type,
+                o.amount_cents, o.amount_credits, o.currency, o.provider,
+                o.status, o.paid_at, o.created_at,
+                u.name as user_name, u.email as user_email
+            FROM payment_orders o
+            JOIN base_users u ON u.id = o.user_id
+            WHERE {}
+            ORDER BY o.created_at DESC
+            LIMIT {} OFFSET {}
+            "#,
+            where_clause, per_page, offset
+        ))
+        .load(conn)?;
+
+        let order_items: Vec<OrderListItem> = rows
+            .into_iter()
+            .map(|r| OrderListItem {
+                id: r.id,
+                user_id: r.user_id,
+                user_name: r.user_name,
+                user_email: r.user_email,
+                order_no: r.order_no,
+                order_type: r.order_type,
+                amount_cents: r.amount_cents,
+                amount_credits: r.amount_credits,
+                currency: r.currency,
+                provider: r.provider,
+                status: r.status,
+                paid_at: r.paid_at,
+                created_at: r.created_at,
+            })
+            .collect();
+
+        Ok::<_, diesel::result::Error>((order_items, total))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list orders"))?;
+
+    json_ok(OrderListResponse {
+        orders,
+        total,
+        page,
+        per_page,
+    })
+}
+
+#[derive(QueryableByName)]
+struct CountRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    count: i64,
+}
+
+#[derive(QueryableByName)]
+struct OrderRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    id: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    user_id: i64,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    order_no: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    order_type: String,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    amount_cents: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    amount_credits: i64,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    currency: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    provider: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    status: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Timestamptz>)]
+    paid_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[diesel(sql_type = diesel::sql_types::Timestamptz)]
+    created_at: chrono::DateTime<chrono::Utc>,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    user_name: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+    user_email: Option<String>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SubscriptionListItem {
+    pub id: i64,
+    pub user_id: i64,
+    pub user_name: String,
+    pub user_email: Option<String>,
+    pub plan_name: String,
+    pub plan_tier: String,
+    pub status: String,
+    pub started_at: chrono::DateTime<chrono::Utc>,
+    pub expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub auto_renew: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct SubscriptionListResponse {
+    subscriptions: Vec<SubscriptionListItem>,
+    total: i64,
+    page: i64,
+    per_page: i64,
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ListSubscriptionsQuery {
+    /// Page number (1-indexed)
+    page: Option<i64>,
+    /// Items per page (default 20)
+    per_page: Option<i64>,
+    /// Filter by status (active, trial, expired, cancelled)
+    status: Option<String>,
+    /// Search by user name or email
+    search: Option<String>,
+}
+
+/// List all subscriptions with pagination
+#[endpoint(tags("Admin"))]
+pub async fn list_subscriptions(req: &mut Request) -> JsonResult<SubscriptionListResponse> {
+    let query: ListSubscriptionsQuery = req.parse_queries().unwrap_or(ListSubscriptionsQuery {
+        page: None,
+        per_page: None,
+        status: None,
+        search: None,
+    });
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let status = query.status.clone();
+    let search = query.search.clone();
+
+    let (subscriptions, total) = with_conn(move |conn| {
+        // Build WHERE conditions
+        let mut conditions: Vec<String> = vec!["1=1".to_string()];
+
+        if let Some(ref st) = status {
+            conditions.push(format!("s.status = '{}'", st.replace('\'', "''")));
+        }
+
+        if let Some(ref term) = search {
+            let escaped = term.replace('\'', "''").to_lowercase();
+            conditions.push(format!(
+                "(LOWER(u.name) LIKE '%{}%' OR LOWER(u.email) LIKE '%{}%')",
+                escaped, escaped
+            ));
+        }
+
+        let where_clause = conditions.join(" AND ");
+
+        // Count query
+        let count_result: CountRow = diesel::sql_query(format!(
+            r#"
+            SELECT COUNT(*)::bigint as count
+            FROM user_subscriptions s
+            JOIN base_users u ON u.id = s.user_id
+            WHERE {}
+            "#,
+            where_clause
+        ))
+        .get_result(conn)?;
+
+        let total = count_result.count;
+
+        // Data query
+        let rows: Vec<SubscriptionRow> = diesel::sql_query(format!(
+            r#"
+            SELECT
+                s.id, s.user_id, s.plan_id, s.status, s.started_at, s.expires_at,
+                s.auto_renew, s.created_at,
+                u.name as user_name, u.email as user_email,
+                p.name_zh as plan_name, p.tier as plan_tier
+            FROM user_subscriptions s
+            JOIN base_users u ON u.id = s.user_id
+            JOIN subscription_plans p ON p.id = s.plan_id
+            WHERE {}
+            ORDER BY s.created_at DESC
+            LIMIT {} OFFSET {}
+            "#,
+            where_clause, per_page, offset
+        ))
+        .load(conn)?;
+
+        let items: Vec<SubscriptionListItem> = rows
+            .into_iter()
+            .map(|r| SubscriptionListItem {
+                id: r.id,
+                user_id: r.user_id,
+                user_name: r.user_name,
+                user_email: r.user_email,
+                plan_name: r.plan_name,
+                plan_tier: r.plan_tier,
+                status: r.status,
+                started_at: r.started_at,
+                expires_at: r.expires_at,
+                auto_renew: r.auto_renew,
+                created_at: r.created_at,
+            })
+            .collect();
+
+        Ok::<_, diesel::result::Error>((items, total))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list subscriptions"))?;
+
+    json_ok(SubscriptionListResponse {
+        subscriptions,
+        total,
+        page,
+        per_page,
+    })
+}
+
+#[derive(QueryableByName)]
+struct SubscriptionRow {
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    id: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    user_id: i64,
+    #[diesel(sql_type = diesel::sql_types::BigInt)]
+    plan_id: i64,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    status: String,
+    #[diesel(sql_type = diesel::sql_types::Timestamptz)]
+    started_at: chrono::DateTime<chrono::Utc>,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Timestamptz>)]
+    expires_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[diesel(sql_type = diesel::sql_types::Bool)]
+    auto_renew: bool,
+    #[diesel(sql_type = diesel::sql_types::Timestamptz)]
+    created_at: chrono::DateTime<chrono::Utc>,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    user_name: String,
+    #[diesel(sql_type = diesel::sql_types::Nullable<diesel::sql_types::Text>)]
+    user_email: Option<String>,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    plan_name: String,
+    #[diesel(sql_type = diesel::sql_types::Text)]
+    plan_tier: String,
 }

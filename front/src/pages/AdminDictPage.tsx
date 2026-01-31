@@ -60,6 +60,23 @@ import {
   type UpdatePronunciationRequest,
 } from '../lib/api'
 
+// Format relative time
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+
+  if (diffSec < 60) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  if (diffHour < 24) return `${diffHour}小时前`
+  if (diffDay < 30) return `${diffDay}天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 export function AdminDictPage() {
   const { token, user } = useAuth()
   const navigate = useNavigate()
@@ -398,6 +415,17 @@ export function AdminDictPage() {
       setError(e instanceof Error ? e.message : 'Failed to deactivate words')
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  const handleToggleWordStatus = async (word: Word) => {
+    if (!token) return
+    const newStatus = word.is_active === false ? true : false
+    try {
+      await updateWord(token, word.id, { is_active: newStatus })
+      setWords(words.map((w) => (w.id === word.id ? { ...w, is_active: newStatus } : w)))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Failed to update word status')
     }
   }
 
@@ -1227,15 +1255,21 @@ export function AdminDictPage() {
                         </button>
                       </TableCell>
                       <TableCell>
-                        {word.is_active === false ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-gray-500">
-                            <EyeOff className="h-3 w-3" /> 停用
-                          </span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-xs text-green-600">
-                            <Eye className="h-3 w-3" /> 启用
-                          </span>
-                        )}
+                        <button
+                          className={`inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full transition-colors whitespace-nowrap ${
+                            word.is_active === false
+                              ? 'text-red-600 bg-red-100 hover:bg-green-100 hover:text-green-600'
+                              : 'text-green-600 bg-green-100 hover:bg-red-100 hover:text-red-600'
+                          }`}
+                          onClick={() => handleToggleWordStatus(word)}
+                          title={word.is_active === false ? '点击启用' : '点击禁用'}
+                        >
+                          {word.is_active === false ? (
+                            <><EyeOff className="h-3 w-3" />停用</>
+                          ) : (
+                            <><Eye className="h-3 w-3" />启用</>
+                          )}
+                        </button>
                       </TableCell>
                       <TableCell>
                         {word.difficulty ? (
@@ -1247,8 +1281,11 @@ export function AdminDictPage() {
                         )}
                       </TableCell>
                       <TableCell>{word.frequency ?? '-'}</TableCell>
-                      <TableCell className="text-sm text-gray-500">
-                        {new Date(word.created_at).toLocaleDateString()}
+                      <TableCell
+                        className="text-sm text-gray-500 cursor-help"
+                        title={new Date(word.created_at).toLocaleString('zh-CN')}
+                      >
+                        {formatRelativeTime(word.created_at)}
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-1">
@@ -1256,6 +1293,7 @@ export function AdminDictPage() {
                             variant="ghost"
                             size="sm"
                             onClick={() => navigate(`/admin/dict/${word.id}`)}
+                            title="编辑"
                           >
                             <Pencil className="h-4 w-4" />
                           </Button>
@@ -1267,6 +1305,7 @@ export function AdminDictPage() {
                               setWordToDelete(word)
                               setDeleteListWordDialogOpen(true)
                             }}
+                            title="删除"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>

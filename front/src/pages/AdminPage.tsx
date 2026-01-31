@@ -68,6 +68,23 @@ import {
   type TopAiUser,
 } from '../lib/api'
 
+// Format relative time
+function formatRelativeTime(dateStr: string): string {
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffSec = Math.floor(diffMs / 1000)
+  const diffMin = Math.floor(diffSec / 60)
+  const diffHour = Math.floor(diffMin / 60)
+  const diffDay = Math.floor(diffHour / 24)
+
+  if (diffSec < 60) return '刚刚'
+  if (diffMin < 60) return `${diffMin}分钟前`
+  if (diffHour < 24) return `${diffHour}小时前`
+  if (diffDay < 30) return `${diffDay}天前`
+  return date.toLocaleDateString('zh-CN')
+}
+
 // Chart type options
 type ChartType = 'line' | 'area' | 'bar'
 
@@ -571,8 +588,11 @@ export function AdminPage() {
                                 <span className="text-gray-400 text-sm">否</span>
                               )}
                             </TableCell>
-                            <TableCell className="text-sm text-gray-500">
-                              {new Date(u.created_at).toLocaleDateString()}
+                            <TableCell
+                              className="text-sm text-gray-500 cursor-help"
+                              title={new Date(u.created_at).toLocaleString('zh-CN')}
+                            >
+                              {formatRelativeTime(u.created_at)}
                             </TableCell>
                             <TableCell>
                               <div className="flex items-center gap-1">
@@ -581,10 +601,11 @@ export function AdminPage() {
                                   size="sm"
                                   className="text-gray-600 hover:text-gray-700 hover:bg-gray-50"
                                   onClick={() => handleViewUser(u)}
+                                  title="查看详情"
                                 >
                                   <Eye className="h-4 w-4" />
                                 </Button>
-                                {u.is_admin ? (
+                                {u.is_admin && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -593,20 +614,9 @@ export function AdminPage() {
                                       setSelectedUser(u)
                                       setRevokeDialogOpen(true)
                                     }}
+                                    title="撤销管理员"
                                   >
                                     <ShieldOff className="h-4 w-4" />
-                                  </Button>
-                                ) : (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="text-purple-600 hover:text-purple-700 hover:bg-purple-50"
-                                    onClick={() => {
-                                      setSelectedUser(u)
-                                      setGrantDialogOpen(true)
-                                    }}
-                                  >
-                                    <ShieldPlus className="h-4 w-4" />
                                   </Button>
                                 )}
                               </div>
