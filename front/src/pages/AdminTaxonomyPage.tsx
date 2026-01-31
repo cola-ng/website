@@ -47,8 +47,6 @@ import {
   type TaxonCategory,
   type CreateDomainRequest,
   type CreateCategoryRequest,
-  type DomainListResponse,
-  type CategoryListResponse,
 } from '../lib/api'
 
 // Format relative time

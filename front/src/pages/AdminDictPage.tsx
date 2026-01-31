@@ -60,7 +60,6 @@ import {
   type CreateDefinitionRequest,
   type UpdateWordRequest,
   type CreatePronunciationRequest,
-  type WordListResponse,
 } from '../lib/api'
 
 // Format relative time

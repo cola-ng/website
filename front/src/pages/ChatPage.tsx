@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, Link } from 'react-router-dom'
 import { Send, Mic, MicOff, MessageCircle, Map as MapIcon, Volume2, FileDown, ClipboardList, Loader2, X, MoreVertical, Pin, Pencil, Trash2, RotateCcw, Heart } from 'lucide-react'
 
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, lookup, toggleFavorite, listFavorites, type TextIssue, type ChatTurn, type ChatIssue } from '../lib/api'
+import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, lookup, toggleFavorite, listFavorites, getCurrentSubscription, type TextIssue, type ChatTurn, type ChatIssue, type CurrentSubscription } from '../lib/api'
 import { ensureAudioContextRunning, stopAudio as globalStopAudio, queueAudio, queueAudioFromBase64, onPlayingStateChange } from '../lib/audio'
 
 // Component to render English text with clickable words
@@ -160,6 +160,14 @@ export function ChatPage() {
   const [favoriteSentenceIds, setFavoriteSentenceIds] = useState<Set<number>>(new Set())
   const [togglingSentenceId, setTogglingSentenceId] = useState<number | null>(null)
 
+  // Subscription state - check if user has paid subscription for AI chat features
+  const [subscription, setSubscription] = useState<CurrentSubscription | null>(null)
+  const [subscriptionLoading, setSubscriptionLoading] = useState(true)
+
+  // Check if user has a paid subscription (not free tier)
+  const hasPaidSubscription = subscription?.has_subscription &&
+    subscription?.subscription?.plan?.tier !== 'free'
+
   // Display settings - independent toggles for each language (persisted to localStorage)
   const [showBotEn, setShowBotEn] = useState(() => {
     const saved = localStorage.getItem('conv_showBotEn')
@@ -208,6 +216,19 @@ export function ChatPage() {
     localStorage.setItem('conv_showUserEn', String(showUserEn))
     localStorage.setItem('conv_showUserZh', String(showUserZh))
   }, [showBotEn, showBotZh, showUserEn, showUserZh])
+
+  // Fetch subscription status
+  useEffect(() => {
+    if (!token) {
+      setSubscriptionLoading(false)
+      return
+    }
+    setSubscriptionLoading(true)
+    getCurrentSubscription(token)
+      .then(setSubscription)
+      .catch(err => console.error('Failed to fetch subscription:', err))
+      .finally(() => setSubscriptionLoading(false))
+  }, [token])
 
   // Load user's favorite words on mount (for highlighting)
   useEffect(() => {
@@ -1490,6 +1511,34 @@ export function ChatPage() {
             </p>
             <Button asChild>
               <a href="/login?redirectTo=/chat">登录开始对话</a>
+            </Button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // Show upgrade page for free/no subscription users
+  if (!subscriptionLoading && !hasPaidSubscription) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+        <Header />
+        <div className="mx-auto max-w-6xl p-4">
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="text-6xl mb-4">💬</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">天天唠嗑</h1>
+            <p className="text-gray-600 mb-4">
+              与 AI 进行真实的英语对话练习，提升口语表达能力
+            </p>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
+              <p className="text-amber-800">
+                {subscription?.has_subscription
+                  ? '您当前为免费订阅，天天唠嗑功能需要付费订阅才能使用。'
+                  : '您尚未订阅，天天唠嗑功能需要付费订阅才能使用。'}
+              </p>
+            </div>
+            <Button asChild className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">
+              <Link to="/subscription">升级订阅</Link>
             </Button>
           </div>
         </div>

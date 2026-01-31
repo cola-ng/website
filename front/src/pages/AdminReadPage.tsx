@@ -618,7 +618,9 @@ export function AdminReadPage() {
                         </TableCell>
                         <TableCell>
                           {sentence.audio_path ? (
-                            <Volume2 className="h-4 w-4 text-green-500" title="有音频" />
+                            <span title="有音频">
+                              <Volume2 className="h-4 w-4 text-green-500" />
+                            </span>
                           ) : (
                             <span className="text-xs text-gray-400">无</span>
                           )}

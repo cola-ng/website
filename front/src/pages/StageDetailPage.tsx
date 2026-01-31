@@ -18,7 +18,7 @@ import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
 import { ensureAudioContextRunning, stopAudio as globalStopAudio, onPlayingStateChange } from '../lib/audio'
-import { evaluatePronunciation } from '../lib/api'
+import { evaluatePronunciation, getCurrentSubscription, type CurrentSubscription } from '../lib/api'
 
 // Stage matches backend asset_stages table
 interface Stage {
@@ -237,12 +237,27 @@ export function StageDetailPage() {
   // Whether we're evaluating pronunciation
   const [isEvaluating, setIsEvaluating] = useState(false)
 
+  // Subscription state - check if user has paid subscription for AI features
+  const [subscription, setSubscription] = useState<CurrentSubscription | null>(null)
+
+  // Check if user has a paid subscription (not free tier)
+  const hasPaidSubscription = subscription?.has_subscription &&
+    subscription?.subscription?.plan?.tier !== 'free'
+
   // Subscribe to global audio playing state
   useEffect(() => {
     return onPlayingStateChange((id) => {
       setPlayingAudioId(id)
     })
   }, [])
+
+  // Fetch subscription status
+  useEffect(() => {
+    if (!token) return
+    getCurrentSubscription(token)
+      .then(setSubscription)
+      .catch(err => console.error('Failed to fetch subscription:', err))
+  }, [token])
 
   // Display settings (persisted to localStorage)
   const [showEn, setShowEn] = useState(() => {
@@ -519,28 +534,29 @@ export function StageDetailPage() {
         if (audioBlob.size > 0) {
           const turn = turns[turnIndex]
 
-          // Evaluate pronunciation using backend API
+          // Evaluate pronunciation using backend API (only for paid subscribers)
           const evaluateAndSave = async () => {
-            setIsEvaluating(true)
             let score: number | undefined
             let feedback: string | undefined
 
-            try {
-              // Convert to WAV for API
-              const wavBlob = await convertToWav(audioBlob)
-              const audioBase64 = await blobToBase64(wavBlob)
+            // Only call pronunciation evaluation API if user has paid subscription
+            if (token && hasPaidSubscription) {
+              setIsEvaluating(true)
+              try {
+                // Convert to WAV for API
+                const wavBlob = await convertToWav(audioBlob)
+                const audioBase64 = await blobToBase64(wavBlob)
 
-              if (token) {
                 const response = await evaluatePronunciation(token, audioBase64, turn.content_en)
                 score = response.overall_score
                 // Combine feedback items into a string
                 feedback = response.feedback?.map(f => f.message).join(' ') || '发音不错！'
+              } catch (err) {
+                console.error('Failed to evaluate pronunciation:', err)
+                // Fallback to no score if evaluation fails
+              } finally {
+                setIsEvaluating(false)
               }
-            } catch (err) {
-              console.error('Failed to evaluate pronunciation:', err)
-              // Fallback to no score if evaluation fails
-            } finally {
-              setIsEvaluating(false)
             }
 
             const result: RecordingResult = {
@@ -578,7 +594,7 @@ export function StageDetailPage() {
       console.error('Failed to start recording:', err)
       alert('无法访问麦克风。请确保已授予麦克风权限。')
     }
-  }, [turns, selectedScript, token, advanceToNextTurn])
+  }, [turns, selectedScript, token, hasPaidSubscription, advanceToNextTurn])
 
   // Stop recording
   const stopRecording = useCallback(() => {
@@ -702,6 +718,22 @@ export function StageDetailPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 flex flex-col">
       <Header />
+
+      {/* Warning for free/no subscription users */}
+      {subscription && !hasPaidSubscription && (
+        <div className="bg-amber-50 border-b border-amber-200">
+          <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-between">
+            <p className="text-sm text-amber-800">
+              {subscription.has_subscription
+                ? '您当前为免费订阅，AI 发音评分功能不可用。'
+                : '您尚未订阅，AI 发音评分功能不可用。'}
+              <Link to="/subscription" className="ml-2 text-amber-600 hover:text-amber-700 underline">
+                升级订阅
+              </Link>
+            </p>
+          </div>
+        </div>
+      )}
 
       <main className="flex-1 mx-auto w-full max-w-6xl px-4 py-4">
         {/* Compact header */}
