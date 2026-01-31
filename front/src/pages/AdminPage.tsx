@@ -53,6 +53,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { useAuth } from '../lib/auth'
+import { getAdminPerPage, setAdminPerPage, PER_PAGE_OPTIONS } from '../lib/utils'
 import {
   getAdminStats,
   listAdminUsers,
