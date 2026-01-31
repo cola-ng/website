@@ -1,21 +1,17 @@
 use std::path::PathBuf;
 
-use base64::prelude::{BASE64_STANDARD as BASE64, Engine};
 use chrono::Utc;
 use diesel::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::AppResult;
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
 use crate::models::learn::{NewReadPractice, NewUserLevel};
-use crate::services::ai_provider::{AiProviderError, AsrResponse};
-use crate::services::create_provider_from_env;
-use crate::{json_ok, DepotExt, JsonResult};
+use crate::{json_ok, AppResult, DepotExt, JsonResult};
 
 #[derive(Serialize, ToSchema)]
 pub struct PaginatedSubjects {
@@ -236,7 +232,7 @@ pub struct FeedbackItem {
 }
 
 /// Calculate pronunciation score by comparing transcribed text with reference
-fn calculate_pronunciation_score(
+pub fn calculate_pronunciation_score(
     transcribed: &str,
     reference: &str,
 ) -> (i32, i32, i32, i32, Vec<FeedbackItem>) {
