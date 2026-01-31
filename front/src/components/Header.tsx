@@ -34,6 +34,8 @@ const adminNavItems: NavItem[] = [
   { label: '财务管理', path: '/admin/finance', icon: <DollarSign className="h-4 w-4" /> },
   { label: '词典管理', path: '/admin/dict', icon: <BookOpen className="h-4 w-4" /> },
   { label: '分类管理', path: '/admin/taxonomy', icon: <FolderTree className="h-4 w-4" /> },
+  { label: '唠嗑场景', path: '/admin/chat-scenarios', icon: <MessageSquare className="h-4 w-4" /> },
+  { label: '跟读管理', path: '/admin/read', icon: <Mic className="h-4 w-4" /> },
 ]
 
 // Rarity colors for achievements

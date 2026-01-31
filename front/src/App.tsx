@@ -22,6 +22,8 @@ import { AdminUserDetailPage } from './pages/AdminUserDetailPage'
 import { AdminDictPage } from './pages/AdminDictPage'
 import { AdminFinancePage } from './pages/AdminFinancePage'
 import { AdminTaxonomyPage } from './pages/AdminTaxonomyPage'
+import { AdminChatScenarioPage } from './pages/AdminChatScenarioPage'
+import { AdminReadPage } from './pages/AdminReadPage'
 import { SubscriptionPage } from './pages/SubscriptionPage'
 
 function AppRoutes() {
@@ -54,6 +56,8 @@ function AppRoutes() {
       <Route path="/admin/taxonomy" element={<AdminTaxonomyPage />} />
       <Route path="/admin/taxonomy/domains/:domainId" element={<AdminTaxonomyPage />} />
       <Route path="/admin/taxonomy/categories/:categoryId" element={<AdminTaxonomyPage />} />
+      <Route path="/admin/chat-scenarios" element={<AdminChatScenarioPage />} />
+      <Route path="/admin/read" element={<AdminReadPage />} />
       <Route path="/subscription" element={<SubscriptionPage />} />
       <Route path="/favorites" element={<FavoritesPage />} />
       <Route path="/feedback" element={<FeedbackPage />} />

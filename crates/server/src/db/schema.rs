@@ -227,6 +227,7 @@ diesel::table! {
         difficulty -> Nullable<Int2>,
         is_active -> Nullable<Bool>,
         created_at -> Timestamptz,
+        ai_prompt -> Nullable<Text>,
     }
 }
 

@@ -34,6 +34,41 @@ pub fn router() -> Router {
         )
         .push(Router::with_path("orders").get(list_orders))
         .push(Router::with_path("subscriptions").get(list_subscriptions))
+        // Chat scenario management
+        .push(
+            Router::with_path("stages")
+                .get(list_stages)
+                .post(create_stage)
+                .push(
+                    Router::with_path("{stage_id}")
+                        .get(get_stage)
+                        .put(update_stage)
+                        .delete(delete_stage),
+                ),
+        )
+        // Read-along management
+        .push(
+            Router::with_path("read-subjects")
+                .get(list_read_subjects)
+                .post(create_read_subject)
+                .push(
+                    Router::with_path("{subject_id}")
+                        .get(get_read_subject)
+                        .put(update_read_subject)
+                        .delete(delete_read_subject),
+                ),
+        )
+        .push(
+            Router::with_path("read-sentences")
+                .get(list_read_sentences)
+                .post(create_read_sentence)
+                .push(
+                    Router::with_path("{sentence_id}")
+                        .get(get_read_sentence)
+                        .put(update_read_sentence)
+                        .delete(delete_read_sentence),
+                ),
+        )
 }
 
 #[derive(Serialize, ToSchema)]
@@ -1237,4 +1272,294 @@ struct SubscriptionRow {
     plan_name: String,
     #[diesel(sql_type = diesel::sql_types::Text)]
     plan_tier: String,
+}
+
+// ============================================================================
+// Chat Scenario (Stage) Management
+// ============================================================================
+
+use salvo::oapi::extract::PathParam;
+use crate::models::asset::{Stage, NewStage, UpdateStage, ReadSubject, NewReadSubject, UpdateReadSubject, ReadSentence, NewReadSentence, UpdateReadSentence};
+
+#[derive(Serialize, ToSchema)]
+pub struct StageListResponse {
+    pub stages: Vec<Stage>,
+    pub total: i64,
+}
+
+/// List all chat stages/scenarios
+#[endpoint(tags("Admin"))]
+pub async fn list_stages() -> JsonResult<StageListResponse> {
+    let (stages, total) = with_conn(move |conn| {
+        let stages = asset_stages::table
+            .order(asset_stages::display_order.asc().nulls_last())
+            .load::<Stage>(conn)?;
+        let total = stages.len() as i64;
+        Ok::<_, diesel::result::Error>((stages, total))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list stages"))?;
+
+    json_ok(StageListResponse { stages, total })
+}
+
+/// Get a single stage by ID
+#[endpoint(tags("Admin"))]
+pub async fn get_stage(id: PathParam<i64>) -> JsonResult<Stage> {
+    let stage_id = id.into_inner();
+    let stage = with_conn(move |conn| {
+        asset_stages::table
+            .filter(asset_stages::id.eq(stage_id))
+            .first::<Stage>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("stage not found"))?;
+
+    json_ok(stage)
+}
+
+/// Create a new chat stage/scenario
+#[endpoint(tags("Admin"))]
+pub async fn create_stage(input: JsonBody<NewStage>) -> JsonResult<Stage> {
+    let new_stage = input.into_inner();
+    let stage = with_conn(move |conn| {
+        diesel::insert_into(asset_stages::table)
+            .values(&new_stage)
+            .get_result::<Stage>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create stage"))?;
+
+    json_ok(stage)
+}
+
+/// Update an existing chat stage/scenario
+#[endpoint(tags("Admin"))]
+pub async fn update_stage(
+    id: PathParam<i64>,
+    input: JsonBody<UpdateStage>,
+) -> JsonResult<Stage> {
+    let stage_id = id.into_inner();
+    let update_data = input.into_inner();
+
+    let stage = with_conn(move |conn| {
+        diesel::update(asset_stages::table.filter(asset_stages::id.eq(stage_id)))
+            .set(&update_data)
+            .get_result::<Stage>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to update stage"))?;
+
+    json_ok(stage)
+}
+
+/// Delete a chat stage/scenario
+#[endpoint(tags("Admin"))]
+pub async fn delete_stage(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
+    let stage_id = id.into_inner();
+
+    with_conn(move |conn| {
+        diesel::delete(asset_stages::table.filter(asset_stages::id.eq(stage_id)))
+            .execute(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete stage"))?;
+
+    json_ok(serde_json::json!({ "deleted": true }))
+}
+
+// ============================================================================
+// Read-Along Subject Management
+// ============================================================================
+
+#[derive(Serialize, ToSchema)]
+pub struct ReadSubjectListResponse {
+    pub subjects: Vec<ReadSubject>,
+    pub total: i64,
+}
+
+/// List all read-along subjects
+#[endpoint(tags("Admin"))]
+pub async fn list_read_subjects() -> JsonResult<ReadSubjectListResponse> {
+    let (subjects, total) = with_conn(move |conn| {
+        let subjects = asset_read_subjects::table
+            .order(asset_read_subjects::id.asc())
+            .load::<ReadSubject>(conn)?;
+        let total = subjects.len() as i64;
+        Ok::<_, diesel::result::Error>((subjects, total))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list read subjects"))?;
+
+    json_ok(ReadSubjectListResponse { subjects, total })
+}
+
+/// Get a single read-along subject by ID
+#[endpoint(tags("Admin"))]
+pub async fn get_read_subject(id: PathParam<i64>) -> JsonResult<ReadSubject> {
+    let subject_id = id.into_inner();
+    let subject = with_conn(move |conn| {
+        asset_read_subjects::table
+            .filter(asset_read_subjects::id.eq(subject_id))
+            .first::<ReadSubject>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("read subject not found"))?;
+
+    json_ok(subject)
+}
+
+/// Create a new read-along subject
+#[endpoint(tags("Admin"))]
+pub async fn create_read_subject(input: JsonBody<NewReadSubject>) -> JsonResult<ReadSubject> {
+    let new_subject = input.into_inner();
+    let subject = with_conn(move |conn| {
+        diesel::insert_into(asset_read_subjects::table)
+            .values(&new_subject)
+            .get_result::<ReadSubject>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create read subject"))?;
+
+    json_ok(subject)
+}
+
+/// Update an existing read-along subject
+#[endpoint(tags("Admin"))]
+pub async fn update_read_subject(
+    id: PathParam<i64>,
+    input: JsonBody<UpdateReadSubject>,
+) -> JsonResult<ReadSubject> {
+    let subject_id = id.into_inner();
+    let update_data = input.into_inner();
+
+    let subject = with_conn(move |conn| {
+        diesel::update(asset_read_subjects::table.filter(asset_read_subjects::id.eq(subject_id)))
+            .set(&update_data)
+            .get_result::<ReadSubject>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to update read subject"))?;
+
+    json_ok(subject)
+}
+
+/// Delete a read-along subject
+#[endpoint(tags("Admin"))]
+pub async fn delete_read_subject(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
+    let subject_id = id.into_inner();
+
+    with_conn(move |conn| {
+        diesel::delete(asset_read_subjects::table.filter(asset_read_subjects::id.eq(subject_id)))
+            .execute(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete read subject"))?;
+
+    json_ok(serde_json::json!({ "deleted": true }))
+}
+
+// ============================================================================
+// Read-Along Sentence Management
+// ============================================================================
+
+#[derive(Deserialize, ToSchema)]
+pub struct ReadSentenceQuery {
+    /// Filter by subject ID
+    pub subject_id: Option<i64>,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ReadSentenceListResponse {
+    pub sentences: Vec<ReadSentence>,
+    pub total: i64,
+}
+
+/// List read-along sentences (optionally filter by subject)
+#[endpoint(tags("Admin"))]
+pub async fn list_read_sentences(query: salvo::oapi::extract::QueryParam<ReadSentenceQuery, false>) -> JsonResult<ReadSentenceListResponse> {
+    let subject_id = query.into_inner().and_then(|q| q.subject_id);
+
+    let (sentences, total) = with_conn(move |conn| {
+        let mut query = asset_read_sentences::table.into_boxed();
+
+        if let Some(sid) = subject_id {
+            query = query.filter(asset_read_sentences::subject_id.eq(sid));
+        }
+
+        let sentences = query
+            .order((asset_read_sentences::subject_id.asc(), asset_read_sentences::sentence_order.asc()))
+            .load::<ReadSentence>(conn)?;
+        let total = sentences.len() as i64;
+        Ok::<_, diesel::result::Error>((sentences, total))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list read sentences"))?;
+
+    json_ok(ReadSentenceListResponse { sentences, total })
+}
+
+/// Get a single read-along sentence by ID
+#[endpoint(tags("Admin"))]
+pub async fn get_read_sentence(id: PathParam<i64>) -> JsonResult<ReadSentence> {
+    let sentence_id = id.into_inner();
+    let sentence = with_conn(move |conn| {
+        asset_read_sentences::table
+            .filter(asset_read_sentences::id.eq(sentence_id))
+            .first::<ReadSentence>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("read sentence not found"))?;
+
+    json_ok(sentence)
+}
+
+/// Create a new read-along sentence
+#[endpoint(tags("Admin"))]
+pub async fn create_read_sentence(input: JsonBody<NewReadSentence>) -> JsonResult<ReadSentence> {
+    let new_sentence = input.into_inner();
+    let sentence = with_conn(move |conn| {
+        diesel::insert_into(asset_read_sentences::table)
+            .values(&new_sentence)
+            .get_result::<ReadSentence>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to create read sentence"))?;
+
+    json_ok(sentence)
+}
+
+/// Update an existing read-along sentence
+#[endpoint(tags("Admin"))]
+pub async fn update_read_sentence(
+    id: PathParam<i64>,
+    input: JsonBody<UpdateReadSentence>,
+) -> JsonResult<ReadSentence> {
+    let sentence_id = id.into_inner();
+    let update_data = input.into_inner();
+
+    let sentence = with_conn(move |conn| {
+        diesel::update(asset_read_sentences::table.filter(asset_read_sentences::id.eq(sentence_id)))
+            .set(&update_data)
+            .get_result::<ReadSentence>(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to update read sentence"))?;
+
+    json_ok(sentence)
+}
+
+/// Delete a read-along sentence
+#[endpoint(tags("Admin"))]
+pub async fn delete_read_sentence(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
+    let sentence_id = id.into_inner();
+
+    with_conn(move |conn| {
+        diesel::delete(asset_read_sentences::table.filter(asset_read_sentences::id.eq(sentence_id)))
+            .execute(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete read sentence"))?;
+
+    json_ok(serde_json::json!({ "deleted": true }))
 }

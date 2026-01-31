@@ -1395,10 +1395,11 @@ export type ReadSentence = {
   sentence_order: number
   content_en: string
   content_zh: string
+  audio_path: string | null
   phonetic_transcription: string | null
   difficulty: number | null
-  focus_sounds: string[] | null
-  common_mistakes: string[] | null
+  focus_sounds: unknown | null
+  common_mistakes: unknown | null
 }
 
 /** Paginated response for subjects */
@@ -3003,6 +3004,259 @@ export function listSubscriptions(
 
   return requestJson<SubscriptionListResponse>(`/api/admin/subscriptions?${searchParams}`, {
     method: 'GET',
+    token,
+  })
+}
+
+// ============================================================================
+// Admin Chat Scenario (Stage) Management
+// ============================================================================
+
+/** Chat stage/scenario */
+export type Stage = {
+  id: number
+  code: string
+  name_en: string
+  name_zh: string
+  description_en: string | null
+  description_zh: string | null
+  icon_emoji: string | null
+  display_order: number | null
+  difficulty: number | null
+  is_active: boolean | null
+  created_at: string
+  ai_prompt: string | null
+}
+
+/** Create stage request */
+export type CreateStageRequest = {
+  code: string
+  name_en: string
+  name_zh: string
+  description_en?: string
+  description_zh?: string
+  icon_emoji?: string
+  display_order?: number
+  difficulty?: number
+  is_active?: boolean
+  ai_prompt?: string
+}
+
+/** Update stage request */
+export type UpdateStageRequest = Partial<CreateStageRequest>
+
+/** Stage list response */
+export type StageListResponse = {
+  stages: Stage[]
+  total: number
+}
+
+/**
+ * List all chat stages/scenarios
+ */
+export function listAdminStages(token: string): Promise<StageListResponse> {
+  return requestJson<StageListResponse>('/api/admin/stages', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get a single stage by ID
+ */
+export function getAdminStage(token: string, stageId: number): Promise<Stage> {
+  return requestJson<Stage>(`/api/admin/stages/${stageId}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Create a new chat stage
+ */
+export function createAdminStage(token: string, data: CreateStageRequest): Promise<Stage> {
+  return requestJson<Stage>('/api/admin/stages', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update an existing chat stage
+ */
+export function updateAdminStage(token: string, stageId: number, data: UpdateStageRequest): Promise<Stage> {
+  return requestJson<Stage>(`/api/admin/stages/${stageId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete a chat stage
+ */
+export function deleteAdminStage(token: string, stageId: number): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/admin/stages/${stageId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+// ============================================================================
+// Admin Read-Along Subject Management
+// ============================================================================
+
+/** Create read subject request */
+export type CreateReadSubjectRequest = {
+  code: string
+  title_en: string
+  title_zh: string
+  description_en?: string
+  description_zh?: string
+  icon_emoji?: string
+  difficulty?: number
+  subject_type?: string
+}
+
+/** Update read subject request */
+export type UpdateReadSubjectRequest = Partial<CreateReadSubjectRequest>
+
+/** Read subject list response */
+export type ReadSubjectListResponse = {
+  subjects: ReadSubject[]
+  total: number
+}
+
+/**
+ * List all read-along subjects
+ */
+export function listAdminReadSubjects(token: string): Promise<ReadSubjectListResponse> {
+  return requestJson<ReadSubjectListResponse>('/api/admin/read-subjects', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get a single read subject by ID
+ */
+export function getAdminReadSubject(token: string, subjectId: number): Promise<ReadSubject> {
+  return requestJson<ReadSubject>(`/api/admin/read-subjects/${subjectId}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Create a new read-along subject
+ */
+export function createAdminReadSubject(token: string, data: CreateReadSubjectRequest): Promise<ReadSubject> {
+  return requestJson<ReadSubject>('/api/admin/read-subjects', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update an existing read-along subject
+ */
+export function updateAdminReadSubject(token: string, subjectId: number, data: UpdateReadSubjectRequest): Promise<ReadSubject> {
+  return requestJson<ReadSubject>(`/api/admin/read-subjects/${subjectId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete a read-along subject
+ */
+export function deleteAdminReadSubject(token: string, subjectId: number): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/admin/read-subjects/${subjectId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+// ============================================================================
+// Admin Read-Along Sentence Management
+// ============================================================================
+
+/** Create read sentence request */
+export type CreateReadSentenceRequest = {
+  subject_id: number
+  sentence_order: number
+  content_en: string
+  content_zh: string
+  phonetic_transcription?: string
+  audio_path?: string
+  difficulty?: number
+  focus_sounds?: unknown
+  common_mistakes?: unknown
+}
+
+/** Update read sentence request */
+export type UpdateReadSentenceRequest = Partial<CreateReadSentenceRequest>
+
+/** Read sentence list response */
+export type ReadSentenceListResponse = {
+  sentences: ReadSentence[]
+  total: number
+}
+
+/**
+ * List read-along sentences (optionally filter by subject)
+ */
+export function listAdminReadSentences(token: string, subjectId?: number): Promise<ReadSentenceListResponse> {
+  const url = subjectId
+    ? `/api/admin/read-sentences?subject_id=${subjectId}`
+    : '/api/admin/read-sentences'
+  return requestJson<ReadSentenceListResponse>(url, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Get a single read sentence by ID
+ */
+export function getAdminReadSentence(token: string, sentenceId: number): Promise<ReadSentence> {
+  return requestJson<ReadSentence>(`/api/admin/read-sentences/${sentenceId}`, {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Create a new read-along sentence
+ */
+export function createAdminReadSentence(token: string, data: CreateReadSentenceRequest): Promise<ReadSentence> {
+  return requestJson<ReadSentence>('/api/admin/read-sentences', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Update an existing read-along sentence
+ */
+export function updateAdminReadSentence(token: string, sentenceId: number, data: UpdateReadSentenceRequest): Promise<ReadSentence> {
+  return requestJson<ReadSentence>(`/api/admin/read-sentences/${sentenceId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(data),
+  })
+}
+
+/**
+ * Delete a read-along sentence
+ */
+export function deleteAdminReadSentence(token: string, sentenceId: number): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/admin/read-sentences/${sentenceId}`, {
+    method: 'DELETE',
     token,
   })
 }

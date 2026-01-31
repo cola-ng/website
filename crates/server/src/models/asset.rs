@@ -138,9 +138,10 @@ pub struct Stage {
     pub difficulty: Option<i16>,
     pub is_active: Option<bool>,
     pub created_at: DateTime<Utc>,
+    pub ai_prompt: Option<String>,
 }
 
-#[derive(Insertable, Deserialize)]
+#[derive(Insertable, Deserialize, ToSchema)]
 #[diesel(table_name = asset_stages)]
 pub struct NewStage {
     pub code: String,
@@ -152,6 +153,22 @@ pub struct NewStage {
     pub display_order: Option<i32>,
     pub difficulty: Option<i16>,
     pub is_active: Option<bool>,
+    pub ai_prompt: Option<String>,
+}
+
+#[derive(AsChangeset, Deserialize, ToSchema)]
+#[diesel(table_name = asset_stages)]
+pub struct UpdateStage {
+    pub code: Option<String>,
+    pub name_en: Option<String>,
+    pub name_zh: Option<String>,
+    pub description_en: Option<String>,
+    pub description_zh: Option<String>,
+    pub icon_emoji: Option<String>,
+    pub display_order: Option<i32>,
+    pub difficulty: Option<i16>,
+    pub is_active: Option<bool>,
+    pub ai_prompt: Option<String>,
 }
 
 // ============================================================================
@@ -245,12 +262,25 @@ pub struct ReadSubject {
     pub created_at: DateTime<Utc>,
 }
 
-#[derive(Insertable, Deserialize)]
+#[derive(Insertable, Deserialize, ToSchema)]
 #[diesel(table_name = asset_read_subjects)]
 pub struct NewReadSubject {
     pub code: String,
     pub title_en: String,
     pub title_zh: String,
+    pub description_en: Option<String>,
+    pub description_zh: Option<String>,
+    pub icon_emoji: Option<String>,
+    pub difficulty: Option<i16>,
+    pub subject_type: Option<String>,
+}
+
+#[derive(AsChangeset, Deserialize, ToSchema)]
+#[diesel(table_name = asset_read_subjects)]
+pub struct UpdateReadSubject {
+    pub code: Option<String>,
+    pub title_en: Option<String>,
+    pub title_zh: Option<String>,
     pub description_en: Option<String>,
     pub description_zh: Option<String>,
     pub icon_emoji: Option<String>,
@@ -279,13 +309,27 @@ pub struct ReadSentence {
     pub common_mistakes: Option<Value>,
 }
 
-#[derive(Insertable, Deserialize)]
+#[derive(Insertable, Deserialize, ToSchema)]
 #[diesel(table_name = asset_read_sentences)]
 pub struct NewReadSentence {
     pub subject_id: i64,
     pub sentence_order: i32,
     pub content_en: String,
     pub content_zh: String,
+    pub phonetic_transcription: Option<String>,
+    pub audio_path: Option<String>,
+    pub difficulty: Option<i16>,
+    pub focus_sounds: Option<Value>,
+    pub common_mistakes: Option<Value>,
+}
+
+#[derive(AsChangeset, Deserialize, ToSchema)]
+#[diesel(table_name = asset_read_sentences)]
+pub struct UpdateReadSentence {
+    pub subject_id: Option<i64>,
+    pub sentence_order: Option<i32>,
+    pub content_en: Option<String>,
+    pub content_zh: Option<String>,
     pub phonetic_transcription: Option<String>,
     pub audio_path: Option<String>,
     pub difficulty: Option<i16>,
