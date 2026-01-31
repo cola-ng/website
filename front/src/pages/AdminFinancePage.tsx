@@ -30,6 +30,7 @@ import {
   TableRow,
 } from '../components/ui/table'
 import { useAuth } from '../lib/auth'
+import { getAdminPerPage, setAdminPerPage, PER_PAGE_OPTIONS } from '../lib/utils'
 import {
   getFinanceStats,
   listOrders,
@@ -139,7 +140,7 @@ export function AdminFinancePage() {
 
   const [error, setError] = useState<string | null>(null)
 
-  const perPage = 20
+  const [perPage, setPerPage] = useState(() => getAdminPerPage())
 
   // Redirect non-admin users
   if (!token || !user?.is_admin) {
@@ -174,7 +175,7 @@ export function AdminFinancePage() {
         .catch((e) => setError(e.message))
         .finally(() => setOrdersLoading(false))
     }
-  }, [token, activeTab, ordersPage, ordersStatus, ordersSearch])
+  }, [token, activeTab, ordersPage, perPage, ordersStatus, ordersSearch])
 
   // Fetch subscriptions
   useEffect(() => {
@@ -193,10 +194,17 @@ export function AdminFinancePage() {
         .catch((e) => setError(e.message))
         .finally(() => setSubsLoading(false))
     }
-  }, [token, activeTab, subsPage, subsStatus, subsSearch])
+  }, [token, activeTab, subsPage, perPage, subsStatus, subsSearch])
 
   const ordersTotalPages = Math.ceil(ordersTotal / perPage)
   const subsTotalPages = Math.ceil(subsTotal / perPage)
+
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value)
+    setAdminPerPage(value)
+    setOrdersPage(1)
+    setSubsPage(1)
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -338,6 +346,16 @@ export function AdminFinancePage() {
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <CardTitle>订单列表</CardTitle>
                 <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">每页</span>
+                  <select
+                    value={perPage}
+                    onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                    className="h-9 px-2 border rounded-md text-sm bg-white"
+                  >
+                    {PER_PAGE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt} 条</option>
+                    ))}
+                  </select>
                   <select
                     className="rounded-md border border-gray-300 px-3 py-2 text-sm"
                     value={ordersStatus}
@@ -468,6 +486,16 @@ export function AdminFinancePage() {
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <CardTitle>订阅列表</CardTitle>
                 <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">每页</span>
+                  <select
+                    value={perPage}
+                    onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                    className="h-9 px-2 border rounded-md text-sm bg-white"
+                  >
+                    {PER_PAGE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt} 条</option>
+                    ))}
+                  </select>
                   <select
                     className="rounded-md border border-gray-300 px-3 py-2 text-sm"
                     value={subsStatus}

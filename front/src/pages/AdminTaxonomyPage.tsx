@@ -31,6 +31,7 @@ import {
 } from '../components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs'
 import { useAuth } from '../lib/auth'
+import { getAdminPerPage, setAdminPerPage, PER_PAGE_OPTIONS } from '../lib/utils'
 import {
   listDomains,
   createDomain,
@@ -115,6 +116,14 @@ export function AdminTaxonomyPage() {
   })
 
   const [actionLoading, setActionLoading] = useState(false)
+
+  // Per-page setting
+  const [perPage, setPerPage] = useState(() => getAdminPerPage())
+
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value)
+    setAdminPerPage(value)
+  }
 
   // Redirect non-admin users
   if (!token || !user?.is_admin) {
@@ -389,7 +398,19 @@ export function AdminTaxonomyPage() {
 
               {/* Domains Tab */}
               <TabsContent value="domains">
-                <div className="flex justify-end mb-4">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">每页</span>
+                    <select
+                      value={perPage}
+                      onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                      className="h-9 px-2 border rounded-md text-sm bg-white"
+                    >
+                      {PER_PAGE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt} 条</option>
+                      ))}
+                    </select>
+                  </div>
                   <Button size="sm" onClick={() => setAddDomainDialogOpen(true)}>
                     <Plus className="h-4 w-4 mr-1" />
                     添加域
@@ -413,7 +434,7 @@ export function AdminTaxonomyPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {domains.map((domain) => (
+                      {domains.slice(0, perPage).map((domain) => (
                         <TableRow key={domain.id}>
                           <TableCell className="font-mono text-sm">{domain.id}</TableCell>
                           <TableCell className="font-mono text-sm">{domain.code}</TableCell>
@@ -458,23 +479,42 @@ export function AdminTaxonomyPage() {
                 {!domainsLoading && domains.length === 0 && (
                   <div className="text-center py-12 text-gray-500">暂无域数据</div>
                 )}
+                {!domainsLoading && domains.length > perPage && (
+                  <div className="text-center py-2 text-sm text-gray-500">
+                    显示 {perPage} / {domains.length} 条记录
+                  </div>
+                )}
               </TabsContent>
 
               {/* Categories Tab */}
               <TabsContent value="categories">
                 <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm font-medium">筛选域:</label>
-                    <select
-                      className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
-                      value={selectedDomainId ?? ''}
-                      onChange={(e) => setSelectedDomainId(e.target.value ? parseInt(e.target.value, 10) : undefined)}
-                    >
-                      <option value="">全部</option>
-                      {domains.map((d) => (
-                        <option key={d.id} value={d.id}>{d.name_zh}</option>
-                      ))}
-                    </select>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-500">每页</span>
+                      <select
+                        value={perPage}
+                        onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                        className="h-9 px-2 border rounded-md text-sm bg-white"
+                      >
+                        {PER_PAGE_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt} 条</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <label className="text-sm font-medium">筛选域:</label>
+                      <select
+                        className="rounded-md border border-gray-300 px-3 py-1.5 text-sm"
+                        value={selectedDomainId ?? ''}
+                        onChange={(e) => setSelectedDomainId(e.target.value ? parseInt(e.target.value, 10) : undefined)}
+                      >
+                        <option value="">全部</option>
+                        {domains.map((d) => (
+                          <option key={d.id} value={d.id}>{d.name_zh}</option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                   <Button size="sm" onClick={openAddCategoryDialog} disabled={domains.length === 0}>
                     <Plus className="h-4 w-4 mr-1" />
@@ -500,7 +540,7 @@ export function AdminTaxonomyPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {categories.map((category) => (
+                      {categories.slice(0, perPage).map((category) => (
                         <TableRow key={category.id}>
                           <TableCell className="font-mono text-sm">{category.id}</TableCell>
                           <TableCell className="font-mono text-sm">{category.code}</TableCell>
@@ -547,6 +587,11 @@ export function AdminTaxonomyPage() {
                 {!categoriesLoading && categories.length === 0 && (
                   <div className="text-center py-12 text-gray-500">
                     {domains.length === 0 ? '请先添加域' : '暂无类别数据'}
+                  </div>
+                )}
+                {!categoriesLoading && categories.length > perPage && (
+                  <div className="text-center py-2 text-sm text-gray-500">
+                    显示 {perPage} / {categories.length} 条记录
                   </div>
                 )}
               </TabsContent>

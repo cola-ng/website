@@ -36,6 +36,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { useAuth } from '../lib/auth'
+import { getAdminPerPage, setAdminPerPage, PER_PAGE_OPTIONS } from '../lib/utils'
 import {
   listWords,
   lookup,
@@ -137,6 +138,9 @@ export function AdminDictPage() {
   })
   const [playingAudioId, setPlayingAudioId] = useState<number | null>(null)
 
+  // Per-page setting
+  const [perPage, setPerPage] = useState(() => getAdminPerPage())
+
   // Redirect non-admin users
   if (!token || !user?.is_admin) {
     return <Navigate to="/" replace />
@@ -146,12 +150,17 @@ export function AdminDictPage() {
   useEffect(() => {
     if (token && !wordId) {
       setLoading(true)
-      listWords(token, { search: search || undefined, limit: 50 })
+      listWords(token, { search: search || undefined, limit: perPage })
         .then(setWords)
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load words'))
         .finally(() => setLoading(false))
     }
-  }, [token, wordId, search])
+  }, [token, wordId, search, perPage])
+
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value)
+    setAdminPerPage(value)
+  }
 
   // Fetch word detail
   useEffect(() => {
@@ -1161,14 +1170,28 @@ export function AdminDictPage() {
                 <BookOpen className="h-5 w-5" />
                 词典管理
               </CardTitle>
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
-                <Input
-                  placeholder="搜索单词..."
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  className="pl-9 w-64"
-                />
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">每页</span>
+                  <select
+                    value={perPage}
+                    onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                    className="h-9 px-2 border rounded-md text-sm bg-white"
+                  >
+                    {PER_PAGE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt} 条</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    placeholder="搜索单词..."
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    className="pl-9 w-64"
+                  />
+                </div>
               </div>
             </div>
             {/* Batch Actions Bar */}
