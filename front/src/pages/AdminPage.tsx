@@ -122,7 +122,7 @@ export function AdminPage() {
   const [topAiUsers, setTopAiUsers] = useState<TopAiUser[]>([])
   const [chartsLoading, setChartsLoading] = useState(false)
 
-  const perPage = 20
+  const [perPage, setPerPage] = useState(() => getAdminPerPage())
 
   // Redirect non-admin users
   if (!token || !user?.is_admin) {
@@ -171,7 +171,7 @@ export function AdminPage() {
         .catch((e) => setError(e.message))
         .finally(() => setLoading(false))
     }
-  }, [token, activeTab, page, search])
+  }, [token, activeTab, page, perPage, search])
 
   const handleGrantAdmin = async () => {
     if (!token || !selectedUser) return
@@ -215,6 +215,12 @@ export function AdminPage() {
   }
 
   const totalPages = Math.ceil(totalUsers / perPage)
+
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value)
+    setAdminPerPage(value)
+    setPage(1)
+  }
 
   const handleViewUser = (u: UserListItem) => {
     navigate(`/admin/users/${u.id}`)
@@ -531,7 +537,19 @@ export function AdminPage() {
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <CardTitle>用户列表</CardTitle>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-gray-500">每页</span>
+                      <select
+                        value={perPage}
+                        onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                        className="h-9 px-2 border rounded-md text-sm bg-white"
+                      >
+                        {PER_PAGE_OPTIONS.map((opt) => (
+                          <option key={opt} value={opt}>{opt} 条</option>
+                        ))}
+                      </select>
+                    </div>
                     <div className="relative">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
                       <Input
