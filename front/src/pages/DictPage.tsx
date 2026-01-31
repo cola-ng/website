@@ -24,6 +24,7 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../contexts/ToastContext'
+import { useStudyHeartbeat, type PageType } from '../hooks/useStudyHeartbeat'
 
 // Unified search history item type
 type SearchHistoryItem = {
@@ -41,6 +42,10 @@ export function DictPage() {
 
   // Determine active tab from URL
   const activeTab = location.pathname === '/translate' ? 'translate' : 'lookup'
+
+  // Track study time based on current mode
+  const heartbeatType: PageType = activeTab === 'translate' ? 'translate' : 'dictionary'
+  useStudyHeartbeat(heartbeatType)
 
   const handleTabChange = (value: string) => {
     if (value === 'translate') {

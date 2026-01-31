@@ -424,6 +424,128 @@ pub struct UpdateDailyStat {
 }
 
 // ============================================================================
+// Study Time Daily (heartbeat-based tracking)
+// ============================================================================
+
+/// 页面类型枚举
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum PageType {
+    Chat,
+    Review,
+    Stage,
+    Read,
+    Dictionary,
+    Translate,
+}
+
+impl PageType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            PageType::Chat => "chat",
+            PageType::Review => "review",
+            PageType::Stage => "stage",
+            PageType::Read => "read",
+            PageType::Dictionary => "dictionary",
+            PageType::Translate => "translate",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s.to_lowercase().as_str() {
+            "chat" => Some(PageType::Chat),
+            "review" => Some(PageType::Review),
+            "stage" => Some(PageType::Stage),
+            "read" => Some(PageType::Read),
+            "dictionary" => Some(PageType::Dictionary),
+            "translate" => Some(PageType::Translate),
+            _ => None,
+        }
+    }
+}
+
+/// 每日学习时间统计
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_study_time_daily)]
+pub struct StudyTimeDaily {
+    pub id: i64,
+    pub user_id: i64,
+    pub stat_date: NaiveDate,
+    pub chat_seconds: i32,
+    pub review_seconds: i32,
+    pub stage_seconds: i32,
+    pub read_seconds: i32,
+    pub dictionary_seconds: i32,
+    pub translate_seconds: i32,
+    pub total_seconds: i32,
+    pub heartbeat_count: i32,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// 新建每日学习时间记录
+#[derive(Insertable)]
+#[diesel(table_name = learn_study_time_daily)]
+pub struct NewStudyTimeDaily {
+    pub user_id: i64,
+    pub stat_date: NaiveDate,
+    pub chat_seconds: i32,
+    pub review_seconds: i32,
+    pub stage_seconds: i32,
+    pub read_seconds: i32,
+    pub dictionary_seconds: i32,
+    pub translate_seconds: i32,
+    pub total_seconds: i32,
+    pub heartbeat_count: i32,
+}
+
+/// 用户活动状态 (存储在内存中)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserActivityState {
+    pub last_activity_time: DateTime<Utc>,
+    pub last_page_type: PageType,
+}
+
+/// 待持久化的学习时间增量
+#[derive(Debug, Clone, Default)]
+pub struct StudyTimeIncrement {
+    pub chat_seconds: i32,
+    pub review_seconds: i32,
+    pub stage_seconds: i32,
+    pub read_seconds: i32,
+    pub dictionary_seconds: i32,
+    pub translate_seconds: i32,
+    pub heartbeat_count: i32,
+}
+
+impl StudyTimeIncrement {
+    pub fn add_seconds(&mut self, page_type: PageType, seconds: i32) {
+        match page_type {
+            PageType::Chat => self.chat_seconds += seconds,
+            PageType::Review => self.review_seconds += seconds,
+            PageType::Stage => self.stage_seconds += seconds,
+            PageType::Read => self.read_seconds += seconds,
+            PageType::Dictionary => self.dictionary_seconds += seconds,
+            PageType::Translate => self.translate_seconds += seconds,
+        }
+        self.heartbeat_count += 1;
+    }
+
+    pub fn total_seconds(&self) -> i32 {
+        self.chat_seconds
+            + self.review_seconds
+            + self.stage_seconds
+            + self.read_seconds
+            + self.dictionary_seconds
+            + self.translate_seconds
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.total_seconds() == 0
+    }
+}
+
+// ============================================================================
 // User Vocabularies
 // ============================================================================
 

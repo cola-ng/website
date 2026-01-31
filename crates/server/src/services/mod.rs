@@ -10,6 +10,7 @@
 pub mod activity;
 pub mod ai_provider;
 pub mod doubao;
+pub mod study_time;
 pub mod zhipu;
 
 use std::sync::Arc;

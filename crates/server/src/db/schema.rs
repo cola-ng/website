@@ -811,6 +811,24 @@ diesel::table! {
 }
 
 diesel::table! {
+    learn_study_time_daily (id) {
+        id -> Int8,
+        user_id -> Int8,
+        stat_date -> Date,
+        chat_seconds -> Int4,
+        review_seconds -> Int4,
+        stage_seconds -> Int4,
+        read_seconds -> Int4,
+        dictionary_seconds -> Int4,
+        translate_seconds -> Int4,
+        total_seconds -> Int4,
+        heartbeat_count -> Int4,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_suggestions (id) {
         id -> Int8,
         user_id -> Int8,
@@ -1068,6 +1086,7 @@ diesel::table! {
 
 diesel::joinable!(ai_usage_quotas -> base_users (user_id));
 diesel::joinable!(ai_usage_records -> base_users (user_id));
+diesel::joinable!(learn_study_time_daily -> base_users (user_id));
 diesel::joinable!(payment_orders -> base_users (user_id));
 diesel::joinable!(payment_refunds -> payment_orders (order_id));
 diesel::joinable!(user_activities -> base_users (user_id));
@@ -1134,6 +1153,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_read_practices,
     learn_read_progress,
     learn_script_progress,
+    learn_study_time_daily,
     learn_suggestions,
     learn_vocabularies,
     learn_write_practices,

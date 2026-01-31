@@ -17,6 +17,7 @@ import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
+import { useStudyHeartbeat } from '../hooks/useStudyHeartbeat'
 import { ensureAudioContextRunning, stopAudio as globalStopAudio, onPlayingStateChange } from '../lib/audio'
 import { evaluatePronunciation, getCurrentSubscription, type CurrentSubscription } from '../lib/api'
 
@@ -204,6 +205,7 @@ export function StageDetailPage() {
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
   const { token } = useAuth() // Ensure user is authenticated
+  useStudyHeartbeat('stage')
 
   const [stage, setStage] = useState<Stage | null>(null)
   const [scripts, setScripts] = useState<Script[]>([])

@@ -6,6 +6,7 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
+import { useStudyHeartbeat } from '../hooks/useStudyHeartbeat'
 import { cn } from '../lib/utils'
 import { getReviewStats, type ReviewStats } from '../lib/api'
 import { REVIEW_TYPES, type ReviewType } from '../types/review'
@@ -98,6 +99,7 @@ function SmartReviewCard({ totalCount }: SmartReviewCardProps) {
 
 export function ReviewPage() {
   const { token } = useAuth()
+  useStudyHeartbeat('review')
   const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null)
   const [loading, setLoading] = useState(true)
 

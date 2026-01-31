@@ -7,6 +7,7 @@ mod chat;
 mod daily;
 mod daily_stat;
 mod favorite;
+mod heartbeat;
 mod issue_word;
 mod practice;
 mod pronunciation;
@@ -110,4 +111,6 @@ pub fn router() -> Router {
                 .get(daily::get_daily_data)
                 .push(Router::with_path("tasks/{id}").put(daily::update_task)),
         )
+        .push(Router::with_path("heartbeat").post(heartbeat::heartbeat))
+        .push(Router::with_path("study-time").get(heartbeat::get_study_time_stats))
 }

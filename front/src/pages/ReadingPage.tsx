@@ -19,6 +19,7 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
+import { useStudyHeartbeat } from '../hooks/useStudyHeartbeat'
 import { cn } from '../lib/utils'
 import {
   textToSpeech,
@@ -42,6 +43,7 @@ import {
 
 export function ReadingPage() {
   const { token } = useAuth()
+  useStudyHeartbeat('read')
   const [sentences, setSentences] = useState<ReadSentence[]>([])
   const [currentIndex, setCurrentIndex] = useState(0)
   const [isRecording, setIsRecording] = useState(false)

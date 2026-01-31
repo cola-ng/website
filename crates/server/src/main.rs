@@ -10,6 +10,7 @@ mod hoops;
 mod models;
 mod routing;
 mod services;
+mod tasks;
 pub use global::*;
 pub mod user;
 pub use error::AppError;
@@ -43,6 +44,9 @@ async fn main() {
     let bind_addr = app_config.bind_addr.clone();
 
     db::init(&app_config.database);
+
+    // Start background tasks
+    tasks::start_all();
 
     salvo::http::request::set_global_secure_max_size(100_000_000);
     let router = routing::router();

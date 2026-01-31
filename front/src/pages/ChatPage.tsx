@@ -5,6 +5,7 @@ import { Send, Mic, MicOff, MessageCircle, Map as MapIcon, Volume2, FileDown, Cl
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
+import { useStudyHeartbeat } from '../hooks/useStudyHeartbeat'
 import { cn } from '../lib/utils'
 import { voiceChatSend, textChatSend, textToSpeech, updateChatTitle, createChat, listChats, resetChat, pollChatTurn, getChatTurns, deleteChatTurn, lookup, toggleFavorite, listFavorites, getCurrentSubscription, type TextIssue, type ChatTurn, type ChatIssue, type CurrentSubscription } from '../lib/api'
 import { ensureAudioContextRunning, stopAudio as globalStopAudio, queueAudio, queueAudioFromBase64, onPlayingStateChange } from '../lib/audio'
@@ -116,6 +117,7 @@ interface Context {
 
 export function ChatPage() {
   const { token } = useAuth()
+  useStudyHeartbeat('chat')
   const { chatId: urlChatId } = useParams<{ chatId: string }>()
   const navigate = useNavigate()
   const [chats, setChats] = useState<Chat[]>([])

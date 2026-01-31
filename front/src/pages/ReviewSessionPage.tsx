@@ -5,6 +5,7 @@ import { X, Clock, Trophy, Flame, ArrowLeft, RotateCcw, Loader2, Sparkles } from
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { useAuth } from '../lib/auth'
+import { useStudyHeartbeat } from '../hooks/useStudyHeartbeat'
 import {
   getReviewItems,
   submitReview,
@@ -23,6 +24,7 @@ import {
 export function ReviewSessionPage() {
   const { type } = useParams<{ type: string }>()
   const { token } = useAuth()
+  useStudyHeartbeat('review')
   const navigate = useNavigate()
 
   const [items, setItems] = useState<ReviewItem[]>([])
