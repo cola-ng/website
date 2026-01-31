@@ -3049,13 +3049,25 @@ export type UpdateStageRequest = Partial<CreateStageRequest>
 export type StageListResponse = {
   stages: Stage[]
   total: number
+  page: number
+  per_page: number
 }
 
 /**
- * List all chat stages/scenarios
+ * List all chat stages/scenarios with pagination
  */
-export function listAdminStages(token: string): Promise<StageListResponse> {
-  return requestJson<StageListResponse>('/api/admin/stages', {
+export function listAdminStages(
+  token: string,
+  page: number = 1,
+  perPage: number = 20,
+  search?: string
+): Promise<StageListResponse> {
+  const params = new URLSearchParams()
+  params.set('page', page.toString())
+  params.set('per_page', perPage.toString())
+  if (search) params.set('search', search)
+
+  return requestJson<StageListResponse>(`/api/admin/stages?${params}`, {
     method: 'GET',
     token,
   })
@@ -3126,13 +3138,27 @@ export type UpdateReadSubjectRequest = Partial<CreateReadSubjectRequest>
 export type ReadSubjectListResponse = {
   subjects: ReadSubject[]
   total: number
+  page: number
+  per_page: number
 }
 
 /**
- * List all read-along subjects
+ * List all read-along subjects with pagination
  */
-export function listAdminReadSubjects(token: string): Promise<ReadSubjectListResponse> {
-  return requestJson<ReadSubjectListResponse>('/api/admin/read-subjects', {
+export function listAdminReadSubjects(
+  token: string,
+  page: number = 1,
+  perPage: number = 20,
+  search?: string,
+  subjectType?: string
+): Promise<ReadSubjectListResponse> {
+  const params = new URLSearchParams()
+  params.set('page', page.toString())
+  params.set('per_page', perPage.toString())
+  if (search) params.set('search', search)
+  if (subjectType) params.set('subject_type', subjectType)
+
+  return requestJson<ReadSubjectListResponse>(`/api/admin/read-subjects?${params}`, {
     method: 'GET',
     token,
   })
@@ -3204,16 +3230,27 @@ export type UpdateReadSentenceRequest = Partial<CreateReadSentenceRequest>
 export type ReadSentenceListResponse = {
   sentences: ReadSentence[]
   total: number
+  page: number
+  per_page: number
 }
 
 /**
- * List read-along sentences (optionally filter by subject)
+ * List read-along sentences with pagination (optionally filter by subject)
  */
-export function listAdminReadSentences(token: string, subjectId?: number): Promise<ReadSentenceListResponse> {
-  const url = subjectId
-    ? `/api/admin/read-sentences?subject_id=${subjectId}`
-    : '/api/admin/read-sentences'
-  return requestJson<ReadSentenceListResponse>(url, {
+export function listAdminReadSentences(
+  token: string,
+  page: number = 1,
+  perPage: number = 20,
+  subjectId?: number,
+  search?: string
+): Promise<ReadSentenceListResponse> {
+  const params = new URLSearchParams()
+  params.set('page', page.toString())
+  params.set('per_page', perPage.toString())
+  if (subjectId) params.set('subject_id', subjectId.toString())
+  if (search) params.set('search', search)
+
+  return requestJson<ReadSentenceListResponse>(`/api/admin/read-sentences?${params}`, {
     method: 'GET',
     token,
   })

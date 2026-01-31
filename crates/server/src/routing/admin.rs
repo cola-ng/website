@@ -1281,26 +1281,81 @@ struct SubscriptionRow {
 use salvo::oapi::extract::PathParam;
 use crate::models::asset::{Stage, NewStage, UpdateStage, ReadSubject, NewReadSubject, UpdateReadSubject, ReadSentence, NewReadSentence, UpdateReadSentence};
 
+#[derive(Deserialize, ToSchema)]
+pub struct ListStagesQuery {
+    /// Page number (1-indexed)
+    page: Option<i64>,
+    /// Items per page (default 20)
+    per_page: Option<i64>,
+    /// Search by name or code
+    search: Option<String>,
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct StageListResponse {
     pub stages: Vec<Stage>,
     pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
 }
 
-/// List all chat stages/scenarios
+/// List all chat stages/scenarios with pagination
 #[endpoint(tags("Admin"))]
-pub async fn list_stages() -> JsonResult<StageListResponse> {
+pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
+    let query: ListStagesQuery = req.parse_queries().unwrap_or(ListStagesQuery {
+        page: None,
+        per_page: None,
+        search: None,
+    });
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let search = query.search.clone();
+
     let (stages, total) = with_conn(move |conn| {
-        let stages = asset_stages::table
-            .order(asset_stages::display_order.asc().nulls_last())
-            .load::<Stage>(conn)?;
-        let total = stages.len() as i64;
+        let total: i64 = if let Some(ref search_term) = search {
+            let pattern = format!("%{}%", search_term.to_lowercase());
+            asset_stages::table
+                .filter(
+                    asset_stages::name_zh.ilike(&pattern)
+                        .or(asset_stages::name_en.ilike(&pattern))
+                        .or(asset_stages::code.ilike(&pattern)),
+                )
+                .select(count(asset_stages::id))
+                .first(conn)?
+        } else {
+            asset_stages::table
+                .select(count(asset_stages::id))
+                .first(conn)?
+        };
+
+        let stages: Vec<Stage> = if let Some(ref search_term) = search {
+            let pattern = format!("%{}%", search_term.to_lowercase());
+            asset_stages::table
+                .filter(
+                    asset_stages::name_zh.ilike(&pattern)
+                        .or(asset_stages::name_en.ilike(&pattern))
+                        .or(asset_stages::code.ilike(&pattern)),
+                )
+                .order(asset_stages::display_order.asc().nulls_last())
+                .offset(offset)
+                .limit(per_page)
+                .load(conn)?
+        } else {
+            asset_stages::table
+                .order(asset_stages::display_order.asc().nulls_last())
+                .offset(offset)
+                .limit(per_page)
+                .load(conn)?
+        };
+
         Ok::<_, diesel::result::Error>((stages, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list stages"))?;
 
-    json_ok(StageListResponse { stages, total })
+    json_ok(StageListResponse { stages, total, page, per_page })
 }
 
 /// Get a single stage by ID
@@ -1372,26 +1427,86 @@ pub async fn delete_stage(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
 // Read-Along Subject Management
 // ============================================================================
 
+#[derive(Deserialize, ToSchema)]
+pub struct ListReadSubjectsQuery {
+    /// Page number (1-indexed)
+    page: Option<i64>,
+    /// Items per page (default 20)
+    per_page: Option<i64>,
+    /// Search by title or code
+    search: Option<String>,
+    /// Filter by subject type
+    subject_type: Option<String>,
+}
+
 #[derive(Serialize, ToSchema)]
 pub struct ReadSubjectListResponse {
     pub subjects: Vec<ReadSubject>,
     pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
 }
 
-/// List all read-along subjects
+/// List all read-along subjects with pagination
 #[endpoint(tags("Admin"))]
-pub async fn list_read_subjects() -> JsonResult<ReadSubjectListResponse> {
+pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectListResponse> {
+    let query: ListReadSubjectsQuery = req.parse_queries().unwrap_or(ListReadSubjectsQuery {
+        page: None,
+        per_page: None,
+        search: None,
+        subject_type: None,
+    });
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let search = query.search.clone();
+    let subject_type = query.subject_type.clone();
+
     let (subjects, total) = with_conn(move |conn| {
-        let subjects = asset_read_subjects::table
+        let mut base_query = asset_read_subjects::table.into_boxed();
+
+        if let Some(ref search_term) = search {
+            let pattern = format!("%{}%", search_term.to_lowercase());
+            base_query = base_query.filter(
+                asset_read_subjects::title_zh.ilike(&pattern)
+                    .or(asset_read_subjects::title_en.ilike(&pattern))
+                    .or(asset_read_subjects::code.ilike(&pattern)),
+            );
+        }
+
+        if let Some(ref st) = subject_type {
+            base_query = base_query.filter(asset_read_subjects::subject_type.eq(st));
+        }
+
+        // Clone for count query
+        let mut count_query = asset_read_subjects::table.into_boxed();
+        if let Some(ref search_term) = search {
+            let pattern = format!("%{}%", search_term.to_lowercase());
+            count_query = count_query.filter(
+                asset_read_subjects::title_zh.ilike(&pattern)
+                    .or(asset_read_subjects::title_en.ilike(&pattern))
+                    .or(asset_read_subjects::code.ilike(&pattern)),
+            );
+        }
+        if let Some(ref st) = subject_type {
+            count_query = count_query.filter(asset_read_subjects::subject_type.eq(st));
+        }
+
+        let total: i64 = count_query.select(count(asset_read_subjects::id)).first(conn)?;
+
+        let subjects: Vec<ReadSubject> = base_query
             .order(asset_read_subjects::id.asc())
-            .load::<ReadSubject>(conn)?;
-        let total = subjects.len() as i64;
+            .offset(offset)
+            .limit(per_page)
+            .load(conn)?;
+
         Ok::<_, diesel::result::Error>((subjects, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read subjects"))?;
 
-    json_ok(ReadSubjectListResponse { subjects, total })
+    json_ok(ReadSubjectListResponse { subjects, total, page, per_page })
 }
 
 /// Get a single read-along subject by ID
@@ -1464,39 +1579,76 @@ pub async fn delete_read_subject(id: PathParam<i64>) -> JsonResult<serde_json::V
 // ============================================================================
 
 #[derive(Deserialize, ToSchema)]
-pub struct ReadSentenceQuery {
+pub struct ListReadSentencesQuery {
+    /// Page number (1-indexed)
+    page: Option<i64>,
+    /// Items per page (default 20)
+    per_page: Option<i64>,
     /// Filter by subject ID
-    pub subject_id: Option<i64>,
+    subject_id: Option<i64>,
+    /// Search by content
+    search: Option<String>,
 }
 
 #[derive(Serialize, ToSchema)]
 pub struct ReadSentenceListResponse {
     pub sentences: Vec<ReadSentence>,
     pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
 }
 
-/// List read-along sentences (optionally filter by subject)
+/// List read-along sentences with pagination (optionally filter by subject)
 #[endpoint(tags("Admin"))]
-pub async fn list_read_sentences(query: salvo::oapi::extract::QueryParam<ReadSentenceQuery, false>) -> JsonResult<ReadSentenceListResponse> {
-    let subject_id = query.into_inner().and_then(|q| q.subject_id);
+pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceListResponse> {
+    let query: ListReadSentencesQuery = req.parse_queries().unwrap_or(ListReadSentencesQuery {
+        page: None,
+        per_page: None,
+        subject_id: None,
+        search: None,
+    });
+
+    let page = query.page.unwrap_or(1).max(1);
+    let per_page = query.per_page.unwrap_or(20).clamp(1, 100);
+    let offset = (page - 1) * per_page;
+    let subject_id = query.subject_id;
+    let search = query.search.clone();
 
     let (sentences, total) = with_conn(move |conn| {
-        let mut query = asset_read_sentences::table.into_boxed();
+        let mut base_query = asset_read_sentences::table.into_boxed();
+        let mut count_query = asset_read_sentences::table.into_boxed();
 
         if let Some(sid) = subject_id {
-            query = query.filter(asset_read_sentences::subject_id.eq(sid));
+            base_query = base_query.filter(asset_read_sentences::subject_id.eq(sid));
+            count_query = count_query.filter(asset_read_sentences::subject_id.eq(sid));
         }
 
-        let sentences = query
+        if let Some(ref search_term) = search {
+            let pattern = format!("%{}%", search_term.to_lowercase());
+            base_query = base_query.filter(
+                asset_read_sentences::content_en.ilike(&pattern)
+                    .or(asset_read_sentences::content_zh.ilike(&pattern)),
+            );
+            count_query = count_query.filter(
+                asset_read_sentences::content_en.ilike(&pattern)
+                    .or(asset_read_sentences::content_zh.ilike(&pattern)),
+            );
+        }
+
+        let total: i64 = count_query.select(count(asset_read_sentences::id)).first(conn)?;
+
+        let sentences: Vec<ReadSentence> = base_query
             .order((asset_read_sentences::subject_id.asc(), asset_read_sentences::sentence_order.asc()))
-            .load::<ReadSentence>(conn)?;
-        let total = sentences.len() as i64;
+            .offset(offset)
+            .limit(per_page)
+            .load(conn)?;
+
         Ok::<_, diesel::result::Error>((sentences, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read sentences"))?;
 
-    json_ok(ReadSentenceListResponse { sentences, total })
+    json_ok(ReadSentenceListResponse { sentences, total, page, per_page })
 }
 
 /// Get a single read-along sentence by ID

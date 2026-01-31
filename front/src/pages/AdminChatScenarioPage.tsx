@@ -7,6 +7,9 @@ import {
   Pencil,
   MessageSquare,
   Sparkles,
+  ChevronLeft,
+  ChevronRight,
+  Search,
 } from 'lucide-react'
 
 import { Header } from '../components/Header'
@@ -30,6 +33,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { useAuth } from '../lib/auth'
+import { getAdminPerPage, setAdminPerPage, PER_PAGE_OPTIONS } from '../lib/utils'
 import {
   listAdminStages,
   createAdminStage,
@@ -46,6 +50,13 @@ export function AdminChatScenarioPage() {
   const [stages, setStages] = useState<Stage[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  // Pagination state
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState('')
+  const [searchInput, setSearchInput] = useState('')
+  const [perPage, setPerPage] = useState(() => getAdminPerPage())
 
   // Dialog states
   const [addDialogOpen, setAddDialogOpen] = useState(false)
@@ -71,23 +82,48 @@ export function AdminChatScenarioPage() {
     return <Navigate to="/" replace />
   }
 
+  const totalPages = Math.ceil(total / perPage)
+
   // Fetch stages
   useEffect(() => {
     if (token) {
       setLoading(true)
-      listAdminStages(token)
-        .then((res) => setStages(res.stages))
+      listAdminStages(token, page, perPage, search || undefined)
+        .then((res) => {
+          setStages(res.stages)
+          setTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load stages'))
         .finally(() => setLoading(false))
     }
-  }, [token])
+  }, [token, page, perPage, search])
 
   const refreshStages = () => {
     if (token) {
-      listAdminStages(token)
-        .then((res) => setStages(res.stages))
+      listAdminStages(token, page, perPage, search || undefined)
+        .then((res) => {
+          setStages(res.stages)
+          setTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load stages'))
     }
+  }
+
+  const handleSearch = () => {
+    setPage(1)
+    setSearch(searchInput)
+  }
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSearch()
+    }
+  }
+
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value)
+    setAdminPerPage(value)
+    setPage(1)
   }
 
   const handleOpenAdd = () => {
@@ -205,7 +241,35 @@ export function AdminChatScenarioPage() {
 
         <Card>
           <CardHeader>
-            <CardTitle>场景列表</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>场景列表</CardTitle>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-500">每页</span>
+                  <select
+                    value={perPage}
+                    onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                    className="h-9 px-2 border rounded-md text-sm bg-white"
+                  >
+                    {PER_PAGE_OPTIONS.map((opt) => (
+                      <option key={opt} value={opt}>{opt} 条</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Input
+                    placeholder="搜索名称或代码..."
+                    value={searchInput}
+                    onChange={(e) => setSearchInput(e.target.value)}
+                    onKeyDown={handleSearchKeyDown}
+                    className="w-64"
+                  />
+                  <Button variant="outline" size="icon" onClick={handleSearch}>
+                    <Search className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             {loading ? (
@@ -213,6 +277,7 @@ export function AdminChatScenarioPage() {
                 <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
               </div>
             ) : (
+              <>
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -221,9 +286,9 @@ export function AdminChatScenarioPage() {
                     <TableHead>代码</TableHead>
                     <TableHead className="w-16">难度</TableHead>
                     <TableHead className="w-16">顺序</TableHead>
-                    <TableHead className="w-16">状态</TableHead>
-                    <TableHead className="w-32">AI 提示词</TableHead>
-                    <TableHead className="w-24 text-right">操作</TableHead>
+                    <TableHead className="w-16 whitespace-nowrap">状态</TableHead>
+                    <TableHead className="w-32 whitespace-nowrap">AI 提示词</TableHead>
+                    <TableHead className="w-24 text-right whitespace-nowrap">操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -241,7 +306,7 @@ export function AdminChatScenarioPage() {
                         </span>
                       </TableCell>
                       <TableCell>{stage.display_order}</TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         {stage.is_active ? (
                           <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-green-100 text-green-700">
                             启用
@@ -252,7 +317,7 @@ export function AdminChatScenarioPage() {
                           </span>
                         )}
                       </TableCell>
-                      <TableCell>
+                      <TableCell className="whitespace-nowrap">
                         {stage.ai_prompt ? (
                           <span className="inline-flex items-center gap-1 text-xs text-purple-600">
                             <Sparkles className="h-3 w-3" />
@@ -262,10 +327,11 @@ export function AdminChatScenarioPage() {
                           <span className="text-xs text-gray-400">未配置</span>
                         )}
                       </TableCell>
-                      <TableCell className="text-right">
+                      <TableCell className="text-right whitespace-nowrap">
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="编辑"
                           onClick={() => handleOpenEdit(stage)}
                         >
                           <Pencil className="h-4 w-4" />
@@ -273,6 +339,7 @@ export function AdminChatScenarioPage() {
                         <Button
                           variant="ghost"
                           size="icon"
+                          title="删除"
                           onClick={() => handleOpenDelete(stage)}
                         >
                           <Trash2 className="h-4 w-4 text-red-500" />
@@ -289,6 +356,35 @@ export function AdminChatScenarioPage() {
                   )}
                 </TableBody>
               </Table>
+
+              {/* Pagination */}
+              <div className="flex items-center justify-between mt-4">
+                <div className="text-sm text-gray-500">
+                  共 {total} 条记录
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm">
+                    {page} / {totalPages || 1}
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+              </>
             )}
           </CardContent>
         </Card>

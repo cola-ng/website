@@ -8,7 +8,9 @@ import {
   BookOpen,
   Volume2,
   ChevronRight,
+  ChevronLeft,
   ArrowLeft,
+  Search,
 } from 'lucide-react'
 
 import { Header } from '../components/Header'
@@ -32,6 +34,7 @@ import {
   DialogTitle,
 } from '../components/ui/dialog'
 import { useAuth } from '../lib/auth'
+import { getAdminPerPage, setAdminPerPage, PER_PAGE_OPTIONS } from '../lib/utils'
 import {
   listAdminReadSubjects,
   createAdminReadSubject,
@@ -58,9 +61,23 @@ export function AdminReadPage() {
   const [subjects, setSubjects] = useState<ReadSubject[]>([])
   const [subjectsLoading, setSubjectsLoading] = useState(false)
 
+  // Subject pagination state
+  const [subjectsPage, setSubjectsPage] = useState(1)
+  const [subjectsTotal, setSubjectsTotal] = useState(0)
+  const [subjectsSearch, setSubjectsSearch] = useState('')
+  const [subjectsSearchInput, setSubjectsSearchInput] = useState('')
+
   // Sentence state
   const [sentences, setSentences] = useState<ReadSentence[]>([])
   const [sentencesLoading, setSentencesLoading] = useState(false)
+
+  // Sentence pagination state
+  const [sentencesPage, setSentencesPage] = useState(1)
+  const [sentencesTotal, setSentencesTotal] = useState(0)
+  const [sentencesSearch, setSentencesSearch] = useState('')
+  const [sentencesSearchInput, setSentencesSearchInput] = useState('')
+
+  const [perPage, setPerPage] = useState(() => getAdminPerPage())
 
   // Error state
   const [error, setError] = useState<string | null>(null)
@@ -103,42 +120,86 @@ export function AdminReadPage() {
     return <Navigate to="/" replace />
   }
 
+  const subjectsTotalPages = Math.ceil(subjectsTotal / perPage)
+  const sentencesTotalPages = Math.ceil(sentencesTotal / perPage)
+
   // Fetch subjects
   useEffect(() => {
     if (token) {
       setSubjectsLoading(true)
-      listAdminReadSubjects(token)
-        .then((res) => setSubjects(res.subjects))
+      listAdminReadSubjects(token, subjectsPage, perPage, subjectsSearch || undefined)
+        .then((res) => {
+          setSubjects(res.subjects)
+          setSubjectsTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load subjects'))
         .finally(() => setSubjectsLoading(false))
     }
-  }, [token])
+  }, [token, subjectsPage, perPage, subjectsSearch])
 
   // Fetch sentences when a subject is selected
   useEffect(() => {
     if (token && selectedSubject) {
       setSentencesLoading(true)
-      listAdminReadSentences(token, selectedSubject.id)
-        .then((res) => setSentences(res.sentences))
+      listAdminReadSentences(token, sentencesPage, perPage, selectedSubject.id, sentencesSearch || undefined)
+        .then((res) => {
+          setSentences(res.sentences)
+          setSentencesTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load sentences'))
         .finally(() => setSentencesLoading(false))
     }
-  }, [token, selectedSubject])
+  }, [token, selectedSubject, sentencesPage, perPage, sentencesSearch])
 
   const refreshSubjects = () => {
     if (token) {
-      listAdminReadSubjects(token)
-        .then((res) => setSubjects(res.subjects))
+      listAdminReadSubjects(token, subjectsPage, perPage, subjectsSearch || undefined)
+        .then((res) => {
+          setSubjects(res.subjects)
+          setSubjectsTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load subjects'))
     }
   }
 
   const refreshSentences = () => {
     if (token && selectedSubject) {
-      listAdminReadSentences(token, selectedSubject.id)
-        .then((res) => setSentences(res.sentences))
+      listAdminReadSentences(token, sentencesPage, perPage, selectedSubject.id, sentencesSearch || undefined)
+        .then((res) => {
+          setSentences(res.sentences)
+          setSentencesTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load sentences'))
     }
+  }
+
+  const handleSubjectsSearch = () => {
+    setSubjectsPage(1)
+    setSubjectsSearch(subjectsSearchInput)
+  }
+
+  const handleSubjectsSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSubjectsSearch()
+    }
+  }
+
+  const handleSentencesSearch = () => {
+    setSentencesPage(1)
+    setSentencesSearch(sentencesSearchInput)
+  }
+
+  const handleSentencesSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSentencesSearch()
+    }
+  }
+
+  const handlePerPageChange = (value: number) => {
+    setPerPage(value)
+    setAdminPerPage(value)
+    setSubjectsPage(1)
+    setSentencesPage(1)
   }
 
   // Subject handlers
@@ -221,6 +282,9 @@ export function AdminReadPage() {
   // Sentence handlers
   const handleViewSentences = (subject: ReadSubject) => {
     setSelectedSubject(subject)
+    setSentencesPage(1)
+    setSentencesSearch('')
+    setSentencesSearchInput('')
     setView('sentences')
   }
 
@@ -354,7 +418,35 @@ export function AdminReadPage() {
         {view === 'subjects' && (
           <Card>
             <CardHeader>
-              <CardTitle>跟读主题列表</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>跟读主题列表</CardTitle>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">每页</span>
+                    <select
+                      value={perPage}
+                      onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                      className="h-9 px-2 border rounded-md text-sm bg-white"
+                    >
+                      {PER_PAGE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt} 条</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="搜索标题或代码..."
+                      value={subjectsSearchInput}
+                      onChange={(e) => setSubjectsSearchInput(e.target.value)}
+                      onKeyDown={handleSubjectsSearchKeyDown}
+                      className="w-64"
+                    />
+                    <Button variant="outline" size="icon" onClick={handleSubjectsSearch}>
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {subjectsLoading ? (
@@ -362,6 +454,7 @@ export function AdminReadPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                 </div>
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -370,7 +463,7 @@ export function AdminReadPage() {
                       <TableHead>代码</TableHead>
                       <TableHead className="w-20">类型</TableHead>
                       <TableHead className="w-16">难度</TableHead>
-                      <TableHead className="w-24 text-right">操作</TableHead>
+                      <TableHead className="w-32 text-right whitespace-nowrap">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -392,18 +485,19 @@ export function AdminReadPage() {
                             L{subject.difficulty || 1}
                           </span>
                         </TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="text-right whitespace-nowrap">
                           <Button
                             variant="ghost"
                             size="sm"
+                            title="查看句子"
                             onClick={() => handleViewSentences(subject)}
                           >
                             句子 <ChevronRight className="h-4 w-4 ml-1" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenEditSubject(subject)}>
+                          <Button variant="ghost" size="icon" title="编辑" onClick={() => handleOpenEditSubject(subject)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteSubject(subject)}>
+                          <Button variant="ghost" size="icon" title="删除" onClick={() => handleOpenDeleteSubject(subject)}>
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </TableCell>
@@ -418,6 +512,35 @@ export function AdminReadPage() {
                     )}
                   </TableBody>
                 </Table>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-gray-500">
+                    共 {subjectsTotal} 条记录
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSubjectsPage((p) => Math.max(1, p - 1))}
+                      disabled={subjectsPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm">
+                      {subjectsPage} / {subjectsTotalPages || 1}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSubjectsPage((p) => Math.min(subjectsTotalPages, p + 1))}
+                      disabled={subjectsPage >= subjectsTotalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                </>
               )}
             </CardContent>
           </Card>
@@ -427,7 +550,35 @@ export function AdminReadPage() {
         {view === 'sentences' && (
           <Card>
             <CardHeader>
-              <CardTitle>句子列表</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle>句子列表</CardTitle>
+                <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-500">每页</span>
+                    <select
+                      value={perPage}
+                      onChange={(e) => handlePerPageChange(Number(e.target.value))}
+                      className="h-9 px-2 border rounded-md text-sm bg-white"
+                    >
+                      {PER_PAGE_OPTIONS.map((opt) => (
+                        <option key={opt} value={opt}>{opt} 条</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder="搜索句子内容..."
+                      value={sentencesSearchInput}
+                      onChange={(e) => setSentencesSearchInput(e.target.value)}
+                      onKeyDown={handleSentencesSearchKeyDown}
+                      className="w-64"
+                    />
+                    <Button variant="outline" size="icon" onClick={handleSentencesSearch}>
+                      <Search className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
             </CardHeader>
             <CardContent>
               {sentencesLoading ? (
@@ -435,6 +586,7 @@ export function AdminReadPage() {
                   <Loader2 className="h-8 w-8 animate-spin text-gray-400" />
                 </div>
               ) : (
+                <>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -443,7 +595,7 @@ export function AdminReadPage() {
                       <TableHead>中文</TableHead>
                       <TableHead className="w-16">难度</TableHead>
                       <TableHead className="w-16">音频</TableHead>
-                      <TableHead className="w-24 text-right">操作</TableHead>
+                      <TableHead className="w-24 text-right whitespace-nowrap">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -466,16 +618,16 @@ export function AdminReadPage() {
                         </TableCell>
                         <TableCell>
                           {sentence.audio_path ? (
-                            <Volume2 className="h-4 w-4 text-green-500" />
+                            <Volume2 className="h-4 w-4 text-green-500" title="有音频" />
                           ) : (
                             <span className="text-xs text-gray-400">无</span>
                           )}
                         </TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenEditSentence(sentence)}>
+                        <TableCell className="text-right whitespace-nowrap">
+                          <Button variant="ghost" size="icon" title="编辑" onClick={() => handleOpenEditSentence(sentence)}>
                             <Pencil className="h-4 w-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" onClick={() => handleOpenDeleteSentence(sentence)}>
+                          <Button variant="ghost" size="icon" title="删除" onClick={() => handleOpenDeleteSentence(sentence)}>
                             <Trash2 className="h-4 w-4 text-red-500" />
                           </Button>
                         </TableCell>
@@ -490,6 +642,35 @@ export function AdminReadPage() {
                     )}
                   </TableBody>
                 </Table>
+
+                {/* Pagination */}
+                <div className="flex items-center justify-between mt-4">
+                  <div className="text-sm text-gray-500">
+                    共 {sentencesTotal} 条记录
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSentencesPage((p) => Math.max(1, p - 1))}
+                      disabled={sentencesPage === 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm">
+                      {sentencesPage} / {sentencesTotalPages || 1}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setSentencesPage((p) => Math.min(sentencesTotalPages, p + 1))}
+                      disabled={sentencesPage >= sentencesTotalPages}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                </>
               )}
             </CardContent>
           </Card>
