@@ -724,9 +724,7 @@ export function StageDetailPage() {
         <div className="bg-amber-50 border-b border-amber-200">
           <div className="mx-auto max-w-6xl px-4 py-2 flex items-center justify-between">
             <p className="text-sm text-amber-800">
-              {subscription.has_subscription
-                ? '您当前为免费订阅，AI 发音评分功能不可用。'
-                : '您尚未订阅，AI 发音评分功能不可用。'}
+              您当前为免费订阅，AI 发音评分功能不可用。
               <Link to="/subscription" className="ml-2 text-amber-600 hover:text-amber-700 underline">
                 升级订阅
               </Link>

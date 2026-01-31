@@ -1532,9 +1532,7 @@ export function ChatPage() {
             </p>
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6">
               <p className="text-amber-800">
-                {subscription?.has_subscription
-                  ? '您当前为免费订阅，天天唠嗑功能需要付费订阅才能使用。'
-                  : '您尚未订阅，天天唠嗑功能需要付费订阅才能使用。'}
+                您当前为免费订阅，天天唠嗑功能需要付费订阅才能使用。
               </p>
             </div>
             <Button asChild className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600">

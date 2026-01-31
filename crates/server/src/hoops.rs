@@ -4,9 +4,11 @@ use crate::AppResult;
 
 mod admin;
 mod auth;
+mod subscription;
 
 pub use admin::{is_user_admin, require_admin};
 pub use auth::{maybe_auth, require_auth};
+pub use subscription::{has_active_subscription, require_subscribed};
 
 #[handler]
 pub async fn ensure_accept(req: &mut Request) {
