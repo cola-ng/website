@@ -39,15 +39,15 @@ jobs:
 
       - name: Debug registry info
         run: |
-          echo "REGISTRY: ${{ env.REGISTRY }}"
-          echo "IMAGE_NAME: ${{ env.IMAGE_NAME }}"
+          echo "REGISTRY: ${{ vars.REGISTRY }}"
+          echo "IMAGE_NAME: ${{ vars.IMAGE_NAME }}"
           echo "REGISTRY_USERNAME: ${{ secrets.REGISTRY_USERNAME }}"
 
-      - name: Log into registry ${{ env.REGISTRY }}
+      - name: Log into registry ${{ vars.REGISTRY }}
         if: gitea.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          registry: ${{ env.REGISTRY }}
+          registry: ${{ vars.REGISTRY }}
           username: ${{ secrets.REGISTRY_USERNAME }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
@@ -72,7 +72,7 @@ jobs:
 
       - name: Update compose file with new image
         run: |
-          sed -e "s|image:.*colang:latest|image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ gitea.sha }}|" \
+          sed -e "s|image:.*colang:latest|image: ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ gitea.sha }}|" \
               compose.yml > compose-deploy.yml
 
       - name: Show deployment configuration
