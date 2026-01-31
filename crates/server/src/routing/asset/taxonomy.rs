@@ -270,21 +270,20 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
             .into());
     }
 
-    // Verify parent exists if provided
+    // Verify parent exists and domain matches if provided
     if let Some(pid) = input.parent_id {
-        let parent_exists: bool = with_conn(move |conn| {
-            use diesel::dsl::exists;
-            diesel::select(exists(
-                taxon_categories::table.filter(taxon_categories::id.eq(pid)),
-            ))
-            .get_result(conn)
+        let parent_category: TaxonCategory = with_conn(move |conn| {
+            taxon_categories::table
+                .filter(taxon_categories::id.eq(pid))
+                .first::<TaxonCategory>(conn)
         })
         .await
-        .map_err(|_| StatusError::internal_server_error().brief("failed to check parent"))?;
+        .map_err(|_| StatusError::bad_request().brief("parent category not found"))?;
 
-        if !parent_exists {
+        // Validate domain consistency
+        if parent_category.domain_id != input.domain_id {
             return Err(StatusError::bad_request()
-                .brief("parent category not found")
+                .brief("category domain must match parent's domain")
                 .into());
         }
     }
@@ -346,6 +345,36 @@ pub async fn update_category(req: &mut Request) -> JsonResult<TaxonCategory> {
         if pid == category_id {
             return Err(StatusError::bad_request()
                 .brief("category cannot be its own parent")
+                .into());
+        }
+    }
+
+    // If parent_id is specified, validate domain consistency
+    if let Some(pid) = input.parent_id {
+        // Get the current category to know its domain_id
+        let current_category: TaxonCategory = with_conn(move |conn| {
+            taxon_categories::table
+                .filter(taxon_categories::id.eq(category_id))
+                .first::<TaxonCategory>(conn)
+        })
+        .await
+        .map_err(|_| StatusError::not_found().brief("category not found"))?;
+
+        // Determine the effective domain_id (from input or current)
+        let effective_domain_id = input.domain_id.unwrap_or(current_category.domain_id);
+
+        // Fetch parent and check domain consistency
+        let parent_category: TaxonCategory = with_conn(move |conn| {
+            taxon_categories::table
+                .filter(taxon_categories::id.eq(pid))
+                .first::<TaxonCategory>(conn)
+        })
+        .await
+        .map_err(|_| StatusError::bad_request().brief("parent category not found"))?;
+
+        if parent_category.domain_id != effective_domain_id {
+            return Err(StatusError::bad_request()
+                .brief("category domain must match parent's domain")
                 .into());
         }
     }

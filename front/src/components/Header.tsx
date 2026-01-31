@@ -112,7 +112,7 @@ export function Header() {
     )}>
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-2">
         {/* Logo */}
-        <Link to={isAdminPage ? "/admin" : "/"} className="flex items-center gap-2 shrink-0 group">
+        <Link to="/" className="flex items-center gap-2 shrink-0 group">
           <div className="h-9 w-9 flex items-center justify-center transition-transform group-hover:scale-105">
             <img src="/colang-logo.svg" alt="Colang" className="h-9 w-9" />
           </div>

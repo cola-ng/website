@@ -2,7 +2,7 @@ use chrono::{DateTime, Utc};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use utoipa::ToSchema;
+use salvo::oapi::ToSchema;
 
 use crate::db::schema::user_activities;
 

@@ -476,7 +476,7 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
 
     let stats = with_conn(move |conn| {
         // Get daily registration counts for the last N days
-        let results: Vec<(String, i64)> = diesel::sql_query(format!(
+        let results: Vec<DailyCount> = diesel::sql_query(format!(
             r#"
             SELECT
                 to_char(created_at::date, 'YYYY-MM-DD') as date,
@@ -503,11 +503,11 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
         let mut cumulative = users_before;
         let stats: Vec<DailyUserStats> = results
             .into_iter()
-            .map(|(date, new_users)| {
-                cumulative += new_users;
+            .map(|r| {
+                cumulative += r.count;
                 DailyUserStats {
-                    date,
-                    new_users,
+                    date: r.date,
+                    new_users: r.count,
                     total_users: cumulative,
                 }
             })
@@ -570,7 +570,7 @@ pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
         let today = chrono::Utc::now().date_naive();
 
         // Get totals for today
-        let totals: (i64, i64, f64, f64) = diesel::sql_query(format!(
+        let totals: AiTotals = diesel::sql_query(format!(
             r#"
             SELECT
                 COALESCE(COUNT(*), 0)::bigint as total_requests,
@@ -631,10 +631,10 @@ pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
         .collect();
 
         Ok::<_, diesel::result::Error>(TodayAiUsage {
-            total_requests: totals.0,
-            total_tokens: totals.1,
-            total_asr_seconds: totals.2,
-            total_tts_seconds: totals.3,
+            total_requests: totals.total_requests,
+            total_tokens: totals.total_tokens,
+            total_asr_seconds: totals.total_asr_seconds,
+            total_tts_seconds: totals.total_tts_seconds,
             by_service,
             by_hour,
         })
