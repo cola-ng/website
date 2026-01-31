@@ -7,9 +7,9 @@ on:
   pull_request:
     branches: [ "main" ]
 
-env:
-  REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
-  IMAGE_NAME: ${{ gitea.repository }}
+# env:
+#   REGISTRY: ${{ vars.CONTAINER_REGISTRY }}
+#   IMAGE_NAME: ${{ gitea.repository }}
 
 jobs:
   build-and-push:
@@ -29,7 +29,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          images: ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -61,21 +61,21 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  deploy:
-    runs-on: ubuntu-latest
-    needs: [build-and-push]
-    if: gitea.ref == 'refs/heads/main'
+  # deploy:
+  #   runs-on: ubuntu-latest
+  #   needs: [build-and-push]
+  #   if: gitea.ref == 'refs/heads/main'
 
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+  #   steps:
+  #     - name: Checkout repository
+  #       uses: actions/checkout@v4
 
-      - name: Update compose file with new image
-        run: |
-          sed -e "s|image:.*colang:latest|image: ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ gitea.sha }}|" \
-              compose.yml > compose-deploy.yml
+  #     - name: Update compose file with new image
+  #       run: |
+  #         sed -e "s|image:.*colang:latest|image: ${{ vars.REGISTRY }}/${{ vars.IMAGE_NAME }}:${{ gitea.sha }}|" \
+  #             compose.yml > compose-deploy.yml
 
-      - name: Show deployment configuration
-        run: |
-          echo "Deployment configuration created."
-          cat compose-deploy.yml
+  #     - name: Show deployment configuration
+  #       run: |
+  #         echo "Deployment configuration created."
+  #         cat compose-deploy.yml
