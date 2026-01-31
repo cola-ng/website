@@ -3,7 +3,7 @@ use salvo::prelude::*;
 use crate::hoops;
 
 mod context;
-mod reading;
+pub mod reading;
 mod script;
 mod stage;
 mod taxonomy;
@@ -71,7 +71,6 @@ pub fn router() -> Router {
                         .get(reading::list_read_sentences)
                         .push(Router::with_path("{id}/audio").get(reading::serve_sentence_audio)),
                 )
-                .push(Router::with_path("evaluate").post(reading::evaluate_pronunciation))
                 // Authenticated reading practice endpoints
                 .push(
                     Router::with_path("recommended")

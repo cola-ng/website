@@ -1502,7 +1502,7 @@ export function evaluatePronunciation(
   audioBase64: string,
   referenceText: string
 ): Promise<EvaluatePronunciationResponse> {
-  return requestJson<EvaluatePronunciationResponse>('/api/asset/read/evaluate', {
+  return requestJson<EvaluatePronunciationResponse>('/api/learn/pronunciation/evaluate', {
     method: 'POST',
     token,
     body: JSON.stringify({

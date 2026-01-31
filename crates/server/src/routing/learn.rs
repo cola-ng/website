@@ -1,6 +1,6 @@
 use salvo::prelude::*;
 
-use crate::hoops;
+use crate::hoops::{self, require_subscribed};
 
 mod achievement;
 mod chat;
@@ -9,6 +9,7 @@ mod daily_stat;
 mod favorite;
 mod issue_word;
 mod practice;
+mod pronunciation;
 mod reset;
 mod review;
 mod suggestion;
@@ -25,6 +26,11 @@ pub fn router() -> Router {
                 .get(issue_word::list_issue_words)
                 .post(issue_word::create_issue_word)
                 .delete(reset::reset_issue_words),
+        )
+        .push(
+            Router::with_path("pronunciation/evaluate")
+                .hoop(require_subscribed)
+                .post(pronunciation::evaluate),
         )
         .push(
             Router::with_path("chats")
@@ -102,9 +108,6 @@ pub fn router() -> Router {
         .push(
             Router::with_path("daily")
                 .get(daily::get_daily_data)
-                .push(
-                    Router::with_path("tasks/{id}")
-                        .put(daily::update_task),
-                ),
+                .push(Router::with_path("tasks/{id}").put(daily::update_task)),
         )
 }
