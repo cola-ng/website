@@ -1,48 +1,82 @@
 use diesel::prelude::*;
 use salvo::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::dict::*;
 use crate::{JsonResult, json_ok};
 
+#[derive(Serialize)]
+pub struct WordListResponse {
+    pub words: Vec<Word>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
 #[handler]
-pub async fn list_words(req: &mut Request) -> JsonResult<Vec<Word>> {
+pub async fn list_words(req: &mut Request) -> JsonResult<WordListResponse> {
     let search_term = req
         .query::<String>("search")
         .map(|v| v.trim().to_string())
         .filter(|v| !v.is_empty());
     let min_diff = req.query::<i16>("min_difficulty");
     let max_diff = req.query::<i16>("max_difficulty");
-    let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
-    let offset = req.query::<i64>("offset").unwrap_or(0).max(0);
+    let page = req.query::<i64>("page").unwrap_or(1).max(1);
+    let per_page = req.query::<i64>("per_page").unwrap_or(20).clamp(1, 200);
+    let offset = (page - 1) * per_page;
 
-    let words: Vec<Word> = with_conn(move |conn| {
-        let mut query = dict_words::table
-            .order(dict_words::word.asc())
-            .limit(limit)
-            .offset(offset)
-            .into_boxed();
+    let search_clone = search_term.clone();
+    let min_diff_clone = min_diff;
+    let max_diff_clone = max_diff;
 
-        if let Some(term) = search_term {
-            query = query.filter(dict_words::word.ilike(format!("%{}%", term)));
+    let (words, total) = with_conn(move |conn| {
+        // Build base query for filtering
+        let mut base_query = dict_words::table.into_boxed();
+
+        if let Some(ref term) = search_term {
+            base_query = base_query.filter(dict_words::word.ilike(format!("%{}%", term)));
         }
 
         if let Some(min_d) = min_diff {
-            query = query.filter(dict_words::difficulty.ge(min_d));
+            base_query = base_query.filter(dict_words::difficulty.ge(min_d));
         }
 
         if let Some(max_d) = max_diff {
-            query = query.filter(dict_words::difficulty.le(max_d));
+            base_query = base_query.filter(dict_words::difficulty.le(max_d));
         }
 
-        query.load::<Word>(conn)
+        // Get total count with same filters
+        let mut count_query = dict_words::table.into_boxed();
+
+        if let Some(ref term) = search_clone {
+            count_query = count_query.filter(dict_words::word.ilike(format!("%{}%", term)));
+        }
+
+        if let Some(min_d) = min_diff_clone {
+            count_query = count_query.filter(dict_words::difficulty.ge(min_d));
+        }
+
+        if let Some(max_d) = max_diff_clone {
+            count_query = count_query.filter(dict_words::difficulty.le(max_d));
+        }
+
+        let total: i64 = count_query.count().get_result(conn)?;
+
+        // Get paginated results
+        let words: Vec<Word> = base_query
+            .order(dict_words::word.asc())
+            .limit(per_page)
+            .offset(offset)
+            .load::<Word>(conn)?;
+
+        Ok::<_, diesel::result::Error>((words, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch words"))?;
 
-    json_ok(words)
+    json_ok(WordListResponse { words, total, page, per_page })
 }
 
 #[derive(Deserialize)]

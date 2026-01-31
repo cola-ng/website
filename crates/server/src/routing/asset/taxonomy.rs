@@ -1,6 +1,6 @@
 use diesel::prelude::*;
 use salvo::prelude::*;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::db::schema::*;
 use crate::db::with_conn;
@@ -11,14 +11,33 @@ use crate::{JsonResult, json_ok};
 // Domain Handlers
 // ============================================================================
 
-#[handler]
-pub async fn list_domains() -> JsonResult<Vec<TaxonDomain>> {
-    let domains: Vec<TaxonDomain> =
-        with_conn(move |conn| taxon_domains::table.order(taxon_domains::id.asc()).load::<TaxonDomain>(conn))
-            .await
-            .map_err(|_| StatusError::internal_server_error().brief("failed to list domains"))?;
+#[derive(Serialize)]
+pub struct DomainListResponse {
+    pub domains: Vec<TaxonDomain>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
 
-    json_ok(domains)
+#[handler]
+pub async fn list_domains(req: &mut Request) -> JsonResult<DomainListResponse> {
+    let page = req.query::<i64>("page").unwrap_or(1).max(1);
+    let per_page = req.query::<i64>("per_page").unwrap_or(20).clamp(1, 200);
+    let offset = (page - 1) * per_page;
+
+    let (domains, total) = with_conn(move |conn| {
+        let total: i64 = taxon_domains::table.count().get_result(conn)?;
+        let domains: Vec<TaxonDomain> = taxon_domains::table
+            .order(taxon_domains::id.asc())
+            .limit(per_page)
+            .offset(offset)
+            .load::<TaxonDomain>(conn)?;
+        Ok::<_, diesel::result::Error>((domains, total))
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to list domains"))?;
+
+    json_ok(DomainListResponse { domains, total, page, per_page })
 }
 
 #[handler]
@@ -165,32 +184,56 @@ pub async fn delete_domain(req: &mut Request) -> JsonResult<serde_json::Value> {
 // Category Handlers
 // ============================================================================
 
+#[derive(Serialize)]
+pub struct CategoryListResponse {
+    pub categories: Vec<TaxonCategory>,
+    pub total: i64,
+    pub page: i64,
+    pub per_page: i64,
+}
+
 #[handler]
-pub async fn list_categories(req: &mut Request) -> JsonResult<Vec<TaxonCategory>> {
+pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListResponse> {
     let domain_id = req.query::<i64>("domain_id");
     let parent_id = req.query::<i64>("parent_id");
-    let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
+    let page = req.query::<i64>("page").unwrap_or(1).max(1);
+    let per_page = req.query::<i64>("per_page").unwrap_or(20).clamp(1, 500);
+    let offset = (page - 1) * per_page;
 
-    let categories: Vec<TaxonCategory> = with_conn(move |conn| {
-        let mut query = taxon_categories::table
-            .order(taxon_categories::id.asc())
-            .limit(limit)
-            .into_boxed();
+    let domain_id_clone = domain_id;
+    let parent_id_clone = parent_id;
 
+    let (categories, total) = with_conn(move |conn| {
+        // Count query with same filters
+        let mut count_query = taxon_categories::table.into_boxed();
         if let Some(did) = domain_id {
+            count_query = count_query.filter(taxon_categories::domain_id.eq(did));
+        }
+        if let Some(pid) = parent_id {
+            count_query = count_query.filter(taxon_categories::parent_id.eq(pid));
+        }
+        let total: i64 = count_query.count().get_result(conn)?;
+
+        // Data query with same filters
+        let mut query = taxon_categories::table.into_boxed();
+        if let Some(did) = domain_id_clone {
             query = query.filter(taxon_categories::domain_id.eq(did));
         }
-
-        if let Some(pid) = parent_id {
+        if let Some(pid) = parent_id_clone {
             query = query.filter(taxon_categories::parent_id.eq(pid));
         }
+        let categories: Vec<TaxonCategory> = query
+            .order(taxon_categories::id.asc())
+            .limit(per_page)
+            .offset(offset)
+            .load::<TaxonCategory>(conn)?;
 
-        query.load::<TaxonCategory>(conn)
+        Ok::<_, diesel::result::Error>((categories, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list categories"))?;
 
-    json_ok(categories)
+    json_ok(CategoryListResponse { categories, total, page, per_page })
 }
 
 #[handler]

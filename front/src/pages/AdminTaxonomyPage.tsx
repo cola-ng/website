@@ -7,6 +7,8 @@ import {
   Pencil,
   FolderTree,
   Layers,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 import { Header } from '../components/Header'
@@ -45,6 +47,8 @@ import {
   type TaxonCategory,
   type CreateDomainRequest,
   type CreateCategoryRequest,
+  type DomainListResponse,
+  type CategoryListResponse,
 } from '../lib/api'
 
 // Format relative time
@@ -117,13 +121,22 @@ export function AdminTaxonomyPage() {
 
   const [actionLoading, setActionLoading] = useState(false)
 
-  // Per-page setting
+  // Pagination state
   const [perPage, setPerPage] = useState(() => getAdminPerPage())
+  const [domainsPage, setDomainsPage] = useState(1)
+  const [domainsTotal, setDomainsTotal] = useState(0)
+  const [categoriesPage, setCategoriesPage] = useState(1)
+  const [categoriesTotal, setCategoriesTotal] = useState(0)
 
   const handlePerPageChange = (value: number) => {
     setPerPage(value)
     setAdminPerPage(value)
+    setDomainsPage(1)
+    setCategoriesPage(1)
   }
+
+  const domainsTotalPages = Math.ceil(domainsTotal / perPage)
+  const categoriesTotalPages = Math.ceil(categoriesTotal / perPage)
 
   // Redirect non-admin users
   if (!token || !user?.is_admin) {
@@ -134,12 +147,15 @@ export function AdminTaxonomyPage() {
   useEffect(() => {
     if (token) {
       setDomainsLoading(true)
-      listDomains(token)
-        .then(setDomains)
+      listDomains(token, { page: domainsPage, per_page: perPage })
+        .then((res) => {
+          setDomains(res.domains)
+          setDomainsTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load domains'))
         .finally(() => setDomainsLoading(false))
     }
-  }, [token])
+  }, [token, domainsPage, perPage])
 
   // Handle deep link for domain edit
   useEffect(() => {
@@ -183,12 +199,20 @@ export function AdminTaxonomyPage() {
   useEffect(() => {
     if (token && activeTab === 'categories') {
       setCategoriesLoading(true)
-      listCategories(token, { domain_id: selectedDomainId })
-        .then(setCategories)
+      listCategories(token, { domain_id: selectedDomainId, page: categoriesPage, per_page: perPage })
+        .then((res) => {
+          setCategories(res.categories)
+          setCategoriesTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load categories'))
         .finally(() => setCategoriesLoading(false))
     }
-  }, [token, activeTab, selectedDomainId])
+  }, [token, activeTab, selectedDomainId, categoriesPage, perPage])
+
+  // Reset categories page when domain filter changes
+  useEffect(() => {
+    setCategoriesPage(1)
+  }, [selectedDomainId])
 
   // Domain CRUD handlers
   const handleAddDomain = async () => {
@@ -434,7 +458,7 @@ export function AdminTaxonomyPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {domains.slice(0, perPage).map((domain) => (
+                      {domains.map((domain) => (
                         <TableRow key={domain.id}>
                           <TableCell className="font-mono text-sm">{domain.id}</TableCell>
                           <TableCell className="font-mono text-sm">{domain.code}</TableCell>
@@ -479,9 +503,33 @@ export function AdminTaxonomyPage() {
                 {!domainsLoading && domains.length === 0 && (
                   <div className="text-center py-12 text-gray-500">暂无域数据</div>
                 )}
-                {!domainsLoading && domains.length > perPage && (
-                  <div className="text-center py-2 text-sm text-gray-500">
-                    显示 {perPage} / {domains.length} 条记录
+
+                {/* Pagination Controls */}
+                {!domainsLoading && domainsTotalPages > 0 && (
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <div className="text-sm text-gray-500">
+                      共 {domainsTotal} 条记录，第 {domainsPage} / {domainsTotalPages} 页
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDomainsPage((p) => Math.max(1, p - 1))}
+                        disabled={domainsPage <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        上一页
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setDomainsPage((p) => Math.min(domainsTotalPages, p + 1))}
+                        disabled={domainsPage >= domainsTotalPages}
+                      >
+                        下一页
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </TabsContent>
@@ -540,7 +588,7 @@ export function AdminTaxonomyPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {categories.slice(0, perPage).map((category) => (
+                      {categories.map((category) => (
                         <TableRow key={category.id}>
                           <TableCell className="font-mono text-sm">{category.id}</TableCell>
                           <TableCell className="font-mono text-sm">{category.code}</TableCell>
@@ -589,9 +637,33 @@ export function AdminTaxonomyPage() {
                     {domains.length === 0 ? '请先添加域' : '暂无类别数据'}
                   </div>
                 )}
-                {!categoriesLoading && categories.length > perPage && (
-                  <div className="text-center py-2 text-sm text-gray-500">
-                    显示 {perPage} / {categories.length} 条记录
+
+                {/* Pagination Controls */}
+                {!categoriesLoading && categoriesTotalPages > 0 && (
+                  <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                    <div className="text-sm text-gray-500">
+                      共 {categoriesTotal} 条记录，第 {categoriesPage} / {categoriesTotalPages} 页
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCategoriesPage((p) => Math.max(1, p - 1))}
+                        disabled={categoriesPage <= 1}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                        上一页
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setCategoriesPage((p) => Math.min(categoriesTotalPages, p + 1))}
+                        disabled={categoriesPage >= categoriesTotalPages}
+                      >
+                        下一页
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </div>
                 )}
               </TabsContent>

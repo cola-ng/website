@@ -2152,19 +2152,26 @@ export function revokeAdmin(token: string, userId: number): Promise<void> {
 // Dictionary Admin API
 // ============================================================================
 
+export type WordListResponse = {
+  words: Word[]
+  total: number
+  page: number
+  per_page: number
+}
+
 /**
  * List words with search and pagination
  */
 export function listWords(
   token: string,
-  options?: { search?: string; limit?: number; offset?: number }
-): Promise<Word[]> {
+  options?: { search?: string; page?: number; per_page?: number }
+): Promise<WordListResponse> {
   const params = new URLSearchParams()
   if (options?.search) params.set('search', options.search)
-  if (options?.limit) params.set('limit', String(options.limit))
-  if (options?.offset) params.set('offset', String(options.offset))
+  if (options?.page) params.set('page', String(options.page))
+  if (options?.per_page) params.set('per_page', String(options.per_page))
   const query = params.toString()
-  return requestJson<Word[]>(`/api/dict/words${query ? `?${query}` : ''}`, {
+  return requestJson<WordListResponse>(`/api/dict/words${query ? `?${query}` : ''}`, {
     method: 'GET',
     token,
   })
@@ -2682,11 +2689,25 @@ export type UpdateCategoryRequest = {
   parent_id?: number | null
 }
 
+export type DomainListResponse = {
+  domains: TaxonDomain[]
+  total: number
+  page: number
+  per_page: number
+}
+
 /**
- * List all domains
+ * List domains with pagination
  */
-export function listDomains(token: string): Promise<TaxonDomain[]> {
-  return requestJson<TaxonDomain[]>('/api/asset/domains', {
+export function listDomains(
+  token: string,
+  options?: { page?: number; per_page?: number }
+): Promise<DomainListResponse> {
+  const params = new URLSearchParams()
+  if (options?.page) params.set('page', String(options.page))
+  if (options?.per_page) params.set('per_page', String(options.per_page))
+  const query = params.toString()
+  return requestJson<DomainListResponse>(`/api/asset/domains${query ? `?${query}` : ''}`, {
     method: 'GET',
     token,
   })
@@ -2734,18 +2755,27 @@ export function deleteDomain(
   })
 }
 
+export type CategoryListResponse = {
+  categories: TaxonCategory[]
+  total: number
+  page: number
+  per_page: number
+}
+
 /**
- * List categories with optional domain filter
+ * List categories with optional domain filter and pagination
  */
 export function listCategories(
   token: string,
-  options?: { domain_id?: number; parent_id?: number }
-): Promise<TaxonCategory[]> {
+  options?: { domain_id?: number; parent_id?: number; page?: number; per_page?: number }
+): Promise<CategoryListResponse> {
   const params = new URLSearchParams()
   if (options?.domain_id) params.set('domain_id', options.domain_id.toString())
   if (options?.parent_id) params.set('parent_id', options.parent_id.toString())
+  if (options?.page) params.set('page', String(options.page))
+  if (options?.per_page) params.set('per_page', String(options.per_page))
   const query = params.toString()
-  return requestJson<TaxonCategory[]>(`/api/asset/categories${query ? `?${query}` : ''}`, {
+  return requestJson<CategoryListResponse>(`/api/asset/categories${query ? `?${query}` : ''}`, {
     method: 'GET',
     token,
   })

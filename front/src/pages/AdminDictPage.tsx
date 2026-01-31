@@ -13,6 +13,8 @@ import {
   Eye,
   Volume2,
   Settings2,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react'
 
 import { Header } from '../components/Header'
@@ -58,6 +60,7 @@ import {
   type CreateDefinitionRequest,
   type UpdateWordRequest,
   type CreatePronunciationRequest,
+  type WordListResponse,
 } from '../lib/api'
 
 // Format relative time
@@ -138,8 +141,10 @@ export function AdminDictPage() {
   })
   const [playingAudioId, setPlayingAudioId] = useState<number | null>(null)
 
-  // Per-page setting
+  // Pagination state
   const [perPage, setPerPage] = useState(() => getAdminPerPage())
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
 
   // Redirect non-admin users
   if (!token || !user?.is_admin) {
@@ -150,17 +155,28 @@ export function AdminDictPage() {
   useEffect(() => {
     if (token && !wordId) {
       setLoading(true)
-      listWords(token, { search: search || undefined, limit: perPage })
-        .then(setWords)
+      listWords(token, { search: search || undefined, page, per_page: perPage })
+        .then((res) => {
+          setWords(res.words)
+          setTotal(res.total)
+        })
         .catch((e) => setError(e instanceof Error ? e.message : 'Failed to load words'))
         .finally(() => setLoading(false))
     }
-  }, [token, wordId, search, perPage])
+  }, [token, wordId, search, page, perPage])
+
+  // Reset page when search changes
+  useEffect(() => {
+    setPage(1)
+  }, [search])
 
   const handlePerPageChange = (value: number) => {
     setPerPage(value)
     setAdminPerPage(value)
+    setPage(1)
   }
+
+  const totalPages = Math.ceil(total / perPage)
 
   // Fetch word detail
   useEffect(() => {
@@ -169,9 +185,9 @@ export function AdminDictPage() {
       const id = parseInt(wordId, 10)
 
       // First get the word from list to get its text
-      listWords(token, { limit: 1000 })
-        .then((allWords) => {
-          const word = allWords.find((w) => w.id === id)
+      listWords(token, { per_page: 1000 })
+        .then((res) => {
+          const word = res.words.find((w) => w.id === id)
           if (word) {
             // Now lookup the full word detail
             return lookup(word.word).then((detail) => {
@@ -1342,6 +1358,35 @@ export function AdminDictPage() {
             {!loading && words.length === 0 && (
               <div className="text-center py-12 text-gray-500">
                 {search ? '未找到匹配的单词' : '暂无单词数据'}
+              </div>
+            )}
+
+            {/* Pagination Controls */}
+            {!loading && totalPages > 0 && (
+              <div className="flex items-center justify-between mt-4 pt-4 border-t">
+                <div className="text-sm text-gray-500">
+                  共 {total} 条记录，第 {page} / {totalPages} 页
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                    disabled={page <= 1}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                    上一页
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={page >= totalPages}
+                  >
+                    下一页
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             )}
           </CardContent>

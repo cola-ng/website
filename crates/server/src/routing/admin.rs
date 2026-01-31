@@ -1464,32 +1464,25 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
     let subject_type = query.subject_type.clone();
 
     let (subjects, total) = with_conn(move |conn| {
+        let pattern = search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
         let mut base_query = asset_read_subjects::table.into_boxed();
+        let mut count_query = asset_read_subjects::table.into_boxed();
 
-        if let Some(ref search_term) = search {
-            let pattern = format!("%{}%", search_term.to_lowercase());
+        if let Some(ref pattern) = pattern {
             base_query = base_query.filter(
-                asset_read_subjects::title_zh.ilike(&pattern)
-                    .or(asset_read_subjects::title_en.ilike(&pattern))
-                    .or(asset_read_subjects::code.ilike(&pattern)),
+                asset_read_subjects::title_zh.ilike(pattern)
+                    .or(asset_read_subjects::title_en.ilike(pattern))
+                    .or(asset_read_subjects::code.ilike(pattern)),
+            );
+            count_query = count_query.filter(
+                asset_read_subjects::title_zh.ilike(pattern)
+                    .or(asset_read_subjects::title_en.ilike(pattern))
+                    .or(asset_read_subjects::code.ilike(pattern)),
             );
         }
 
         if let Some(ref st) = subject_type {
             base_query = base_query.filter(asset_read_subjects::subject_type.eq(st));
-        }
-
-        // Clone for count query
-        let mut count_query = asset_read_subjects::table.into_boxed();
-        if let Some(ref search_term) = search {
-            let pattern = format!("%{}%", search_term.to_lowercase());
-            count_query = count_query.filter(
-                asset_read_subjects::title_zh.ilike(&pattern)
-                    .or(asset_read_subjects::title_en.ilike(&pattern))
-                    .or(asset_read_subjects::code.ilike(&pattern)),
-            );
-        }
-        if let Some(ref st) = subject_type {
             count_query = count_query.filter(asset_read_subjects::subject_type.eq(st));
         }
 
@@ -1615,6 +1608,7 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
     let search = query.search.clone();
 
     let (sentences, total) = with_conn(move |conn| {
+        let pattern = search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
         let mut base_query = asset_read_sentences::table.into_boxed();
         let mut count_query = asset_read_sentences::table.into_boxed();
 
@@ -1623,15 +1617,14 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
             count_query = count_query.filter(asset_read_sentences::subject_id.eq(sid));
         }
 
-        if let Some(ref search_term) = search {
-            let pattern = format!("%{}%", search_term.to_lowercase());
+        if let Some(ref pattern) = pattern {
             base_query = base_query.filter(
-                asset_read_sentences::content_en.ilike(&pattern)
-                    .or(asset_read_sentences::content_zh.ilike(&pattern)),
+                asset_read_sentences::content_en.ilike(pattern)
+                    .or(asset_read_sentences::content_zh.ilike(pattern)),
             );
             count_query = count_query.filter(
-                asset_read_sentences::content_en.ilike(&pattern)
-                    .or(asset_read_sentences::content_zh.ilike(&pattern)),
+                asset_read_sentences::content_en.ilike(pattern)
+                    .or(asset_read_sentences::content_zh.ilike(pattern)),
             );
         }
 
