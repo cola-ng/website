@@ -326,6 +326,68 @@ export function deleteAvatar(token: string): Promise<User> {
   })
 }
 
+// ============================================================================
+// OAuth Identity Management
+// ============================================================================
+
+/** Linked OAuth identity */
+export type LinkedOAuthIdentity = {
+  id: number
+  provider: string
+  email: string | null
+  linked_at: string
+}
+
+/** Account status including password and linked identities */
+export type AccountStatus = {
+  has_password: boolean
+  linked_identities: LinkedOAuthIdentity[]
+}
+
+/**
+ * Get account status including whether user has password and linked OAuth identities
+ */
+export function getAccountStatus(token: string): Promise<AccountStatus> {
+  return requestJson<AccountStatus>('/api/me/account-status', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * List all linked OAuth identities for the current user
+ */
+export function listOAuthIdentities(token: string): Promise<LinkedOAuthIdentity[]> {
+  return requestJson<LinkedOAuthIdentity[]>('/api/me/oauth', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Unlink an OAuth identity from the current user
+ */
+export function unlinkOAuthIdentity(token: string, identityId: number): Promise<{ deleted: boolean }> {
+  return requestJson<{ deleted: boolean }>(`/api/me/oauth/${identityId}`, {
+    method: 'DELETE',
+    token,
+  })
+}
+
+/**
+ * Link a new OAuth identity to the current user
+ */
+export function linkOAuthIdentity(
+  token: string,
+  input: { provider: string; provider_user_id: string; email?: string }
+): Promise<LinkedOAuthIdentity> {
+  return requestJson<LinkedOAuthIdentity>('/api/me/oauth', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(input),
+  })
+}
+
 /**
  * Fetch avatar with authentication and return blob URL
  * @param token Auth token
@@ -662,6 +724,77 @@ export function getLearnSummary(token: string): Promise<LearnSummary> {
   return requestJson<LearnSummary>('/api/learn/summary', {
     method: 'GET',
     token,
+  })
+}
+
+// ============================================================================
+// Daily Tasks and Insights
+// ============================================================================
+
+/** Daily task for homepage */
+export type DailyTask = {
+  id: number
+  user_id: number
+  task_date: string
+  task_type: 'chat' | 'stage' | 'review' | 'read'
+  task_title: string
+  task_description: string | null
+  target_value: number
+  current_value: number
+  status: 'pending' | 'in_progress' | 'completed'
+  display_order: number
+  reference_id: number | null
+  reference_name: string | null
+  created_at: string
+  completed_at: string | null
+}
+
+/** AI-generated insight for homepage */
+export type DailyInsight = {
+  id: number
+  user_id: number
+  insight_date: string
+  insight_type: 'progress' | 'weakness' | 'suggestion' | 'encouragement'
+  icon_type: string
+  content_zh: string
+  content_en: string | null
+  action_text: string | null
+  action_link: string | null
+  metadata: Record<string, unknown> | null
+  display_order: number
+  created_at: string
+}
+
+/** Daily data response including tasks and insights */
+export type DailyDataResponse = {
+  tasks: DailyTask[]
+  insights: DailyInsight[]
+  generated_at: string | null
+}
+
+/**
+ * Get daily tasks and insights for homepage
+ * If no data exists for today, it will be generated automatically
+ */
+export function getDailyData(token: string): Promise<DailyDataResponse> {
+  return requestJson<DailyDataResponse>('/api/learn/daily', {
+    method: 'GET',
+    token,
+  })
+}
+
+/**
+ * Update a daily task's progress or status
+ */
+export function updateDailyTask(
+  token: string,
+  taskId: number,
+  input: { current_value?: number; status?: string }
+): Promise<DailyTask> {
+  return requestJson<DailyTask>(`/api/learn/daily/tasks/${taskId}`, {
+    method: 'PUT',
+    token,
+    body: JSON.stringify(input),
   })
 }
 

@@ -57,7 +57,6 @@ import {
   type CreateDefinitionRequest,
   type UpdateWordRequest,
   type CreatePronunciationRequest,
-  type UpdatePronunciationRequest,
 } from '../lib/api'
 
 // Format relative time

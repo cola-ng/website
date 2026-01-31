@@ -12,6 +12,8 @@ use crate::models::*;
 use crate::{AppConfig, DepotExt, JsonResult, json_ok};
 
 mod avatar;
+mod oauth;
+
 pub fn router() -> Router {
     Router::new()
         .push(Router::with_path("register").post(register))
@@ -26,6 +28,19 @@ pub fn router() -> Router {
                         .get(avatar::show)
                         .post(avatar::upload_avatar)
                         .delete(avatar::delete_avatar),
+                )
+                .push(
+                    Router::with_path("oauth")
+                        .get(oauth::list_identities)
+                        .post(oauth::link_identity)
+                        .push(
+                            Router::with_path("<id>")
+                                .delete(oauth::unlink_identity),
+                        ),
+                )
+                .push(
+                    Router::with_path("account-status")
+                        .get(oauth::get_account_status),
                 ),
         )
 }

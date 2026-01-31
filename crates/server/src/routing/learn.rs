@@ -4,6 +4,7 @@ use crate::hoops;
 
 mod achievement;
 mod chat;
+mod daily;
 mod daily_stat;
 mod favorite;
 mod issue_word;
@@ -97,5 +98,13 @@ pub fn router() -> Router {
                 .delete(favorite::delete_favorite)
                 .push(Router::with_path("toggle").post(favorite::toggle_favorite))
                 .push(Router::with_path("check").post(favorite::check_favorites)),
+        )
+        .push(
+            Router::with_path("daily")
+                .get(daily::get_daily_data)
+                .push(
+                    Router::with_path("tasks/{id}")
+                        .put(daily::update_task),
+                ),
         )
 }

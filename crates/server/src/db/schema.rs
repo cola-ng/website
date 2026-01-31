@@ -1,6 +1,26 @@
 // @generated automatically by Diesel CLI.
 
 diesel::table! {
+    ai_usage_quotas (id) {
+        id -> Int8,
+        user_id -> Int8,
+        period_start -> Date,
+        period_end -> Date,
+        chat_tokens_used -> Int8,
+        asr_seconds_used -> Float8,
+        tts_seconds_used -> Float8,
+        translation_chars_used -> Int8,
+        chat_requests -> Int4,
+        asr_requests -> Int4,
+        tts_requests -> Int4,
+        translation_requests -> Int4,
+        limits_snapshot -> Nullable<Jsonb>,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     ai_usage_records (id) {
         id -> Int8,
         user_id -> Int8,
@@ -21,26 +41,6 @@ diesel::table! {
         error_message -> Nullable<Text>,
         metadata -> Nullable<Jsonb>,
         created_at -> Timestamptz,
-    }
-}
-
-diesel::table! {
-    ai_usage_quotas (id) {
-        id -> Int8,
-        user_id -> Int8,
-        period_start -> Date,
-        period_end -> Date,
-        chat_tokens_used -> Int8,
-        asr_seconds_used -> Float8,
-        tts_seconds_used -> Float8,
-        translation_chars_used -> Int8,
-        chat_requests -> Int4,
-        asr_requests -> Int4,
-        tts_requests -> Int4,
-        translation_requests -> Int4,
-        limits_snapshot -> Nullable<Jsonb>,
-        created_at -> Timestamptz,
-        updated_at -> Timestamptz,
     }
 }
 
@@ -646,6 +646,35 @@ diesel::table! {
 }
 
 diesel::table! {
+    learn_daily_generation_log (id) {
+        id -> Int8,
+        user_id -> Int8,
+        generation_date -> Date,
+        tasks_generated -> Int4,
+        insights_generated -> Int4,
+        generation_source -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    learn_daily_insights (id) {
+        id -> Int8,
+        user_id -> Int8,
+        insight_date -> Date,
+        insight_type -> Text,
+        icon_type -> Text,
+        content_zh -> Text,
+        content_en -> Nullable<Text>,
+        action_text -> Nullable<Text>,
+        action_link -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
+        display_order -> Int4,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     learn_daily_stats (id) {
         id -> Int8,
         user_id -> Int8,
@@ -656,6 +685,25 @@ diesel::table! {
         errors_corrected -> Nullable<Int4>,
         new_words_learned -> Nullable<Int4>,
         review_words_count -> Nullable<Int4>,
+    }
+}
+
+diesel::table! {
+    learn_daily_tasks (id) {
+        id -> Int8,
+        user_id -> Int8,
+        task_date -> Date,
+        task_type -> Text,
+        task_title -> Text,
+        task_description -> Nullable<Text>,
+        target_value -> Int4,
+        current_value -> Int4,
+        status -> Text,
+        display_order -> Int4,
+        reference_id -> Nullable<Int8>,
+        reference_name -> Nullable<Text>,
+        created_at -> Timestamptz,
+        completed_at -> Nullable<Timestamptz>,
     }
 }
 
@@ -933,6 +981,21 @@ diesel::table! {
 }
 
 diesel::table! {
+    user_activities (id) {
+        id -> Int8,
+        user_id -> Int8,
+        #[max_length = 32]
+        activity_type -> Varchar,
+        description -> Nullable<Text>,
+        metadata -> Nullable<Jsonb>,
+        #[max_length = 45]
+        ip_address -> Nullable<Varchar>,
+        user_agent -> Nullable<Text>,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
     user_ai_providers (id) {
         id -> Int8,
         user_id -> Int8,
@@ -1002,26 +1065,11 @@ diesel::table! {
     }
 }
 
-diesel::table! {
-    user_activities (id) {
-        id -> Int8,
-        user_id -> Int8,
-        #[max_length = 32]
-        activity_type -> Varchar,
-        description -> Nullable<Text>,
-        metadata -> Nullable<Jsonb>,
-        #[max_length = 45]
-        ip_address -> Nullable<Varchar>,
-        user_agent -> Nullable<Text>,
-        created_at -> Timestamptz,
-    }
-}
-
-diesel::joinable!(ai_usage_records -> base_users (user_id));
 diesel::joinable!(ai_usage_quotas -> base_users (user_id));
-diesel::joinable!(user_activities -> base_users (user_id));
+diesel::joinable!(ai_usage_records -> base_users (user_id));
 diesel::joinable!(payment_orders -> base_users (user_id));
 diesel::joinable!(payment_refunds -> payment_orders (order_id));
+diesel::joinable!(user_activities -> base_users (user_id));
 diesel::joinable!(user_ai_providers -> base_users (user_id));
 diesel::joinable!(user_subscriptions -> base_users (user_id));
 diesel::joinable!(user_subscriptions -> subscription_plans (plan_id));
@@ -1030,8 +1078,8 @@ diesel::joinable!(wallet_transactions -> base_users (user_id));
 diesel::joinable!(wallet_transactions -> wallet_accounts (wallet_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
-    ai_usage_records,
     ai_usage_quotas,
+    ai_usage_records,
     archive_achievement_definitions,
     archive_rank_definitions,
     archive_user_achievements,
@@ -1074,7 +1122,10 @@ diesel::allow_tables_to_appear_in_same_query!(
     learn_chat_issues,
     learn_chat_turns,
     learn_chats,
+    learn_daily_generation_log,
+    learn_daily_insights,
     learn_daily_stats,
+    learn_daily_tasks,
     learn_favorites,
     learn_issue_words,
     learn_levels,

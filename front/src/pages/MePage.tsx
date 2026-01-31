@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Camera, Mail, Phone, Calendar, Shield, User, Loader2, Trophy, Zap, Flame, Award, Star, Target, Settings, Bot, CheckCircle, XCircle, Play } from 'lucide-react'
+// eslint-disable-next-line @typescript-eslint/no-deprecated
+import { Camera, Mail, Phone, Calendar, Shield, User, Loader2, Trophy, Zap, Flame, Award, Star, Target, Settings, Bot, CheckCircle, XCircle, Play, Link2, Unlink2, KeyRound, Github, Chrome } from 'lucide-react'
 
 import { Card, CardContent } from '../components/ui/card'
 import { Button } from '../components/ui/button'
@@ -14,8 +15,10 @@ import {
   me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl,
   getUserProfileSummary, getUserAchievements,
   listAiProviders, createAiProvider, updateAiProvider, deleteAiProvider, testAiProvider, activateAiProvider,
-  type UserProfileSummary, type AchievementWithProgress, type UserAiProvider, type AiProviderType
+  getAccountStatus, unlinkOAuthIdentity, linkOAuthIdentity,
+  type UserProfileSummary, type AchievementWithProgress, type UserAiProvider, type AiProviderType, type AccountStatus
 } from '../lib/api'
+import { OAUTH_PROVIDERS, type OAuthProviderKey } from '../lib/oauth-config'
 import { cn } from '../lib/utils'
 import { useAuth } from '../lib/auth'
 import { useToast } from '../contexts/ToastContext'
@@ -63,6 +66,12 @@ export function MePage() {
   const [providerFormData, setProviderFormData] = useState<Record<string, string>>({})
   const [providerSaving, setProviderSaving] = useState(false)
   const [providerTesting, setProviderTesting] = useState<number | null>(null)
+
+  // Account status state
+  const [accountStatus, setAccountStatus] = useState<AccountStatus | null>(null)
+  const [accountStatusLoading, setAccountStatusLoading] = useState(false)
+  const [unlinkingId, setUnlinkingId] = useState<number | null>(null)
+  const [linkingProvider, setLinkingProvider] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) return
@@ -167,6 +176,80 @@ export function MePage() {
       cancelled = true
     }
   }, [token])
+
+  // Fetch account status
+  useEffect(() => {
+    if (!token) return
+    let cancelled = false
+    setAccountStatusLoading(true)
+
+    getAccountStatus(token)
+      .then((status) => {
+        if (cancelled) return
+        setAccountStatus(status)
+      })
+      .catch(() => {
+        if (cancelled) return
+        setAccountStatus(null)
+      })
+      .finally(() => {
+        if (cancelled) return
+        setAccountStatusLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [token])
+
+  const handleUnlinkIdentity = async (identityId: number) => {
+    if (!token) return
+
+    setUnlinkingId(identityId)
+    try {
+      await unlinkOAuthIdentity(token, identityId)
+      // Refresh account status
+      const status = await getAccountStatus(token)
+      setAccountStatus(status)
+      toast.success('解绑成功', '社交账号已解除绑定')
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '解绑失败'
+      toast.error('解绑失败', message)
+    } finally {
+      setUnlinkingId(null)
+    }
+  }
+
+  const handleLinkIdentity = async (provider: string) => {
+    if (!token) return
+
+    const providerName = OAUTH_PROVIDERS[provider as OAuthProviderKey]?.name || provider
+
+    // Simulate OAuth flow with prompts (same as login flow)
+    // In production, this would redirect to the OAuth provider's authorization page
+    const userId = prompt(`请输入您的 ${providerName} 用户 ID：`)
+    if (!userId) return
+
+    const email = prompt(`请输入您的 ${providerName} 邮箱（可选）：`)
+
+    setLinkingProvider(provider)
+    try {
+      await linkOAuthIdentity(token, {
+        provider,
+        provider_user_id: userId,
+        email: email || undefined,
+      })
+      // Refresh account status
+      const status = await getAccountStatus(token)
+      setAccountStatus(status)
+      toast.success('绑定成功', `已成功绑定 ${providerName} 账号`)
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '绑定失败'
+      toast.error('绑定失败', message)
+    } finally {
+      setLinkingProvider(null)
+    }
+  }
 
   const saveProfile = async () => {
     if (!token || !user) return
@@ -354,7 +437,7 @@ export function MePage() {
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-gray-50 to-zinc-100">
       <Header />
 
-      <main className="mx-auto max-w-4xl px-4 py-8">
+      <main className="mx-auto max-w-6xl px-4 py-8">
         {/* Profile Header Card */}
         <Card className="mb-6 overflow-hidden border-0 shadow-xl">
           <div className="h-24 bg-gradient-to-r from-orange-500 via-amber-500 to-orange-400" />
@@ -535,6 +618,159 @@ export function MePage() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Account Status & Linked Accounts */}
+            <Card className="border-0 shadow-lg mt-6">
+              <CardContent className="p-6">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="h-8 w-8 rounded-lg bg-purple-100 flex items-center justify-center">
+                    <Link2 className="h-4 w-4 text-purple-600" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-semibold text-gray-900">账户状态</h2>
+                    <p className="text-xs text-gray-500">管理您的登录方式</p>
+                  </div>
+                </div>
+
+                {accountStatusLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+                  </div>
+                ) : accountStatus ? (
+                  <div className="space-y-4">
+                    {/* Login Method Status */}
+                    <div className="p-3 rounded-lg bg-gray-50">
+                      <div className="flex items-center gap-3">
+                        <div className={cn(
+                          "h-8 w-8 rounded-lg flex items-center justify-center",
+                          accountStatus.has_password ? "bg-green-100" : "bg-gray-200"
+                        )}>
+                          <KeyRound className={cn(
+                            "h-4 w-4",
+                            accountStatus.has_password ? "text-green-600" : "text-gray-400"
+                          )} />
+                        </div>
+                        <div className="flex-1">
+                          <p className="text-sm font-medium text-gray-900">邮箱密码登录</p>
+                          <p className="text-xs text-gray-500">
+                            {accountStatus.has_password ? '已设置密码' : '未设置密码（仅通过社交账号登录）'}
+                          </p>
+                        </div>
+                        {accountStatus.has_password && (
+                          <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">
+                            已启用
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Linked Social Accounts */}
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-700">已绑定的社交账号</p>
+
+                      {accountStatus.linked_identities.length > 0 ? (
+                        <div className="space-y-2">
+                          {accountStatus.linked_identities.map((identity) => {
+                            const providerConfig = OAUTH_PROVIDERS[identity.provider as OAuthProviderKey]
+                            const providerName = providerConfig?.name || identity.provider
+
+                            return (
+                              <div
+                                key={identity.id}
+                                className="flex items-center gap-3 p-3 rounded-lg border border-gray-200 bg-white"
+                              >
+                                <div className="h-8 w-8 rounded-lg bg-gray-100 flex items-center justify-center">
+                                  {identity.provider === 'github' ? (
+                                    <Github className="h-4 w-4 text-gray-700" />
+                                  ) : identity.provider === 'google' ? (
+                                    <Chrome className="h-4 w-4 text-gray-700" />
+                                  ) : (
+                                    <User className="h-4 w-4 text-gray-500" />
+                                  )}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium text-gray-900">{providerName}</p>
+                                  {identity.email && (
+                                    <p className="text-xs text-gray-500 truncate">{identity.email}</p>
+                                  )}
+                                </div>
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-7 text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  onClick={() => handleUnlinkIdentity(identity.id)}
+                                  disabled={unlinkingId === identity.id || (!accountStatus.has_password && accountStatus.linked_identities.length <= 1)}
+                                >
+                                  {unlinkingId === identity.id ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <>
+                                      <Unlink2 className="h-3 w-3 mr-1" />
+                                      解绑
+                                    </>
+                                  )}
+                                </Button>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 text-gray-500 text-sm">
+                          暂未绑定任何社交账号
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Available Providers to Link */}
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-gray-700">可绑定的社交账号</p>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        {Object.entries(OAUTH_PROVIDERS).map(([key, config]) => {
+                          if (!config.enabled) return null
+                          const isLinked = accountStatus.linked_identities.some(i => i.provider === key)
+                          if (isLinked) return null
+
+                          const isLinking = linkingProvider === key
+
+                          return (
+                            <button
+                              key={key}
+                              onClick={() => handleLinkIdentity(key)}
+                              disabled={isLinking || linkingProvider !== null}
+                              className="flex items-center gap-3 p-3 rounded-lg border border-dashed border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-purple-300 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left"
+                            >
+                              <div className="h-8 w-8 rounded-lg bg-gray-200 flex items-center justify-center">
+                                {isLinking ? (
+                                  <Loader2 className="h-4 w-4 text-purple-500 animate-spin" />
+                                ) : key === 'github' ? (
+                                  <Github className="h-4 w-4 text-gray-500" />
+                                ) : key === 'google' ? (
+                                  <Chrome className="h-4 w-4 text-gray-500" />
+                                ) : (
+                                  <User className="h-4 w-4 text-gray-400" />
+                                )}
+                              </div>
+                              <div className="flex-1">
+                                <p className="text-sm text-gray-600">{config.name}</p>
+                                <p className="text-xs text-gray-400">
+                                  {isLinking ? '绑定中...' : '点击绑定'}
+                                </p>
+                              </div>
+                              <Link2 className="h-4 w-4 text-gray-400" />
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-gray-500">
+                    <Link2 className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                    <p className="text-sm">无法加载账户状态</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Achievements Tab */}

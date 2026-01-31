@@ -506,3 +506,112 @@ pub struct NewFavorite {
     pub entity: String,
     pub record_id: i64,
 }
+
+// ============================================================================
+// Daily Tasks
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_daily_tasks)]
+pub struct DailyTask {
+    pub id: i64,
+    pub user_id: i64,
+    pub task_date: NaiveDate,
+    pub task_type: String,
+    pub task_title: String,
+    pub task_description: Option<String>,
+    pub target_value: i32,
+    pub current_value: i32,
+    pub status: String,
+    pub display_order: i32,
+    pub reference_id: Option<i64>,
+    pub reference_name: Option<String>,
+    pub created_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = learn_daily_tasks)]
+pub struct NewDailyTask {
+    pub user_id: i64,
+    pub task_date: NaiveDate,
+    pub task_type: String,
+    pub task_title: String,
+    pub task_description: Option<String>,
+    pub target_value: i32,
+    pub current_value: Option<i32>,
+    pub status: Option<String>,
+    pub display_order: i32,
+    pub reference_id: Option<i64>,
+    pub reference_name: Option<String>,
+}
+
+#[derive(AsChangeset, Deserialize)]
+#[diesel(table_name = learn_daily_tasks)]
+pub struct UpdateDailyTask {
+    pub current_value: Option<i32>,
+    pub status: Option<String>,
+    pub completed_at: Option<DateTime<Utc>>,
+}
+
+// ============================================================================
+// Daily Insights (AI-generated)
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_daily_insights)]
+pub struct DailyInsight {
+    pub id: i64,
+    pub user_id: i64,
+    pub insight_date: NaiveDate,
+    pub insight_type: String,
+    pub icon_type: String,
+    pub content_zh: String,
+    pub content_en: Option<String>,
+    pub action_text: Option<String>,
+    pub action_link: Option<String>,
+    pub metadata: Option<Value>,
+    pub display_order: i32,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = learn_daily_insights)]
+pub struct NewDailyInsight {
+    pub user_id: i64,
+    pub insight_date: NaiveDate,
+    pub insight_type: String,
+    pub icon_type: Option<String>,
+    pub content_zh: String,
+    pub content_en: Option<String>,
+    pub action_text: Option<String>,
+    pub action_link: Option<String>,
+    pub metadata: Option<Value>,
+    pub display_order: i32,
+}
+
+// ============================================================================
+// Daily Generation Log
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
+#[diesel(table_name = learn_daily_generation_log)]
+pub struct DailyGenerationLog {
+    pub id: i64,
+    pub user_id: i64,
+    pub generation_date: NaiveDate,
+    pub tasks_generated: i32,
+    pub insights_generated: i32,
+    pub generation_source: Option<String>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable)]
+#[diesel(table_name = learn_daily_generation_log)]
+pub struct NewDailyGenerationLog {
+    pub user_id: i64,
+    pub generation_date: NaiveDate,
+    pub tasks_generated: i32,
+    pub insights_generated: i32,
+    pub generation_source: Option<String>,
+}

@@ -8,6 +8,7 @@ mod base;
 pub mod chat;
 pub mod dict;
 pub mod learn;
+pub mod oauth;
 pub mod payment;
 
 pub use achievement::*;
@@ -17,4 +18,5 @@ pub use ai_usage::*;
 pub use auth::*;
 pub use base::*;
 pub use chat::*;
+pub use oauth::*;
 pub use payment::*;

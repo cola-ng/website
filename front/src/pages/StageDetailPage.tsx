@@ -262,6 +262,11 @@ export function StageDetailPage() {
 
   // Fetch stage data
   useEffect(() => {
+    if (!token) {
+      setLoading(false)
+      return
+    }
+
     async function fetchStage() {
       if (!id) return
       try {
@@ -278,7 +283,7 @@ export function StageDetailPage() {
       }
     }
     fetchStage()
-  }, [id])
+  }, [id, token])
 
   // Fetch scripts for this stage
   useEffect(() => {
@@ -654,6 +659,24 @@ export function StageDetailPage() {
             <Loader2 className="h-12 w-12 animate-spin text-orange-500" />
           </div>
         </main>
+      </div>
+    )
+  }
+
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+        <Header />
+        <div className="mx-auto max-w-6xl p-4">
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="text-6xl mb-4">🎭</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">角色扮演</h1>
+            <p className="text-gray-600 mb-6">沉浸式场景模拟，在真实情境中练习英语对话</p>
+            <Button asChild>
+              <a href={`/login?redirectTo=/stages/${id}`}>登录开始练习</a>
+            </Button>
+          </div>
+        </div>
       </div>
     )
   }

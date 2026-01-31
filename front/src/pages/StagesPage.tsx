@@ -6,6 +6,7 @@ import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
 import { cn } from '../lib/utils'
+import { useAuth } from '../lib/auth'
 
 // Stage matches backend asset_stages table
 interface Stage {
@@ -74,6 +75,7 @@ function StageCard({ stage }: { stage: Stage }) {
 }
 
 export function StagesPage() {
+  const { token } = useAuth()
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedCategory, setSelectedCategory] = useState('all')
   const [stages, setStages] = useState<Stage[]>([])
@@ -81,6 +83,11 @@ export function StagesPage() {
 
   // Fetch stage from API
   useEffect(() => {
+    if (!token) {
+      setLoading(false)
+      return
+    }
+
     async function fetchData() {
       try {
         setLoading(true)
@@ -97,7 +104,7 @@ export function StagesPage() {
       }
     }
     fetchData()
-  }, [])
+  }, [token])
 
   const filteredStages = stages.filter((stage) => {
     const matchesSearch =
@@ -119,6 +126,25 @@ export function StagesPage() {
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500"></div>
           </div>
         </main>
+        <Footer />
+      </div>
+    )
+  }
+
+  if (!token) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50">
+        <Header />
+        <div className="mx-auto max-w-6xl p-4">
+          <div className="bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="text-6xl mb-4">🎭</div>
+            <h1 className="text-2xl font-bold text-gray-900 mb-2">角色扮演</h1>
+            <p className="text-gray-600 mb-6">沉浸式场景模拟，在真实情境中练习英语对话</p>
+            <Button asChild>
+              <a href="/login?redirectTo=/stages">登录开始练习</a>
+            </Button>
+          </div>
+        </div>
         <Footer />
       </div>
     )

@@ -67,11 +67,12 @@ export function AdminUserDetailPage() {
     if (!token || !userDetail) return
     setActionLoading(true)
     try {
-      await grantAdmin(token, userDetail.id, grantNotes || undefined)
+      const numericId = parseInt(userDetail.id, 10)
+      await grantAdmin(token, numericId, grantNotes || undefined)
       setGrantDialogOpen(false)
       setGrantNotes('')
       // Refresh user detail
-      const detail = await getAdminUser(token, userDetail.id)
+      const detail = await getAdminUser(token, numericId)
       setUserDetail(detail)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to grant admin')
@@ -84,10 +85,11 @@ export function AdminUserDetailPage() {
     if (!token || !userDetail) return
     setActionLoading(true)
     try {
-      await revokeAdmin(token, userDetail.id)
+      const numericId = parseInt(userDetail.id, 10)
+      await revokeAdmin(token, numericId)
       setRevokeDialogOpen(false)
       // Refresh user detail
-      const detail = await getAdminUser(token, userDetail.id)
+      const detail = await getAdminUser(token, numericId)
       setUserDetail(detail)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to revoke admin')
@@ -137,7 +139,7 @@ export function AdminUserDetailPage() {
                 <div className="flex items-center justify-between">
                   <CardTitle className="flex items-center gap-3">
                     <div className="h-12 w-12 bg-gray-200 rounded-full flex items-center justify-center text-xl font-semibold text-gray-600">
-                      {userDetail.name.charAt(0).toUpperCase()}
+                      {(userDetail.name || 'U').charAt(0).toUpperCase()}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">

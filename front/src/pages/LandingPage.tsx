@@ -1,12 +1,22 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
-import { TrendingUp, Target, Lightbulb, ChevronRight } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { TrendingUp, Target, Lightbulb, ChevronRight, Search } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
 import { Button } from '../components/ui/button'
+import { Input } from '../components/ui/input'
 import { useAuth } from '../lib/auth'
-import { getLearnSummary, type LearnSummary } from '../lib/api'
+import {
+  getLearnSummary,
+  getDailyData,
+  listFavorites,
+  getLocalSearchHistory,
+  type LearnSummary,
+  type DailyTask,
+  type DailyInsight,
+  type FavoriteWord,
+} from '../lib/api'
 
 // Stage matches backend asset_stages table
 interface Stage {
@@ -43,11 +53,10 @@ function StatCard({ value, label, color }: StatCardProps) {
 }
 
 interface TaskItemProps {
-  title: string
-  status: 'completed' | 'in_progress' | 'pending'
+  task: DailyTask
 }
 
-function TaskItem({ title, status }: TaskItemProps) {
+function TaskItem({ task }: TaskItemProps) {
   const statusIcons = {
     completed: '✅',
     in_progress: '⏳',
@@ -62,9 +71,12 @@ function TaskItem({ title, status }: TaskItemProps) {
   return (
     <div className="bg-gray-50 rounded-lg p-3">
       <div className="font-medium text-sm text-gray-800">
-        {statusIcons[status]} {title}
+        {statusIcons[task.status]} {task.task_title}
       </div>
-      <div className="text-xs text-gray-500 mt-1">{statusLabels[status]}</div>
+      <div className="text-xs text-gray-500 mt-1">
+        {task.task_description || statusLabels[task.status]}
+        {task.target_value > 1 && ` (${task.current_value}/${task.target_value})`}
+      </div>
     </div>
   )
 }
@@ -85,17 +97,129 @@ function StageCard({ icon, title, subtitle }: StageCardProps) {
   )
 }
 
+interface InsightItemProps {
+  insight: DailyInsight
+}
+
+function InsightItem({ insight }: InsightItemProps) {
+  const bgColors = {
+    progress: 'bg-green-50',
+    weakness: 'bg-amber-50',
+    encouragement: 'bg-blue-50',
+    suggestion: 'bg-purple-50',
+  }
+  const textColors = {
+    progress: 'text-green-600',
+    weakness: 'text-amber-600',
+    encouragement: 'text-blue-600',
+    suggestion: 'text-purple-600',
+  }
+  const icons = {
+    bulb: <Lightbulb className="h-4 w-4 inline mr-1" />,
+    warning: <span className="mr-1">⚠️</span>,
+    chart: <span className="mr-1">📈</span>,
+  }
+
+  const icon = icons[insight.icon_type as keyof typeof icons] || <span className="mr-1">💡</span>
+
+  return (
+    <div className={`${bgColors[insight.insight_type]} rounded-lg p-3`}>
+      <p className="text-sm text-gray-700">
+        {icon}
+        {insight.content_zh}
+      </p>
+      {insight.action_link ? (
+        <Link to={insight.action_link} className={`text-xs ${textColors[insight.insight_type]} mt-1 block hover:underline`}>
+          {insight.action_text || '查看详情 →'}
+        </Link>
+      ) : insight.action_text ? (
+        <span className={`text-xs ${textColors[insight.insight_type]} mt-1 block`}>{insight.action_text}</span>
+      ) : null}
+    </div>
+  )
+}
+
 export function LandingPage() {
   const { token, user } = useAuth()
+  const navigate = useNavigate()
   const [learnSummary, setLearnSummary] = useState<LearnSummary | null>(null)
   const [chartPeriod, setChartPeriod] = useState<'day' | 'week' | 'month'>('day')
   const [stages, setStages] = useState<Stage[]>([])
+  const [searchWord, setSearchWord] = useState('')
+  const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([])
+  const [dailyInsights, setDailyInsights] = useState<DailyInsight[]>([])
+  const [dailyLoading, setDailyLoading] = useState(false)
+  const [suggestedWords, setSuggestedWords] = useState<{ word: string; source: 'favorite' | 'history' }[]>([])
+
+  // Helper to shuffle and pick random items
+  const pickRandom = <T,>(arr: T[], count: number): T[] => {
+    const shuffled = [...arr].sort(() => Math.random() - 0.5)
+    return shuffled.slice(0, count)
+  }
+
+  const handleDictSearch = () => {
+    const word = searchWord.trim()
+    if (word) {
+      navigate(`/dict/${encodeURIComponent(word)}`)
+    }
+  }
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleDictSearch()
+    }
+  }
 
   useEffect(() => {
     if (token) {
       getLearnSummary(token)
         .then(setLearnSummary)
         .catch(() => setLearnSummary(null))
+
+      // Fetch daily tasks and insights
+      setDailyLoading(true)
+      getDailyData(token)
+        .then((data) => {
+          setDailyTasks(data.tasks)
+          setDailyInsights(data.insights)
+        })
+        .catch(() => {
+          setDailyTasks([])
+          setDailyInsights([])
+        })
+        .finally(() => setDailyLoading(false))
+
+      // Fetch favorite words for suggestion
+      listFavorites(token, 'word', 20)
+        .then((favorites) => {
+          const wordFavorites = favorites.filter((f): f is FavoriteWord => f.entity === 'word')
+          if (wordFavorites.length > 0) {
+            const picked = pickRandom(wordFavorites, 5)
+            setSuggestedWords(picked.map(f => ({ word: f.word, source: 'favorite' })))
+          } else {
+            // Fall back to local search history
+            const history = getLocalSearchHistory()
+            if (history.length > 0) {
+              const picked = pickRandom(history, 5)
+              setSuggestedWords(picked.map(h => ({ word: h.word, source: 'history' })))
+            }
+          }
+        })
+        .catch(() => {
+          // Fall back to local search history on error
+          const history = getLocalSearchHistory()
+          if (history.length > 0) {
+            const picked = pickRandom(history, 5)
+            setSuggestedWords(picked.map(h => ({ word: h.word, source: 'history' })))
+          }
+        })
+    } else {
+      // Not logged in, use local search history
+      const history = getLocalSearchHistory()
+      if (history.length > 0) {
+        const picked = pickRandom(history, 5)
+        setSuggestedWords(picked.map(h => ({ word: h.word, source: 'history' })))
+      }
     }
   }, [token])
 
@@ -132,8 +256,8 @@ export function LandingPage() {
           <div className="lg:col-span-2 space-y-4">
             {/* Welcome Card */}
             <div className="bg-white rounded-xl shadow-lg p-6">
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div>
+              <div className="flex flex-col sm:flex-row sm:items-start gap-4">
+                <div className="flex-1">
                   <h1 className="text-xl font-semibold text-gray-900">
                     {greeting()}，{token ? (user?.name || '用户') : '欢迎来到开朗英语'}！
                   </h1>
@@ -151,14 +275,36 @@ export function LandingPage() {
                     </Button>
                   </div>
                 </div>
-                <div className="bg-orange-50 rounded-lg p-3 max-w-xs">
-                  <div className="text-xs font-medium text-orange-600 mb-1">
-                    <Lightbulb className="h-3 w-3 inline mr-1" />
-                    AI 建议
+                {/* Dictionary Search */}
+                <div className="flex-1">
+                  <p className="text-sm text-gray-500 mb-2">词典查询</p>
+                  <div className="flex gap-2">
+                    <Input
+                      type="text"
+                      placeholder="输入单词..."
+                      value={searchWord}
+                      onChange={(e) => setSearchWord(e.target.value)}
+                      onKeyDown={handleSearchKeyDown}
+                      className="flex-1"
+                    />
+                    <Button onClick={handleDictSearch} variant="outline" size="icon">
+                      <Search className="h-4 w-4" />
+                    </Button>
                   </div>
-                  <p className="text-sm text-gray-700">
-                    "昨天我们聊了旅行，今天继续练习酒店预订怎么样？"
-                  </p>
+                  {suggestedWords.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {suggestedWords.map((item, idx) => (
+                        <Link
+                          key={idx}
+                          to={`/dict/${encodeURIComponent(item.word)}`}
+                          className="text-xs px-2 py-1 bg-gray-100 hover:bg-orange-100 rounded-full text-gray-600 hover:text-orange-600 transition-colors"
+                          title={item.source === 'favorite' ? '收藏的单词' : '搜索历史'}
+                        >
+                          {item.word}
+                        </Link>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -307,58 +453,49 @@ export function LandingPage() {
                   <Target className="h-5 w-5 text-orange-500" />
                   今日任务
                 </h2>
-                <span className="text-sm text-gray-500">3/5 已完成</span>
+                {dailyTasks.length > 0 && (
+                  <span className="text-sm text-gray-500">
+                    {dailyTasks.filter(t => t.status === 'completed').length}/{dailyTasks.length} 已完成
+                  </span>
+                )}
               </div>
-              <div className="h-2 bg-gray-200 rounded-full mb-4">
-                <div className="h-2 bg-orange-500 rounded-full" style={{ width: '60%' }} />
-              </div>
+              {dailyTasks.length > 0 && (
+                <div className="h-2 bg-gray-200 rounded-full mb-4">
+                  <div
+                    className="h-2 bg-orange-500 rounded-full transition-all"
+                    style={{ width: `${(dailyTasks.filter(t => t.status === 'completed').length / dailyTasks.length) * 100}%` }}
+                  />
+                </div>
+              )}
               <div className="space-y-2">
-                <TaskItem title="3分钟自由对话" status="completed" />
-                <TaskItem title="场景练习：点餐" status="in_progress" />
-                <TaskItem title="复习 8 个易错点" status="pending" />
-                <TaskItem title="跟读训练 5 句" status="pending" />
+                {dailyLoading ? (
+                  <div className="text-sm text-gray-500 text-center py-4">加载中...</div>
+                ) : dailyTasks.length > 0 ? (
+                  dailyTasks.map((task) => <TaskItem key={task.id} task={task} />)
+                ) : token ? (
+                  <div className="text-sm text-gray-500 text-center py-4">暂无任务</div>
+                ) : (
+                  <div className="text-sm text-gray-500 text-center py-4">登录后查看今日任务</div>
+                )}
               </div>
             </div>
 
-            {/* AI Insights - 4 items */}
+            {/* AI Insights */}
             <div className="bg-white rounded-xl shadow-lg p-6">
               <h2 className="font-semibold text-gray-900 mb-4">
                 <span className="mr-2">🧠</span>
                 AI 洞察
               </h2>
               <div className="space-y-3">
-                <div className="bg-green-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-700">
-                    <Lightbulb className="h-4 w-4 inline mr-1 text-green-600" />
-                    你的冠词使用进步明显！a/an 错误率下降 40%
-                  </p>
-                  <span className="text-xs text-green-600 mt-1 block">持续保持</span>
-                </div>
-                <div className="bg-amber-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-700">
-                    <span className="mr-1">⚠️</span>
-                    建议多练习过去时态，这是你目前的薄弱点
-                  </p>
-                  <Link to="/review" className="text-xs text-amber-600 mt-1 block hover:underline">
-                    点击开始专项练习 →
-                  </Link>
-                </div>
-                <div className="bg-blue-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-700">
-                    <span className="mr-1">📈</span>
-                    本周学习时长比上周提升 25%，继续加油！
-                  </p>
-                  <span className="text-xs text-blue-600 mt-1 block">稳步提升中</span>
-                </div>
-                <div className="bg-purple-50 rounded-lg p-3">
-                  <p className="text-sm text-gray-700">
-                    <span className="mr-1">💡</span>
-                    尝试"餐厅点餐"场景，巩固已学的日常用语
-                  </p>
-                  <Link to="/chat" className="text-xs text-purple-600 mt-1 block hover:underline">
-                    立即体验 →
-                  </Link>
-                </div>
+                {dailyLoading ? (
+                  <div className="text-sm text-gray-500 text-center py-4">加载中...</div>
+                ) : dailyInsights.length > 0 ? (
+                  dailyInsights.map((insight) => <InsightItem key={insight.id} insight={insight} />)
+                ) : token ? (
+                  <div className="text-sm text-gray-500 text-center py-4">暂无洞察</div>
+                ) : (
+                  <div className="text-sm text-gray-500 text-center py-4">登录后查看 AI 洞察</div>
+                )}
               </div>
             </div>
           </div>
