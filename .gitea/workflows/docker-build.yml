@@ -29,7 +29,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ vars.REGISTRY }}/colang_wui
+          images: ${{ vars.REGISTRY }}/colang/colang_wui
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -59,7 +59,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ vars.REGISTRY }}/colang_api
+          images: ${{ vars.REGISTRY }}/colang/colang_api
           tags: |
             type=ref,event=branch
             type=ref,event=pr
