@@ -340,7 +340,8 @@ diesel::table! {
         region -> Nullable<Text>,
         context -> Nullable<Text>,
         usage_notes -> Nullable<Text>,
-        is_primary -> Nullable<Bool>,
+        is_primary -> Bool,
+        is_summary -> Bool,
         created_at -> Timestamptz,
     }
 }
@@ -366,6 +367,17 @@ diesel::table! {
         created_by -> Nullable<Int8>,
         updated_by -> Nullable<Int8>,
         updated_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    dict_distributions (id) {
+        id -> Int8,
+        word_id -> Int8,
+        language -> Text,
+        definition -> Text,
+        percent -> Nullable<Int2>,
         created_at -> Timestamptz,
     }
 }
@@ -1122,6 +1134,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     base_users,
     dict_definitions,
     dict_dictionaries,
+    dict_distributions,
     dict_etymologies,
     dict_forms,
     dict_frequencies,

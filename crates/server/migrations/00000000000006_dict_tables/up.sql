@@ -78,7 +78,7 @@ drop table if exists dict_definitions;
 CREATE TABLE IF NOT EXISTS dict_definitions (
     id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
     word_id BIGINT NOT NULL,                            -- 关联单词 ID
-    language TEXT NOT NULL,                         -- 语言
+    language TEXT NOT NULL,                         -- 语言 'en', 'zh', 'dual'.
     definition TEXT NOT NULL,                        -- 释义
     part_of_speech TEXT CHECK(part_of_speech IN ('noun', 'verb', 'adjective', 'adverb', 'pronoun', 'preposition', 'conjunction', 'interjection', 'article', 'abbreviation', 'phrase', 'idiom')), -- 词性：名词、动词、形容词、副词等
     definition_order INTEGER DEFAULT 1,                 -- 释义顺序
@@ -86,11 +86,22 @@ CREATE TABLE IF NOT EXISTS dict_definitions (
     region TEXT, -- 地区：美式、英式、澳式等
     context TEXT,                                       -- 使用语境
     usage_notes TEXT,                                   -- 用法说明
-    is_primary BOOLEAN DEFAULT FALSE,                   -- 是否为主要释义
+    is_primary BOOLEAN NOT NULL DEFAULT FALSE,                   -- 是否为主要释义
+    is_summary BOOLEAN NOT NULL DEFAULT TRUE,                   -- 是否为概要释义
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
 );
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_word ON dict_definitions(word_id, definition_order);
 CREATE INDEX IF NOT EXISTS idx_dict_definitions_pos ON dict_definitions(part_of_speech);
+
+CREATE TABLE IF NOT EXISTS dict_distributions (
+    id BIGSERIAL PRIMARY KEY,                          -- 主键 ID
+    word_id BIGINT NOT NULL,                            -- 关联单词 ID
+    language TEXT NOT NULL,                         -- 语言
+    definition TEXT NOT NULL,                        -- 释义
+    percent SMALLINT,                                   -- 分布百分比
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()       -- 创建时间
+);
+
 
 drop table if exists dict_translations;
 CREATE TABLE IF NOT EXISTS dict_translations (
