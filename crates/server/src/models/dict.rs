@@ -78,7 +78,8 @@ pub struct Definition {
     pub region: Option<String>,
     pub context: Option<String>,
     pub usage_notes: Option<String>,
-    pub is_primary: Option<bool>,
+    pub is_primary: bool,
+    pub is_summary: bool,
     pub created_at: DateTime<Utc>,
 }
 
