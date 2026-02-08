@@ -11,6 +11,9 @@ export function Footer() {
         <Link to="/privacy" className="hover:text-gray-700 hover:underline">
           隐私政策
         </Link>
+        <a href="mailto:contact@cola.ng" className="hover:text-gray-700 hover:underline">
+          contact@cola.ng
+        </a>
       </div>
     </footer>
   )
