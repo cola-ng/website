@@ -241,7 +241,7 @@ export function AdminUserDetailPage() {
                       <div>
                         <div className="text-gray-500 mb-1">状态</div>
                         <div className={userDetail.subscription.status === 'active' ? 'text-green-600' : 'text-orange-600'}>
-                          {userDetail.subscription.status === 'active' ? '活跃' : userDetail.subscription.status === 'trial' ? '试用中' : userDetail.subscription.status}
+                          {userDetail.subscription.status === 'active' ? '活跃' : userDetail.subscription.status === 'cancelled' ? '已取消' : userDetail.subscription.status}
                         </div>
                       </div>
                       <div>

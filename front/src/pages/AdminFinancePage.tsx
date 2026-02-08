@@ -80,7 +80,6 @@ function StatusBadge({ status }: { status: string }) {
     expired: { color: 'bg-gray-100 text-gray-700', icon: <AlertCircle className="h-3 w-3" />, label: '已过期' },
     refunded: { color: 'bg-purple-100 text-purple-700', icon: <AlertCircle className="h-3 w-3" />, label: '已退款' },
     active: { color: 'bg-green-100 text-green-700', icon: <CheckCircle className="h-3 w-3" />, label: '生效中' },
-    trial: { color: 'bg-blue-100 text-blue-700', icon: <Clock className="h-3 w-3" />, label: '试用中' },
     cancelled: { color: 'bg-gray-100 text-gray-700', icon: <XCircle className="h-3 w-3" />, label: '已取消' },
   }
   const config = configs[status] || { color: 'bg-gray-100 text-gray-700', icon: null, label: status }
@@ -312,9 +311,6 @@ export function AdminFinancePage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">{stats.active_subscriptions}</div>
-                    <p className="text-xs text-muted-foreground">
-                      试用中: {stats.trial_subscriptions}
-                    </p>
                   </CardContent>
                 </Card>
               </div>
@@ -506,7 +502,6 @@ export function AdminFinancePage() {
                   >
                     <option value="">全部状态</option>
                     <option value="active">生效中</option>
-                    <option value="trial">试用中</option>
                     <option value="expired">已过期</option>
                     <option value="cancelled">已取消</option>
                   </select>

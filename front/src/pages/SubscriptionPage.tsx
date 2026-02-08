@@ -82,7 +82,7 @@ export function SubscriptionPage() {
 
     setActionLoading(true)
     try {
-      await subscribe(token, selectedPlan.code, true)
+      await subscribe(token, selectedPlan.code)
       // Refresh subscription status
       const subData = await getCurrentSubscription(token)
       setCurrentSub(subData)
@@ -184,11 +184,6 @@ export function SubscriptionPage() {
                   <Sparkles className="h-5 w-5 text-amber-500" />
                   <CardTitle className="text-lg">当前订阅</CardTitle>
                 </div>
-                {currentSub.is_trial && (
-                  <span className="px-2 py-1 bg-amber-200 text-amber-800 text-xs font-medium rounded-full">
-                    试用中
-                  </span>
-                )}
               </div>
             </CardHeader>
             <CardContent>
@@ -199,7 +194,7 @@ export function SubscriptionPage() {
                   </p>
                   {currentSub.days_remaining !== null && (
                     <p className="text-sm text-gray-500">
-                      {currentSub.is_trial ? '试用' : ''}剩余 {currentSub.days_remaining} 天
+                      剩余 {currentSub.days_remaining} 天
                     </p>
                   )}
                 </div>
@@ -285,9 +280,7 @@ export function SubscriptionPage() {
                         setSubscribeDialogOpen(true)
                       }}
                     >
-                      {plan.trial_days && plan.trial_days > 0
-                        ? `免费试用 ${plan.trial_days} 天`
-                        : '立即订阅'}
+                      立即订阅
                       <ArrowRight className="h-4 w-4 ml-1" />
                     </Button>
                   )}
@@ -305,9 +298,6 @@ export function SubscriptionPage() {
             <DialogTitle>确认订阅</DialogTitle>
             <DialogDescription>
               您将订阅 "{selectedPlan?.name_zh}"
-              {selectedPlan?.trial_days && selectedPlan.trial_days > 0
-                ? `，包含 ${selectedPlan.trial_days} 天免费试用期`
-                : ''}
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">

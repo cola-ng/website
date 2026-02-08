@@ -2619,12 +2619,11 @@ export function getCurrentSubscription(token: string): Promise<CurrentSubscripti
 export function subscribe(
   token: string,
   planCode: string,
-  useTrial: boolean = true
 ): Promise<SubscribeResponse> {
   return requestJson<SubscribeResponse>('/api/subscription/subscribe', {
     method: 'POST',
     token,
-    body: JSON.stringify({ plan_code: planCode, use_trial: useTrial }),
+    body: JSON.stringify({ plan_code: planCode }),
   })
 }
 
