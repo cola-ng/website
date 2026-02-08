@@ -75,6 +75,7 @@ export type Definition = {
   context: string | null
   usage_notes: string | null
   is_primary: boolean | null
+  is_summary: boolean
   created_at: string
 }
 

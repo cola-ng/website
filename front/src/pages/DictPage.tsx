@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom'
-import { Search, Volume2, Star, Languages, BookOpen, Loader2, Copy, Check, History, Trash2, X } from 'lucide-react'
+import { Search, Volume2, Star, Languages, BookOpen, Loader2, Copy, Check, History, Trash2, X, ChevronDown } from 'lucide-react'
 import {
   lookup,
   translate,
@@ -18,6 +18,7 @@ import {
   type WordQueryResponse,
   type TranslateOptions,
   type TranslateTone,
+  type Definition,
 } from '../lib/api'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../components/ui/tabs'
 import { Footer } from '../components/Footer'
@@ -759,6 +760,120 @@ export function DictPage() {
   )
 }
 
+const FORM_TYPE_LABELS: Record<string, string> = {
+  plural: '复数',
+  singular: '单数',
+  past: '过去式',
+  present: '第三人称单数',
+  future: '将来时',
+  present_participle: '现在分词',
+  past_participle: '过去分词',
+  comparative: '比较级',
+  superlative: '最高级',
+  adverbial: '副词形式',
+  nominalization: '名词形式',
+  other: '其他',
+}
+
+function formTypeLabel(type: string | null): string {
+  return (type && FORM_TYPE_LABELS[type]) || type || '其他'
+}
+
+// Group definitions by part_of_speech, preserving order of first appearance
+const colorMap = {
+  orange: { border: 'border-orange-500', badgeBg: 'bg-orange-200', badgeText: 'text-orange-800' },
+  emerald: { border: 'border-emerald-500', badgeBg: 'bg-emerald-200', badgeText: 'text-emerald-800' },
+  blue: { border: 'border-blue-500', badgeBg: 'bg-blue-200', badgeText: 'text-blue-800' },
+} as const
+
+function groupByPos(defs: Definition[]) {
+  const groups: { pos: string | null; items: Definition[] }[] = []
+  for (const def of defs) {
+    const last = groups[groups.length - 1]
+    if (last && last.pos === (def.part_of_speech ?? null)) {
+      last.items.push(def)
+    } else {
+      groups.push({ pos: def.part_of_speech ?? null, items: [def] })
+    }
+  }
+  return groups
+}
+
+function DefList({ groups, color }: { groups: ReturnType<typeof groupByPos>, color: keyof typeof colorMap }) {
+  const c = colorMap[color]
+  return (
+    <div className="space-y-3">
+      {groups.map((group, gi) => (
+        <div key={gi} className={`pl-3 border-l-2 ${c.border}`}>
+          {group.pos && (
+            <span className={`inline-block px-2 py-0.5 ${c.badgeBg} ${c.badgeText} rounded text-xs font-medium mb-1`}>
+              {group.pos}
+            </span>
+          )}
+          <ol className={`${group.items.length > 1 ? 'list-decimal list-inside' : ''} space-y-0.5`}>
+            {group.items.map((def) => (
+              <li key={def.id} className="text-base text-gray-800">
+                {def.definition}
+                {def.register && (
+                  <span className="text-xs text-gray-400 ml-1.5">{def.register}</span>
+                )}
+                {def.region && (
+                  <span className="text-xs text-gray-400 ml-1.5">{def.region}</span>
+                )}
+                {def.usage_notes && (
+                  <p className="text-xs text-gray-500 mt-0.5 ml-4 italic">{def.usage_notes}</p>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function DefinitionGroups({ defs, color }: { defs: Definition[], color: keyof typeof colorMap }) {
+  const [showDetail, setShowDetail] = useState(false)
+
+  const summaryDefs = defs.filter(d => d.is_summary)
+  const detailDefs = defs.filter(d => !d.is_summary)
+  const hasSummary = summaryDefs.length > 0
+  const hasDetail = detailDefs.length > 0
+
+  // No summary/detail split — show everything flat
+  if (!hasSummary || !hasDetail) {
+    return <DefList groups={groupByPos(defs)} color={color} />
+  }
+
+  const summaryGroups = groupByPos(summaryDefs)
+  const detailGroups = groupByPos(detailDefs)
+
+  return (
+    <div className="space-y-3">
+      {/* Summary definitions — always visible */}
+      <DefList groups={summaryGroups} color={color} />
+
+      {/* Expand toggle */}
+      <button
+        onClick={() => setShowDetail(v => !v)}
+        className="group flex items-center gap-1.5 text-xs text-gray-400 hover:text-orange-600 transition-colors py-1"
+      >
+        <span className="h-px flex-1 max-w-12 bg-gray-200 group-hover:bg-orange-300 transition-colors" />
+        <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${showDetail ? 'rotate-180' : ''}`} />
+        <span>{showDetail ? '收起详细释义' : `展开详细释义 (${detailDefs.length})`}</span>
+        <span className="h-px flex-1 max-w-12 bg-gray-200 group-hover:bg-orange-300 transition-colors" />
+      </button>
+
+      {/* Detail definitions — collapsible */}
+      <div className={`grid transition-all duration-300 ease-in-out ${showDetail ? 'grid-rows-[1fr] opacity-100' : 'grid-rows-[0fr] opacity-0'}`}>
+        <div className="overflow-hidden">
+          <DefList groups={detailGroups} color={color} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Navigation group type for left sidebar
 type NavGroup = {
   id: string
@@ -933,32 +1048,26 @@ function WordResult({
             )}
           </div>
         </div>
-        <div className="flex flex-wrap gap-2 text-sm text-gray-600">
-          {result.pronunciations?.filter(p => p.dialect === 'UK').map(p => (
-            <span key={p.id} className="flex items-center gap-1">
-              英 /{p.ipa}/
-              <button
-                onClick={() => playAudio(p.id)}
-                className="text-orange-600 hover:text-orange-800"
-                title="Play audio"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-              </button>
-            </span>
-          ))}
-          {result.pronunciations?.filter(p => p.dialect === 'US').map(p => (
-            <span key={p.id} className="flex items-center gap-1">
-              美 /{p.ipa}/
-              <button
-                onClick={() => playAudio(p.id)}
-                className="text-orange-600 hover:text-orange-800"
-                title="Play audio"
-              >
-                <Volume2 className="w-3.5 h-3.5" />
-              </button>
-            </span>
-          ))}
-        </div>
+        {(result.pronunciations?.length ?? 0) > 0 && (
+          <div className="flex flex-wrap items-center gap-x-5 gap-y-1 mt-1">
+            {result.pronunciations!.map(p => {
+              const label = p.dialect === 'UK' ? '英' : p.dialect === 'US' ? '美' : p.dialect
+              return (
+                <span key={p.id} className="flex items-center gap-1.5 text-gray-600">
+                  {label && <span className="text-xs text-gray-400">{label}</span>}
+                  <span className="text-sm font-serif italic text-gray-700">/{p.ipa}/</span>
+                  <button
+                    onClick={() => playAudio(p.id)}
+                    className="p-1 rounded-full text-orange-500 hover:text-white hover:bg-orange-500 transition-colors"
+                    title={`播放${label || ''}发音`}
+                  >
+                    <Volume2 className="w-4 h-4" />
+                  </button>
+                </span>
+              )
+            })}
+          </div>
+        )}
         {(result.forms?.length ?? 0) > 0 && (
           <div className="flex flex-wrap gap-2 mt-2">
             {(result.forms ?? []).map((form) => (
@@ -966,7 +1075,7 @@ function WordResult({
                 key={form.id}
                 className="px-2 py-0.5 bg-orange-100 text-orange-800 rounded-full text-xs"
               >
-                <span className="font-medium">{form.form_type}:</span> {form.form}
+                <span className="font-medium">{formTypeLabel(form.form_type)}:</span> {form.form}
               </span>
             ))}
           </div>
@@ -997,85 +1106,19 @@ function WordResult({
 
             {hasZhDefs && (
               <TabsContent value="zh">
-                <div className="space-y-3">
-                  {zhDefs.map((def) => (
-                    <div key={def.id} className="pl-3 border-l-2 border-orange-500">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {def.part_of_speech && (
-                          <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
-                            {def.part_of_speech}
-                          </span>
-                        )}
-                        {def.register && (
-                          <span className="text-xs text-gray-500">{def.register}</span>
-                        )}
-                        {def.region && (
-                          <span className="text-xs text-gray-500">{def.region}</span>
-                        )}
-                      </div>
-                      <p className="text-base text-gray-800">{def.definition}</p>
-                      {def.usage_notes && (
-                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <DefinitionGroups defs={zhDefs} color="orange" />
               </TabsContent>
             )}
 
             {hasDualDefs && (
               <TabsContent value="dual">
-                <div className="space-y-3">
-                  {dualDefs.map((def) => (
-                    <div key={def.id} className="pl-3 border-l-2 border-emerald-500">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {def.part_of_speech && (
-                          <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 rounded text-xs font-medium">
-                            {def.part_of_speech}
-                          </span>
-                        )}
-                        {def.register && (
-                          <span className="text-xs text-gray-500">{def.register}</span>
-                        )}
-                        {def.region && (
-                          <span className="text-xs text-gray-500">{def.region}</span>
-                        )}
-                      </div>
-                      <p className="text-base text-gray-800">{def.definition}</p>
-                      {def.usage_notes && (
-                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <DefinitionGroups defs={dualDefs} color="emerald" />
               </TabsContent>
             )}
 
             {hasEnDefs && (
               <TabsContent value="en">
-                <div className="space-y-3">
-                  {enDefs.map((def) => (
-                    <div key={def.id} className="pl-3 border-l-2 border-blue-500">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        {def.part_of_speech && (
-                          <span className="px-2 py-0.5 bg-blue-200 text-blue-800 rounded text-xs font-medium">
-                            {def.part_of_speech}
-                          </span>
-                        )}
-                        {def.register && (
-                          <span className="text-xs text-gray-500">{def.register}</span>
-                        )}
-                        {def.region && (
-                          <span className="text-xs text-gray-500">{def.region}</span>
-                        )}
-                      </div>
-                      <p className="text-base text-gray-800">{def.definition}</p>
-                      {def.usage_notes && (
-                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                <DefinitionGroups defs={enDefs} color="blue" />
               </TabsContent>
             )}
           </Tabs>
