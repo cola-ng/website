@@ -19,7 +19,7 @@ jobs:
           toolchain: 1.92.0
           components: rustfmt, clippy
 
-      - name: Cache dependencies
+      - name: Cache cargo dependencies
         uses: actions/cache@v4
         with:
           path: |
@@ -29,6 +29,8 @@ jobs:
             ~/.cargo/git/db/
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
       - name: Check formatting
         run: cargo fmt --check
@@ -49,6 +51,14 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
+
+      - name: Cache npm dependencies
+        uses: actions/cache@v4
+        with:
+          path: front/node_modules
+          key: ${{ runner.os }}-npm-${{ hashFiles('front/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-npm-
 
       - name: Install dependencies
         run: |
@@ -78,3 +88,5 @@ jobs:
           file: ./Dockerfile
           load: true
           tags: colang:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
