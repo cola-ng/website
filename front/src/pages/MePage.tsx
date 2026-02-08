@@ -638,17 +638,6 @@ export function MePage() {
                       />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="edit-phone" className="text-sm font-medium">手机号码</Label>
-                      <Input
-                        id="edit-phone"
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder="输入您的手机号码"
-                        className="h-9"
-                      />
-                    </div>
-
                     <Button
                       onClick={saveProfile}
                       disabled={saving}
