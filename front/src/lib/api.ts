@@ -1,3 +1,11 @@
+export class ApiError extends Error {
+  status: number
+  constructor(message: string, status: number) {
+    super(message)
+    this.status = status
+  }
+}
+
 export type User = {
   id: string
   email: string
@@ -258,7 +266,7 @@ async function requestJson<T>(
   const res = await fetch(path, { ...init, headers })
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(parseErrorMessage(text, res.status))
+    throw new ApiError(parseErrorMessage(text, res.status), res.status)
   }
   return (await res.json()) as T
 }

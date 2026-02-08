@@ -12,7 +12,7 @@ import {
 } from './ui/dropdown-menu'
 import { useAuth } from '../lib/auth'
 import { cn } from '../lib/utils'
-import { getUserProfileSummary, fetchAvatarUrl, type UserProfileSummary } from '../lib/api'
+import { getUserProfileSummary, fetchAvatarUrl, ApiError, type UserProfileSummary } from '../lib/api'
 
 interface NavItem {
   label: string
@@ -59,7 +59,10 @@ export function Header() {
     if (token) {
       getUserProfileSummary(token)
         .then(setProfile)
-        .catch(() => setProfile(null))
+        .catch((err) => {
+          setProfile(null)
+          if (err instanceof ApiError && err.status === 401) clear()
+        })
     } else {
       setProfile(null)
     }

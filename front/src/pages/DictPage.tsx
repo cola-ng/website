@@ -763,7 +763,8 @@ type NavGroup = {
 function getNavGroups(result: WordQueryResponse): NavGroup[] {
   const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
   const enDefs = (result.definitions ?? []).filter(d => d.language === 'en')
-  const hasDefinitions = zhDefs.length > 0 || enDefs.length > 0
+  const dualDefs = (result.definitions ?? []).filter(d => d.language === 'dual')
+  const hasDefinitions = zhDefs.length > 0 || enDefs.length > 0 || dualDefs.length > 0
 
   const hasSentences = (result.sentences?.length ?? 0) > 0
 
@@ -847,9 +848,11 @@ function WordResult({
   // Compute available sections
   const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
   const enDefs = (result.definitions ?? []).filter(d => d.language === 'en')
+  const dualDefs = (result.definitions ?? []).filter(d => d.language === 'dual')
   const hasZhDefs = zhDefs.length > 0
   const hasEnDefs = enDefs.length > 0
-  const hasDefinitions = hasZhDefs || hasEnDefs
+  const hasDualDefs = dualDefs.length > 0
+  const hasDefinitions = hasZhDefs || hasEnDefs || hasDualDefs
 
   const hasSentences = (result.sentences?.length ?? 0) > 0
 
@@ -977,9 +980,10 @@ function WordResult({
       {/* Definitions Section */}
       {hasDefinitions && (
         <div id="section-definitions" className="bg-white rounded-xl shadow-lg p-5">
-          <Tabs defaultValue={hasZhDefs ? 'zh' : 'en'}>
+          <Tabs defaultValue={hasZhDefs ? 'zh' : hasDualDefs ? 'dual' : 'en'}>
             <TabsList className="mb-4">
               {hasZhDefs && <TabsTrigger value="zh">中文释义</TabsTrigger>}
+              {hasDualDefs && <TabsTrigger value="dual">英英释义</TabsTrigger>}
               {hasEnDefs && <TabsTrigger value="en">英文释义</TabsTrigger>}
             </TabsList>
 
@@ -991,6 +995,34 @@ function WordResult({
                       <div className="flex items-center gap-2 mb-0.5">
                         {def.part_of_speech && (
                           <span className="px-2 py-0.5 bg-orange-200 text-orange-800 rounded text-xs font-medium">
+                            {def.part_of_speech}
+                          </span>
+                        )}
+                        {def.register && (
+                          <span className="text-xs text-gray-500">{def.register}</span>
+                        )}
+                        {def.region && (
+                          <span className="text-xs text-gray-500">{def.region}</span>
+                        )}
+                      </div>
+                      <p className="text-base text-gray-800">{def.definition}</p>
+                      {def.usage_notes && (
+                        <p className="text-xs text-gray-500 mt-0.5 italic">{def.usage_notes}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </TabsContent>
+            )}
+
+            {hasDualDefs && (
+              <TabsContent value="dual">
+                <div className="space-y-3">
+                  {dualDefs.map((def) => (
+                    <div key={def.id} className="pl-3 border-l-2 border-emerald-500">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        {def.part_of_speech && (
+                          <span className="px-2 py-0.5 bg-emerald-200 text-emerald-800 rounded text-xs font-medium">
                             {def.part_of_speech}
                           </span>
                         )}
