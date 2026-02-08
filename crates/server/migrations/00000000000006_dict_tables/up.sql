@@ -304,6 +304,7 @@ CREATE TABLE IF NOT EXISTS dict_searched_words (
 -- Indexes for efficient queries
 CREATE INDEX idx_dict_searched_words_user ON dict_searched_words(user_id, searched_at DESC);
 CREATE INDEX idx_dict_searched_words_word ON dict_searched_words(word);
+CREATE UNIQUE INDEX idx_dict_searched_words_user_word ON dict_searched_words(user_id, word);
 
 
 -- Seed data for dict_dictionaries table

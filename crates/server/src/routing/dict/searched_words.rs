@@ -1,6 +1,5 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-use diesel::sql_types::Text;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -8,9 +7,6 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::dict::*;
 use crate::{DepotExt, JsonResult, json_ok};
-
-// Define a SQL function for case-insensitive comparison
-diesel::sql_function!(fn lower(x: Text) -> Text);
 
 #[derive(Deserialize)]
 pub struct CreateSearchedWordRequest {
@@ -46,35 +42,17 @@ pub async fn create_searched_word(
     }
 
     let searched_at = input.searched_at.unwrap_or_else(Utc::now);
-    let word_lower = word.to_lowercase();
-
-    // Upsert: update if exists, insert if not
     let result: SearchedWord = with_conn(move |conn| {
-        // First try to find existing record
-        let existing = dict_searched_words::table
-            .filter(dict_searched_words::user_id.eq(user_id))
-            .filter(lower(dict_searched_words::word).eq(&word_lower))
-            .first::<SearchedWord>(conn)
-            .optional()?;
-
-        if let Some(existing_record) = existing {
-            // Update the searched_at time
-            diesel::update(
-                dict_searched_words::table.filter(dict_searched_words::id.eq(existing_record.id)),
-            )
+        diesel::insert_into(dict_searched_words::table)
+            .values((
+                dict_searched_words::user_id.eq(user_id),
+                dict_searched_words::word.eq(word),
+                dict_searched_words::searched_at.eq(Some(searched_at)),
+            ))
+            .on_conflict((dict_searched_words::user_id, dict_searched_words::word))
+            .do_update()
             .set(dict_searched_words::searched_at.eq(Some(searched_at)))
             .get_result::<SearchedWord>(conn)
-        } else {
-            // Insert new record
-            diesel::insert_into(dict_searched_words::table)
-                .values(&NewSearchedWord { user_id, word })
-                .get_result::<SearchedWord>(conn)
-                .map(|mut record| {
-                    // Update searched_at if provided (since NewSearchedWord doesn't include it)
-                    record.searched_at = Some(searched_at);
-                    record
-                })
-        }
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to save searched word"))?;
@@ -111,46 +89,16 @@ pub async fn batch_create_searched_words(
             }
 
             let searched_at = item.searched_at.unwrap_or_else(Utc::now);
-            let word_lower = word.to_lowercase();
-
-            // Check if exists
-            let existing = dict_searched_words::table
-                .filter(dict_searched_words::user_id.eq(user_id))
-                .filter(lower(dict_searched_words::word).eq(&word_lower))
-                .first::<SearchedWord>(conn)
-                .optional()?;
-
-            let record = if let Some(existing_record) = existing {
-                // Update if the new timestamp is newer
-                if existing_record
-                    .searched_at
-                    .map_or(true, |t| searched_at > t)
-                {
-                    diesel::update(
-                        dict_searched_words::table
-                            .filter(dict_searched_words::id.eq(existing_record.id)),
-                    )
-                    .set(dict_searched_words::searched_at.eq(Some(searched_at)))
-                    .get_result::<SearchedWord>(conn)?
-                } else {
-                    existing_record
-                }
-            } else {
-                // Insert new
-                let new_record: SearchedWord = diesel::insert_into(dict_searched_words::table)
-                    .values(&NewSearchedWord {
-                        user_id,
-                        word: word.clone(),
-                    })
-                    .get_result(conn)?;
-
-                // Update searched_at
-                diesel::update(
-                    dict_searched_words::table.filter(dict_searched_words::id.eq(new_record.id)),
-                )
+            let record = diesel::insert_into(dict_searched_words::table)
+                .values((
+                    dict_searched_words::user_id.eq(user_id),
+                    dict_searched_words::word.eq(word.clone()),
+                    dict_searched_words::searched_at.eq(Some(searched_at)),
+                ))
+                .on_conflict((dict_searched_words::user_id, dict_searched_words::word))
+                .do_update()
                 .set(dict_searched_words::searched_at.eq(Some(searched_at)))
-                .get_result::<SearchedWord>(conn)?
-            };
+                .get_result::<SearchedWord>(conn)?;
 
             saved.push(record);
         }
@@ -180,10 +128,10 @@ pub async fn list_searched_words(
     };
 
     let words: Vec<SearchedWord> = with_conn(move |conn| {
-        // Get distinct words ordered by most recent searched_at
         dict_searched_words::table
             .filter(dict_searched_words::user_id.eq(user_id))
             .order(dict_searched_words::searched_at.desc())
+            .order(dict_searched_words::id.desc())
             .limit(limit)
             .load::<SearchedWord>(conn)
     })

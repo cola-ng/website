@@ -993,6 +993,9 @@ function WordResult({
   const hasEtymologies = (result.etymologies?.length ?? 0) > 0
   const hasMemory = !!result.word.memory
   const hasOther = hasEtymologies || hasMemory
+  const definitionDefaultTab = hasZhDefs ? 'zh' : hasDualDefs ? 'dual' : 'en'
+  const relatedDefaultTab = hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : 'related'
+  const otherDefaultTab = hasEtymologies ? 'etymology' : 'memory'
 
   const displayedSentences = showMoreSentences
     ? (result.sentences ?? [])
@@ -1097,7 +1100,10 @@ function WordResult({
       {/* Definitions Section */}
       {hasDefinitions && (
         <div id="section-definitions" className="bg-white rounded-xl shadow-lg p-5">
-          <Tabs defaultValue={hasZhDefs ? 'zh' : hasDualDefs ? 'dual' : 'en'}>
+          <Tabs
+            key={`definitions-${result.word.id}-${definitionDefaultTab}`}
+            defaultValue={definitionDefaultTab}
+          >
             <TabsList className="mb-4">
               {hasZhDefs && <TabsTrigger value="zh">中文释义</TabsTrigger>}
               {hasDualDefs && <TabsTrigger value="dual">英英释义</TabsTrigger>}
@@ -1158,7 +1164,10 @@ function WordResult({
       {/* Related Section (Synonyms, Antonyms, Related Words) */}
       {hasRelated && (
         <div id="section-related" className="bg-white rounded-xl shadow-lg p-5">
-          <Tabs defaultValue={hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : 'related'}>
+          <Tabs
+            key={`related-${result.word.id}-${relatedDefaultTab}`}
+            defaultValue={relatedDefaultTab}
+          >
             <TabsList className="mb-4">
               {hasSynonyms && <TabsTrigger value="synonyms">近义词</TabsTrigger>}
               {hasAntonyms && <TabsTrigger value="antonyms">反义词</TabsTrigger>}
@@ -1219,7 +1228,10 @@ function WordResult({
       {/* Other Section (Etymology, Memory) */}
       {hasOther && (
         <div id="section-other" className="bg-white rounded-xl shadow-lg p-5">
-          <Tabs defaultValue={hasEtymologies ? 'etymology' : 'memory'}>
+          <Tabs
+            key={`other-${result.word.id}-${otherDefaultTab}`}
+            defaultValue={otherDefaultTab}
+          >
             <TabsList className="mb-4">
               {hasEtymologies && <TabsTrigger value="etymology">词源</TabsTrigger>}
               {hasMemory && <TabsTrigger value="memory">记忆技巧</TabsTrigger>}
