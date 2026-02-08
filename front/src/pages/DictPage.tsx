@@ -387,19 +387,25 @@ export function DictPage() {
 
         {/* Main tabs for Dictionary and Translation */}
         <Tabs value={activeTab} onValueChange={handleTabChange} className="mb-6">
-          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-4">
-            <TabsTrigger value="lookup" className="gap-2">
+          <TabsList className="grid w-full max-w-md mx-auto grid-cols-2 mb-4 h-10 gap-0 overflow-hidden rounded-xl border border-orange-200 bg-white shadow-sm p-0">
+            <TabsTrigger
+              value="lookup"
+              className="gap-2 h-full rounded-none border-0 data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=inactive]:text-orange-700"
+            >
               <BookOpen className="w-4 h-4" />
               词典查询
             </TabsTrigger>
-            <TabsTrigger value="translate" className="gap-2">
+            <TabsTrigger
+              value="translate"
+              className="gap-2 h-full rounded-none border-0 data-[state=active]:bg-orange-500 data-[state=active]:text-white data-[state=inactive]:text-orange-700"
+            >
               <Languages className="w-4 h-4" />
               内容翻译
             </TabsTrigger>
           </TabsList>
 
           {/* Word Lookup Tab */}
-          <TabsContent value="lookup">
+          <TabsContent value="lookup" className="mt-4">
             {/* Search form - matches content width */}
             <div className="grid grid-cols-1 lg:grid-cols-[200px_1fr_200px] gap-6 mb-4">
               <div className="hidden lg:block" />
@@ -549,7 +555,7 @@ export function DictPage() {
           </TabsContent>
 
           {/* Translation Tab */}
-          <TabsContent value="translate">
+          <TabsContent value="translate" className="mt-4">
             <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-6">
               {/* Left column - Translation input/output */}
               <div className="space-y-4">
@@ -996,6 +1002,59 @@ function WordResult({
   const definitionDefaultTab = hasZhDefs ? 'zh' : hasDualDefs ? 'dual' : 'en'
   const relatedDefaultTab = hasSynonyms ? 'synonyms' : hasAntonyms ? 'antonyms' : 'related'
   const otherDefaultTab = hasEtymologies ? 'etymology' : 'memory'
+  const definitionTabs = [
+    hasZhDefs ? { value: 'zh', label: '中文释义' } : null,
+    hasDualDefs ? { value: 'dual', label: '英英释义' } : null,
+    hasEnDefs ? { value: 'en', label: '英文释义' } : null,
+  ].filter(Boolean) as { value: string; label: string }[]
+  const relatedTabs = [
+    hasSynonyms ? { value: 'synonyms', label: '近义词' } : null,
+    hasAntonyms ? { value: 'antonyms', label: '反义词' } : null,
+    hasRelatedWords ? { value: 'related', label: '相关词' } : null,
+  ].filter(Boolean) as { value: string; label: string }[]
+  const otherTabs = [
+    hasEtymologies ? { value: 'etymology', label: '词源' } : null,
+    hasMemory ? { value: 'memory', label: '记忆技巧' } : null,
+  ].filter(Boolean) as { value: string; label: string }[]
+  const [definitionTab, setDefinitionTab] = useState(definitionDefaultTab)
+  const [relatedTab, setRelatedTab] = useState(relatedDefaultTab)
+  const [otherTab, setOtherTab] = useState(otherDefaultTab)
+  useEffect(() => {
+    setDefinitionTab(definitionDefaultTab)
+  }, [result.word.id, definitionDefaultTab])
+  useEffect(() => {
+    setRelatedTab(relatedDefaultTab)
+  }, [result.word.id, relatedDefaultTab])
+  useEffect(() => {
+    setOtherTab(otherDefaultTab)
+  }, [result.word.id, otherDefaultTab])
+  const sectionCardClass = 'bg-white rounded-xl shadow-lg border border-orange-100/80 overflow-hidden'
+  const sectionTabsHeaderClass = 'border-b border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50 px-2'
+  const sectionTabsListClass = 'relative mb-0 inline-flex h-11 w-auto rounded-none p-0'
+  const sectionTabsTriggerClass =
+    'relative h-full rounded-none border border-transparent px-4 py-2 text-sm data-[state=active]:bg-white data-[state=active]:text-orange-700 data-[state=inactive]:text-gray-500 data-[state=inactive]:hover:bg-white/70 data-[state=inactive]:hover:text-gray-700'
+  const sectionTabsContentClass = 'mt-0 p-5'
+  const definitionTabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const relatedTabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const otherTabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
+  const [definitionIndicator, setDefinitionIndicator] = useState({ left: 0, width: 0 })
+  const [relatedIndicator, setRelatedIndicator] = useState({ left: 0, width: 0 })
+  const [otherIndicator, setOtherIndicator] = useState({ left: 0, width: 0 })
+
+  useEffect(() => {
+    const el = definitionTabRefs.current[definitionTab]
+    if (el) setDefinitionIndicator({ left: el.offsetLeft, width: el.offsetWidth })
+  }, [definitionTab, definitionTabs.length, result.word.id])
+
+  useEffect(() => {
+    const el = relatedTabRefs.current[relatedTab]
+    if (el) setRelatedIndicator({ left: el.offsetLeft, width: el.offsetWidth })
+  }, [relatedTab, relatedTabs.length, result.word.id])
+
+  useEffect(() => {
+    const el = otherTabRefs.current[otherTab]
+    if (el) setOtherIndicator({ left: el.offsetLeft, width: el.offsetWidth })
+  }, [otherTab, otherTabs.length, result.word.id])
 
   const displayedSentences = showMoreSentences
     ? (result.sentences ?? [])
@@ -1099,31 +1158,48 @@ function WordResult({
 
       {/* Definitions Section */}
       {hasDefinitions && (
-        <div id="section-definitions" className="bg-white rounded-xl shadow-lg p-5">
+        <div id="section-definitions" className={sectionCardClass}>
           <Tabs
             key={`definitions-${result.word.id}-${definitionDefaultTab}`}
-            defaultValue={definitionDefaultTab}
+            value={definitionTab}
+            onValueChange={setDefinitionTab}
           >
-            <TabsList className="mb-4">
-              {hasZhDefs && <TabsTrigger value="zh">中文释义</TabsTrigger>}
-              {hasDualDefs && <TabsTrigger value="dual">英英释义</TabsTrigger>}
-              {hasEnDefs && <TabsTrigger value="en">英文释义</TabsTrigger>}
-            </TabsList>
+            <div className={sectionTabsHeaderClass}>
+              <TabsList className={sectionTabsListClass}>
+                {definitionTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className={sectionTabsTriggerClass}
+                    ref={(el) => { definitionTabRefs.current[tab.value] = el }}
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+                <div
+                  className="pointer-events-none absolute bottom-0 h-0.5 bg-orange-500 transition-all duration-300 ease-out"
+                  style={{
+                    left: definitionIndicator.left,
+                    width: definitionIndicator.width,
+                  }}
+                />
+              </TabsList>
+            </div>
 
             {hasZhDefs && (
-              <TabsContent value="zh">
+              <TabsContent value="zh" className={sectionTabsContentClass}>
                 <DefinitionGroups defs={zhDefs} color="orange" />
               </TabsContent>
             )}
 
             {hasDualDefs && (
-              <TabsContent value="dual">
+              <TabsContent value="dual" className={sectionTabsContentClass}>
                 <DefinitionGroups defs={dualDefs} color="emerald" />
               </TabsContent>
             )}
 
             {hasEnDefs && (
-              <TabsContent value="en">
+              <TabsContent value="en" className={sectionTabsContentClass}>
                 <DefinitionGroups defs={enDefs} color="blue" />
               </TabsContent>
             )}
@@ -1163,19 +1239,36 @@ function WordResult({
 
       {/* Related Section (Synonyms, Antonyms, Related Words) */}
       {hasRelated && (
-        <div id="section-related" className="bg-white rounded-xl shadow-lg p-5">
+        <div id="section-related" className={sectionCardClass}>
           <Tabs
             key={`related-${result.word.id}-${relatedDefaultTab}`}
-            defaultValue={relatedDefaultTab}
+            value={relatedTab}
+            onValueChange={setRelatedTab}
           >
-            <TabsList className="mb-4">
-              {hasSynonyms && <TabsTrigger value="synonyms">近义词</TabsTrigger>}
-              {hasAntonyms && <TabsTrigger value="antonyms">反义词</TabsTrigger>}
-              {hasRelatedWords && <TabsTrigger value="related">相关词</TabsTrigger>}
-            </TabsList>
+            <div className={sectionTabsHeaderClass}>
+              <TabsList className={sectionTabsListClass}>
+                {relatedTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className={sectionTabsTriggerClass}
+                    ref={(el) => { relatedTabRefs.current[tab.value] = el }}
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+                <div
+                  className="pointer-events-none absolute bottom-0 h-0.5 bg-orange-500 transition-all duration-300 ease-out"
+                  style={{
+                    left: relatedIndicator.left,
+                    width: relatedIndicator.width,
+                  }}
+                />
+              </TabsList>
+            </div>
 
             {hasSynonyms && (
-              <TabsContent value="synonyms">
+              <TabsContent value="synonyms" className={sectionTabsContentClass}>
                 <div className="flex flex-wrap gap-2">
                   {synonyms.map((rel) => (
                     <Link
@@ -1191,7 +1284,7 @@ function WordResult({
             )}
 
             {hasAntonyms && (
-              <TabsContent value="antonyms">
+              <TabsContent value="antonyms" className={sectionTabsContentClass}>
                 <div className="flex flex-wrap gap-2">
                   {antonyms.map((rel) => (
                     <Link
@@ -1207,7 +1300,7 @@ function WordResult({
             )}
 
             {hasRelatedWords && (
-              <TabsContent value="related">
+              <TabsContent value="related" className={sectionTabsContentClass}>
                 <div className="flex flex-wrap gap-2">
                   {relatedWords.map((rel) => (
                     <Link
@@ -1227,18 +1320,36 @@ function WordResult({
 
       {/* Other Section (Etymology, Memory) */}
       {hasOther && (
-        <div id="section-other" className="bg-white rounded-xl shadow-lg p-5">
+        <div id="section-other" className={sectionCardClass}>
           <Tabs
             key={`other-${result.word.id}-${otherDefaultTab}`}
-            defaultValue={otherDefaultTab}
+            value={otherTab}
+            onValueChange={setOtherTab}
           >
-            <TabsList className="mb-4">
-              {hasEtymologies && <TabsTrigger value="etymology">词源</TabsTrigger>}
-              {hasMemory && <TabsTrigger value="memory">记忆技巧</TabsTrigger>}
-            </TabsList>
+            <div className={sectionTabsHeaderClass}>
+              <TabsList className={sectionTabsListClass}>
+                {otherTabs.map((tab) => (
+                  <TabsTrigger
+                    key={tab.value}
+                    value={tab.value}
+                    className={sectionTabsTriggerClass}
+                    ref={(el) => { otherTabRefs.current[tab.value] = el }}
+                  >
+                    {tab.label}
+                  </TabsTrigger>
+                ))}
+                <div
+                  className="pointer-events-none absolute bottom-0 h-0.5 bg-orange-500 transition-all duration-300 ease-out"
+                  style={{
+                    left: otherIndicator.left,
+                    width: otherIndicator.width,
+                  }}
+                />
+              </TabsList>
+            </div>
 
             {hasEtymologies && (
-              <TabsContent value="etymology">
+              <TabsContent value="etymology" className={sectionTabsContentClass}>
                 <div className="space-y-2">
                   {(result.etymologies ?? []).map((etym) => (
                     <div key={etym.id} className="bg-amber-50 rounded-lg p-3 border border-amber-200">
@@ -1253,7 +1364,7 @@ function WordResult({
             )}
 
             {hasMemory && (
-              <TabsContent value="memory">
+              <TabsContent value="memory" className={sectionTabsContentClass}>
                 <div className="bg-purple-50 rounded-lg p-4 border border-purple-200">
                   <p className="text-gray-800 whitespace-pre-wrap">{result.word.memory}</p>
                 </div>
