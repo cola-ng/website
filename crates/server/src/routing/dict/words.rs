@@ -76,7 +76,12 @@ pub async fn list_words(req: &mut Request) -> JsonResult<WordListResponse> {
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch words"))?;
 
-    json_ok(WordListResponse { words, total, page, per_page })
+    json_ok(WordListResponse {
+        words,
+        total,
+        page,
+        per_page,
+    })
 }
 
 #[derive(Deserialize)]

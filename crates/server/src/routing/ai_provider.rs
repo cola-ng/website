@@ -7,7 +7,7 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::ai_provider::*;
 use crate::services::{self, ProviderConfig};
-use crate::{hoops, AppResult, DepotExt, JsonResult, json_ok};
+use crate::{AppResult, DepotExt, JsonResult, hoops, json_ok};
 
 pub fn router() -> Router {
     Router::with_path("ai-providers")
@@ -103,7 +103,9 @@ pub async fn create_provider(
     // Validate provider type
     let provider_type = input.provider_type.to_lowercase();
     if provider_type != "zhipu" && provider_type != "doubao" {
-        return Err(StatusError::bad_request().brief("invalid provider_type, must be 'zhipu' or 'doubao'").into());
+        return Err(StatusError::bad_request()
+            .brief("invalid provider_type, must be 'zhipu' or 'doubao'")
+            .into());
     }
 
     let set_active = input.set_active;
@@ -220,7 +222,10 @@ pub async fn update_provider(req: &mut Request, depot: &mut Depot) -> JsonResult
 
 /// Delete an AI provider configuration
 #[endpoint(tags("AI Provider"))]
-pub async fn delete_provider(req: &mut Request, depot: &mut Depot) -> JsonResult<serde_json::Value> {
+pub async fn delete_provider(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<serde_json::Value> {
     let user_id = depot.user_id()?;
     let provider_id = get_provider_id(req)?;
 
@@ -244,7 +249,10 @@ pub async fn delete_provider(req: &mut Request, depot: &mut Depot) -> JsonResult
 
 /// Test an AI provider configuration
 #[endpoint(tags("AI Provider"))]
-pub async fn test_provider(req: &mut Request, depot: &mut Depot) -> JsonResult<TestProviderResponse> {
+pub async fn test_provider(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<TestProviderResponse> {
     let user_id = depot.user_id()?;
     let provider_id = get_provider_id(req)?;
 

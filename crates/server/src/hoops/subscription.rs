@@ -1,10 +1,10 @@
 use diesel::prelude::*;
 use salvo::prelude::*;
 
+use crate::AppResult;
 use crate::db::schema::user_subscriptions;
 use crate::db::with_conn;
 use crate::hoops::is_user_admin;
-use crate::AppResult;
 
 /// Requires an active subscription. Must be used after `maybe_auth` in the handler chain.
 /// Admin users are always allowed through.
@@ -12,9 +12,10 @@ use crate::AppResult;
 #[handler]
 pub async fn require_subscribed(depot: &mut Depot) -> AppResult<()> {
     // First check if user is authenticated
-    let user_id = depot.get::<i64>("user_id").copied().map_err(|_| {
-        StatusError::unauthorized().brief("authentication required")
-    })?;
+    let user_id = depot
+        .get::<i64>("user_id")
+        .copied()
+        .map_err(|_| StatusError::unauthorized().brief("authentication required"))?;
 
     // Admin users bypass subscription check
     if is_user_admin(user_id).await {

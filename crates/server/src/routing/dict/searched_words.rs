@@ -59,9 +59,11 @@ pub async fn create_searched_word(
 
         if let Some(existing_record) = existing {
             // Update the searched_at time
-            diesel::update(dict_searched_words::table.filter(dict_searched_words::id.eq(existing_record.id)))
-                .set(dict_searched_words::searched_at.eq(Some(searched_at)))
-                .get_result::<SearchedWord>(conn)
+            diesel::update(
+                dict_searched_words::table.filter(dict_searched_words::id.eq(existing_record.id)),
+            )
+            .set(dict_searched_words::searched_at.eq(Some(searched_at)))
+            .get_result::<SearchedWord>(conn)
         } else {
             // Insert new record
             diesel::insert_into(dict_searched_words::table)
@@ -120,9 +122,13 @@ pub async fn batch_create_searched_words(
 
             let record = if let Some(existing_record) = existing {
                 // Update if the new timestamp is newer
-                if existing_record.searched_at.map_or(true, |t| searched_at > t) {
+                if existing_record
+                    .searched_at
+                    .map_or(true, |t| searched_at > t)
+                {
                     diesel::update(
-                        dict_searched_words::table.filter(dict_searched_words::id.eq(existing_record.id)),
+                        dict_searched_words::table
+                            .filter(dict_searched_words::id.eq(existing_record.id)),
                     )
                     .set(dict_searched_words::searched_at.eq(Some(searched_at)))
                     .get_result::<SearchedWord>(conn)?
@@ -161,7 +167,10 @@ pub async fn batch_create_searched_words(
 /// Results are unique by word (no duplicates) and sorted by most recent first.
 /// If user is not authenticated, returns empty list.
 #[handler]
-pub async fn list_searched_words(req: &mut Request, depot: &mut Depot) -> JsonResult<Vec<SearchedWord>> {
+pub async fn list_searched_words(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<Vec<SearchedWord>> {
     let limit = req.query::<i64>("limit").unwrap_or(20).clamp(1, 100);
 
     // Get user_id from depot, return empty if not authenticated
@@ -187,7 +196,10 @@ pub async fn list_searched_words(req: &mut Request, depot: &mut Depot) -> JsonRe
 /// Delete a single searched word by ID.
 /// Requires authentication.
 #[handler]
-pub async fn delete_searched_word(req: &mut Request, depot: &mut Depot) -> JsonResult<serde_json::Value> {
+pub async fn delete_searched_word(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<serde_json::Value> {
     let user_id = depot.user_id()?;
 
     let id: i64 = req

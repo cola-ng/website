@@ -529,11 +529,14 @@ fn process_json_file(
     // Parse as generic JSON Value first to handle individual entry errors
     let json_value: serde_json::Value = serde_json::from_reader(reader)?;
 
-    let json_obj = json_value.as_object().ok_or("JSON file must be an object")?;
+    let json_obj = json_value
+        .as_object()
+        .ok_or("JSON file must be an object")?;
 
     let mut words_added = 0;
     let mut words_skipped = 0;
-    let file_name = json_file.file_name()
+    let file_name = json_file
+        .file_name()
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_else(|| json_file.display().to_string());
 
@@ -576,7 +579,9 @@ fn process_json_file(
         // - For existing words: only insert missing related data (each function checks internally)
         let mut has_errors = false;
 
-        if let Err(e) = insert_pronunciations(conn, word_id, &word_lower, &entry, pronunciations_dir) {
+        if let Err(e) =
+            insert_pronunciations(conn, word_id, &word_lower, &entry, pronunciations_dir)
+        {
             eprintln!(
                 "  Warning: failed to insert pronunciations for '{}': {}",
                 word, e
@@ -787,7 +792,13 @@ fn insert_pronunciations(
     }
 
     // If no pronunciations in JSON but we have audio files, create entries for them
-    if entry.pronunciations.is_none() || entry.pronunciations.as_ref().map(|p| p.is_empty()).unwrap_or(true) {
+    if entry.pronunciations.is_none()
+        || entry
+            .pronunciations
+            .as_ref()
+            .map(|p| p.is_empty())
+            .unwrap_or(true)
+    {
         if has_uk_audio {
             diesel::insert_into(dict_pronunciations::table)
                 .values((
@@ -898,8 +909,7 @@ fn insert_forms(
 
     if let Some(forms) = &entry.forms {
         // Delete existing forms for this word
-        diesel::delete(dict_forms::table.filter(dict_forms::word_id.eq(word_id)))
-            .execute(conn)?;
+        diesel::delete(dict_forms::table.filter(dict_forms::word_id.eq(word_id))).execute(conn)?;
 
         for form in forms {
             let form_type = form.form_type.as_ref().and_then(|t| normalize_form_type(t));
@@ -986,8 +996,10 @@ fn insert_etymologies(
 
     if let Some(etymologies) = &entry.etymologies {
         // Delete existing word-etymology links for this word
-        diesel::delete(dict_word_etymologies::table.filter(dict_word_etymologies::word_id.eq(word_id)))
-            .execute(conn)?;
+        diesel::delete(
+            dict_word_etymologies::table.filter(dict_word_etymologies::word_id.eq(word_id)),
+        )
+        .execute(conn)?;
 
         let mut order = 1;
         for etym in etymologies {
@@ -1036,8 +1048,10 @@ fn insert_categories(
 
     if let Some(categories) = &entry.categories {
         // Delete existing word-category links for this word
-        diesel::delete(dict_word_categories::table.filter(dict_word_categories::word_id.eq(word_id)))
-            .execute(conn)?;
+        diesel::delete(
+            dict_word_categories::table.filter(dict_word_categories::word_id.eq(word_id)),
+        )
+        .execute(conn)?;
 
         for cat in categories {
             let category_id = if let Some(&id) = categories_cache.get(&cat.name) {
@@ -1225,8 +1239,10 @@ fn insert_word_dictionaries(
 
     if let Some(dictionaries) = &entry.dictionaries {
         // Delete existing word-dictionary links for this word
-        diesel::delete(dict_word_dictionaries::table.filter(dict_word_dictionaries::word_id.eq(word_id)))
-            .execute(conn)?;
+        diesel::delete(
+            dict_word_dictionaries::table.filter(dict_word_dictionaries::word_id.eq(word_id)),
+        )
+        .execute(conn)?;
 
         for dict_ref in dictionaries {
             // Handle dictionary ID directly
@@ -1331,6 +1347,8 @@ fn print_usage() {
     println!("Examples:");
     println!("  cargo run --bin words_to_db");
     println!("  cargo run --bin words_to_db --limit 100");
-    println!("  cargo run --bin words_to_db --words-dir D:/Works/cola-ng/dict/final-en-dict --batch-size 50");
+    println!(
+        "  cargo run --bin words_to_db --words-dir D:/Works/cola-ng/dict/final-en-dict --batch-size 50"
+    );
     println!("  cargo run --bin words_to_db --force");
 }

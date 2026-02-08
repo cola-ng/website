@@ -1,8 +1,8 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
+use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
-use salvo::oapi::ToSchema;
 
 use crate::db::schema::user_activities;
 

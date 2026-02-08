@@ -137,7 +137,11 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         // Only return active words (is_active is true or null)
         let word_record = dict_words::table
             .filter(dict_words::word_lower.eq(&word_lower_value))
-            .filter(dict_words::is_active.eq(true).or(dict_words::is_active.is_null()))
+            .filter(
+                dict_words::is_active
+                    .eq(true)
+                    .or(dict_words::is_active.is_null()),
+            )
             .first::<Word>(conn)
             .optional()?;
 
@@ -160,7 +164,11 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
                 .collect::<String>();
             dict_words::table
                 .filter(dict_words::word_lower.eq(&word_normalized))
-                .filter(dict_words::is_active.eq(true).or(dict_words::is_active.is_null()))
+                .filter(
+                    dict_words::is_active
+                        .eq(true)
+                        .or(dict_words::is_active.is_null()),
+                )
                 .first::<Word>(conn)?
         };
 

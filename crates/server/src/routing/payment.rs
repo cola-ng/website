@@ -266,9 +266,7 @@ pub async fn subscribe(
             .filter(subscription_plans::is_active.eq(true))
             .first(conn)
             .optional()?
-            .ok_or_else(|| {
-                diesel::result::Error::NotFound
-            })?;
+            .ok_or_else(|| diesel::result::Error::NotFound)?;
 
         // Check if user already has active subscription
         let existing: Option<UserSubscription> = user_subscriptions::table

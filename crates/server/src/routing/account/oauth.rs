@@ -1,14 +1,13 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-
-use salvo::oapi::extract::*;
 use salvo::oapi::ToSchema;
+use salvo::oapi::extract::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::models::*;
 use crate::db::schema::*;
 use crate::db::with_conn;
+use crate::models::*;
 use crate::{DepotExt, JsonResult, json_ok};
 
 // ============================================================================
@@ -62,7 +61,10 @@ pub async fn list_identities(depot: &mut Depot) -> JsonResult<Vec<LinkedOauthIde
 
 /// Unlink an OAuth identity from the current user
 #[endpoint(tags("Account"))]
-pub async fn unlink_identity(id: PathParam<i64>, depot: &mut Depot) -> JsonResult<serde_json::Value> {
+pub async fn unlink_identity(
+    id: PathParam<i64>,
+    depot: &mut Depot,
+) -> JsonResult<serde_json::Value> {
     let user_id = depot.user_id()?;
     let identity_id = id.into_inner();
 
@@ -83,7 +85,9 @@ pub async fn unlink_identity(id: PathParam<i64>, depot: &mut Depot) -> JsonResul
         Ok((has_password, identity_count))
     })
     .await
-    .map_err(|_: String| StatusError::internal_server_error().brief("failed to check account status"))?;
+    .map_err(|_: String| {
+        StatusError::internal_server_error().brief("failed to check account status")
+    })?;
 
     // Prevent unlinking if it's the only way to login
     if !has_password && identity_count <= 1 {
@@ -132,7 +136,9 @@ pub async fn get_account_status(depot: &mut Depot) -> JsonResult<AccountStatusRe
         Ok((has_password, identities))
     })
     .await
-    .map_err(|_: String| StatusError::internal_server_error().brief("failed to fetch account status"))?;
+    .map_err(|_: String| {
+        StatusError::internal_server_error().brief("failed to fetch account status")
+    })?;
 
     let linked_identities: Vec<LinkedOauthIdentity> = identities
         .into_iter()

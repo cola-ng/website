@@ -11,7 +11,7 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::asset::*;
 use crate::models::learn::{NewReadPractice, NewUserLevel};
-use crate::{json_ok, AppResult, DepotExt, JsonResult};
+use crate::{AppResult, DepotExt, JsonResult, json_ok};
 
 #[derive(Serialize, ToSchema)]
 pub struct PaginatedSubjects {
@@ -411,9 +411,8 @@ pub async fn get_recommended_sentences(
         }
 
         if !mastered_sentence_ids.is_empty() {
-            count_query = count_query.filter(
-                asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()),
-            );
+            count_query =
+                count_query.filter(asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()));
         }
 
         let total_available: i64 = count_query.count().get_result(conn)?;
@@ -433,9 +432,7 @@ pub async fn get_recommended_sentences(
         }
 
         if !mastered_sentence_ids.is_empty() {
-            query = query.filter(
-                asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()),
-            );
+            query = query.filter(asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()));
         }
 
         let items = query
@@ -465,10 +462,18 @@ pub async fn get_recommended_sentences(
             false
         };
 
-        Ok::<_, diesel::result::Error>((items, user_level, total_available, subject_completed, subject_id))
+        Ok::<_, diesel::result::Error>((
+            items,
+            user_level,
+            total_available,
+            subject_completed,
+            subject_id,
+        ))
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to get recommended sentences"))?;
+    .map_err(|_| {
+        StatusError::internal_server_error().brief("failed to get recommended sentences")
+    })?;
 
     let (items, user_level, total_available, subject_completed, subject_id) = result;
     let all_completed = items.is_empty() && total_available == 0;

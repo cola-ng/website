@@ -23,7 +23,8 @@ mod learn;
 mod payment;
 
 pub fn router() -> Router {
-    Router::new().hoop(maybe_auth)
+    Router::new()
+        .hoop(maybe_auth)
         .push(
             Router::with_path("api")
                 .hoop(

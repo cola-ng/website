@@ -7,14 +7,14 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use futures_util::stream::{self, StreamExt};
+use outfox_doubao::Client as DoubaoClient;
 use outfox_doubao::config::DoubaoConfig;
 use outfox_doubao::spec::tts::CreateSpeechRequestArgs;
-use outfox_doubao::Client as DoubaoClient;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_INPUT_FILE: &str = r"D:\Works\cola-ng\movies\word-s.json";
@@ -107,7 +107,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app_id = std::env::var("DOUBAO_APP_ID").expect("DOUBAO_APP_ID must be set");
     let access_token =
         std::env::var("DOUBAO_ACCESS_TOKEN").expect("DOUBAO_ACCESS_TOKEN must be set");
-    let resource_id = std::env::var("DOUBAO_RESOURCE_ID").unwrap_or_else(|_| "seed-tts-2.0".to_string());
+    let resource_id =
+        std::env::var("DOUBAO_RESOURCE_ID").unwrap_or_else(|_| "seed-tts-2.0".to_string());
 
     println!("===============================================");
     println!("TTS Generator for Word Sentences");
@@ -171,8 +172,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Run async processing
     let rt = tokio::runtime::Runtime::new()?;
     rt.block_on(async {
-        process_entries_concurrent(&client, &entries_to_process, &output_dir, &voice, concurrency)
-            .await
+        process_entries_concurrent(
+            &client,
+            &entries_to_process,
+            &output_dir,
+            &voice,
+            concurrency,
+        )
+        .await
     })?;
 
     println!("\n===============================================");
@@ -236,7 +243,10 @@ async fn process_entries_concurrent(
     let output_dir = Arc::new(output_dir.to_path_buf());
     let voice = Arc::new(voice.to_string());
 
-    println!("Starting TTS generation with {} concurrency...\n", concurrency);
+    println!(
+        "Starting TTS generation with {} concurrency...\n",
+        concurrency
+    );
 
     stream::iter(entries.iter().cloned())
         .map(|entry| {
@@ -257,7 +267,10 @@ async fn process_entries_concurrent(
                     if let Ok(metadata) = filepath.metadata() {
                         if metadata.len() > 0 {
                             success_count.fetch_add(1, Ordering::SeqCst);
-                            println!("[{}/{}] {} ... SKIPPED (exists)", current, total, entry.word);
+                            println!(
+                                "[{}/{}] {} ... SKIPPED (exists)",
+                                current, total, entry.word
+                            );
                             return;
                         }
                     }
@@ -267,23 +280,21 @@ async fn process_entries_concurrent(
                 std::io::stdout().flush().ok();
 
                 match generate_tts_with_retry(&client, &entry.sentence, &voice).await {
-                    Ok(audio_data) => {
-                        match File::create(&filepath) {
-                            Ok(mut file) => {
-                                if file.write_all(&audio_data).is_ok() {
-                                    success_count.fetch_add(1, Ordering::SeqCst);
-                                    println!("OK ({} bytes)", audio_data.len());
-                                } else {
-                                    error_count.fetch_add(1, Ordering::SeqCst);
-                                    println!("FAILED (write error)");
-                                }
-                            }
-                            Err(e) => {
+                    Ok(audio_data) => match File::create(&filepath) {
+                        Ok(mut file) => {
+                            if file.write_all(&audio_data).is_ok() {
+                                success_count.fetch_add(1, Ordering::SeqCst);
+                                println!("OK ({} bytes)", audio_data.len());
+                            } else {
                                 error_count.fetch_add(1, Ordering::SeqCst);
-                                println!("FAILED (create file: {})", e);
+                                println!("FAILED (write error)");
                             }
                         }
-                    }
+                        Err(e) => {
+                            error_count.fetch_add(1, Ordering::SeqCst);
+                            println!("FAILED (create file: {})", e);
+                        }
+                    },
                     Err(e) => {
                         error_count.fetch_add(1, Ordering::SeqCst);
                         println!("FAILED ({})", e);

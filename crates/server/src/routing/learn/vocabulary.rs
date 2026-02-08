@@ -24,7 +24,10 @@ pub struct PaginatedVocabulary {
 }
 
 #[endpoint(tags("Learn"))]
-pub async fn list_vocabulary(req: &mut Request, depot: &mut Depot) -> JsonResult<PaginatedVocabulary> {
+pub async fn list_vocabulary(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<PaginatedVocabulary> {
     let user_id = depot.user_id()?;
     let due_only = req.query::<bool>("due_only").unwrap_or(false);
     let page = req.query::<i64>("page").unwrap_or(1).max(1);

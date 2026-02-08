@@ -119,10 +119,7 @@ pub async fn record_subscription(
 }
 
 /// Record admin grant activity
-pub async fn record_admin_grant(
-    user_id: i64,
-    granted_by: i64,
-) -> Result<UserActivity, String> {
+pub async fn record_admin_grant(user_id: i64, granted_by: i64) -> Result<UserActivity, String> {
     let metadata = serde_json::json!({
         "granted_by": granted_by,
     });
@@ -138,10 +135,7 @@ pub async fn record_admin_grant(
 }
 
 /// Record admin revoke activity
-pub async fn record_admin_revoke(
-    user_id: i64,
-    revoked_by: i64,
-) -> Result<UserActivity, String> {
+pub async fn record_admin_revoke(user_id: i64, revoked_by: i64) -> Result<UserActivity, String> {
     let metadata = serde_json::json!({
         "revoked_by": revoked_by,
     });

@@ -34,7 +34,7 @@ impl StudyTimeTracker {
         Self {
             user_states: RwLock::new(HashMap::new()),
             pending_increments: RwLock::new(HashMap::new()),
-            max_gap_seconds: 120, // 2 minutes
+            max_gap_seconds: 120,           // 2 minutes
             heartbeat_interval_seconds: 20, // heartbeat interval
         }
     }

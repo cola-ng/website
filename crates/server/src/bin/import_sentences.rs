@@ -8,18 +8,17 @@ use std::collections::HashSet;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use colang::db::schema::{asset_read_sentences, asset_read_subjects};
 use diesel::prelude::*;
 use futures_util::stream::{self, StreamExt};
+use outfox_doubao::Client as DoubaoClient;
 use outfox_doubao::config::DoubaoConfig;
 use outfox_doubao::spec::tts::CreateSpeechRequestArgs;
-use outfox_doubao::Client as DoubaoClient;
 use serde::{Deserialize, Serialize};
-
-use colang::db::schema::{asset_read_sentences, asset_read_subjects};
 
 const DEFAULT_INPUT_FILE: &str = r"D:\Works\cola-ng\space-raw\read-sentences.json";
 const DEFAULT_OUTPUT_DIR: &str = r"D:\Works\cola-ng\space\read-sentences";
@@ -248,8 +247,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !skip_db {
         println!("\n--- Phase 2: Database Import ---\n");
 
-        let database_url =
-            std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+        let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
         let mut conn = PgConnection::establish(&database_url)?;
 
         insert_to_database(&mut conn, &data, &output_dir)?;
@@ -329,7 +327,10 @@ async fn process_tts_concurrent(
                     if let Ok(metadata) = filepath.metadata() {
                         if metadata.len() > 0 {
                             success_count.fetch_add(1, Ordering::SeqCst);
-                            println!("[{}/{}] {} ... SKIPPED (exists)", current, total, audio_name);
+                            println!(
+                                "[{}/{}] {} ... SKIPPED (exists)",
+                                current, total, audio_name
+                            );
                             return;
                         }
                     }
@@ -425,16 +426,16 @@ fn insert_to_database(
     data: &ReadSentencesData,
     output_dir: &Path,
 ) -> Result<(), Box<dyn std::error::Error>> {
-
     for subject_data in &data.subjects {
         println!("Processing subject: {} ...", subject_data.code);
 
         // Find all existing subjects that conflict with any unique field
         let conflicting_ids: Vec<i64> = asset_read_subjects::table
             .filter(
-                asset_read_subjects::code.eq(&subject_data.code)
+                asset_read_subjects::code
+                    .eq(&subject_data.code)
                     .or(asset_read_subjects::title_en.eq(&subject_data.title_en))
-                    .or(asset_read_subjects::title_zh.eq(&subject_data.title_zh))
+                    .or(asset_read_subjects::title_zh.eq(&subject_data.title_zh)),
             )
             .select(asset_read_subjects::id)
             .load(conn)?;
@@ -443,18 +444,20 @@ fn insert_to_database(
         if !conflicting_ids.is_empty() {
             let deleted_sentences = diesel::delete(
                 asset_read_sentences::table
-                    .filter(asset_read_sentences::subject_id.eq_any(&conflicting_ids))
+                    .filter(asset_read_sentences::subject_id.eq_any(&conflicting_ids)),
             )
             .execute(conn)?;
 
             // Delete conflicting subjects
             let deleted_subjects = diesel::delete(
-                asset_read_subjects::table
-                    .filter(asset_read_subjects::id.eq_any(&conflicting_ids))
+                asset_read_subjects::table.filter(asset_read_subjects::id.eq_any(&conflicting_ids)),
             )
             .execute(conn)?;
 
-            println!("  Deleted {} existing subject(s) and {} sentence(s)", deleted_subjects, deleted_sentences);
+            println!(
+                "  Deleted {} existing subject(s) and {} sentence(s)",
+                deleted_subjects, deleted_sentences
+            );
         }
 
         // Insert new subject

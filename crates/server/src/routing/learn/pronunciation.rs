@@ -1,12 +1,12 @@
-use base64::prelude::{Engine, BASE64_STANDARD as BASE64};
+use base64::prelude::{BASE64_STANDARD as BASE64, Engine};
 use salvo::prelude::*;
 
+use crate::AppResult;
 use crate::routing::asset::reading::{
-    calculate_pronunciation_score, EvaluateRequest, EvaluateResponse,
+    EvaluateRequest, EvaluateResponse, calculate_pronunciation_score,
 };
 use crate::services::ai_provider::{AiProviderError, AsrResponse};
 use crate::services::create_provider_from_env;
-use crate::AppResult;
 
 #[handler]
 pub async fn evaluate(req: &mut Request, res: &mut Response) -> AppResult<()> {

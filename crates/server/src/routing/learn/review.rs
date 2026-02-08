@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::*;
-use crate::{json_ok, DepotExt, JsonResult};
+use crate::{DepotExt, JsonResult, json_ok};
 
 /// Review types supported by the system
 #[derive(Debug, Clone, Deserialize, Serialize, ToSchema, PartialEq)]
@@ -56,11 +56,11 @@ pub struct ReviewStats {
 /// Request to submit review result
 #[derive(Deserialize, ToSchema)]
 pub struct SubmitReviewRequest {
-    pub source: String,      // "vocabulary" or "issue_word"
+    pub source: String, // "vocabulary" or "issue_word"
     pub source_id: i64,
     pub review_type: String,
-    pub result: String,      // "correct", "partial", "incorrect"
-    pub score: Option<i32>,  // 0-100 for pronunciation
+    pub result: String,     // "correct", "partial", "incorrect"
+    pub score: Option<i32>, // 0-100 for pronunciation
     pub time_spent_ms: i64,
 }
 
@@ -74,7 +74,10 @@ pub struct SubmitReviewResponse {
 
 /// Get review items by type
 #[endpoint(tags("Learn"))]
-pub async fn get_review_items(req: &mut Request, depot: &mut Depot) -> JsonResult<ReviewItemsResponse> {
+pub async fn get_review_items(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<ReviewItemsResponse> {
     let user_id = depot.user_id()?;
     let review_type = req.query::<String>("type").unwrap_or_default();
     let limit = req.query::<i64>("limit").unwrap_or(20).clamp(1, 100);
@@ -340,7 +343,10 @@ pub async fn get_review_stats(depot: &mut Depot) -> JsonResult<ReviewStats> {
 
 /// Submit review result
 #[endpoint(tags("Learn"))]
-pub async fn submit_review(req: &mut Request, depot: &mut Depot) -> JsonResult<SubmitReviewResponse> {
+pub async fn submit_review(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<SubmitReviewResponse> {
     let user_id = depot.user_id()?;
     let input: SubmitReviewRequest = req
         .parse_json()
@@ -353,7 +359,13 @@ pub async fn submit_review(req: &mut Request, depot: &mut Depot) -> JsonResult<S
     let interval_days = match input.result.as_str() {
         "correct" => {
             if let Some(score) = input.score {
-                if score >= 90 { 7 } else if score >= 80 { 4 } else { 2 }
+                if score >= 90 {
+                    7
+                } else if score >= 80 {
+                    4
+                } else {
+                    2
+                }
             } else {
                 4
             }

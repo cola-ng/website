@@ -157,8 +157,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     fs::create_dir_all(&output_dir)?;
 
     // Initialize Zhipu client
-    let zhipu = colang::services::zhipu::ZhipuClient::from_env()
-        .expect("Failed to create Zhipu client");
+    let zhipu =
+        colang::services::zhipu::ZhipuClient::from_env().expect("Failed to create Zhipu client");
 
     let start_time = Instant::now();
     let mut stats = Stats::default();
@@ -227,13 +227,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // Convert WAV to MP3 using ffmpeg
                 let ffmpeg_result = Command::new("ffmpeg")
                     .args([
-                        "-y",           // Overwrite output file
+                        "-y", // Overwrite output file
                         "-i",
                         wav_path.to_str().unwrap(),
                         "-codec:a",
                         "libmp3lame",
                         "-qscale:a",
-                        "2",            // High quality VBR
+                        "2", // High quality VBR
                         mp3_path.to_str().unwrap(),
                     ])
                     .output();

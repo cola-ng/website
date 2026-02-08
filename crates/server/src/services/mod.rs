@@ -15,20 +15,19 @@ pub mod zhipu;
 
 use std::sync::Arc;
 
-use diesel::prelude::*;
-use serde_json::Value;
-
-use crate::db::schema::user_ai_providers;
-use crate::db::with_conn;
-use crate::models::ai_provider::{DoubaoSettings, UserAiProvider, ZhipuSettings};
-
 pub use ai_provider::{
     AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig,
     StructuredChatResponse, TextIssue, TtsService,
 };
 use async_trait::async_trait;
+use diesel::prelude::*;
 pub use doubao::DoubaoClient;
+use serde_json::Value;
 pub use zhipu::ZhipuClient;
+
+use crate::db::schema::user_ai_providers;
+use crate::db::with_conn;
+use crate::models::ai_provider::{DoubaoSettings, UserAiProvider, ZhipuSettings};
 
 /// Combined AI Provider that mixes services from different providers.
 ///
@@ -175,7 +174,9 @@ pub async fn get_user_provider(user_id: i64) -> Option<Arc<dyn AiProvider>> {
     .flatten();
 
     if let Some(provider) = user_provider {
-        if let Some(ai_provider) = create_provider_from_user_config(&provider.provider_type, &provider.settings) {
+        if let Some(ai_provider) =
+            create_provider_from_user_config(&provider.provider_type, &provider.settings)
+        {
             tracing::info!(
                 "Using user's {} provider for user_id={}",
                 provider.provider_type,
@@ -191,7 +192,10 @@ pub async fn get_user_provider(user_id: i64) -> Option<Arc<dyn AiProvider>> {
 }
 
 /// Create AI provider from user configuration stored in database
-fn create_provider_from_user_config(provider_type: &str, settings: &Value) -> Option<Arc<dyn AiProvider>> {
+fn create_provider_from_user_config(
+    provider_type: &str,
+    settings: &Value,
+) -> Option<Arc<dyn AiProvider>> {
     match provider_type {
         "zhipu" => {
             let zhipu_settings: ZhipuSettings = serde_json::from_value(settings.clone()).ok()?;

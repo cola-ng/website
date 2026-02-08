@@ -1,12 +1,10 @@
 use chrono::{DateTime, Utc};
 use diesel::prelude::*;
-
 use serde::Serialize;
 
 use crate::db::schema::*;
 
-
-#[derive(Queryable, Identifiable,  Serialize, Debug, Clone)]
+#[derive(Queryable, Identifiable, Serialize, Debug, Clone)]
 #[diesel(table_name = oauth_identities)]
 pub struct OauthIdentity {
     pub id: i64,

@@ -101,9 +101,10 @@ pub async fn dashboard_stats() -> JsonResult<DashboardStats> {
 
         let today = chrono::Utc::now().date_naive();
         let users_today: i64 = base_users::table
-            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(
-                &format!("DATE(created_at) = '{}'", today),
-            ))
+            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                "DATE(created_at) = '{}'",
+                today
+            )))
             .select(count(base_users::id))
             .first(conn)?;
 
@@ -320,7 +321,14 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
             .limit(50)
             .load(conn)?;
 
-        Ok::<_, diesel::result::Error>((user, admin, subscription_info, wallet, recent_payments, recent_activities))
+        Ok::<_, diesel::result::Error>((
+            user,
+            admin,
+            subscription_info,
+            wallet,
+            recent_payments,
+            recent_activities,
+        ))
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
@@ -532,9 +540,10 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
         // Get total users before the period
         let start_date = chrono::Utc::now().date_naive() - chrono::Duration::days(days as i64);
         let users_before: i64 = base_users::table
-            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(
-                &format!("DATE(created_at) < '{}'", start_date),
-            ))
+            .filter(diesel::dsl::sql::<diesel::sql_types::Bool>(&format!(
+                "DATE(created_at) < '{}'",
+                start_date
+            )))
             .select(count(base_users::id))
             .first(conn)?;
 
@@ -1014,7 +1023,10 @@ pub async fn list_orders(req: &mut Request) -> JsonResult<OrderListResponse> {
         }
 
         if let Some(ref s) = search {
-            conditions.push(format!("order_no ILIKE '%{}%'", s.replace('\'', "''").to_lowercase()));
+            conditions.push(format!(
+                "order_no ILIKE '%{}%'",
+                s.replace('\'', "''").to_lowercase()
+            ));
         }
 
         let where_clause = conditions.join(" AND ");
@@ -1279,7 +1291,11 @@ struct SubscriptionRow {
 // ============================================================================
 
 use salvo::oapi::extract::PathParam;
-use crate::models::asset::{Stage, NewStage, UpdateStage, ReadSubject, NewReadSubject, UpdateReadSubject, ReadSentence, NewReadSentence, UpdateReadSentence};
+
+use crate::models::asset::{
+    NewReadSentence, NewReadSubject, NewStage, ReadSentence, ReadSubject, Stage,
+    UpdateReadSentence, UpdateReadSubject, UpdateStage,
+};
 
 #[derive(Deserialize, ToSchema)]
 pub struct ListStagesQuery {
@@ -1318,7 +1334,8 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
             let pattern = format!("%{}%", search_term.to_lowercase());
             asset_stages::table
                 .filter(
-                    asset_stages::name_zh.ilike(&pattern)
+                    asset_stages::name_zh
+                        .ilike(&pattern)
                         .or(asset_stages::name_en.ilike(&pattern))
                         .or(asset_stages::code.ilike(&pattern)),
                 )
@@ -1334,7 +1351,8 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
             let pattern = format!("%{}%", search_term.to_lowercase());
             asset_stages::table
                 .filter(
-                    asset_stages::name_zh.ilike(&pattern)
+                    asset_stages::name_zh
+                        .ilike(&pattern)
                         .or(asset_stages::name_en.ilike(&pattern))
                         .or(asset_stages::code.ilike(&pattern)),
                 )
@@ -1355,7 +1373,12 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list stages"))?;
 
-    json_ok(StageListResponse { stages, total, page, per_page })
+    json_ok(StageListResponse {
+        stages,
+        total,
+        page,
+        per_page,
+    })
 }
 
 /// Get a single stage by ID
@@ -1390,10 +1413,7 @@ pub async fn create_stage(input: JsonBody<NewStage>) -> JsonResult<Stage> {
 
 /// Update an existing chat stage/scenario
 #[endpoint(tags("Admin"))]
-pub async fn update_stage(
-    id: PathParam<i64>,
-    input: JsonBody<UpdateStage>,
-) -> JsonResult<Stage> {
+pub async fn update_stage(id: PathParam<i64>, input: JsonBody<UpdateStage>) -> JsonResult<Stage> {
     let stage_id = id.into_inner();
     let update_data = input.into_inner();
 
@@ -1414,8 +1434,7 @@ pub async fn delete_stage(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
     let stage_id = id.into_inner();
 
     with_conn(move |conn| {
-        diesel::delete(asset_stages::table.filter(asset_stages::id.eq(stage_id)))
-            .execute(conn)
+        diesel::delete(asset_stages::table.filter(asset_stages::id.eq(stage_id))).execute(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete stage"))?;
@@ -1470,12 +1489,14 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
 
         if let Some(ref pattern) = pattern {
             base_query = base_query.filter(
-                asset_read_subjects::title_zh.ilike(pattern)
+                asset_read_subjects::title_zh
+                    .ilike(pattern)
                     .or(asset_read_subjects::title_en.ilike(pattern))
                     .or(asset_read_subjects::code.ilike(pattern)),
             );
             count_query = count_query.filter(
-                asset_read_subjects::title_zh.ilike(pattern)
+                asset_read_subjects::title_zh
+                    .ilike(pattern)
                     .or(asset_read_subjects::title_en.ilike(pattern))
                     .or(asset_read_subjects::code.ilike(pattern)),
             );
@@ -1486,7 +1507,9 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
             count_query = count_query.filter(asset_read_subjects::subject_type.eq(st));
         }
 
-        let total: i64 = count_query.select(count(asset_read_subjects::id)).first(conn)?;
+        let total: i64 = count_query
+            .select(count(asset_read_subjects::id))
+            .first(conn)?;
 
         let subjects: Vec<ReadSubject> = base_query
             .order(asset_read_subjects::id.asc())
@@ -1499,7 +1522,12 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read subjects"))?;
 
-    json_ok(ReadSubjectListResponse { subjects, total, page, per_page })
+    json_ok(ReadSubjectListResponse {
+        subjects,
+        total,
+        page,
+        per_page,
+    })
 }
 
 /// Get a single read-along subject by ID
@@ -1619,19 +1647,26 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
 
         if let Some(ref pattern) = pattern {
             base_query = base_query.filter(
-                asset_read_sentences::content_en.ilike(pattern)
+                asset_read_sentences::content_en
+                    .ilike(pattern)
                     .or(asset_read_sentences::content_zh.ilike(pattern)),
             );
             count_query = count_query.filter(
-                asset_read_sentences::content_en.ilike(pattern)
+                asset_read_sentences::content_en
+                    .ilike(pattern)
                     .or(asset_read_sentences::content_zh.ilike(pattern)),
             );
         }
 
-        let total: i64 = count_query.select(count(asset_read_sentences::id)).first(conn)?;
+        let total: i64 = count_query
+            .select(count(asset_read_sentences::id))
+            .first(conn)?;
 
         let sentences: Vec<ReadSentence> = base_query
-            .order((asset_read_sentences::subject_id.asc(), asset_read_sentences::sentence_order.asc()))
+            .order((
+                asset_read_sentences::subject_id.asc(),
+                asset_read_sentences::sentence_order.asc(),
+            ))
             .offset(offset)
             .limit(per_page)
             .load(conn)?;
@@ -1641,7 +1676,12 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read sentences"))?;
 
-    json_ok(ReadSentenceListResponse { sentences, total, page, per_page })
+    json_ok(ReadSentenceListResponse {
+        sentences,
+        total,
+        page,
+        per_page,
+    })
 }
 
 /// Get a single read-along sentence by ID

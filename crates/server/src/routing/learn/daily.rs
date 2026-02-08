@@ -121,8 +121,13 @@ pub async fn update_task(
                 .filter(learn_daily_tasks::user_id.eq(user_id)),
         )
         .set((
-            input.current_value.map(|v| learn_daily_tasks::current_value.eq(v)),
-            input.status.clone().map(|s| learn_daily_tasks::status.eq(s)),
+            input
+                .current_value
+                .map(|v| learn_daily_tasks::current_value.eq(v)),
+            input
+                .status
+                .clone()
+                .map(|s| learn_daily_tasks::status.eq(s)),
             learn_daily_tasks::completed_at.eq(completed_at),
         ))
         .get_result::<DailyTask>(conn)
@@ -284,7 +289,10 @@ async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), Statu
     Ok(())
 }
 
-async fn generate_insights(user_id: i64, today: NaiveDate) -> Result<Vec<NewDailyInsight>, StatusError> {
+async fn generate_insights(
+    user_id: i64,
+    today: NaiveDate,
+) -> Result<Vec<NewDailyInsight>, StatusError> {
     let mut insights: Vec<NewDailyInsight> = vec![];
 
     // Fetch recent chat issues (last 7 days)
@@ -300,9 +308,12 @@ async fn generate_insights(user_id: i64, today: NaiveDate) -> Result<Vec<NewDail
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch recent issues"))?;
 
     // Analyze issue types
-    let mut issue_type_counts: std::collections::HashMap<String, i32> = std::collections::HashMap::new();
+    let mut issue_type_counts: std::collections::HashMap<String, i32> =
+        std::collections::HashMap::new();
     for issue in &recent_issues {
-        *issue_type_counts.entry(issue.issue_type.clone()).or_insert(0) += 1;
+        *issue_type_counts
+            .entry(issue.issue_type.clone())
+            .or_insert(0) += 1;
     }
 
     // Fetch weekly stats for comparison
@@ -344,7 +355,8 @@ async fn generate_insights(user_id: i64, today: NaiveDate) -> Result<Vec<NewDail
     }
 
     // Insight 2: Weakness suggestion
-    if let Some((weakness_type, _)) = issue_type_counts.iter()
+    if let Some((weakness_type, _)) = issue_type_counts
+        .iter()
         .filter(|(t, _)| *t != "grammar")
         .max_by_key(|(_, c)| *c)
     {
@@ -382,26 +394,35 @@ async fn generate_insights(user_id: i64, today: NaiveDate) -> Result<Vec<NewDail
     }
 
     // Insight 3: Study time encouragement
-    let this_week_minutes: i32 = weekly_stats.iter()
+    let this_week_minutes: i32 = weekly_stats
+        .iter()
         .take(7)
         .filter_map(|s| s.minutes_studied)
         .sum();
-    let last_week_minutes: i32 = weekly_stats.iter()
+    let last_week_minutes: i32 = weekly_stats
+        .iter()
         .skip(7)
         .filter_map(|s| s.minutes_studied)
         .sum();
 
     if this_week_minutes > 0 {
         let change_percent = if last_week_minutes > 0 {
-            ((this_week_minutes - last_week_minutes) as f32 / last_week_minutes as f32 * 100.0) as i32
+            ((this_week_minutes - last_week_minutes) as f32 / last_week_minutes as f32 * 100.0)
+                as i32
         } else {
             100
         };
 
         let content = if change_percent > 0 {
-            format!("本周学习时长比上周提升 {}%，继续加油！", change_percent.abs())
+            format!(
+                "本周学习时长比上周提升 {}%，继续加油！",
+                change_percent.abs()
+            )
         } else if change_percent < 0 {
-            format!("本周学习时长比上周减少 {}%，保持学习节奏很重要", change_percent.abs())
+            format!(
+                "本周学习时长比上周减少 {}%，保持学习节奏很重要",
+                change_percent.abs()
+            )
         } else {
             "学习时间保持稳定，稳步提升中".to_string()
         };

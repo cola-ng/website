@@ -4,12 +4,11 @@ use diesel::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
-use crate::AppResult;
 use crate::config::AppConfig;
 use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::dict::*;
-use crate::{JsonResult, json_ok};
+use crate::{AppResult, JsonResult, json_ok};
 
 #[handler]
 pub async fn list_pronunciations(req: &mut Request) -> JsonResult<Vec<Pronunciation>> {
@@ -104,9 +103,11 @@ pub async fn update_pronunciation(req: &mut Request) -> JsonResult<Pronunciation
     };
 
     let updated: Pronunciation = with_conn(move |conn| {
-        diesel::update(dict_pronunciations::table.filter(dict_pronunciations::id.eq(pronunciation_id)))
-            .set(changes)
-            .get_result::<Pronunciation>(conn)
+        diesel::update(
+            dict_pronunciations::table.filter(dict_pronunciations::id.eq(pronunciation_id)),
+        )
+        .set(changes)
+        .get_result::<Pronunciation>(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update pronunciation"))?;
@@ -147,9 +148,9 @@ pub async fn serve_pronunciation_audio(req: &mut Request, res: &mut Response) ->
     .map_err(|_| StatusError::not_found().brief("pronunciation not found"))?;
 
     // Check if audio_path exists
-    let audio_path = pronunciation
-        .audio_path
-        .ok_or_else(|| StatusError::not_found().brief("no audio available for this pronunciation"))?;
+    let audio_path = pronunciation.audio_path.ok_or_else(|| {
+        StatusError::not_found().brief("no audio available for this pronunciation")
+    })?;
 
     // Build the full file path
     let file_path = PathBuf::from(&AppConfig::get().space_path).join(&audio_path);

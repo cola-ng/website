@@ -27,10 +27,7 @@ pub async fn maybe_auth(req: &mut Request, depot: &mut Depot, _res: &mut Respons
         let claims = crate::auth::decode_access_token(token, &config.jwt_secret)
             .map_err(|_| "invalid token")?;
 
-        claims
-            .sub
-            .parse::<i64>()
-            .map_err(|_| "invalid token")
+        claims.sub.parse::<i64>().map_err(|_| "invalid token")
     })();
 
     match result {

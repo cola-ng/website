@@ -271,7 +271,10 @@ fn import_stages(
             .optional()?;
 
         if let Some(id) = existing {
-            println!("  Stage '{}' already exists (id={}), skipping", stage.code, id);
+            println!(
+                "  Stage '{}' already exists (id={}), skipping",
+                stage.code, id
+            );
             stage_map.insert(stage.code.clone(), id);
             stats.stages_skipped += 1;
             continue;
@@ -358,7 +361,8 @@ fn import_scripts(
                 asset_scripts::title_zh.eq(&script.title_zh),
                 asset_scripts::description_en.eq(&script.description_en),
                 asset_scripts::description_zh.eq(&script.description_zh),
-                asset_scripts::total_turns.eq(script.total_turns.or(Some(script.turns.len() as i32))),
+                asset_scripts::total_turns
+                    .eq(script.total_turns.or(Some(script.turns.len() as i32))),
                 asset_scripts::estimated_duration_seconds.eq(script.estimated_duration_seconds),
                 asset_scripts::difficulty.eq(script.difficulty),
             ))

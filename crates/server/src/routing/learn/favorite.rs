@@ -73,7 +73,10 @@ pub enum FavoriteWithDetails {
 
 /// List favorites for the authenticated user with entity details
 #[handler]
-pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<Vec<FavoriteWithDetails>> {
+pub async fn list_favorites(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<Vec<FavoriteWithDetails>> {
     let user_id = depot.user_id()?;
 
     let entity_filter = req.query::<String>("entity");
@@ -107,8 +110,7 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                 .select((dict_words::id, dict_words::word))
                 .load::<(i64, String)>(conn)?;
 
-            let word_map: std::collections::HashMap<i64, String> =
-                words.into_iter().collect();
+            let word_map: std::collections::HashMap<i64, String> = words.into_iter().collect();
 
             // Fetch Chinese definitions (first one for each word)
             let definitions: Vec<(i64, String)> = dict_definitions::table
@@ -117,18 +119,21 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                 .select((dict_definitions::word_id, dict_definitions::definition))
                 .load::<(i64, String)>(conn)?;
 
-            let def_map: std::collections::HashMap<i64, String> =
-                definitions.into_iter().collect();
+            let def_map: std::collections::HashMap<i64, String> = definitions.into_iter().collect();
 
             // Fetch all pronunciations with audio for these words
             let pronunciations: Vec<Pronunciation> = dict_pronunciations::table
                 .filter(dict_pronunciations::word_id.eq_any(&word_ids))
                 .filter(dict_pronunciations::audio_path.is_not_null())
-                .order((dict_pronunciations::word_id, dict_pronunciations::is_primary.desc()))
+                .order((
+                    dict_pronunciations::word_id,
+                    dict_pronunciations::is_primary.desc(),
+                ))
                 .load::<Pronunciation>(conn)?;
 
             // Group pronunciations by word_id
-            let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> = std::collections::HashMap::new();
+            let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> =
+                std::collections::HashMap::new();
             for pron in pronunciations {
                 pron_map.entry(pron.word_id).or_default().push(pron);
             }
@@ -160,12 +165,16 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                 ))
                 .load::<(i64, String, String, Option<String>)>(conn)?;
 
-            let turn_map: std::collections::HashMap<i64, (String, String, Option<String>)> =
-                turns.into_iter().map(|(id, en, zh, audio)| (id, (en, zh, audio))).collect();
+            let turn_map: std::collections::HashMap<i64, (String, String, Option<String>)> = turns
+                .into_iter()
+                .map(|(id, en, zh, audio)| (id, (en, zh, audio)))
+                .collect();
 
             for fav in favorites {
                 if let Some((sentence_en, sentence_zh, audio_path)) = turn_map.get(&fav.record_id) {
-                    let audio_url = audio_path.as_ref().map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
+                    let audio_url = audio_path
+                        .as_ref()
+                        .map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
                     result.push(FavoriteWithDetails::Sentence(FavoriteSentence {
                         id: fav.id,
                         user_id: fav.user_id,
@@ -179,13 +188,20 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
             }
         } else if !favorites.is_empty() {
             // No specific entity filter - need to fetch details for both types
-            let word_favs: Vec<&Favorite> = favorites.iter().filter(|f| f.entity == "word").collect();
-            let sentence_favs: Vec<&Favorite> = favorites.iter().filter(|f| f.entity == "sentence").collect();
+            let word_favs: Vec<&Favorite> =
+                favorites.iter().filter(|f| f.entity == "word").collect();
+            let sentence_favs: Vec<&Favorite> = favorites
+                .iter()
+                .filter(|f| f.entity == "sentence")
+                .collect();
 
             // Fetch word details
-            let mut word_map: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-            let mut def_map: std::collections::HashMap<i64, String> = std::collections::HashMap::new();
-            let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> = std::collections::HashMap::new();
+            let mut word_map: std::collections::HashMap<i64, String> =
+                std::collections::HashMap::new();
+            let mut def_map: std::collections::HashMap<i64, String> =
+                std::collections::HashMap::new();
+            let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> =
+                std::collections::HashMap::new();
 
             if !word_favs.is_empty() {
                 let word_ids: Vec<i64> = word_favs.iter().map(|f| f.record_id).collect();
@@ -206,7 +222,10 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                 let pronunciations: Vec<Pronunciation> = dict_pronunciations::table
                     .filter(dict_pronunciations::word_id.eq_any(&word_ids))
                     .filter(dict_pronunciations::audio_path.is_not_null())
-                    .order((dict_pronunciations::word_id, dict_pronunciations::is_primary.desc()))
+                    .order((
+                        dict_pronunciations::word_id,
+                        dict_pronunciations::is_primary.desc(),
+                    ))
                     .load::<Pronunciation>(conn)?;
 
                 for pron in pronunciations {
@@ -215,7 +234,8 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
             }
 
             // Fetch sentence details
-            let mut turn_map: std::collections::HashMap<i64, (String, String, Option<String>)> = std::collections::HashMap::new();
+            let mut turn_map: std::collections::HashMap<i64, (String, String, Option<String>)> =
+                std::collections::HashMap::new();
 
             if !sentence_favs.is_empty() {
                 let turn_ids: Vec<i64> = sentence_favs.iter().map(|f| f.record_id).collect();
@@ -230,7 +250,10 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                     ))
                     .load::<(i64, String, String, Option<String>)>(conn)?;
 
-                turn_map = turns.into_iter().map(|(id, en, zh, audio)| (id, (en, zh, audio))).collect();
+                turn_map = turns
+                    .into_iter()
+                    .map(|(id, en, zh, audio)| (id, (en, zh, audio)))
+                    .collect();
             }
 
             // Build results maintaining original order
@@ -250,8 +273,12 @@ pub async fn list_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult<
                         }
                     }
                     "sentence" => {
-                        if let Some((sentence_en, sentence_zh, audio_path)) = turn_map.get(&fav.record_id) {
-                            let audio_url = audio_path.as_ref().map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
+                        if let Some((sentence_en, sentence_zh, audio_path)) =
+                            turn_map.get(&fav.record_id)
+                        {
+                            let audio_url = audio_path
+                                .as_ref()
+                                .map(|_| format!("/api/learn/chats/turns/{}/audio", fav.record_id));
                             result.push(FavoriteWithDetails::Sentence(FavoriteSentence {
                                 id: fav.id,
                                 user_id: fav.user_id,
@@ -288,7 +315,9 @@ pub async fn create_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult
 
     let entity = input.entity.trim().to_lowercase();
     if entity.is_empty() {
-        return Err(StatusError::bad_request().brief("entity is required").into());
+        return Err(StatusError::bad_request()
+            .brief("entity is required")
+            .into());
     }
 
     let record_id = input.record_id;
@@ -322,7 +351,10 @@ pub async fn create_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult
 
 /// Remove a favorite by entity and record_id
 #[handler]
-pub async fn delete_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult<serde_json::Value> {
+pub async fn delete_favorite(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<serde_json::Value> {
     let user_id = depot.user_id()?;
 
     let entity = req
@@ -349,7 +381,10 @@ pub async fn delete_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult
 
 /// Toggle a favorite (add if not exists, remove if exists)
 #[handler]
-pub async fn toggle_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult<serde_json::Value> {
+pub async fn toggle_favorite(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<serde_json::Value> {
     let user_id = depot.user_id()?;
 
     let input: CreateFavoriteRequest = req
@@ -359,7 +394,9 @@ pub async fn toggle_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult
 
     let entity = input.entity.trim().to_lowercase();
     if entity.is_empty() {
-        return Err(StatusError::bad_request().brief("entity is required").into());
+        return Err(StatusError::bad_request()
+            .brief("entity is required")
+            .into());
     }
 
     let record_id = input.record_id;

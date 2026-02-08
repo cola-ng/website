@@ -189,10 +189,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if dry_run {
         println!("\n--- DRY RUN: Preview ---");
-        println!("Would distribute {} sentences among {} subjects", sentences.len(), subjects.len());
+        println!(
+            "Would distribute {} sentences among {} subjects",
+            sentences.len(),
+            subjects.len()
+        );
         println!("\nExisting subjects:");
         for (i, s) in subjects.iter().take(10).enumerate() {
-            println!("  {}. {} (current max order: {})", i + 1, s.code, s.max_order);
+            println!(
+                "  {}. {} (current max order: {})",
+                i + 1,
+                s.code,
+                s.max_order
+            );
         }
         if subjects.len() > 10 {
             println!("  ... and {} more", subjects.len() - 10);
@@ -270,10 +279,8 @@ fn import_sentences(
     let mut rng = rand::rng();
 
     // Track current max order for each subject
-    let mut subject_orders: std::collections::HashMap<i64, i32> = subjects
-        .iter()
-        .map(|s| (s.id, s.max_order))
-        .collect();
+    let mut subject_orders: std::collections::HashMap<i64, i32> =
+        subjects.iter().map(|s| (s.id, s.max_order)).collect();
 
     let total = sentences.len();
 
@@ -342,7 +349,11 @@ fn export_to_json(
     let mut file = File::create(output_file)?;
     file.write_all(json.as_bytes())?;
 
-    println!("Exported {} sentences to {}", sentences.len(), output_file.display());
+    println!(
+        "Exported {} sentences to {}",
+        sentences.len(),
+        output_file.display()
+    );
 
     Ok(())
 }

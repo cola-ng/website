@@ -37,7 +37,12 @@ pub async fn list_domains(req: &mut Request) -> JsonResult<DomainListResponse> {
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list domains"))?;
 
-    json_ok(DomainListResponse { domains, total, page, per_page })
+    json_ok(DomainListResponse {
+        domains,
+        total,
+        page,
+        per_page,
+    })
 }
 
 #[handler]
@@ -71,7 +76,10 @@ pub async fn create_domain(req: &mut Request) -> JsonResult<TaxonDomain> {
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    if input.code.trim().is_empty() || input.name_en.trim().is_empty() || input.name_zh.trim().is_empty() {
+    if input.code.trim().is_empty()
+        || input.name_en.trim().is_empty()
+        || input.name_zh.trim().is_empty()
+    {
         return Err(StatusError::bad_request()
             .brief("code, name_en, and name_zh are required")
             .into());
@@ -233,7 +241,12 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list categories"))?;
 
-    json_ok(CategoryListResponse { categories, total, page, per_page })
+    json_ok(CategoryListResponse {
+        categories,
+        total,
+        page,
+        per_page,
+    })
 }
 
 #[handler]
@@ -287,7 +300,10 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    if input.code.trim().is_empty() || input.name_en.trim().is_empty() || input.name_zh.trim().is_empty() {
+    if input.code.trim().is_empty()
+        || input.name_en.trim().is_empty()
+        || input.name_zh.trim().is_empty()
+    {
         return Err(StatusError::bad_request()
             .brief("code, name_en, and name_zh are required")
             .into());
@@ -308,9 +324,7 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
     .map_err(|_| StatusError::internal_server_error().brief("failed to check domain"))?;
 
     if !domain_exists {
-        return Err(StatusError::bad_request()
-            .brief("domain not found")
-            .into());
+        return Err(StatusError::bad_request().brief("domain not found").into());
     }
 
     // Verify parent exists and domain matches if provided
@@ -474,7 +488,8 @@ pub async fn delete_category(req: &mut Request) -> JsonResult<serde_json::Value>
     let has_contexts: bool = with_conn(move |conn| {
         use diesel::dsl::exists;
         diesel::select(exists(
-            asset_context_categories::table.filter(asset_context_categories::category_id.eq(category_id)),
+            asset_context_categories::table
+                .filter(asset_context_categories::category_id.eq(category_id)),
         ))
         .get_result(conn)
     })
@@ -488,7 +503,8 @@ pub async fn delete_category(req: &mut Request) -> JsonResult<serde_json::Value>
     }
 
     with_conn(move |conn| {
-        diesel::delete(taxon_categories::table.filter(taxon_categories::id.eq(category_id))).execute(conn)
+        diesel::delete(taxon_categories::table.filter(taxon_categories::id.eq(category_id)))
+            .execute(conn)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete category"))?;
