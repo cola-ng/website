@@ -204,7 +204,7 @@ export function StageDetailPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const [searchParams, setSearchParams] = useSearchParams()
-  const { token } = useAuth() // Ensure user is authenticated
+  const { token, user } = useAuth()
   useStudyHeartbeat('stage')
 
   const [stage, setStage] = useState<Stage | null>(null)
@@ -242,9 +242,10 @@ export function StageDetailPage() {
   // Subscription state - check if user has paid subscription for AI features
   const [subscription, setSubscription] = useState<CurrentSubscription | null>(null)
 
-  // Check if user has a paid subscription (not free tier)
-  const hasPaidSubscription = subscription?.has_subscription &&
-    subscription?.subscription?.plan?.tier !== 'free'
+  // Admins have full access; paid subscribers also have access
+  const hasPaidSubscription = user?.is_admin ||
+    (subscription?.has_subscription &&
+    subscription?.subscription?.plan?.tier !== 'free')
 
   // Subscribe to global audio playing state
   useEffect(() => {

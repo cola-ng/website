@@ -321,12 +321,14 @@ export function Header() {
                       <span>收藏夹</span>
                     </Link>
                   </DropdownMenuItem>
-                  <DropdownMenuItem asChild>
-                    <Link to="/subscription" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg text-amber-600">
-                      <Crown className="h-4 w-4" />
-                      <span>订阅会员</span>
-                    </Link>
-                  </DropdownMenuItem>
+                  {!user?.is_admin && (
+                    <DropdownMenuItem asChild>
+                      <Link to="/subscription" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg text-amber-600">
+                        <Crown className="h-4 w-4" />
+                        <span>订阅会员</span>
+                      </Link>
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem asChild>
                     <Link to="/me" className="cursor-pointer flex items-center gap-2 px-3 py-2 rounded-lg">
                       <Settings className="h-4 w-4" />

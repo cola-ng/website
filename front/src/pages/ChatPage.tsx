@@ -116,7 +116,7 @@ interface Context {
 }
 
 export function ChatPage() {
-  const { token } = useAuth()
+  const { token, user } = useAuth()
   useStudyHeartbeat('chat')
   const { chatId: urlChatId } = useParams<{ chatId: string }>()
   const navigate = useNavigate()
@@ -166,9 +166,10 @@ export function ChatPage() {
   const [subscription, setSubscription] = useState<CurrentSubscription | null>(null)
   const [subscriptionLoading, setSubscriptionLoading] = useState(true)
 
-  // Check if user has a paid subscription (not free tier)
-  const hasPaidSubscription = subscription?.has_subscription &&
-    subscription?.subscription?.plan?.tier !== 'free'
+  // Admins have full access; paid subscribers also have access
+  const hasPaidSubscription = user?.is_admin ||
+    (subscription?.has_subscription &&
+    subscription?.subscription?.plan?.tier !== 'free')
 
   // Display settings - independent toggles for each language (persisted to localStorage)
   const [showBotEn, setShowBotEn] = useState(() => {

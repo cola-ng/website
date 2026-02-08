@@ -4,6 +4,14 @@ import { Navigate } from 'react-router-dom'
 import { Camera, Mail, Phone, Calendar, Shield, User, Loader2, Trophy, Zap, Flame, Award, Star, Target, Settings, Bot, CheckCircle, XCircle, Play, Link2, Unlink2, KeyRound, Github, Chrome } from 'lucide-react'
 
 import { Card, CardContent } from '../components/ui/card'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '../components/ui/dialog'
 import { Button } from '../components/ui/button'
 import { Input } from '../components/ui/input'
 import { Label } from '../components/ui/label'
@@ -15,7 +23,7 @@ import {
   me, updateMe, uploadAvatar, deleteAvatar, fetchAvatarUrl,
   getUserProfileSummary, getUserAchievements,
   listAiProviders, createAiProvider, updateAiProvider, deleteAiProvider, testAiProvider, activateAiProvider,
-  getAccountStatus, unlinkOAuthIdentity, linkOAuthIdentity,
+  getAccountStatus, unlinkOAuthIdentity, linkOAuthIdentity, changePassword,
   type UserProfileSummary, type AchievementWithProgress, type UserAiProvider, type AiProviderType, type AccountStatus
 } from '../lib/api'
 import { OAUTH_PROVIDERS, type OAuthProviderKey } from '../lib/oauth-config'
@@ -72,6 +80,14 @@ export function MePage() {
   const [accountStatusLoading, setAccountStatusLoading] = useState(false)
   const [unlinkingId, setUnlinkingId] = useState<number | null>(null)
   const [linkingProvider, setLinkingProvider] = useState<string | null>(null)
+
+  // Password change dialog state
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [passwordSaving, setPasswordSaving] = useState(false)
+  const [passwordError, setPasswordError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!token) return
@@ -248,6 +264,42 @@ export function MePage() {
       toast.error('绑定失败', message)
     } finally {
       setLinkingProvider(null)
+    }
+  }
+
+  const handleChangePassword = async () => {
+    if (!token) return
+    setPasswordError(null)
+
+    if (newPassword.length < 8) {
+      setPasswordError('密码长度至少 8 个字符')
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setPasswordError('两次输入的密码不一致')
+      return
+    }
+
+    setPasswordSaving(true)
+    try {
+      await changePassword(
+        token,
+        newPassword,
+        accountStatus?.has_password ? currentPassword : undefined,
+      )
+      // Refresh account status
+      const status = await getAccountStatus(token)
+      setAccountStatus(status)
+      // Reset form and close dialog
+      setPasswordDialogOpen(false)
+      setCurrentPassword('')
+      setNewPassword('')
+      setConfirmPassword('')
+      toast.success('密码修改成功', accountStatus?.has_password ? '密码已更新' : '密码已设置')
+    } catch (e) {
+      setPasswordError(e instanceof Error ? e.message : '密码修改失败')
+    } finally {
+      setPasswordSaving(false)
     }
   }
 
@@ -656,11 +708,14 @@ export function MePage() {
                             {accountStatus.has_password ? '已设置密码' : '未设置密码（仅通过社交账号登录）'}
                           </p>
                         </div>
-                        {accountStatus.has_password && (
-                          <span className="text-xs bg-green-100 text-green-600 px-2 py-0.5 rounded-full">
-                            已启用
-                          </span>
-                        )}
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="text-xs"
+                          onClick={() => setPasswordDialogOpen(true)}
+                        >
+                          {accountStatus.has_password ? '修改密码' : '设置密码'}
+                        </Button>
                       </div>
                     </div>
 
@@ -1133,6 +1188,84 @@ export function MePage() {
           onCancel={handleCropCancel}
         />
       )}
+
+      {/* Password Change Dialog */}
+      <Dialog open={passwordDialogOpen} onOpenChange={(open) => {
+        setPasswordDialogOpen(open)
+        if (!open) {
+          setCurrentPassword('')
+          setNewPassword('')
+          setConfirmPassword('')
+          setPasswordError(null)
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>{accountStatus?.has_password ? '修改密码' : '设置密码'}</DialogTitle>
+            <DialogDescription>
+              {accountStatus?.has_password
+                ? '请输入当前密码和新密码'
+                : '设置密码后可以使用邮箱和密码登录'}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            {accountStatus?.has_password && (
+              <div className="space-y-2">
+                <Label htmlFor="current-password">当前密码</Label>
+                <Input
+                  id="current-password"
+                  type="password"
+                  value={currentPassword}
+                  onChange={(e) => setCurrentPassword(e.target.value)}
+                  placeholder="输入当前密码"
+                />
+              </div>
+            )}
+            <div className="space-y-2">
+              <Label htmlFor="new-password">新密码</Label>
+              <Input
+                id="new-password"
+                type="password"
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="至少 8 个字符"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">确认新密码</Label>
+              <Input
+                id="confirm-password"
+                type="password"
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="再次输入新密码"
+              />
+            </div>
+            {passwordError && (
+              <p className="text-sm text-red-500">{passwordError}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPasswordDialogOpen(false)}>
+              取消
+            </Button>
+            <Button
+              onClick={handleChangePassword}
+              disabled={passwordSaving}
+              className="bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600"
+            >
+              {passwordSaving ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  保存中...
+                </>
+              ) : (
+                '确认'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

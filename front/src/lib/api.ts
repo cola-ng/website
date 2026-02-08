@@ -364,6 +364,24 @@ export function getAccountStatus(token: string): Promise<AccountStatus> {
 }
 
 /**
+ * Change user password
+ */
+export function changePassword(
+  token: string,
+  newPassword: string,
+  currentPassword?: string,
+): Promise<{ success: boolean }> {
+  return requestJson<{ success: boolean }>('/api/me/change-password', {
+    method: 'POST',
+    token,
+    body: JSON.stringify({
+      current_password: currentPassword || null,
+      new_password: newPassword,
+    }),
+  })
+}
+
+/**
  * List all linked OAuth identities for the current user
  */
 export function listOAuthIdentities(token: string): Promise<LinkedOAuthIdentity[]> {

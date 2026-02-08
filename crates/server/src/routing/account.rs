@@ -35,7 +35,8 @@ pub fn router() -> Router {
                         .post(oauth::link_identity)
                         .push(Router::with_path("<id>").delete(oauth::unlink_identity)),
                 )
-                .push(Router::with_path("account-status").get(oauth::get_account_status)),
+                .push(Router::with_path("account-status").get(oauth::get_account_status))
+                .push(Router::with_path("change-password").post(change_password)),
         )
 }
 
@@ -275,4 +276,83 @@ pub async fn update_me(input: JsonBody<UpdateUserProfile>, depot: &mut Depot) ->
     .map_err(|_| StatusError::internal_server_error().brief("failed to update profile"))?;
 
     json_ok(User::from(updated))
+}
+
+#[derive(Deserialize, ToSchema)]
+pub struct ChangePasswordRequest {
+    /// Current password (required if user already has a password)
+    current_password: Option<String>,
+    /// New password (min 8 characters)
+    new_password: String,
+}
+
+#[derive(Serialize, ToSchema)]
+pub struct ChangePasswordResponse {
+    success: bool,
+}
+
+/// Change user password
+#[endpoint(tags("Account"))]
+pub async fn change_password(
+    input: JsonBody<ChangePasswordRequest>,
+    depot: &mut Depot,
+) -> JsonResult<ChangePasswordResponse> {
+    let user_id = depot.user_id()?;
+
+    if input.new_password.len() < 8 {
+        return Err(StatusError::bad_request()
+            .brief("password must be at least 8 characters")
+            .into());
+    }
+
+    // Check if user currently has a password
+    let has_password = with_conn(move |conn| {
+        base_passwords::table
+            .filter(base_passwords::user_id.eq(user_id))
+            .select(base_passwords::id)
+            .first::<i64>(conn)
+            .optional()
+    })
+    .await
+    .map(|opt| opt.is_some())
+    .unwrap_or(false);
+
+    // If user has a password, verify the current one
+    if has_password {
+        let current = input.current_password.as_deref().unwrap_or("");
+        if current.is_empty() {
+            return Err(StatusError::bad_request()
+                .brief("current password is required")
+                .into());
+        }
+        let user: User = with_conn(move |conn| {
+            base_users::table.filter(base_users::id.eq(user_id)).first(conn)
+        })
+        .await
+        .map_err(|_| StatusError::not_found().brief("user not found"))?;
+
+        crate::auth::verify_password(&user, current).await?;
+    }
+
+    // Hash and save the new password
+    let new_hash = crate::auth::hash_password(&input.new_password)
+        .map_err(|_| StatusError::internal_server_error().brief("failed to hash password"))?;
+
+    with_conn(move |conn| {
+        // Delete existing password entry if any
+        diesel::delete(base_passwords::table.filter(base_passwords::user_id.eq(user_id)))
+            .execute(conn)?;
+        // Insert new password
+        diesel::insert_into(base_passwords::table)
+            .values(NewPassword {
+                user_id,
+                hash: new_hash,
+                created_at: Utc::now(),
+            })
+            .execute(conn)
+    })
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to update password"))?;
+
+    json_ok(ChangePasswordResponse { success: true })
 }
