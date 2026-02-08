@@ -58,6 +58,7 @@ CREATE INDEX IF NOT EXISTS idx_dict_words_word_lower ON dict_words(word_lower);
 CREATE INDEX IF NOT EXISTS idx_dict_words_word_type ON dict_words(word_type);
 CREATE INDEX IF NOT EXISTS idx_dict_words_frequency ON dict_words(frequency DESC);
 CREATE INDEX IF NOT EXISTS idx_dict_words_difficulty ON dict_words(difficulty);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dict_words_unique_word_lang ON dict_words(word_lower, language);
 
 -- Table: dict_dictionaries - Many-to-many relationship between words and dictionaries
 drop table if exists dict_word_dictionaries;

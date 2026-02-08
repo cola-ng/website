@@ -197,16 +197,24 @@ export function DictPage() {
     }
   }, [token])
 
+  const searchWordRef = useRef(searchWord)
+  searchWordRef.current = searchWord
+  const lastLookedUp = useRef<string | null>(null)
+
   useEffect(() => {
-    if (urlWord) {
-      const fromHistory = (location.state as { fromHistory?: boolean })?.fromHistory === true
-      searchWord(decodeURIComponent(urlWord), fromHistory)
-      // Clear the state after using it
-      if (fromHistory) {
-        window.history.replaceState({}, '')
-      }
+    if (!urlWord) return
+    const decoded = decodeURIComponent(urlWord)
+    // Prevent duplicate lookups for the same word (e.g. StrictMode double-mount)
+    if (lastLookedUp.current === decoded) return
+    lastLookedUp.current = decoded
+
+    const fromHistory = (location.state as { fromHistory?: boolean })?.fromHistory === true
+    searchWordRef.current(decoded, fromHistory)
+    if (fromHistory) {
+      window.history.replaceState({}, '')
     }
-  }, [urlWord, searchWord, location.state])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlWord])
 
   const handleClearHistory = async () => {
     if (token) {
