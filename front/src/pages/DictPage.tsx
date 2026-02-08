@@ -34,6 +34,12 @@ type SearchHistoryItem = {
   searched_at: string
 }
 
+type SectionNavRequest = {
+  sectionId: string
+  tabValue?: string
+  nonce: number
+}
+
 export function DictPage() {
   const { word: urlWord } = useParams<{ word: string }>()
   const navigate = useNavigate()
@@ -62,7 +68,8 @@ export function DictPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [showMoreSentences, setShowMoreSentences] = useState(false)
-  const [activeGroup, setActiveGroup] = useState('definitions')
+  const [activeNavKey, setActiveNavKey] = useState('')
+  const [sectionNavRequest, setSectionNavRequest] = useState<SectionNavRequest | null>(null)
 
   // Translation state
   const [sourceText, setSourceText] = useState('')
@@ -145,7 +152,10 @@ export function DictPage() {
       // Set active group to first available
       const navGroups = getNavGroups(data)
       if (navGroups.length > 0) {
-        setActiveGroup(navGroups[0].id)
+        const navLinks = getNavLinks(data)
+        if (navLinks.length > 0) {
+          setActiveNavKey(navLinks[0].key)
+        }
       }
 
       // Store the word ID mapping for this word
@@ -449,8 +459,11 @@ export function DictPage() {
                   <div className="sticky top-20">
                     <SectionNav
                       result={result}
-                      activeGroup={activeGroup}
-                      onGroupChange={setActiveGroup}
+                      activeNavKey={activeNavKey}
+                      onNavKeyChange={setActiveNavKey}
+                      onNavigateTab={(sectionId, tabValue) =>
+                        setSectionNavRequest({ sectionId, tabValue, nonce: Date.now() })
+                      }
                     />
                   </div>
                 </div>
@@ -465,6 +478,7 @@ export function DictPage() {
                     isFavorite={isFavorite}
                     togglingFavorite={togglingFavorite}
                     onToggleFavorite={handleToggleFavorite}
+                    sectionNavRequest={sectionNavRequest}
                   />
                 </div>
 
@@ -888,6 +902,15 @@ type NavGroup = {
   available: boolean
 }
 
+type NavLink = {
+  key: string
+  sectionId: string
+  label: string
+  anchorId: string
+  tabValue?: string
+  isChild?: boolean
+}
+
 // Helper function to compute nav groups
 function getNavGroups(result: WordQueryResponse): NavGroup[] {
   const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
@@ -917,38 +940,170 @@ function getNavGroups(result: WordQueryResponse): NavGroup[] {
   ].filter(item => item.available)
 }
 
-// Section navigation component for left sidebar
-function SectionNav({ result, activeGroup, onGroupChange }: {
-  result: WordQueryResponse
-  activeGroup: string
-  onGroupChange: (groupId: string) => void
-}) {
-  const navGroups = getNavGroups(result)
+function getNavLinks(result: WordQueryResponse): NavLink[] {
+  const groups = getNavGroups(result)
+  const links: NavLink[] = []
 
-  if (navGroups.length === 0) return null
+  const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
+  const enDefs = (result.definitions ?? []).filter(d => d.language === 'en')
+  const dualDefs = (result.definitions ?? []).filter(d => d.language === 'dual')
 
-  const scrollToSection = (anchorId: string, groupId: string) => {
-    onGroupChange(groupId)
-    const element = document.getElementById(anchorId)
-    if (element) {
-      element.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  const relations = result.relations ?? []
+  const synonyms = relations.filter(r => r.relation_type === 'synonym' || r.relation_type === 'similar')
+  const antonyms = relations.filter(r => r.relation_type === 'antonym')
+  const relatedWords = relations.filter(r =>
+    r.relation_type !== 'synonym' && r.relation_type !== 'similar' && r.relation_type !== 'antonym'
+  )
+
+  const hasEtymologies = (result.etymologies?.length ?? 0) > 0
+  const hasMemory = !!result.word.memory
+
+  for (const group of groups) {
+    if (group.id === 'definitions') {
+      if (zhDefs.length > 0) {
+        links.push({
+          key: 'definitions-zh',
+          sectionId: 'definitions',
+          label: '中文释义',
+          anchorId: 'section-definitions',
+          tabValue: 'zh',
+          isChild: true,
+        })
+      }
+      if (dualDefs.length > 0) {
+        links.push({
+          key: 'definitions-dual',
+          sectionId: 'definitions',
+          label: '英英释义',
+          anchorId: 'section-definitions',
+          tabValue: 'dual',
+          isChild: true,
+        })
+      }
+      if (enDefs.length > 0) {
+        links.push({
+          key: 'definitions-en',
+          sectionId: 'definitions',
+          label: '英文释义',
+          anchorId: 'section-definitions',
+          tabValue: 'en',
+          isChild: true,
+        })
+      }
+      continue
     }
+
+    if (group.id === 'related') {
+      if (synonyms.length > 0) {
+        links.push({
+          key: 'related-synonyms',
+          sectionId: 'related',
+          label: '近义词',
+          anchorId: 'section-related',
+          tabValue: 'synonyms',
+          isChild: true,
+        })
+      }
+      if (antonyms.length > 0) {
+        links.push({
+          key: 'related-antonyms',
+          sectionId: 'related',
+          label: '反义词',
+          anchorId: 'section-related',
+          tabValue: 'antonyms',
+          isChild: true,
+        })
+      }
+      if (relatedWords.length > 0) {
+        links.push({
+          key: 'related-related',
+          sectionId: 'related',
+          label: '相关词',
+          anchorId: 'section-related',
+          tabValue: 'related',
+          isChild: true,
+        })
+      }
+      continue
+    }
+
+    if (group.id === 'other') {
+      if (hasEtymologies) {
+        links.push({
+          key: 'other-etymology',
+          sectionId: 'other',
+          label: '词源',
+          anchorId: 'section-other',
+          tabValue: 'etymology',
+          isChild: true,
+        })
+      }
+      if (hasMemory) {
+        links.push({
+          key: 'other-memory',
+          sectionId: 'other',
+          label: '记忆技巧',
+          anchorId: 'section-other',
+          tabValue: 'memory',
+          isChild: true,
+        })
+      }
+      continue
+    }
+
+    links.push({
+      key: group.id,
+      sectionId: group.id,
+      label: group.label,
+      anchorId: group.anchorId,
+    })
+  }
+
+  return links
+}
+
+// Section navigation component for left sidebar
+function SectionNav({ result, activeNavKey, onNavKeyChange, onNavigateTab }: {
+  result: WordQueryResponse
+  activeNavKey: string
+  onNavKeyChange: (key: string) => void
+  onNavigateTab: (sectionId: string, tabValue?: string) => void
+}) {
+  const navLinks = getNavLinks(result)
+
+  if (navLinks.length === 0) return null
+
+  const scrollToSection = (item: NavLink) => {
+    onNavKeyChange(item.key)
+    onNavigateTab(item.sectionId, item.tabValue)
+
+    window.requestAnimationFrame(() => {
+      const element = document.getElementById(item.anchorId)
+      if (!element) return
+      const topOffset = 88
+      const y = element.getBoundingClientRect().top + window.scrollY - topOffset
+      window.scrollTo({ top: Math.max(0, y), behavior: 'smooth' })
+    })
   }
 
   return (
     <div className="bg-white rounded-xl shadow-lg p-4">
       <div className="space-y-1">
-        {navGroups.map((group) => (
+        {navLinks.map((item) => (
           <button
-            key={group.id}
-            onClick={() => scrollToSection(group.anchorId, group.id)}
+            key={item.key}
+            onClick={() => scrollToSection(item)}
             className={`block w-full text-left px-3 py-2 text-sm rounded-lg transition-colors ${
-              activeGroup === group.id
-                ? 'bg-orange-100 text-orange-800 font-medium'
-                : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+              activeNavKey === item.key
+                ? item.isChild
+                  ? 'bg-orange-50 text-orange-700'
+                  : 'bg-orange-100 text-orange-800 font-medium'
+                : item.isChild
+                  ? 'text-gray-500 hover:bg-gray-50 hover:text-gray-700'
+                  : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
             }`}
           >
-            {group.label}
+            {item.label}
           </button>
         ))}
       </div>
@@ -965,6 +1120,7 @@ function WordResult({
   isFavorite,
   togglingFavorite,
   onToggleFavorite,
+  sectionNavRequest,
 }: {
   result: WordQueryResponse
   showMoreSentences: boolean
@@ -973,6 +1129,7 @@ function WordResult({
   isFavorite: boolean
   togglingFavorite: boolean
   onToggleFavorite: () => void
+  sectionNavRequest: SectionNavRequest | null
 }) {
   // Compute available sections
   const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
@@ -1028,6 +1185,28 @@ function WordResult({
   useEffect(() => {
     setOtherTab(otherDefaultTab)
   }, [result.word.id, otherDefaultTab])
+  useEffect(() => {
+    if (!sectionNavRequest?.tabValue) return
+
+    if (
+      sectionNavRequest.sectionId === 'definitions' &&
+      definitionTabs.some(t => t.value === sectionNavRequest.tabValue)
+    ) {
+      setDefinitionTab(sectionNavRequest.tabValue)
+    }
+    if (
+      sectionNavRequest.sectionId === 'related' &&
+      relatedTabs.some(t => t.value === sectionNavRequest.tabValue)
+    ) {
+      setRelatedTab(sectionNavRequest.tabValue)
+    }
+    if (
+      sectionNavRequest.sectionId === 'other' &&
+      otherTabs.some(t => t.value === sectionNavRequest.tabValue)
+    ) {
+      setOtherTab(sectionNavRequest.tabValue)
+    }
+  }, [sectionNavRequest?.nonce, definitionTabs, relatedTabs, otherTabs])
   const sectionCardClass = 'bg-white rounded-xl shadow-lg border border-orange-100/80 overflow-hidden'
   const sectionTabsHeaderClass = 'border-b border-orange-100 bg-gradient-to-r from-orange-50 to-amber-50 px-2'
   const sectionTabsListClass = 'relative mb-0 inline-flex h-11 w-auto rounded-none p-0'
