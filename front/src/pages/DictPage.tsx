@@ -149,13 +149,9 @@ export function DictPage() {
       const data = await lookup(word.trim())
       setResult(data)
       setQuery(word.trim())
-      // Set active group to first available
-      const navGroups = getNavGroups(data)
-      if (navGroups.length > 0) {
-        const navLinks = getNavLinks(data)
-        if (navLinks.length > 0) {
-          setActiveNavKey(navLinks[0].key)
-        }
+      const navLinks = getNavLinks(data)
+      if (navLinks.length > 0) {
+        setActiveNavKey(navLinks[0].key)
       }
 
       // Store the word ID mapping for this word
@@ -894,14 +890,6 @@ function DefinitionGroups({ defs, color }: { defs: Definition[], color: keyof ty
   )
 }
 
-// Navigation group type for left sidebar
-type NavGroup = {
-  id: string
-  label: string
-  anchorId: string
-  available: boolean
-}
-
 type NavLink = {
   key: string
   sectionId: string
@@ -911,37 +899,7 @@ type NavLink = {
   isChild?: boolean
 }
 
-// Helper function to compute nav groups
-function getNavGroups(result: WordQueryResponse): NavGroup[] {
-  const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
-  const enDefs = (result.definitions ?? []).filter(d => d.language === 'en')
-  const dualDefs = (result.definitions ?? []).filter(d => d.language === 'dual')
-  const hasDefinitions = zhDefs.length > 0 || enDefs.length > 0 || dualDefs.length > 0
-
-  const hasSentences = (result.sentences?.length ?? 0) > 0
-
-  const relations = result.relations ?? []
-  const synonyms = relations.filter(r => r.relation_type === 'synonym' || r.relation_type === 'similar')
-  const antonyms = relations.filter(r => r.relation_type === 'antonym')
-  const relatedWords = relations.filter(r =>
-    r.relation_type !== 'synonym' && r.relation_type !== 'similar' && r.relation_type !== 'antonym'
-  )
-  const hasRelated = synonyms.length > 0 || antonyms.length > 0 || relatedWords.length > 0
-
-  const hasEtymologies = (result.etymologies?.length ?? 0) > 0
-  const hasMemory = !!result.word.memory
-  const hasOther = hasEtymologies || hasMemory
-
-  return [
-    { id: 'definitions', label: '释义', anchorId: 'section-definitions', available: hasDefinitions },
-    { id: 'examples', label: '例句', anchorId: 'section-examples', available: hasSentences },
-    { id: 'related', label: '相关', anchorId: 'section-related', available: hasRelated },
-    { id: 'other', label: '其他', anchorId: 'section-other', available: hasOther },
-  ].filter(item => item.available)
-}
-
 function getNavLinks(result: WordQueryResponse): NavLink[] {
-  const groups = getNavGroups(result)
   const links: NavLink[] = []
 
   const zhDefs = (result.definitions ?? []).filter(d => d.language === 'zh')
@@ -958,104 +916,95 @@ function getNavLinks(result: WordQueryResponse): NavLink[] {
   const hasEtymologies = (result.etymologies?.length ?? 0) > 0
   const hasMemory = !!result.word.memory
 
-  for (const group of groups) {
-    if (group.id === 'definitions') {
-      if (zhDefs.length > 0) {
-        links.push({
-          key: 'definitions-zh',
-          sectionId: 'definitions',
-          label: '中文释义',
-          anchorId: 'section-definitions',
-          tabValue: 'zh',
-          isChild: true,
-        })
-      }
-      if (dualDefs.length > 0) {
-        links.push({
-          key: 'definitions-dual',
-          sectionId: 'definitions',
-          label: '英英释义',
-          anchorId: 'section-definitions',
-          tabValue: 'dual',
-          isChild: true,
-        })
-      }
-      if (enDefs.length > 0) {
-        links.push({
-          key: 'definitions-en',
-          sectionId: 'definitions',
-          label: '英文释义',
-          anchorId: 'section-definitions',
-          tabValue: 'en',
-          isChild: true,
-        })
-      }
-      continue
-    }
-
-    if (group.id === 'related') {
-      if (synonyms.length > 0) {
-        links.push({
-          key: 'related-synonyms',
-          sectionId: 'related',
-          label: '近义词',
-          anchorId: 'section-related',
-          tabValue: 'synonyms',
-          isChild: true,
-        })
-      }
-      if (antonyms.length > 0) {
-        links.push({
-          key: 'related-antonyms',
-          sectionId: 'related',
-          label: '反义词',
-          anchorId: 'section-related',
-          tabValue: 'antonyms',
-          isChild: true,
-        })
-      }
-      if (relatedWords.length > 0) {
-        links.push({
-          key: 'related-related',
-          sectionId: 'related',
-          label: '相关词',
-          anchorId: 'section-related',
-          tabValue: 'related',
-          isChild: true,
-        })
-      }
-      continue
-    }
-
-    if (group.id === 'other') {
-      if (hasEtymologies) {
-        links.push({
-          key: 'other-etymology',
-          sectionId: 'other',
-          label: '词源',
-          anchorId: 'section-other',
-          tabValue: 'etymology',
-          isChild: true,
-        })
-      }
-      if (hasMemory) {
-        links.push({
-          key: 'other-memory',
-          sectionId: 'other',
-          label: '记忆技巧',
-          anchorId: 'section-other',
-          tabValue: 'memory',
-          isChild: true,
-        })
-      }
-      continue
-    }
-
+  if (zhDefs.length > 0) {
     links.push({
-      key: group.id,
-      sectionId: group.id,
-      label: group.label,
-      anchorId: group.anchorId,
+      key: 'definitions-zh',
+      sectionId: 'definitions',
+      label: '中文释义',
+      anchorId: 'section-definitions',
+      tabValue: 'zh',
+      isChild: true,
+    })
+  }
+  if (dualDefs.length > 0) {
+    links.push({
+      key: 'definitions-dual',
+      sectionId: 'definitions',
+      label: '英英释义',
+      anchorId: 'section-definitions',
+      tabValue: 'dual',
+      isChild: true,
+    })
+  }
+  if (enDefs.length > 0) {
+    links.push({
+      key: 'definitions-en',
+      sectionId: 'definitions',
+      label: '英文释义',
+      anchorId: 'section-definitions',
+      tabValue: 'en',
+      isChild: true,
+    })
+  }
+
+  if ((result.sentences?.length ?? 0) > 0) {
+    links.push({
+      key: 'examples',
+      sectionId: 'examples',
+      label: '使用例句',
+      anchorId: 'section-examples',
+    })
+  }
+
+  if (synonyms.length > 0) {
+    links.push({
+      key: 'related-synonyms',
+      sectionId: 'related',
+      label: '近义词',
+      anchorId: 'section-related',
+      tabValue: 'synonyms',
+      isChild: true,
+    })
+  }
+  if (antonyms.length > 0) {
+    links.push({
+      key: 'related-antonyms',
+      sectionId: 'related',
+      label: '反义词',
+      anchorId: 'section-related',
+      tabValue: 'antonyms',
+      isChild: true,
+    })
+  }
+  if (relatedWords.length > 0) {
+    links.push({
+      key: 'related-related',
+      sectionId: 'related',
+      label: '相关词',
+      anchorId: 'section-related',
+      tabValue: 'related',
+      isChild: true,
+    })
+  }
+
+  if (hasEtymologies) {
+    links.push({
+      key: 'other-etymology',
+      sectionId: 'other',
+      label: '词源',
+      anchorId: 'section-other',
+      tabValue: 'etymology',
+      isChild: true,
+    })
+  }
+  if (hasMemory) {
+    links.push({
+      key: 'other-memory',
+      sectionId: 'other',
+      label: '记忆技巧',
+      anchorId: 'section-other',
+      tabValue: 'memory',
+      isChild: true,
     })
   }
 
