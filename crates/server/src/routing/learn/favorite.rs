@@ -63,12 +63,27 @@ pub struct FavoriteSentence {
     pub audio_url: Option<String>,
 }
 
+/// Favorite translation with details
+#[derive(Debug, Serialize, ToSchema)]
+pub struct FavoriteTranslation {
+    pub id: i64,
+    pub user_id: i64,
+    pub record_id: i64,
+    pub created_at: DateTime<Utc>,
+    pub source_text: String,
+    pub translated_text: String,
+    pub source_lang: String,
+    pub target_lang: String,
+    pub tone: String,
+}
+
 /// Favorite with entity details (discriminated union)
 #[derive(Debug, Serialize, ToSchema)]
 #[serde(tag = "entity", rename_all = "snake_case")]
 pub enum FavoriteWithDetails {
     Word(FavoriteWord),
     Sentence(FavoriteSentence),
+    Translation(FavoriteTranslation),
 }
 
 /// List favorites for the authenticated user with entity details
@@ -151,6 +166,32 @@ pub async fn list_favorites(
                     }));
                 }
             }
+        } else if entity_filter.as_deref() == Some("translation") && !favorites.is_empty() {
+            // Fetch translation details
+            let translation_ids: Vec<i64> = favorites.iter().map(|f| f.record_id).collect();
+
+            let translations: Vec<Translation> = learn_translations::table
+                .filter(learn_translations::id.eq_any(&translation_ids))
+                .load::<Translation>(conn)?;
+
+            let translation_map: std::collections::HashMap<i64, Translation> =
+                translations.into_iter().map(|t| (t.id, t)).collect();
+
+            for fav in favorites {
+                if let Some(t) = translation_map.get(&fav.record_id) {
+                    result.push(FavoriteWithDetails::Translation(FavoriteTranslation {
+                        id: fav.id,
+                        user_id: fav.user_id,
+                        record_id: fav.record_id,
+                        created_at: fav.created_at,
+                        source_text: t.source_text.clone(),
+                        translated_text: t.translated_text.clone(),
+                        source_lang: t.source_lang.clone(),
+                        target_lang: t.target_lang.clone(),
+                        tone: t.tone.clone(),
+                    }));
+                }
+            }
         } else if entity_filter.as_deref() == Some("sentence") && !favorites.is_empty() {
             // Fetch sentence details from learn_chat_turns
             let turn_ids: Vec<i64> = favorites.iter().map(|f| f.record_id).collect();
@@ -187,12 +228,16 @@ pub async fn list_favorites(
                 }
             }
         } else if !favorites.is_empty() {
-            // No specific entity filter - need to fetch details for both types
+            // No specific entity filter - need to fetch details for all types
             let word_favs: Vec<&Favorite> =
                 favorites.iter().filter(|f| f.entity == "word").collect();
             let sentence_favs: Vec<&Favorite> = favorites
                 .iter()
                 .filter(|f| f.entity == "sentence")
+                .collect();
+            let translation_favs: Vec<&Favorite> = favorites
+                .iter()
+                .filter(|f| f.entity == "translation")
                 .collect();
 
             // Fetch word details
@@ -231,6 +276,21 @@ pub async fn list_favorites(
                 for pron in pronunciations {
                     pron_map.entry(pron.word_id).or_default().push(pron);
                 }
+            }
+
+            // Fetch translation details
+            let mut trans_map: std::collections::HashMap<i64, Translation> =
+                std::collections::HashMap::new();
+
+            if !translation_favs.is_empty() {
+                let translation_ids: Vec<i64> =
+                    translation_favs.iter().map(|f| f.record_id).collect();
+
+                let translations: Vec<Translation> = learn_translations::table
+                    .filter(learn_translations::id.eq_any(&translation_ids))
+                    .load::<Translation>(conn)?;
+
+                trans_map = translations.into_iter().map(|t| (t.id, t)).collect();
             }
 
             // Fetch sentence details
@@ -287,6 +347,21 @@ pub async fn list_favorites(
                                 sentence_en: sentence_en.clone(),
                                 sentence_zh: Some(sentence_zh.clone()),
                                 audio_url,
+                            }));
+                        }
+                    }
+                    "translation" => {
+                        if let Some(t) = trans_map.get(&fav.record_id) {
+                            result.push(FavoriteWithDetails::Translation(FavoriteTranslation {
+                                id: fav.id,
+                                user_id: fav.user_id,
+                                record_id: fav.record_id,
+                                created_at: fav.created_at,
+                                source_text: t.source_text.clone(),
+                                translated_text: t.translated_text.clone(),
+                                source_lang: t.source_lang.clone(),
+                                target_lang: t.target_lang.clone(),
+                                tone: t.tone.clone(),
                             }));
                         }
                     }

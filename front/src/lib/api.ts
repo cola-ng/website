@@ -1882,7 +1882,7 @@ export function activateAiProvider(token: string, providerId: number): Promise<U
 // ============================================================================
 
 /** Supported entity types for favorites */
-export type FavoriteEntity = 'word' | 'sentence'
+export type FavoriteEntity = 'word' | 'sentence' | 'translation'
 
 /** Favorite word with details */
 export type FavoriteWord = {
@@ -1908,8 +1908,22 @@ export type FavoriteSentence = {
   audio_url?: string
 }
 
+/** Favorite translation with details */
+export type FavoriteTranslation = {
+  entity: 'translation'
+  id: number
+  user_id: number
+  record_id: number
+  created_at: string
+  source_text: string
+  translated_text: string
+  source_lang: string
+  target_lang: string
+  tone: string
+}
+
 /** Favorite item (discriminated union) */
-export type Favorite = FavoriteWord | FavoriteSentence
+export type Favorite = FavoriteWord | FavoriteSentence | FavoriteTranslation
 
 /** Toggle favorite response */
 export type ToggleFavoriteResponse = {
@@ -2014,6 +2028,59 @@ export function checkFavorites(
     method: 'POST',
     token,
     body: JSON.stringify({ entity, record_ids: recordIds }),
+  })
+}
+
+// ============================================================================
+// Translation Favorites API
+// ============================================================================
+
+/** Toggle translation favorite response */
+export type ToggleTranslationFavoriteResponse = {
+  is_favorited: boolean
+  translation_id: number | null
+  favorite_id: number | null
+}
+
+/**
+ * Toggle a translation favorite (save translation + toggle favorite in one call)
+ */
+export function toggleTranslationFavorite(
+  token: string,
+  params: {
+    source_text: string
+    translated_text: string
+    source_lang: string
+    target_lang: string
+    tone?: string
+  }
+): Promise<ToggleTranslationFavoriteResponse> {
+  return requestJson<ToggleTranslationFavoriteResponse>('/api/dict/translate/favorite', {
+    method: 'POST',
+    token,
+    body: JSON.stringify(params),
+  })
+}
+
+/**
+ * Check if a translation is favorited
+ */
+export function checkTranslationFavorite(
+  token: string,
+  params: {
+    source_text: string
+    target_lang: string
+    tone?: string
+  }
+): Promise<{ is_favorited: boolean }> {
+  const qs = new URLSearchParams()
+  qs.set('source_text', params.source_text)
+  qs.set('target_lang', params.target_lang)
+  if (params.tone) qs.set('tone', params.tone)
+
+  return requestJson<{ is_favorited: boolean }>(`/api/dict/translate/favorite/check?${qs}`, {
+    method: 'GET',
+    token,
   })
 }
 

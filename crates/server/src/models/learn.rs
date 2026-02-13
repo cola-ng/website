@@ -608,6 +608,34 @@ pub struct NewSuggestion {
 }
 
 // ============================================================================
+// Translations (saved translation results for favorites)
+// ============================================================================
+
+#[derive(Queryable, Identifiable, Serialize, ToSchema, Debug, Clone)]
+#[diesel(table_name = learn_translations)]
+pub struct Translation {
+    pub id: i64,
+    pub user_id: i64,
+    pub source_text: String,
+    pub translated_text: String,
+    pub source_lang: String,
+    pub target_lang: String,
+    pub tone: String,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Insertable, Deserialize)]
+#[diesel(table_name = learn_translations)]
+pub struct NewTranslation {
+    pub user_id: i64,
+    pub source_text: String,
+    pub translated_text: String,
+    pub source_lang: String,
+    pub target_lang: String,
+    pub tone: String,
+}
+
+// ============================================================================
 // Favorites (unified favorites system)
 // ============================================================================
 

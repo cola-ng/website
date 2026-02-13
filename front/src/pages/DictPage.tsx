@@ -15,6 +15,8 @@ import {
   syncLocalHistoryToServer,
   toggleFavorite,
   checkFavorites,
+  toggleTranslationFavorite,
+  checkTranslationFavorite,
   type WordQueryResponse,
   type TranslateOptions,
   type TranslateTone,
@@ -78,6 +80,8 @@ export function DictPage() {
   const [translateError, setTranslateError] = useState('')
   const [detectedLang, setDetectedLang] = useState<'en' | 'zh' | null>(null)
   const [copied, setCopied] = useState(false)
+  const [translationFavorited, setTranslationFavorited] = useState(false)
+  const [togglingTranslationFav, setTogglingTranslationFav] = useState(false)
 
   // Translation options state
   const [translateOptions, setTranslateOptions] = useState<TranslateOptions>({
@@ -343,6 +347,7 @@ export function DictPage() {
     setTranslateError('')
     setTranslatedText('')
     setDetectedLang(null)
+    setTranslationFavorited(false)
 
     // Auto-detect language: if contains Chinese characters, translate to English; otherwise translate to Chinese
     const hasChinese = /[\u4e00-\u9fff\u3400-\u4dbf]/.test(sourceText)
@@ -360,6 +365,20 @@ export function DictPage() {
       )
       setTranslatedText(result.translated)
       setDetectedLang(hasChinese ? 'zh' : 'en')
+
+      // Check if this translation is already favorited
+      if (token) {
+        try {
+          const { is_favorited } = await checkTranslationFavorite(token, {
+            source_text: sourceText.trim(),
+            target_lang: targetLang,
+            tone: translateOptions.tone,
+          })
+          setTranslationFavorited(is_favorited)
+        } catch {
+          // Silently ignore check errors
+        }
+      }
     } catch (err) {
       const message = err instanceof Error ? err.message : '翻译失败'
       setTranslateError(message)
@@ -377,6 +396,35 @@ export function DictPage() {
       setTimeout(() => setCopied(false), 2000)
     } catch {
       toast.error('复制失败', '无法复制到剪贴板')
+    }
+  }
+
+  const handleToggleTranslationFavorite = async () => {
+    if (!token) {
+      toast.error('请先登录', '登录后即可收藏翻译结果')
+      return
+    }
+    if (!translatedText || !sourceText.trim()) return
+
+    const hasChinese = /[\u4e00-\u9fff\u3400-\u4dbf]/.test(sourceText)
+    const targetLang = hasChinese ? 'en' : 'zh'
+    const sourceLang = hasChinese ? 'zh' : 'en'
+
+    setTogglingTranslationFav(true)
+    try {
+      const res = await toggleTranslationFavorite(token, {
+        source_text: sourceText.trim(),
+        translated_text: translatedText,
+        source_lang: sourceLang,
+        target_lang: targetLang,
+        tone: translateOptions.tone,
+      })
+      setTranslationFavorited(res.is_favorited)
+      toast.success(res.is_favorited ? '已收藏' : '已取消收藏', res.is_favorited ? '翻译已添加到收藏夹' : '翻译已从收藏夹移除')
+    } catch {
+      toast.error('操作失败', '无法更新收藏状态')
+    } finally {
+      setTogglingTranslationFav(false)
     }
   }
 
@@ -622,22 +670,40 @@ export function DictPage() {
                       )}
                     </div>
                     {translatedText && (
-                      <button
-                        onClick={copyToClipboard}
-                        className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 px-2 py-1 rounded hover:bg-orange-50 transition-colors"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="w-3.5 h-3.5" />
-                            已复制
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            复制结果
-                          </>
-                        )}
-                      </button>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={handleToggleTranslationFavorite}
+                          disabled={togglingTranslationFav}
+                          className={`flex items-center gap-1 text-xs px-2 py-1 rounded transition-colors ${
+                            translationFavorited
+                              ? 'text-yellow-500 hover:text-yellow-600'
+                              : 'text-gray-400 hover:text-yellow-500'
+                          }`}
+                          title={translationFavorited ? '取消收藏' : '收藏翻译'}
+                        >
+                          {togglingTranslationFav ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Star className={`w-3.5 h-3.5 ${translationFavorited ? 'fill-current' : ''}`} />
+                          )}
+                        </button>
+                        <button
+                          onClick={copyToClipboard}
+                          className="flex items-center gap-1 text-xs text-orange-600 hover:text-orange-700 px-2 py-1 rounded hover:bg-orange-50 transition-colors"
+                        >
+                          {copied ? (
+                            <>
+                              <Check className="w-3.5 h-3.5" />
+                              已复制
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5" />
+                              复制结果
+                            </>
+                          )}
+                        </button>
+                      </div>
                     )}
                   </div>
                   <div className="w-full min-h-32 p-4 bg-gray-50 rounded-lg border border-gray-200">

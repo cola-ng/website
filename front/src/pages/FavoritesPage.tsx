@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { Link } from 'react-router-dom'
-import { Heart, Loader2, Trash2, BookOpen, MessageSquare, Volume2 } from 'lucide-react'
+import { Heart, Loader2, Trash2, BookOpen, MessageSquare, Languages, Volume2 } from 'lucide-react'
 
 import { Footer } from '../components/Footer'
 import { Header } from '../components/Header'
@@ -14,12 +14,14 @@ import {
   type Favorite,
   type FavoriteWord,
   type FavoriteSentence,
+  type FavoriteTranslation,
 } from '../lib/api'
 
 // Entity type configuration
 const ENTITY_TYPES = [
   { key: 'word', label: '单词', icon: <BookOpen className="h-4 w-4" /> },
   { key: 'sentence', label: '句子', icon: <MessageSquare className="h-4 w-4" /> },
+  { key: 'translation', label: '翻译', icon: <Languages className="h-4 w-4" /> },
 ] as const
 
 type EntityType = typeof ENTITY_TYPES[number]['key']
@@ -322,6 +324,85 @@ export function FavoritesPage() {
                                 )}
                               </button>
                             </div>
+                          </div>
+                        </div>
+                      )
+                    })}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Translation favorites */}
+            <TabsContent value="translation">
+              {loading ? (
+                <div className="py-12 text-center">
+                  <Loader2 className="h-8 w-8 animate-spin text-orange-500 mx-auto mb-4" />
+                  <p className="text-gray-500">加载中...</p>
+                </div>
+              ) : favorites.length === 0 ? (
+                <div className="py-12 text-center">
+                  <Heart className="h-12 w-12 text-gray-300 mx-auto mb-4" />
+                  <p className="text-gray-500">还没有收藏任何翻译</p>
+                  <p className="text-sm text-gray-400 mt-2">
+                    在翻译页面翻译文本后，点击星标即可收藏
+                  </p>
+                  <Button asChild className="mt-4" variant="outline">
+                    <Link to="/translate">去翻译</Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {favorites
+                    .filter((f): f is FavoriteTranslation => f.entity === 'translation')
+                    .map((favorite) => {
+                      const isRemoving = removingIds.has(favorite.id)
+                      const toneLabels: Record<string, string> = {
+                        original: '保持原样',
+                        casual: '日常口语',
+                        business: '商务职场',
+                        academic: '学术正式',
+                        literary: '文学优美',
+                        simple: '简单易懂',
+                      }
+                      const langDirection = favorite.source_lang === 'zh' ? '中文 → 英文' : '英文 → 中文'
+
+                      return (
+                        <div
+                          key={favorite.id}
+                          className="group relative bg-gray-50 rounded-lg p-4 hover:bg-orange-50 transition-colors border border-gray-100 hover:border-orange-200"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 mb-2">
+                                <span className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded">
+                                  {langDirection}
+                                </span>
+                                {favorite.tone !== 'original' && (
+                                  <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                                    {toneLabels[favorite.tone] || favorite.tone}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-gray-900 text-sm">{favorite.source_text}</p>
+                              <p className="text-gray-600 text-sm mt-1 border-l-2 border-orange-200 pl-3">
+                                {favorite.translated_text}
+                              </p>
+                              <div className="text-xs text-gray-400 mt-2">
+                                收藏于 {new Date(favorite.created_at).toLocaleDateString('zh-CN')}
+                              </div>
+                            </div>
+                            <button
+                              onClick={() => handleRemove(favorite)}
+                              disabled={isRemoving}
+                              className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded transition-colors opacity-0 group-hover:opacity-100 flex-shrink-0"
+                              title="移除收藏"
+                            >
+                              {isRemoving ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </button>
                           </div>
                         </div>
                       )
