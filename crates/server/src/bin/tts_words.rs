@@ -1,6 +1,6 @@
-//! Generate TTS audio files for word sentences using Doubao TTS API
+//! Generate TTS audio files for word sentences using Zhipu TTS API
 //!
-//! Reads word-s.json and generates MP3 audio files for each sentence.
+//! Reads word-s.json and generates WAV audio files for each sentence.
 //! Output files are saved to the word-stences directory.
 
 use std::collections::HashSet;
@@ -12,9 +12,8 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use futures_util::stream::{self, StreamExt};
-use outfox_doubao::Client as DoubaoClient;
-use outfox_doubao::config::DoubaoConfig;
-use outfox_doubao::spec::tts::CreateSpeechRequestArgs;
+use outfox_zhipu::Client as ZhipuClient;
+use outfox_zhipu::spec::tts::CreateSpeechRequest;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_INPUT_FILE: &str = r"D:\Works\cola-ng\movies\word-s.json";
@@ -24,7 +23,7 @@ const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
 
 // TTS voice options
-const DEFAULT_VOICE: &str = "zh_female_vv_uranus_bigtts";
+const DEFAULT_VOICE: &str = "tongtong";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct WordEntry {
@@ -103,16 +102,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    // Load Doubao credentials from environment
-    let app_id = std::env::var("DOUBAO_APP_ID").expect("DOUBAO_APP_ID must be set");
-    let access_token =
-        std::env::var("DOUBAO_ACCESS_TOKEN").expect("DOUBAO_ACCESS_TOKEN must be set");
-    let resource_id =
-        std::env::var("DOUBAO_RESOURCE_ID").unwrap_or_else(|_| "seed-tts-2.0".to_string());
+    let api_key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
 
     println!("===============================================");
     println!("TTS Generator for Word Sentences");
-    println!("Using Doubao TTS API");
+    println!("Using Zhipu TTS API");
     println!("===============================================");
     println!("Input file: {}", input_file.display());
     println!("Output directory: {}", output_dir.display());
@@ -160,14 +154,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Will process {} entries\n", entries_to_process.len());
 
-    // Create Doubao client
-    let config = DoubaoConfig::new()
-        .with_app_id(&app_id)
-        .with_access_token(&access_token)
-        .with_resource_id(&resource_id)
-        .with_voice_type(&voice);
-
-    let client = DoubaoClient::with_config(config);
+    let client = ZhipuClient::with_config(
+        outfox_zhipu::config::ZhipuConfig::new().with_api_key(api_key),
+    );
 
     // Run async processing
     let rt = tokio::runtime::Runtime::new()?;
@@ -198,7 +187,7 @@ fn load_existing_files(output_dir: &Path) -> Result<HashSet<String>, Box<dyn std
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension() {
-                    if ext == "mp3" {
+                    if ext == "wav" || ext == "mp3" {
                         // Check if file is non-empty
                         if let Ok(metadata) = path.metadata() {
                             if metadata.len() > 0 {
@@ -228,7 +217,7 @@ fn sanitize_filename(word: &str) -> String {
 }
 
 async fn process_entries_concurrent(
-    client: &DoubaoClient,
+    client: &ZhipuClient,
     entries: &[WordEntry],
     output_dir: &Path,
     voice: &str,
@@ -259,7 +248,7 @@ async fn process_entries_concurrent(
 
             async move {
                 let current = processed.fetch_add(1, Ordering::SeqCst) + 1;
-                let filename = format!("{}.mp3", sanitize_filename(&entry.word));
+                let filename = format!("{}.wav", sanitize_filename(&entry.word));
                 let filepath = output_dir.join(&filename);
 
                 // Skip if file already exists and is non-empty
@@ -318,7 +307,7 @@ async fn process_entries_concurrent(
 }
 
 async fn generate_tts_with_retry(
-    client: &DoubaoClient,
+    client: &ZhipuClient,
     text: &str,
     voice: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
@@ -332,23 +321,15 @@ async fn generate_tts_with_retry(
             .await;
         }
 
-        let request = match CreateSpeechRequestArgs::default()
-            .text(text)
-            .speaker(voice)
-            .speech_rate(0i32) // Normal speed
-            .sample_rate(48000u32)
-            .build()
-        {
-            Ok(req) => req,
-            Err(e) => {
-                last_error = Some(format!("Failed to build request: {}", e));
-                continue;
-            }
+        let request = CreateSpeechRequest {
+            input: text.to_string(),
+            voice: serde_json::from_value(serde_json::json!(voice))?,
+            ..Default::default()
         };
 
-        match client.tts().speech_http_v3().create(request).await {
+        match client.tts().create(request).await {
             Ok(response) => {
-                return Ok(response.bytes.to_vec());
+                return Ok(response.audio.to_vec());
             }
             Err(e) => {
                 last_error = Some(format!("TTS API error: {}", e));
@@ -363,7 +344,7 @@ async fn generate_tts_with_retry(
 
 fn print_usage() {
     println!("TTS Generator for Word Sentences");
-    println!("Using Doubao TTS API");
+    println!("Using Zhipu TTS API");
     println!();
     println!("Usage:");
     println!("  cargo run --bin tts_words [OPTIONS]");
@@ -374,7 +355,7 @@ fn print_usage() {
         DEFAULT_INPUT_FILE
     );
     println!(
-        "  -o, --output <PATH>      Output directory for MP3 files (default: {})",
+        "  -o, --output <PATH>      Output directory for WAV files (default: {})",
         DEFAULT_OUTPUT_DIR
     );
     println!("  -l, --limit <N>          Limit number of entries to process");
@@ -389,21 +370,12 @@ fn print_usage() {
     println!("  -h, --help               Show this help message");
     println!();
     println!("Available voices:");
-    println!("  zh_female_cancan_mars_bigtts");
-    println!("  zh_female_shuangkuaisisi_moon_bigtts");
-    println!("  zh_male_aojiaobazong_moon_bigtts");
-    println!("  zh_female_tianmeixiaoyuan_moon_bigtts");
-    println!("  zh_male_wennuanahu_moon_bigtts");
-    println!("  zh_female_vv_uranus_bigtts");
-    println!("  en_male_adam_moon_bigtts (default for English)");
+    println!("  tongtong, chuichui, xiaochen, jam, kazi, douji, luodo");
     println!();
     println!("Environment Variables:");
-    println!("  DOUBAO_APP_ID          Doubao App ID (required)");
-    println!("  DOUBAO_ACCESS_TOKEN    Doubao Access Token (required)");
-    println!("  DOUBAO_RESOURCE_ID     TTS Resource ID (default: seed-tts-2.0)");
+    println!("  ZHIPU_API_KEY          Zhipu API key (required for TTS)");
     println!();
     println!("Examples:");
     println!("  cargo run --bin tts_words --limit 10");
-    println!("  cargo run --bin tts_words --voice zh_female_cancan_mars_bigtts");
     println!("  cargo run --bin tts_words -c 10 -l 100");
 }

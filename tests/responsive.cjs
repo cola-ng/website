@@ -65,7 +65,7 @@ async function dialogBounds(page,width,height){
     if([320,820].includes(width)||height<500)await page.screenshot({path:path.join(output,`${url.slice(1).replaceAll('/','-')||'home'}-${width}-${height}.png`),fullPage:url!=='/chat/1'});
     results.push({url,width,height,passed:true});
    }
-   await loaded(page,'/me#settings');await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await page.getByRole('button',{name:'豆包',exact:true}).click();await dialogBounds(page,width,height);
+   await loaded(page,'/me#settings');await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await page.getByRole('combobox',{name:'AI 平台',exact:true}).fill('OpenAI');await page.getByRole('option',{name:'OpenAI',exact:true}).click();await dialogBounds(page,width,height);
    await page.screenshot({path:path.join(output,`provider-${width}-${height}.png`)});await page.keyboard.press('Escape');
    await loaded(page,'/admin/dict');await page.getByRole('button',{name:'新建记录',exact:true}).click();await dialogBounds(page,width,height);await page.keyboard.press('Escape');
    await context.close();console.log('PASS responsive viewport',width,height);
@@ -89,7 +89,7 @@ async function dialogBounds(page,width,height){
   await mobile.route('**/api/learn/chats/1/send/stream',r=>r.fulfill({status:402,json:{error:{brief:'请先配置自己的 AI 服务后再发送消息。'}}}));await mobile.getByRole('button',{name:'发送消息',exact:true}).click();await mobile.getByRole('alert').waitFor();await settle(mobile);
   const failureBox=await mobile.locator('.chat-composer').boundingBox();verify(failureBox.y+failureBox.height<=431,'error feedback does not push the composer behind the keyboard');verify(await mobile.getByRole('textbox',{name:'输入消息',exact:true}).inputValue()==='Keep this unsent draft.','a failed send preserves the draft');
   await mobile.evaluate(()=>window.qaViewport(844));await settle(mobile);await chatBounds(mobile,844);
-  await loaded(mobile,'/me#settings');await mobile.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await mobile.getByRole('button',{name:'豆包',exact:true}).click();await mobile.evaluate(()=>window.qaViewport(430));await settle(mobile);await dialogBounds(mobile,390,430);
+  await loaded(mobile,'/me#settings');await mobile.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await mobile.getByRole('combobox',{name:'AI 平台',exact:true}).fill('OpenAI');await mobile.getByRole('option',{name:'OpenAI',exact:true}).click();await mobile.evaluate(()=>window.qaViewport(430));await settle(mobile);await dialogBounds(mobile,390,430);
   await mobile.screenshot({path:path.join(output,'keyboard-provider.png')});await keyboard.close();
   verify(errors.length===0,errors.join('; '));fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({sizes,routes:routes.length,audits:results.length,checks,results,errors},null,2));console.log(`${results.length} responsive page/viewport audits and ${checks} layout/interaction checks passed.`);
  }finally{await browser.close();}

@@ -1,16 +1,10 @@
-//! AI Services module
-//!
-//! This module provides AI services using outfox crates:
-//! - outfox-doubao for ASR, TTS, and Chat (Bytedance Doubao)
-//! - outfox-zhipu for ASR, TTS, and Chat (Zhipu AI GLM models)
-//!
-//! Both providers now offer full ASR/TTS/Chat capabilities.
-//! You can use either provider independently, or combine them.
+//! AI services provided by the supported model clients.
 
 pub mod activity;
+pub mod provider_catalog;
+pub mod compatible;
 pub mod ai_provider;
 pub mod chat_stream;
-pub mod doubao;
 pub mod study_time;
 pub mod zhipu;
 
@@ -21,66 +15,15 @@ pub use ai_provider::{
     AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig,
     StructuredChatResponse, TextIssue, TtsService,
 };
-use async_trait::async_trait;
 use diesel::prelude::*;
-pub use doubao::DoubaoClient;
 use serde_json::Value;
 pub use zhipu::ZhipuClient;
 
 use crate::db::schema::user_ai_providers;
 use crate::db::with_conn;
-use crate::models::ai_provider::{DoubaoSettings, UserAiProvider, ZhipuSettings};
+use crate::models::ai_provider::UserAiProvider;
 
-/// Combined AI Provider that mixes services from different providers.
-///
-/// Use this when you want to use Doubao for ASR/TTS (better Chinese voice quality)
-/// and Zhipu for Chat (GLM models).
-#[derive(Clone)]
-pub struct CombinedProvider {
-    doubao: DoubaoClient,
-    zhipu: ZhipuClient,
-}
-
-impl CombinedProvider {
-    /// Create a new combined provider with both clients
-    pub fn new(doubao: DoubaoClient, zhipu: ZhipuClient) -> Self {
-        Self { doubao, zhipu }
-    }
-
-    /// Create from environment variables
-    pub fn from_env() -> Option<Self> {
-        let doubao = DoubaoClient::from_env()?;
-        let zhipu = ZhipuClient::from_env()?;
-        Some(Self::new(doubao, zhipu))
-    }
-}
-
-#[async_trait]
-impl AiProvider for CombinedProvider {
-    fn name(&self) -> &'static str {
-        "combined"
-    }
-
-    fn asr(&self) -> Option<Arc<dyn AsrService>> {
-        // Use Doubao ASR for better Chinese speech recognition
-        self.doubao.asr()
-    }
-
-    fn tts(&self) -> Option<Arc<dyn TtsService>> {
-        // Use Doubao TTS for better Chinese voice quality
-        self.doubao.tts()
-    }
-
-    fn chat_service(&self) -> Option<Arc<dyn ChatService>> {
-        // Use Zhipu Chat (GLM models)
-        self.zhipu.chat_service()
-    }
-}
-
-/// Create an AI provider from configuration
-///
-/// - Doubao config: Creates Doubao provider for ASR/TTS, adds Zhipu for Chat if available
-/// - Zhipu config: Creates Zhipu provider with full ASR/TTS/Chat capabilities
+/// Create an AI provider from configuration.
 pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
     static CLIENTS: OnceLock<Mutex<HashMap<String, Arc<dyn AiProvider>>>> = OnceLock::new();
     let key = crate::auth::hash_code(
@@ -108,25 +51,12 @@ fn build_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
     tracing::debug!("Creating configured AI provider");
 
     match config {
-        ProviderConfig::Doubao {
-            app_id,
-            access_token,
-            api_key,
-            chat_model,
-            tts_resource_id,
-            voice_type,
-        } => {
-            // Doubao now provides full ASR/TTS/Chat capabilities
-            let doubao = DoubaoClient::with_options(
-                app_id.clone(),
-                access_token.clone(),
-                api_key.clone(),
-                tts_resource_id.clone(),
-                chat_model.clone(),
-                voice_type.clone(),
-            );
-            tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
-            Arc::new(doubao)
+        ProviderConfig::Catalog { provider_type, settings } => {
+            if provider_type == "zhipu" {
+                Arc::new(ConfiguredZhipu { client: ZhipuClient::with_settings(settings), settings: settings.clone() })
+            } else {
+                Arc::new(compatible::CompatibleClient::new(provider_type, settings.clone()))
+            }
         }
         ProviderConfig::Zhipu {
             api_key,
@@ -142,53 +72,9 @@ fn build_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
     }
 }
 
-/// Create an AI provider from environment variables
-///
-/// Priority:
-/// 1. Combined provider (Doubao ASR/TTS + Zhipu Chat) if both configured
-/// 2. Zhipu-only provider if only Zhipu is configured
-/// 3. Doubao-only provider if only Doubao is configured
+/// Create the supported platform provider from environment variables.
 pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
-    static DEFAULT: OnceLock<Option<Arc<dyn AiProvider>>> = OnceLock::new();
-    DEFAULT.get_or_init(build_provider_from_env).clone()
-}
-fn build_provider_from_env() -> Option<Arc<dyn AiProvider>> {
-    // // Try to create combined provider first (for best experience)
-    // if let Some(combined) = CombinedProvider::from_env() {
-    //     tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
-    //     return Some(Arc::new(combined));
-    // }
-    let default_provider = std::env::var("AI_PROVIDER_DEFAULT")
-        .ok()
-        .map(|s| s.to_lowercase());
-
-    match default_provider.as_deref() {
-        Some("zhipu") => {
-            // Try Zhipu alone (has full capabilities)
-            if let Some(zhipu) = ZhipuClient::from_env() {
-                tracing::info!("Created Zhipu provider with full ASR/TTS/Chat capabilities");
-                return Some(Arc::new(zhipu));
-            }
-        }
-        Some("doubao") => {
-            if let Some(doubao) = DoubaoClient::from_env() {
-                tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
-                return Some(Arc::new(doubao));
-            }
-        }
-        None | Some("") => {
-            if let Some(zhipu) = ZhipuClient::from_env() {
-                return Some(Arc::new(zhipu));
-            }
-            if let Some(doubao) = DoubaoClient::from_env() {
-                return Some(Arc::new(doubao));
-            }
-        }
-        _ => {}
-    }
-
-    tracing::error!("No AI provider configured. Set ZHIPU_API_KEY or DOUBAO_* env vars.");
-    None
+    ProviderConfig::from_env().map(|config| create_provider(&config))
 }
 
 /// Only a paid, unexpired subscription with a settled payment may use platform keys.
@@ -199,18 +85,20 @@ pub struct AiAccess {
     pub platform_allowed: bool,
     pub active_provider_id: Option<i64>,
     pub message: String,
+    pub chat_provider_id: Option<i64>,
+    pub tts_provider_id: Option<i64>,
+    pub asr_provider_id: Option<i64>,
 }
 
 async fn provider_selection(
     user_id: i64,
-) -> Result<(Option<UserAiProvider>, bool), salvo::http::StatusError> {
+) -> Result<(Vec<UserAiProvider>, bool), salvo::http::StatusError> {
     with_conn(move |conn| {
         let personal = user_ai_providers::table
             .filter(user_ai_providers::user_id.eq(user_id))
-            .filter(user_ai_providers::is_active.eq(true))
+            .filter(user_ai_providers::is_active.eq(true).or(user_ai_providers::tts_active.eq(true)).or(user_ai_providers::asr_active.eq(true)))
             .order(user_ai_providers::id.desc())
-            .first::<UserAiProvider>(conn)
-            .optional()?;
+            .load::<UserAiProvider>(conn)?;
         #[derive(diesel::QueryableByName)]
         struct Paid {
             #[diesel(sql_type = diesel::sql_types::Bool)]
@@ -242,8 +130,8 @@ async fn provider_selection(
 
 pub async fn ai_access(user_id: i64) -> Result<AiAccess, salvo::http::StatusError> {
     let (personal, paid) = provider_selection(user_id).await?;
-    let id = personal.as_ref().map(|p| p.id);
-    let (source, message) = if personal.is_some() {
+    let id = personal.iter().find(|p|p.is_active).map(|p|p.id);
+    let (source, message) = if !personal.is_empty() {
         (
             "personal",
             "当前使用你自己的 AI 服务，费用由对应提供方收取。",
@@ -261,6 +149,9 @@ pub async fn ai_access(user_id: i64) -> Result<AiAccess, salvo::http::StatusErro
         platform_allowed: paid,
         active_provider_id: id,
         message: message.into(),
+        chat_provider_id: personal.iter().find(|p|p.is_active).map(|p|p.id),
+        tts_provider_id: personal.iter().find(|p|p.tts_active).map(|p|p.id),
+        asr_provider_id: personal.iter().find(|p|p.asr_active).map(|p|p.id),
     })
 }
 
@@ -268,12 +159,15 @@ pub async fn get_user_provider(
     user_id: i64,
 ) -> Result<Arc<dyn AiProvider>, salvo::http::StatusError> {
     let (personal, paid) = provider_selection(user_id).await?;
-    if let Some(provider) = personal {
-        return create_provider_from_user_config(&provider.provider_type, &provider.settings)
-            .ok_or_else(|| {
-                salvo::http::StatusError::bad_request()
-                    .brief("个人 AI 配置无效，请在我的学习中修正配置；不会切换到平台密钥")
-            });
+    if !personal.is_empty() {
+        let mut selected = SelectedProvider {name:"personal",chat:None,tts:None,asr:None};
+        for row in personal {
+            let p = create_provider_from_user_config(&row.provider_type, &row.settings).ok_or_else(||salvo::http::StatusError::bad_request().brief("个人 AI 配置无效，请修正配置；不会切换到平台密钥"))?;
+            if row.is_active { selected.name=p.name(); selected.chat=p.chat_service(); }
+            if row.tts_active { selected.tts=p.tts(); }
+            if row.asr_active { selected.asr=p.asr(); }
+        }
+        return Ok(Arc::new(selected));
     }
     if !paid {
         return Err(salvo::http::StatusError::payment_required()
@@ -286,33 +180,28 @@ pub async fn get_user_provider(
 }
 
 /// Create AI provider from user configuration stored in database
-fn create_provider_from_user_config(
-    provider_type: &str,
-    settings: &Value,
-) -> Option<Arc<dyn AiProvider>> {
-    match provider_type {
-        "zhipu" => {
-            let zhipu_settings: ZhipuSettings = serde_json::from_value(settings.clone()).ok()?;
-            let config = ProviderConfig::Zhipu {
-                api_key: zhipu_settings.api_key,
-                chat_model: Some(zhipu_settings.chat_model),
-                asr_model: None,
-                tts_model: None,
-            };
-            Some(create_provider(&config))
-        }
-        "doubao" => {
-            let doubao_settings: DoubaoSettings = serde_json::from_value(settings.clone()).ok()?;
-            let config = ProviderConfig::Doubao {
-                app_id: doubao_settings.app_id,
-                access_token: doubao_settings.access_token,
-                api_key: doubao_settings.api_key,
-                chat_model: Some(doubao_settings.chat_model),
-                tts_resource_id: doubao_settings.tts_resource_id,
-                voice_type: doubao_settings.voice_type,
-            };
-            Some(create_provider(&config))
-        }
-        _ => None,
-    }
+pub fn create_provider_from_user_config(provider_type: &str, settings: &Value) -> Option<Arc<dyn AiProvider>> {
+    let settings=provider_catalog::validate(provider_type,settings.clone()).ok()?;
+    Some(create_provider(&ProviderConfig::Catalog {provider_type:provider_type.into(),settings}))
+}
+struct ConfiguredZhipu { client:ZhipuClient, settings:Value }
+impl AiProvider for ConfiguredZhipu {
+    fn name(&self)->&'static str {"zhipu"}
+    fn chat_service(&self)->Option<Arc<dyn ChatService>> {provider_catalog::model(&self.settings,"chat").and_then(|_|self.client.chat_service())}
+    fn tts(&self)->Option<Arc<dyn TtsService>> {provider_catalog::model(&self.settings,"tts").and_then(|_|self.client.tts())}
+    fn asr(&self)->Option<Arc<dyn AsrService>> {provider_catalog::model(&self.settings,"asr").and_then(|_|self.client.asr())}
+}
+struct SelectedProvider { name:&'static str, chat:Option<Arc<dyn ChatService>>, tts:Option<Arc<dyn TtsService>>, asr:Option<Arc<dyn AsrService>> }
+impl AiProvider for SelectedProvider {
+    fn name(&self)->&'static str {self.name}
+    fn chat_service(&self)->Option<Arc<dyn ChatService>> {self.chat.clone()}
+    fn tts(&self)->Option<Arc<dyn TtsService>> {self.tts.clone()}
+    fn asr(&self)->Option<Arc<dyn AsrService>> {self.asr.clone()}
+}
+
+pub async fn personal_tts(user:i64)->Result<(String,Value,Arc<dyn TtsService>),salvo::http::StatusError>{
+    let row=with_conn(move|conn|user_ai_providers::table.filter(user_ai_providers::user_id.eq(user)).filter(user_ai_providers::tts_active.eq(true)).first::<UserAiProvider>(conn).optional()).await.map_err(|_|salvo::http::StatusError::service_unavailable().brief("无法读取个人 TTS 配置"))?.ok_or_else(||salvo::http::StatusError::bad_request().brief("请先添加并启用自己的语音合成 TTS 配置"))?;
+    let provider=create_provider_from_user_config(&row.provider_type,&row.settings).ok_or_else(||salvo::http::StatusError::bad_request().brief("个人 TTS 配置无效"))?;
+    let service=provider.tts().ok_or_else(||salvo::http::StatusError::bad_request().brief("请先启用自己的 TTS 模型"))?;
+    Ok((row.provider_type,row.settings,service))
 }

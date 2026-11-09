@@ -5,7 +5,7 @@
 - API 容器内部端口为 `6019`，主机端口为 `6019`。
 - 前端通过主机端口 `6018` 提供服务；容器设置 `API_UPSTREAM=colang_api:6019`。
 - OAuth 环境变量放在 Compose 目录内权限为 `600` 的 `.oauth.env`，通过后端的 `env_file` 加载。该文件不提交仓库，也不作为镜像构建上下文。
-- 显式设置 `DOUBAO_CHAT_MODEL=doubao-seed-2-0-mini-260428`，替代已关闭的旧默认模型。
+- 使用 `AI_PROVIDER_DEFAULT=zhipu` 和 `ZHIPU_API_KEY` 配置平台 AI 服务；可通过 `ZHIPU_CHAT_MODEL` 指定模型。
 
 生产前端使用与 `front/Dockerfile` 相同的 Nginx 运行时模板。带内容哈希的 WASM、JS、CSS 使用长期不可变缓存；发布新版本时保留旧哈希资源，避免已打开的页面在切换期间加载失败。HTML 使用 `Cache-Control: no-cache`。
 
@@ -36,3 +36,5 @@ cola.ng {
 不要将完整 `docker inspect`、`docker compose config` 或环境文件输出到公开日志，它们可能包含密钥。验证压缩时请求真实 WASM URL，检查 `Content-Encoding`、`Vary`、MIME、实际响应字节，并比较解压后内容；只检查配置文件不能证明浏览器获得了压缩响应。
 
 账户 handle 和自备 AI 规则的发布目录为 `/repo/colang/releases/profiles-20261109`。其 `backup` 保存迁移前数据库和 Compose；迁移 25 添加并回填 handle，迁移 26 强制每个账户最多一条启用的 AI 配置。平台环境密钥继续只留在后端，服务端资格判断决定能否使用；上线检查必须同时验证非付费拦截和个人配置流程，不能用给生产测试账户伪造支付记录的方式通过验证。
+
+例句音频与多平台配置发布新增迁移 28、29：分别启用文本/TTS/ASR，以及候选音频、平台白名单。迁移 27 按此前移除豆包/火山引擎的要求清理退休平台凭据。上线前备份 PostgreSQL 与 Compose；新表和新增布尔列不要求丢弃用户数据。音频持久保存在 `SPACE_PATH/sentence-audio`，需继续挂载现有 `/data/colang`。默认白名单为 OpenAI、智谱、MiniMax，可在后台「句子发音审核」修改。

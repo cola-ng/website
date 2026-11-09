@@ -13,6 +13,7 @@ use crate::hoops::maybe_auth;
 use crate::{DepotExt, OkResponse};
 
 mod account;
+mod sentence_audio;
 mod achievement;
 mod admin;
 mod ai_provider;
@@ -51,6 +52,7 @@ pub fn router() -> Router {
                 .push(achievement::router())
                 .push(admin::router())
                 .push(ai_provider::router())
+                .push(sentence_audio::router())
                 .push(auth::router())
                 .push(asset::router())
                 .push(dict::router())

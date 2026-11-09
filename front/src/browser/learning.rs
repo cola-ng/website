@@ -797,12 +797,16 @@ fn reading_item(v: Value, index: Cage<usize>, action: Resource) -> impl Widget {
                 p(string(&v, "content_zh")),
                 p(string(&v, "phonetic_transcription")),
                 view().class("actions").fill((
-                    action_button().label("播放原音").on_press(move || {
-                        media::play(
-                            format!("/api/asset/read/sentences/{audio_id}/audio"),
-                            action.error,
-                        )
-                    }),
+                    super::sentence_audio::player(
+                        "read",
+                        audio_id.as_i64().unwrap_or_default(),
+                        if v["audio_path"].as_str().is_some_and(|s| !s.is_empty()) {
+                            Some(format!("/api/asset/read/sentences/{audio_id}/audio"))
+                        } else {
+                            None
+                        },
+                        "播放原音",
+                    ),
                     action_button()
                         .label("浏览器朗读")
                         .variant(sapid::ButtonVariant::Outline)
@@ -922,9 +926,16 @@ fn script_practice(v: Value, action: Resource) -> impl Widget {
                 p(spoken.clone()),
                 p(string(&v, "content_zh")),
                 p(string(&v, "phonetic_transcription")),
-                action_button().label("播放原音").on_press(move || {
-                    media::play(format!("/api/asset/scripts/turns/{id}/audio"), action.error)
-                }),
+                super::sentence_audio::player(
+                    "script",
+                    id.as_i64().unwrap_or_default(),
+                    if v["audio_path"].as_str().is_some_and(|s| !s.is_empty()) {
+                        Some(format!("/api/asset/scripts/turns/{id}/audio"))
+                    } else {
+                        None
+                    },
+                    "播放原音",
+                ),
                 action_button()
                     .label("浏览器朗读")
                     .variant(sapid::ButtonVariant::Outline)

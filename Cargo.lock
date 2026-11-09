@@ -558,7 +558,6 @@ dependencies = [
  "image",
  "itertools",
  "jsonwebtoken",
- "outfox-doubao",
  "outfox-zhipu",
  "rand 0.9.2",
  "regex",
@@ -2451,29 +2450,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "outfox-doubao"
-version = "0.3.0"
-source = "git+https://github.com/outfox-ai/outfox.git?branch=next#635a3a52a207663b3c41409f4071acfc29f27a76"
-dependencies = [
- "base64",
- "bytes",
- "derive_builder",
- "flate2",
- "futures-util",
- "reqwest",
- "reqwest-eventsource",
- "secrecy",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
- "tokio",
- "tokio-stream",
- "tokio-tungstenite 0.27.0",
- "tracing",
- "uuid",
-]
-
-[[package]]
 name = "outfox-zhipu"
 version = "0.3.0"
 source = "git+https://github.com/outfox-ai/outfox.git?branch=next#635a3a52a207663b3c41409f4071acfc29f27a76"
@@ -4260,22 +4236,6 @@ dependencies = [
 
 [[package]]
 name = "tokio-tungstenite"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "489a59b6730eda1b0171fcfda8b121f4bee2b35cba8645ca35c5f7ba3eb736c1"
-dependencies = [
- "futures-util",
- "log",
- "rustls",
- "rustls-native-certs",
- "rustls-pki-types",
- "tokio",
- "tokio-rustls",
- "tungstenite 0.27.0",
-]
-
-[[package]]
-name = "tokio-tungstenite"
 version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d25a406cddcc431a75d3d9afc6a7c0f7428d4891dd973e4d54c56b46127bf857"
@@ -4523,25 +4483,6 @@ dependencies = [
  "log",
  "native-tls",
  "rand 0.9.2",
- "sha1",
- "thiserror 2.0.17",
- "utf-8",
-]
-
-[[package]]
-name = "tungstenite"
-version = "0.27.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "eadc29d668c91fcc564941132e17b28a7ceb2f3ebf0b9dae3e03fd7a6748eb0d"
-dependencies = [
- "bytes",
- "data-encoding",
- "http",
- "httparse",
- "log",
- "rand 0.9.2",
- "rustls",
- "rustls-pki-types",
  "sha1",
  "thiserror 2.0.17",
  "utf-8",

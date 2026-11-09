@@ -74,15 +74,9 @@ assert any(f['event'] == 'done' and f['data']['ai_turn']['content_en'] == 'Hello
 count += 1
 assert accesses().get('personal:chat', 0) >= 2 and accesses().get('platform:chat', 0) == 0
 assert call('POST', f'/api/ai-providers/{pid}/test')['success'] is True
-doubao = call('POST', '/api/ai-providers', {'provider_type': 'doubao', 'settings': {'api_key': '中文密钥测试abcdefgh'}, 'set_active': False}, expected=201)
-assert doubao['settings']['api_key'] == '********'
-with concurrent.futures.ThreadPoolExecutor() as pool:
-    list(pool.map(lambda id: call('POST', f'/api/ai-providers/{id}/activate'), [pid, doubao['id']]))
-assert sql(f'SELECT count(*) FROM user_ai_providers WHERE user_id={uid} AND is_active') == '1'
-call('POST', f'/api/ai-providers/{pid}/activate')
+call('POST', '/api/ai-providers', {'provider_type': 'doubao', 'settings': {'api_key': 'removed-provider'}}, expected=400)
 call('POST', '/api/ai-providers', {'provider_type': 'zhipu', 'settings': {'api_key': 'duplicate'}, 'set_active': True}, expected=409)
 assert call('GET', '/api/ai-providers/access')['active_provider_id'] == pid
-call('DELETE', f"/api/ai-providers/{doubao['id']}")
 call('PUT', f'/api/ai-providers/{pid}', {'is_active': False})
 
 suffix = str(time.time_ns())

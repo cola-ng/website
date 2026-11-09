@@ -23,7 +23,7 @@ try {
     }
     Checked { cargo test --locked -p colang-front }
     Checked { cargo clippy --locked -p colang-front --target wasm32-unknown-unknown -- -D warnings }
-    Checked { cargo build --locked -p colang --bin colang }
+    Checked { cargo build --locked --jobs 2 -p colang --bin colang }
     Push-Location -LiteralPath (Join-Path $repo 'front')
     try {
         # 0.17 is also usable on development machines; locked builds were added later.
@@ -31,15 +31,17 @@ try {
         else { Checked { trunk build --release } }
     } finally { Pop-Location }
     Checked { & (Join-Path $pgBin 'initdb') -D $databaseDir -U colang_qa --auth=trust --encoding=UTF8 --locale=C }
-    Checked { & (Join-Path $pgBin 'pg_ctl') -D $databaseDir -l (Join-Path $artifacts "qa-postgres-$PID.log") -o "-p $DatabasePort -h 127.0.0.1" -w start }
+    # Redirect to files when starting a daemon so inherited stdout does not hold the caller pipeline open.
+    $pgStart = Start-Process -FilePath (Join-Path $pgBin 'pg_ctl.exe') -ArgumentList @('-D',$databaseDir,'-l',(Join-Path $artifacts "qa-postgres-$PID.log"),'-o',"`"-p $DatabasePort -h 127.0.0.1`"",'-w','start') -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-pg-start-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-pg-start-$PID.err")
+    $pgStart.WaitForExit()
+    if ($pgStart.ExitCode) { throw 'isolated PostgreSQL failed to start' }
     $startedDatabase = $true
     Checked { & (Join-Path $pgBin 'createdb') -h 127.0.0.1 -p $DatabasePort -U colang_qa colang_qa }
     $environment = @{
         DATABASE_URL=$databaseUrl; JWT_SECRET='isolated-local-qa-secret'; BIND_ADDR="127.0.0.1:$ApiPort"
         STATIC_DIR=(Join-Path $repo 'front/dist'); SPACE_PATH=(Join-Path $artifacts "qa-space-$PID")
         AI_PROVIDER_DEFAULT='zhipu'; ZHIPU_API_KEY='qa-platform-key'; ZHIPUAI_API_KEY='qa-platform-key'
-        ZHIPUAI_BASE_URL="http://127.0.0.1:$ProviderPort"; DOUBAO_HTTP_BASE="http://127.0.0.1:$ProviderPort"
-        DOUBAO_API_KEY=''; DOUBAO_APP_ID=''; DOUBAO_ACCESS_TOKEN=''
+        ZHIPUAI_BASE_URL="http://127.0.0.1:$ProviderPort"
         PUBLIC_BASE_URL="http://127.0.0.1:$WebPort"
         GITHUB_CLIENT_ID='qa-github-client'; GITHUB_CLIENT_SECRET='qa-github-secret'
         GOOGLE_CLIENT_ID='qa-google-client'; GOOGLE_CLIENT_SECRET='qa-google-secret'
@@ -64,9 +66,10 @@ try {
     $env:QA_SPACE_PATH=$environment.SPACE_PATH
     Checked { python tests/api.py }
     Checked { python tests/providers.py }
-    Checked { cargo test --locked -p colang --lib }
-    Checked { cargo test --locked -p colang --lib oauth_database_flow -- --ignored }
-    Checked { cargo test --locked -p colang --lib chat_stream_database_flow -- --ignored }
+    Checked { python tests/sentence_audio.py }
+    Checked { cargo test --locked --jobs 2 -p colang --lib }
+    Checked { cargo test --locked --jobs 2 -p colang --lib oauth_database_flow -- --ignored }
+    Checked { cargo test --locked --jobs 2 -p colang --lib chat_stream_database_flow -- --ignored }
     Checked { python tests/oauth.py }
     $webProcess = Start-Process -FilePath (Get-Command python).Source -ArgumentList @('scripts/serve.py','--port',"$WebPort",'--api',"http://127.0.0.1:$ApiPort") -WorkingDirectory $repo -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-web-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-web-$PID.err")
     for ($attempt=0; $attempt -lt 20; $attempt++) {
@@ -75,6 +78,7 @@ try {
     }
     Checked { node tests/browser.cjs }
     Checked { node tests/ui.cjs }
+    Checked { node tests/responsive.cjs }
 } finally {
     if ($providerProcess -and !$providerProcess.HasExited) { Stop-Process -Id $providerProcess.Id }
     if ($webProcess -and !$webProcess.HasExited) { Stop-Process -Id $webProcess.Id }

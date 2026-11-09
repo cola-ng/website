@@ -16,6 +16,7 @@ pub fn router() -> Router {
     Router::with_path("admin")
         .hoop(require_auth)
         .hoop(require_admin)
+        .push(super::sentence_audio::admin_router())
         .push(Router::with_path("stats").get(dashboard_stats))
         .push(Router::with_path("stats/users/daily").get(user_stats_daily))
         .push(Router::with_path("stats/ai/today").get(ai_usage_today))

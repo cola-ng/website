@@ -1,0 +1,1 @@
+-- Deleted provider credentials cannot be restored by rollback.

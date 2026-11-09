@@ -5,6 +5,8 @@ mod dashboard;
 mod dictionary;
 mod learning;
 mod media;
+mod providers;
+mod sentence_audio;
 mod theme;
 mod ui;
 

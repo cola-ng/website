@@ -1,7 +1,7 @@
 //! Import read sentences data with TTS audio generation
 //!
 //! Reads read-sentences.json and:
-//! 1. Generates MP3 audio files for each sentence (if not exists)
+//! 1. Generates WAV audio files for each sentence (if not exists)
 //! 2. Inserts data into asset_read_subjects and asset_read_sentences tables
 
 use std::collections::HashSet;
@@ -15,9 +15,8 @@ use std::time::Duration;
 use colang::db::schema::{asset_read_sentences, asset_read_subjects};
 use diesel::prelude::*;
 use futures_util::stream::{self, StreamExt};
-use outfox_doubao::Client as DoubaoClient;
-use outfox_doubao::config::DoubaoConfig;
-use outfox_doubao::spec::tts::CreateSpeechRequestArgs;
+use outfox_zhipu::Client as ZhipuClient;
+use outfox_zhipu::spec::tts::CreateSpeechRequest;
 use serde::{Deserialize, Serialize};
 
 const DEFAULT_INPUT_FILE: &str = r"D:\Works\cola-ng\space-raw\read-sentences.json";
@@ -26,8 +25,8 @@ const DEFAULT_CONCURRENCY: usize = 5;
 const DEFAULT_RETRY_COUNT: usize = 3;
 const DEFAULT_RETRY_DELAY_MS: u64 = 1000;
 
-// TTS voice - English voice for English sentences
-const DEFAULT_VOICE: &str = "zh_female_vv_uranus_bigtts";
+// Default Zhipu voice
+const DEFAULT_VOICE: &str = "tongtong";
 
 // ============================================================================
 // Data structures for JSON input
@@ -191,21 +190,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if !skip_tts {
         println!("\n--- Phase 1: TTS Audio Generation ---\n");
 
-        // Load Doubao credentials from environment
-        let app_id = std::env::var("DOUBAO_APP_ID").expect("DOUBAO_APP_ID must be set");
-        let access_token =
-            std::env::var("DOUBAO_ACCESS_TOKEN").expect("DOUBAO_ACCESS_TOKEN must be set");
-        let resource_id =
-            std::env::var("DOUBAO_RESOURCE_ID").unwrap_or_else(|_| "seed-tts-2.0".to_string());
+        let api_key = std::env::var("ZHIPU_API_KEY").expect("ZHIPU_API_KEY must be set");
 
-        // Create Doubao client
-        let config = DoubaoConfig::new()
-            .with_app_id(&app_id)
-            .with_access_token(&access_token)
-            .with_resource_id(&resource_id)
-            .with_voice_type(&voice);
-
-        let client = DoubaoClient::with_config(config);
+        let client = ZhipuClient::with_config(
+        outfox_zhipu::config::ZhipuConfig::new().with_api_key(api_key),
+    );
 
         // Collect all sentences that need TTS
         let sentences_to_process: Vec<(String, String)> = data
@@ -269,7 +258,7 @@ fn load_existing_files(output_dir: &Path) -> Result<HashSet<String>, Box<dyn std
             let path = entry.path();
             if path.is_file() {
                 if let Some(ext) = path.extension() {
-                    if ext == "mp3" {
+                    if ext == "wav" || ext == "mp3" {
                         // Check if file is non-empty
                         if let Ok(metadata) = path.metadata() {
                             if metadata.len() > 0 {
@@ -288,7 +277,7 @@ fn load_existing_files(output_dir: &Path) -> Result<HashSet<String>, Box<dyn std
 }
 
 async fn process_tts_concurrent(
-    client: &DoubaoClient,
+    client: &ZhipuClient,
     sentences: &[(String, String)],
     output_dir: &Path,
     voice: &str,
@@ -319,7 +308,7 @@ async fn process_tts_concurrent(
 
             async move {
                 let current = processed.fetch_add(1, Ordering::SeqCst) + 1;
-                let filename = format!("{}.mp3", audio_name);
+                let filename = format!("{}.wav", audio_name);
                 let filepath = output_dir.join(&filename);
 
                 // Skip if file already exists and is non-empty
@@ -378,7 +367,7 @@ async fn process_tts_concurrent(
 }
 
 async fn generate_tts_with_retry(
-    client: &DoubaoClient,
+    client: &ZhipuClient,
     text: &str,
     voice: &str,
 ) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
@@ -392,23 +381,15 @@ async fn generate_tts_with_retry(
             .await;
         }
 
-        let request = match CreateSpeechRequestArgs::default()
-            .text(text)
-            .speaker(voice)
-            .speech_rate(0i32) // Normal speed
-            .sample_rate(48000u32)
-            .build()
-        {
-            Ok(req) => req,
-            Err(e) => {
-                last_error = Some(format!("Failed to build request: {}", e));
-                continue;
-            }
+        let request = CreateSpeechRequest {
+            input: text.to_string(),
+            voice: serde_json::from_value(serde_json::json!(voice))?,
+            ..Default::default()
         };
 
-        match client.tts().speech_http_v3().create(request).await {
+        match client.tts().create(request).await {
             Ok(response) => {
-                return Ok(response.bytes.to_vec());
+                return Ok(response.audio.to_vec());
             }
             Err(e) => {
                 last_error = Some(format!("TTS API error: {}", e));
@@ -482,15 +463,11 @@ fn insert_to_database(
         // Insert sentences
         let mut inserted_count = 0;
         for (order, sentence_data) in subject_data.sentences.iter().enumerate() {
-            let audio_path = format!("read-sentences/{}.mp3", sentence_data.audio_name);
-
-            // Verify audio file exists
-            let full_audio_path = output_dir.join(format!("{}.mp3", sentence_data.audio_name));
-            let audio_path = if full_audio_path.exists() {
-                Some(audio_path)
-            } else {
-                None
-            };
+            let audio_path = ["wav", "mp3"].into_iter().find_map(|extension| {
+                let filename = format!("{}.{extension}", sentence_data.audio_name);
+                output_dir.join(&filename).exists()
+                    .then(|| format!("read-sentences/{filename}"))
+            });
 
             let new_sentence = NewReadSentence {
                 subject_id,
@@ -529,7 +506,7 @@ fn print_usage() {
         DEFAULT_INPUT_FILE
     );
     println!(
-        "  -o, --output <PATH>      Output directory for MP3 files (default: {})",
+        "  -o, --output <PATH>      Output directory for WAV files (default: {})",
         DEFAULT_OUTPUT_DIR
     );
     println!(
@@ -545,21 +522,12 @@ fn print_usage() {
     println!("  -h, --help               Show this help message");
     println!();
     println!("Available English voices:");
-    println!("  en_male_adam_moon_bigtts (default)");
-    println!("  en_female_sarah_moon_bigtts");
     println!();
     println!("Available Chinese voices:");
-    println!("  zh_female_cancan_mars_bigtts");
-    println!("  zh_female_shuangkuaisisi_moon_bigtts");
-    println!("  zh_male_aojiaobazong_moon_bigtts");
-    println!("  zh_female_tianmeixiaoyuan_moon_bigtts");
-    println!("  zh_male_wennuanahu_moon_bigtts");
-    println!("  zh_female_vv_uranus_bigtts");
+    println!("  tongtong, chuichui, xiaochen, jam, kazi, douji, luodo");
     println!();
     println!("Environment Variables:");
-    println!("  DOUBAO_APP_ID          Doubao App ID (required for TTS)");
-    println!("  DOUBAO_ACCESS_TOKEN    Doubao Access Token (required for TTS)");
-    println!("  DOUBAO_RESOURCE_ID     TTS Resource ID (default: seed-tts-2.0)");
+    println!("  ZHIPU_API_KEY          Zhipu API key (required for TTS)");
     println!("  DATABASE_URL           PostgreSQL connection string (required for DB)");
     println!();
     println!("Examples:");

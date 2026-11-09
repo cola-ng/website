@@ -112,7 +112,7 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.evaluate(()=>localStorage.setItem('colang.token','ui-fixture'));await page.goto(base+'/admin/dict');const danger=page.getByRole('button',{name:'批量删除',exact:true});await danger.waitFor();assert.equal((await color(danger)).background,'rgb(245, 245, 244)');await page.getByRole('button',{name:'选择本页全部单词',exact:true}).click();await settle(page);assert.equal((await color(danger)).background,'rgb(185, 28, 28)');
   });
   await scenario('AI connection errors are red and successful retries are green',async()=>{
-    await page.goto(base+'/me#settings');await page.route('**/api/ai-providers/1/test',route=>route.fulfill({json:{success:false,error:'测试连接失败'}}));await page.getByRole('button',{name:'测试连接',exact:true}).click();await page.getByRole('alert').getByText('测试连接失败',{exact:true}).waitFor();assert.equal(await page.locator('.success').count(),0);await page.unroute('**/api/ai-providers/1/test');await page.route('**/api/ai-providers/1/test',route=>route.fulfill({json:{success:true}}));await page.getByRole('button',{name:'测试连接',exact:true}).click();await page.locator('.success').getByText('连接成功',{exact:true}).waitFor();assert.equal(await page.getByRole('alert').count(),0);await page.unroute('**/api/ai-providers/1/test');
+    await page.goto(base+'/me#settings');await page.route('**/api/ai-providers/1/test',route=>route.fulfill({json:{success:false,error:'测试连接失败'}}));await page.getByRole('button',{name:'测试连接',exact:true}).click();await page.getByRole('alert').getByText('测试连接失败',{exact:true}).waitFor();assert.equal(await page.locator('.success').count(),0);await page.unroute('**/api/ai-providers/1/test');await page.route('**/api/ai-providers/1/test',route=>route.fulfill({json:{success:true}}));await page.getByRole('button',{name:'测试连接',exact:true}).click();await page.locator('.success').getByText(/连接成功；/).waitFor();assert.equal(await page.getByRole('alert').count(),0);await page.unroute('**/api/ai-providers/1/test');
   });
   await scenario('admin searches reset pagination before requesting filtered data',async()=>{
     const queries=[];await page.route('**/api/admin/users?*',route=>{const u=new URL(route.request().url());queries.push([u.searchParams.get('page'),u.searchParams.get('search')]);return route.fulfill({json:{users:[user],total:61,per_page:30}});});await page.goto(base+'/admin/users');await page.getByRole('button',{name:'下一页',exact:true}).click();await page.getByText('第 2 页',{exact:true}).waitFor();await page.getByRole('textbox',{name:'搜索用户',exact:true}).fill('filtered');await page.getByText('第 1 页',{exact:true}).waitFor();await page.waitForFunction(()=>!document.querySelector('main .loading-status'));assert.deepEqual(queries.at(-1),['1','filtered']);await page.unroute('**/api/admin/users?*');
@@ -186,22 +186,61 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     let rows=[],saved;
     await page.route('**/api/ai-providers**',route=>{
       const p=new URL(route.request().url()).pathname,method=route.request().method();
+      if(p.endsWith('/catalog'))return route.fulfill({json:require('./provider-catalog.json')});
       if(p.endsWith('/access'))return route.fulfill({json:{source:rows.some(r=>r.is_active)?'personal':'none',platform_allowed:false,message:rows.some(r=>r.is_active)?'当前使用你自己的 AI 服务。':'请配置自己的密钥，免费用户不能使用平台 AI。'}});
       if(p==='/api/ai-providers'&&method==='GET')return route.fulfill({json:rows});
-      if(p==='/api/ai-providers'&&method==='POST'){saved=route.request().postDataJSON();assert(saved.set_active);rows=[{id:44,provider_type:saved.provider_type,is_active:true,settings:{...saved.settings,api_key:'********'}}];return route.fulfill({status:201,json:rows[0]});}
+      if(p==='/api/ai-providers'&&method==='POST'){saved=route.request().postDataJSON();assert.deepEqual(saved.activate_for,['chat','tts','asr']);rows=[{id:44,provider_type:saved.provider_type,is_active:true,settings:{...saved.settings,api_key:'********'}}];return route.fulfill({status:201,json:rows[0]});}
       if(method==='DELETE'){rows=[];return route.fulfill({json:{deleted:true}});}
       if(p.endsWith('/activate')){rows[0].is_active=true;return route.fulfill({json:rows[0]});}
-      if(method==='PUT'){saved=route.request().postDataJSON();if(saved.settings)rows[0].settings={...rows[0].settings,...saved.settings};if(saved.is_active!==undefined)rows[0].is_active=saved.is_active;return route.fulfill({json:rows[0]});}
+      if(method==='PUT'){saved=route.request().postDataJSON();if(saved.settings)rows[0].settings={...rows[0].settings,...saved.settings};if(saved.activate_for)rows[0].is_active=saved.activate_for.includes('chat');if(saved.is_active!==undefined)rows[0].is_active=saved.is_active;return route.fulfill({json:rows[0]});}
       throw new Error('Unexpected provider operation '+method+' '+p);
     });
     await page.goto(base+'/me#settings');await page.reload();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();
     await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await page.getByRole('textbox',{name:'API Key',exact:true}).fill('private-ui-test-key');await page.getByRole('button',{name:'添加并启用',exact:true}).click();
     await page.locator('.ai-access-status').getByText('当前使用你自己的 AI 服务。',{exact:true}).waitFor();assert.equal(await page.getByRole('textbox',{name:'API Key',exact:true}).count(),0);
-    await page.locator('.provider-row').getByRole('button',{name:'编辑',exact:true}).click();await page.getByRole('textbox',{name:'对话模型（可选）',exact:true}).fill('edited-model');await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByRole('button',{name:'保存配置',exact:true}).waitFor({state:'detached'});assert.equal(saved.settings.api_key,undefined);
-    await page.locator('.provider-row').getByRole('button',{name:'停用',exact:true}).click();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();
-    await page.locator('.provider-row').getByRole('button',{name:'启用',exact:true}).click();await page.locator('.ai-access-status').getByText('当前使用你自己的 AI 服务。',{exact:true}).waitFor();
+    await page.locator('.provider-row').getByRole('button',{name:'编辑',exact:true}).click();await page.getByRole('combobox',{name:'文本对话模型',exact:true}).fill('edited-model');await page.getByRole('button',{name:'保存并启用',exact:true}).click();await page.getByRole('button',{name:'保存并启用',exact:true}).waitFor({state:'detached'});assert.equal(saved.settings.api_key,undefined);
+    await page.locator('.provider-row').getByRole('button',{name:'停用文本',exact:true}).click();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();
+    await page.locator('.provider-row').getByRole('button',{name:'启用文本',exact:true}).click();await page.locator('.ai-access-status').getByText('当前使用你自己的 AI 服务。',{exact:true}).waitFor();
     await page.locator('.provider-row').getByRole('button',{name:'删除配置',exact:true}).click();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();assert.equal(rows.length,0);
     await page.unroute('**/api/ai-providers**');
+  });
+  await scenario('provider search filters platforms and keeps text, TTS and ASR models separate',async()=>{
+    await page.goto(base+'/me#settings');await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();
+    const platform=page.getByRole('combobox',{name:'AI 平台',exact:true});
+    await platform.fill('千问');await page.getByRole('option',{name:'通义千问 Qwen 阿里云百炼',exact:true}).click();
+    await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(e=>e.value==='qwen-plus'));assert.equal(await page.getByRole('combobox',{name:'文本对话模型',exact:true}).inputValue(),'qwen-plus');
+    assert.equal(await page.getByRole('combobox',{name:'语音合成 TTS模型',exact:true}).count(),0);
+    await platform.fill('MiniMax');await page.getByRole('option',{name:'MiniMax 稀宇科技',exact:true}).waitFor();await platform.press('ArrowDown');await platform.press('Enter');
+    await page.getByRole('combobox',{name:'语音合成 TTS模型',exact:true}).waitFor();assert.equal(await page.getByRole('combobox',{name:'语音识别 ASR模型',exact:true}).count(),0);
+    await platform.fill('OpenAI');await page.getByRole('option',{name:'OpenAI',exact:true}).click();
+    await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(e=>e.value==='gpt-transcribe'));assert.equal(await page.getByRole('combobox',{name:'语音识别 ASR模型',exact:true}).inputValue(),'gpt-transcribe');
+    await page.getByRole('checkbox',{name:'配置语音合成 TTS',exact:true}).uncheck();await settle(page);assert.equal(await page.getByRole('textbox',{name:'TTS 音色 ID',exact:true}).count(),0);
+    await platform.fill('unknown-platform');await settle(page);assert(await page.getByRole('button',{name:'添加并启用',exact:true}).isDisabled());await page.keyboard.press('Escape');await page.getByRole('button',{name:'关闭 AI 配置',exact:true}).click();
+  });
+  await scenario('example audio plays stored files without keys and generates only on an explicit click',async()=>{
+    let generated=0,canGenerate=false,official=true;
+    await page.route('**/api/dict/lookup?*',route=>route.fulfill({json:{word:{id:51,word:'audio-example'},definitions:[],sentences:[{id:52,sentence:'An audio example.'}]}}));
+    await page.route('**/api/sentence-audio/dict/52',route=>route.fulfill({json:{audio_url:official?'/api/test-tone.wav':null,official,can_generate:canGenerate,status:official?'approved':'missing'}}));
+    await page.route('**/api/test-tone.wav',route=>route.fulfill({status:404,body:''}));
+    await page.route('**/api/sentence-audio/dict/52/generate',route=>{generated++;return route.fulfill({json:{id:55,status:'pending',official:false,audio_url:'/api/test-tone.wav'}});});
+    await page.goto(base+'/dict/audio-example');await page.getByRole('tab',{name:'例句',exact:true}).click();await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).click();assert.equal(generated,0);
+    official=false;await page.reload();await page.getByRole('tab',{name:'例句',exact:true}).click();await settle(page);assert.equal(await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).count(),0);
+    canGenerate=true;await page.reload();await page.getByRole('tab',{name:'例句',exact:true}).click();await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).waitFor();assert.equal(generated,0);await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).click();await page.getByRole('status').getByText('发音已生成，可播放，已提交管理员审核。',{exact:true}).waitFor();assert.equal(generated,1);
+    await page.unroute('**/api/dict/lookup?*');await page.unroute('**/api/sentence-audio/dict/52');await page.unroute('**/api/test-tone.wav');await page.unroute('**/api/sentence-audio/dict/52/generate');
+  });
+  await scenario('audio review exposes the sentence and sound, and persists whitelist and review decisions',async()=>{
+    const allowed={zhipu:true,openai:false,minimax:false};let rows=[{id:71,source_kind:'dict',source_id:52,sentence:'A sentence for an audio review.',provider_type:'openai',model:'gpt-4o-mini-tts',voice:'alloy',audio_path:'sentence-audio/test.mp3',user_id:123,status:'pending',created_at:'2026-11-10T00:00:00Z'}];
+    await page.route('**/api/admin/sentence-audio**',route=>{
+      const u=new URL(route.request().url()),body=route.request().postData()?route.request().postDataJSON():null;
+      if(u.pathname.endsWith('/whitelist')){if(route.request().method()==='PUT'){allowed[body.provider_type]=body.enabled;return route.fulfill({json:{saved:true}});}return route.fulfill({json:Object.entries(allowed).map(([provider_type,enabled])=>({provider_type,enabled}))});}
+      if(u.pathname.endsWith('/review')){assert.equal(body.action,'approve');rows[0].status='approved';return route.fulfill({json:{status:'approved'}});}
+      return route.fulfill({json:{items:rows.filter(r=>r.status===(u.searchParams.get('status')||'pending')),next_before:null}});
+    });
+    await page.goto(base+'/admin/sentence-audio');await page.getByRole('heading',{name:'A sentence for an audio review.',exact:true}).waitFor();assert(await page.getByRole('button',{name:'🔊 试听候选发音',exact:true}).isVisible());
+    await page.getByRole('checkbox',{name:'OpenAI',exact:true}).check();await page.getByText('白名单已更新',{exact:true}).waitFor();assert.equal(allowed.openai,true);
+    await page.getByRole('button',{name:'通过审核',exact:true}).click();await page.getByText('已通过审核',{exact:true}).waitFor();await page.getByRole('heading',{name:'A sentence for an audio review.',exact:true}).waitFor({state:'detached'});
+    await page.getByRole('button',{name:'已通过',exact:true}).click();await page.getByRole('heading',{name:'A sentence for an audio review.',exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'通过审核',exact:true}).count(),0);
+    await page.unroute('**/api/admin/sentence-audio**');
   });
   await scenario('dictionary entries with no sections still render the word and history',async()=>{
     await page.route('**/api/dict/lookup?*',route=>route.fulfill({json:{word:{id:51,word:'empty-entry'},definitions:[],sentences:[]}}));

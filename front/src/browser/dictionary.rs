@@ -330,13 +330,28 @@ fn word_sections(data: Value, compact: bool, selected: Cage<String>) -> Box<dyn 
                                 "etymologies" => &["etymology", "origin_word", "origin_meaning"],
                                 _ => &["name_zh", "name_en", "publisher", "license_type"],
                             };
+                            let audio = if key == "sentences" {
+                                entry["id"].as_i64().map(|id| {
+                                    boxed(super::sentence_audio::player(
+                                        "dict",
+                                        id,
+                                        None,
+                                        "播放例句发音",
+                                    ))
+                                })
+                            } else {
+                                None
+                            };
                             boxed(
-                                view().class("definition-entry").fill(p(keys
-                                    .iter()
-                                    .map(|k| string(entry, k))
-                                    .filter(|v| !v.is_empty())
-                                    .collect::<Vec<_>>()
-                                    .join(" · "))),
+                                view().class("definition-entry").fill((
+                                    p(keys
+                                        .iter()
+                                        .map(|k| string(entry, k))
+                                        .filter(|v| !v.is_empty())
+                                        .collect::<Vec<_>>()
+                                        .join(" · ")),
+                                    nodes(audio.into_iter().collect()),
+                                )),
                             )
                         })
                         .collect(),

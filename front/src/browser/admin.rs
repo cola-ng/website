@@ -150,6 +150,7 @@ pub fn page(path: Vec<String>) -> impl Widget {
                     boxed(users())
                 }
             }
+            "sentence-audio" => boxed(super::sentence_audio::admin()),
             "finance" => boxed(finance(path.get(1).cloned())),
             "dict" => boxed(view().fill((
                 crud("词典管理", "/api/dict/words".into(), WORD, id),
@@ -239,6 +240,7 @@ pub fn page(path: Vec<String>) -> impl Widget {
                         section_nav("分类", "/admin/taxonomy"),
                         section_nav("对话场景", "/admin/chat-scenarios"),
                         section_nav("跟读内容", "/admin/read"),
+                        section_nav("句子发音审核", "/admin/sentence-audio"),
                     )),
                 nodes(vec![content]),
             ))

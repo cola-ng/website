@@ -28,6 +28,7 @@ const DEFAULT_CHAT_MODEL: &str = "glm-4-flash";
 pub struct ZhipuClient {
     client: ZhipuSdkClient,
     chat_model: String,
+    voice: String,
 }
 
 impl ZhipuClient {
@@ -43,7 +44,14 @@ impl ZhipuClient {
         Self {
             client: ZhipuSdkClient::with_config(config),
             chat_model: chat_model.unwrap_or_else(|| DEFAULT_CHAT_MODEL.to_string()),
+            voice: "tongtong".into(),
         }
+    }
+
+    pub fn with_settings(settings: &serde_json::Value) -> Self {
+        let mut client=Self::with_models(settings["api_key"].as_str().unwrap_or_default().into(),settings["chat_model"].as_str().map(str::to_owned));
+        client.voice=settings["tts_voice"].as_str().unwrap_or("tongtong").into();
+        client
     }
 
     /// Create client from environment variables
@@ -118,6 +126,7 @@ impl TtsService for ZhipuClient {
 
         let mut request = CreateSpeechRequest {
             input: text.to_string(),
+            voice: serde_json::from_value(serde_json::json!(self.voice)).map_err(|_|AiProviderError::Config("智谱音色无效".into()))?,
             ..Default::default()
         };
 

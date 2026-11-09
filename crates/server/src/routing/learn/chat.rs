@@ -843,7 +843,7 @@ pub async fn text_to_speech(
     // Get TTS service
     let tts = provider
         .tts()
-        .ok_or_else(|| StatusError::internal_server_error().brief("TTS service not available"))?;
+        .ok_or_else(|| StatusError::bad_request().brief("请在 AI 服务配置中启用语音合成 TTS 模型"))?;
 
     // Generate audio
     tracing::info!("Calling {} TTS API...", provider.name());

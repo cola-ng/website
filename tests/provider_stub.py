@@ -5,6 +5,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
 import time
+import io
+import wave
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--port', type=int, required=True)
@@ -38,8 +40,17 @@ class Handler(BaseHTTPRequestHandler):
         payload = self.rfile.read(min(int(self.headers.get('Content-Length', 0)), 1024 * 1024))
         if actor == 'invalid':
             return self.answer(401, {'error': {'message': 'Invalid test credentials', 'code': 'invalid_api_key'}})
+        if self.path.endswith('/audio/speech'):
+            body = json.loads(payload)
+            assert body['model'] == 'glm-tts' and body['voice'] in ['tongtong','chuichui','xiaochen','jam','kazi','douji','luodo']
+            if body['input'] == 'Slow audio generation.': time.sleep(0.5)
+            output = io.BytesIO()
+            with wave.open(output, 'wb') as w:
+                w.setparams((1,2,16000,0,'NONE','not compressed')); w.writeframes(b'\0' * 3200)
+            data=output.getvalue()
+            self.send_response(200);self.send_header('Content-Type','audio/wav');self.send_header('Content-Length',str(len(data)));self.end_headers();self.wfile.write(data);return
         if not chat:
-            return self.answer(400, {'error': {'message': 'Voice is tested separately', 'code': 'unsupported'}})
+            return self.answer(400, {'error': {'message': 'Unsupported test endpoint', 'code': 'unsupported'}})
         body = json.loads(payload)
         structured = {'use_lang': 'en', 'original_en': body['messages'][-1]['content'], 'original_zh': '测试输入', 'reply_en': 'Hello from your own provider.', 'reply_zh': '来自个人服务的回复。', 'issues': []}
         content = json.dumps(structured, ensure_ascii=False) if body.get('response_format') else f'{actor} translation'

@@ -1,7 +1,7 @@
 //! AI Provider Abstraction Layer
 //!
 //! Defines traits for ASR, TTS, and Chat services that can be implemented
-//! by different providers (BigModel, Doubao, etc.)
+//! by different providers (BigModel)
 
 use std::sync::Arc;
 
@@ -248,7 +248,7 @@ pub trait PronunciationService: Send + Sync {
 /// Combined AI Provider with all capabilities
 #[async_trait]
 pub trait AiProvider: Send + Sync {
-    /// Provider name (e.g., "zhipu", "doubao")
+    /// Provider name (e.g., "zhipu")
     fn name(&self) -> &'static str;
 
     /// Get ASR service
@@ -270,6 +270,8 @@ pub trait AiProvider: Send + Sync {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "provider")]
 pub enum ProviderConfig {
+    #[serde(rename = "catalog")]
+    Catalog { provider_type: String, settings: serde_json::Value },
     #[serde(rename = "zhipu")]
     Zhipu {
         api_key: String,
@@ -280,43 +282,10 @@ pub enum ProviderConfig {
         #[serde(default)]
         chat_model: Option<String>,
     },
-    #[serde(rename = "doubao")]
-    Doubao {
-        app_id: String,
-        access_token: String,
-        api_key: String, // For WebSocket TTS authorization
-        #[serde(default)]
-        chat_model: Option<String>,
-        #[serde(default)]
-        tts_resource_id: Option<String>,
-        #[serde(default)]
-        voice_type: Option<String>,
-    },
+
 }
 
 impl ProviderConfig {
-    /// Try to load Doubao configuration from environment variables
-    fn try_doubao() -> Option<Self> {
-        let app_id = std::env::var("DOUBAO_APP_ID")
-            .ok()
-            .filter(|s| !s.is_empty())?;
-        let access_token = std::env::var("DOUBAO_ACCESS_TOKEN")
-            .ok()
-            .filter(|s| !s.is_empty())?;
-        let api_key = std::env::var("DOUBAO_API_KEY")
-            .ok()
-            .filter(|s| !s.is_empty())?;
-
-        Some(ProviderConfig::Doubao {
-            app_id,
-            access_token,
-            api_key,
-            chat_model: std::env::var("DOUBAO_CHAT_MODEL").ok(),
-            tts_resource_id: std::env::var("DOUBAO_RESOURCE_ID").ok(),
-            voice_type: std::env::var("DOUBAO_VOICE_TYPE").ok(),
-        })
-    }
-
     /// Try to load Zhipu (智谱) configuration from environment variables
     fn try_zhipu() -> Option<Self> {
         let api_key = std::env::var("ZHIPU_API_KEY")
@@ -331,37 +300,28 @@ impl ProviderConfig {
         })
     }
 
-    /// Load from environment variables
-    ///
-    /// Uses `AI_PROVIDER_DEFAULT` env var to determine which provider to use.
-    /// Valid values: "doubao", "zhipu"
-    /// If not set or invalid, tries Doubao first, then Zhipu.
+    /// Load the supported platform provider from environment variables.
     pub fn from_env() -> Option<Self> {
-        let default_provider = std::env::var("AI_PROVIDER_DEFAULT")
-            .ok()
-            .map(|s| s.to_lowercase());
+        match std::env::var("AI_PROVIDER_DEFAULT").ok().as_deref() {
+            None | Some("") | Some("zhipu") => Self::try_zhipu(),
+            _ => None,
+        }
+    }
+}
 
-        println!("Default provider from env: {:?}", default_provider);
-        match default_provider.as_deref() {
-            Some("zhipu") => {
-                tracing::info!("AI_PROVIDER_DEFAULT=zhipu, trying Zhipu first");
-                Self::try_zhipu()
-            }
-            Some("doubao") => {
-                tracing::info!("AI_PROVIDER_DEFAULT=doubao, trying Doubao first");
-                Self::try_doubao()
-            }
-            Some(other) => {
-                tracing::warn!(
-                    "Unknown AI_PROVIDER_DEFAULT='{}', using default order (doubao first)",
-                    other
-                );
-                Self::try_doubao().or_else(Self::try_zhipu)
-            }
-            None => {
-                // Default: try Doubao first, then Zhipu
-                Self::try_doubao().or_else(Self::try_zhipu)
-            }
+#[cfg(test)]
+mod provider_config_tests {
+    use super::ProviderConfig;
+
+    #[test]
+    fn only_supported_provider_configs_deserialize() {
+        assert!(serde_json::from_value::<ProviderConfig>(serde_json::json!({
+            "provider": "zhipu", "api_key": "test-key"
+        })).is_ok());
+        for retired in ["doubao", "volcengine", "ark"] {
+            assert!(serde_json::from_value::<ProviderConfig>(serde_json::json!({
+                "provider": retired, "api_key": "test-key", "app_id": "app", "access_token": "token"
+            })).is_err());
         }
     }
 }

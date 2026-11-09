@@ -21,9 +21,9 @@
 
 平台资格必须同时满足：订阅状态 `active`、开始时间已到、尚未到期、所属套餐为有价格的非免费套餐，以及 `last_payment_id` 指向同一用户已支付且金额大于零的订单。免费、试用、过期、取消、未来生效、只有套餐没有支付记录，以及仅有管理员身份，均不能获得平台密钥使用资格。资格在每次请求时检查，不由浏览器或客户端声明。
 
-自备密钥无需平台付费订阅。当前支持智谱和豆包；豆包仅对话/翻译可以只配置 API Key，语音另外需要用户自己的 App ID 与 Access Token，可设置语音资源及音色。缺少个人语音凭据时不借用平台凭据。
+自备密钥无需平台付费订阅。平台目录包含多家主流服务商；对话、翻译和语音使用用户自己的 API Key，具体能力见下方目录说明。
 
-「我的学习 → AI 服务配置」支持添加并启用、测试连接、编辑、停用、切换、删除，并显示当前使用来源。编辑时密钥留空保留原值。每个账户同一时间最多启用一条配置；服务端使用事务和唯一索引防止并发启用冲突。个人配置由账户 ID 隔离，返回值遮蔽密钥，浏览器不会从服务端读回明文密钥，也不会把密钥保存到本地存储。
+「我的学习 → AI 服务配置」支持添加并启用、测试连接、编辑、停用、切换、删除，并显示当前使用来源。编辑时密钥留空保留原值。每个账户的文本、TTS、ASR 各自最多启用一条配置；服务端使用事务和唯一索引防止并发启用冲突。个人配置由账户 ID 隔离，返回值遮蔽密钥，浏览器不会从服务端读回明文密钥，也不会把密钥保存到本地存储。
 
 `GET /api/ai-providers/access` 返回 `source`（personal/platform/none）、`platform_allowed`、`active_provider_id` 和说明文字，不返回平台凭据。数据库或资格验证失败时返回 503，不按默认平台配置继续执行。
 
@@ -34,3 +34,27 @@
 `tests/run.ps1` 使用隔离的 PostgreSQL、实际 API 和 WASM。`tests/providers.py` 通过本地模拟上游检查实际 SDK 请求的凭据选择，验证个人密钥调用、合法付费平台调用、非付费/管理员拦截、订阅失效、个人配置失败不回退、配置归属、密钥保留与并发切换，不调用真实付费模型。
 
 浏览器回归还覆盖 handle 保存及刷新、头像上传/显示/删除、个人配置添加/编辑/切换/删除以及当前使用来源的刷新。正式环境验证使用独立临时账户，不为其伪造已支付订阅或提供平台密钥。
+
+## 平台目录与独立能力
+
+平台选择使用可搜索的 Sapid Combobox，包含智谱、OpenAI、DeepSeek、MiniMax、Kimi、通义千问、Gemini、Anthropic、硅基流动、OpenRouter、xAI、Mistral、Groq、百度千帆、腾讯混元。目录 API `/api/ai-providers/catalog` 为界面和后端能力校验的统一来源。仅开放已接入的能力；例如千问的文本兼容接口不会被当成语音接口。
+
+每项个人配置分别填写 `chat_model`、`tts_model`、`asr_model`，空字符串表示关闭该项能力。支持的模型可输入自定义 ID，目录建议不代表账户具有对应权限。智谱语音由当前 SDK 支持的固定模型校验。中国区和国际区使用固定的官方地址，不接受用户提供任意代理地址。API Key 始终仅在服务端使用，列表响应掩码，编辑留空保留。
+
+`activate_for` 接受 `chat`、`tts`、`asr` 数组：只替换所选能力的默认配置，并停用本行未选中的能力。其他行的其他能力保持不变。三个部分唯一索引及用户行锁保证并发修改一致。`is_active` 是文本启用标记，另有 `tts_active`、`asr_active`。`access` 返回三类个人默认配置 ID。任一个人能力启用时，缺失的其他能力不会隐式使用平台密钥。
+
+OpenAI 兼容平台使用有界 HTTP/SSE 适配器；Anthropic 使用 Messages 协议。文本流式响应保留 UTF-8 分片、过滤推理字段，拒绝截断与过长结果。OpenAI/Groq ASR 使用 multipart 文件，OpenAI TTS 返回二进制音频，MiniMax TTS 解码其专用接口的十六进制音频。
+
+接口依据：[OpenAI 音频](https://developers.openai.com/api/docs/guides/audio)、[DeepSeek](https://api-docs.deepseek.com/)、[MiniMax 文本](https://platform.minimax.io/docs/api-reference/text-openai-api)、[MiniMax 语音](https://platform.minimax.io/docs/api-reference/speech-t2a-http)、[Kimi](https://platform.kimi.ai/docs/api/chat)、[千问](https://help.aliyun.com/zh/model-studio/compatibility-of-openai-with-dashscope)、[Gemini](https://ai.google.dev/gemini-api/docs/openai)、[Claude](https://platform.claude.com/docs/en/api/http/messages)、[Groq](https://console.groq.com/docs/openai)、[混元](https://cloud.tencent.com/document/product/1729/111007)。目录建议允许手动更新，不把浏览器模型名称当成可信能力声明。
+
+## 例句发音和审核
+
+词典例句、跟读句子、学习脚本共用 `/api/sentence-audio/{dict|read|script}/{id}` 元数据和音频接口。平台已存文件优先公开播放，无需 AI Key、订阅或登录。完全相同的句子内容可复用平台录音。
+
+没有正式发音时，只要用户启用了自己的 TTS，界面显示喇叭。点击确认后调用个人密钥生成音频，绝不使用平台密钥。服务器从句子 ID 读取原文，不接受浏览器替换原文。候选记录保存原句、内容摘要、提供方、模型、音色和提交用户，不保存 API Key。生成过程有超时、文件大小和格式检查、每日 50 次限制；按原文摘要去重，重复点击不会重复调用收费接口。失败可重试，失效的生成预约会回收。
+
+非白名单音频进入 `pending`，仅贡献者和管理员可试听。管理员在 `/admin/sentence-audio` 查看原句和音频，审核通过后公开，或填写拒绝原因。审批重新检查原句摘要和已有正式音频；原句已改、或已有正式文件时只标记过期，不覆盖。
+
+后台可修改平台白名单，初始启用 OpenAI、智谱和 MiniMax。白名单只影响之后完成生成的候选，自动通过时仍检查句子和已有正式音频。文件缺失可以重新生成补全；修改原句不会继续引用旧的生成录音。白名单更改和审核记录均记录管理员与时间。
+
+`tests/sentence_audio.py` 使用真实隔离 PostgreSQL/API/文件和本地 TTS 模拟上游，验证无密钥公开播放、分能力调用、私有候选、白名单、审批、拒绝、原句更改及重复生成。`compatible.rs` 的 HTTP 测试校验各平台请求、流式分片和音频协议，不使用真实付费密钥。

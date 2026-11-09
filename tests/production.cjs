@@ -70,6 +70,16 @@ let browser;
     await page.getByRole('button',{name:'登录',exact:true}).last().click();await page.waitForURL('**/me');
     await page.getByRole('heading',{name:'我的学习',exact:true}).waitFor();
     if(qa.expect_personal_required){
+      const signedIn=await api.post(base+'/api/login',{data:{email:qa.email,password:qa.password}});assert.equal(signedIn.status(),200);
+      const ownToken=(await signedIn.json()).access_token,ownHeaders={Authorization:'Bearer '+ownToken};
+      const catalogResponse=await api.get(base+'/api/ai-providers/catalog',{headers:ownHeaders});assert.equal(catalogResponse.status(),200);const catalog=await catalogResponse.json();assert(catalog.length>=15&&catalog.some(p=>p.id==='qwen'));
+      assert.equal((await api.get(base+'/api/admin/sentence-audio',{headers:ownHeaders})).status(),403);
+      if(qa.public_sentence_id){
+        const source=base+`/api/sentence-audio/read/${qa.public_sentence_id}`;
+        const metadataResponse=await api.get(source);assert.equal(metadataResponse.status(),200);const metadata=await metadataResponse.json();assert(metadata.official&&!metadata.can_generate&&metadata.audio_url);
+        const audio=await api.get(base+metadata.audio_url);assert.equal(audio.status(),200);assert((await audio.body()).length>44);
+        assert.equal((await api.post(source+'/generate',{headers:ownHeaders,data:{}})).status(),400);
+      }
       page.on('dialog',dialog=>dialog.accept());
       const handle='qaprod_'+Date.now();
       await page.getByRole('textbox',{name:'Handle（用户标识）',exact:true}).fill(handle);await page.getByRole('button',{name:'保存资料',exact:true}).click();await page.getByText('资料已保存',{exact:true}).waitFor();
@@ -79,7 +89,7 @@ let browser;
       await page.getByRole('button',{name:'删除头像',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.profile-avatar')?.src.endsWith('/colang-logo.svg'));
       await page.getByRole('tab',{name:'设置',exact:true}).click();await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await page.getByRole('textbox',{name:'API Key',exact:true}).fill('qa-production-invalid-key');await page.getByRole('button',{name:'添加并启用',exact:true}).click();await page.locator('.ai-access-status').getByText(/当前使用你自己的/).waitFor();
       assert.equal(await page.getByRole('textbox',{name:'API Key',exact:true}).count(),0);
-      await page.locator('.provider-row').getByRole('button',{name:'编辑',exact:true}).click();await page.getByRole('textbox',{name:'对话模型（可选）',exact:true}).fill('glm-4-flash');await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByRole('button',{name:'保存配置',exact:true}).waitFor({state:'detached'});
+      await page.locator('.provider-row').getByRole('button',{name:'编辑',exact:true}).click();await page.getByRole('combobox',{name:'文本对话模型',exact:true}).fill('glm-4-flash');await page.getByRole('button',{name:'保存并启用',exact:true}).click();await page.getByRole('button',{name:'保存并启用',exact:true}).waitFor({state:'detached'});
       await page.locator('.provider-row').getByRole('button',{name:'删除配置',exact:true}).click();await page.locator('.provider-row').waitFor({state:'detached'});await page.locator('.ai-access-status').getByText(/请添加并启用自己的/).waitFor();
       await page.goto(base+'/chat/'+qa.chat_id);await page.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello, this is a free account.');await page.getByRole('button',{name:'发送消息',exact:true}).click();
       await page.getByRole('alert').getByText(/请先添加并启用自己的/).waitFor();assert.equal(await page.getByRole('textbox',{name:'输入消息',exact:true}).inputValue(),'Hello, this is a free account.');

@@ -53,6 +53,8 @@ pub(super) async fn prepare(
         }
     };
     let provider = get_user_provider(user).await?;
+    if provider.chat_service().is_none(){return Err(StatusError::bad_request().brief("请在 AI 服务配置中启用文本对话模型"));}
+    if matches!(input,Input::Audio(_)) && provider.asr().is_none(){return Err(StatusError::bad_request().brief("请在 AI 服务配置中启用语音识别 ASR 模型"));}
     Ok((input, provider))
 }
 

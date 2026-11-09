@@ -1053,6 +1053,8 @@ diesel::table! {
         test_error -> Nullable<Text>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        tts_active -> Bool,
+        asr_active -> Bool,
     }
 }
 

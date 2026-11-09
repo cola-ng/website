@@ -38,6 +38,8 @@ function fixture(url,method='GET') {
   if(p==='/api/learn/daily')return {insights:[],tasks:[{id:1,task_title:'完成一次英语练习',target_value:1,status:'pending'}]};
   if(p==='/api/learn/summary')return {learning_days:7,total_vocabulary_count:32,pending_review_count:5,weekly_chat_minutes:48,mastered_vocabulary_count:27,average_mastery:0.84,total_review_times:19,weekly_minutes:[{day:'周一',minutes:12},{day:'周二',minutes:5},{day:'周三',minutes:0},{day:'周四',minutes:8},{day:'周五',minutes:6},{day:'周六',minutes:10},{day:'周日',minutes:7}]};
   if(p==='/api/me/account-status')return {has_password:true,linked_identities:[]};
+  if(p==='/api/ai-providers/catalog')return require('./provider-catalog.json');
+  if(p.startsWith('/api/sentence-audio/'))return {audio_url:'/api/asset/read/sentences/1/audio',official:true,can_generate:false,status:'approved'};
   if(p==='/api/ai-providers/access')return {source:'personal',platform_allowed:false,active_provider_id:1,message:'当前使用你自己的 AI 服务。'};
   if(p==='/api/ai-providers')return [{id:1,provider_type:'zhipu',is_active:true,settings:{chat_model:'example-model'}}];
   if(p==='/api/admin/users')return {users:[user],total:1};

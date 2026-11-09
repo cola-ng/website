@@ -1,0 +1,233 @@
+[
+  {
+    "id": "zhipu",
+    "label": "智谱 Zhipu",
+    "chat_models": [
+      "glm-4-flash",
+      "glm-4.6"
+    ],
+    "tts_models": [
+      "glm-tts"
+    ],
+    "asr_models": [
+      "glm-asr-2512"
+    ],
+    "voice": "tongtong",
+    "regions": [
+      "cn"
+    ]
+  },
+  {
+    "id": "openai",
+    "label": "OpenAI",
+    "chat_models": [
+      "gpt-4.1-mini",
+      "gpt-4.1"
+    ],
+    "tts_models": [
+      "gpt-4o-mini-tts",
+      "tts-1"
+    ],
+    "asr_models": [
+      "gpt-transcribe",
+      "whisper-1"
+    ],
+    "voice": "alloy",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "deepseek",
+    "label": "DeepSeek 深度求索",
+    "chat_models": [
+      "deepseek-flash",
+      "deepseek-v4-pro"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "minimax",
+    "label": "MiniMax 稀宇科技",
+    "chat_models": [
+      "MiniMax-M3",
+      "MiniMax-M3.1-Flash"
+    ],
+    "tts_models": [
+      "speech-2.8-hd",
+      "speech-2.8-turbo"
+    ],
+    "asr_models": [],
+    "voice": "English_expressive_narrator",
+    "regions": [
+      "cn",
+      "global"
+    ]
+  },
+  {
+    "id": "kimi",
+    "label": "Kimi 月之暗面 Moonshot",
+    "chat_models": [
+      "kimi-k2.6",
+      "kimi-k3.1-pro",
+      "kimi-k2.5"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "cn",
+      "global"
+    ]
+  },
+  {
+    "id": "qwen",
+    "label": "通义千问 Qwen 阿里云百炼",
+    "chat_models": [
+      "qwen-plus",
+      "qwen-turbo"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "cn",
+      "global"
+    ]
+  },
+  {
+    "id": "gemini",
+    "label": "Google Gemini",
+    "chat_models": [
+      "gemini-3.8-flash",
+      "gemini-2.5-flash"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "anthropic",
+    "label": "Anthropic Claude",
+    "chat_models": [
+      "claude-sonnet-4-5",
+      "claude-haiku-4-5"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "siliconflow",
+    "label": "硅基流动 SiliconFlow",
+    "chat_models": [
+      "Qwen/Qwen3-8B",
+      "deepseek-ai/DeepSeek-V3.2"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "cn",
+      "global"
+    ]
+  },
+  {
+    "id": "openrouter",
+    "label": "OpenRouter",
+    "chat_models": [
+      "openai/gpt-4.1-mini",
+      "google/gemini-2.5-flash"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "xai",
+    "label": "xAI Grok",
+    "chat_models": [
+      "grok-4.7",
+      "grok-4-fast-non-reasoning"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "mistral",
+    "label": "Mistral AI",
+    "chat_models": [
+      "mistral-small-latest",
+      "mistral-large-latest"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "groq",
+    "label": "Groq",
+    "chat_models": [
+      "llama-3.3-70b-versatile",
+      "llama-3.1-8b-instant"
+    ],
+    "tts_models": [],
+    "asr_models": [
+      "whisper-large-v3-turbo",
+      "whisper-large-v3"
+    ],
+    "voice": "",
+    "regions": [
+      "global"
+    ]
+  },
+  {
+    "id": "baidu",
+    "label": "百度千帆 Baidu Qianfan",
+    "chat_models": [
+      "ernie-4.5-turbo-128k",
+      "ernie-4.5-8k-preview"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "cn"
+    ]
+  },
+  {
+    "id": "hunyuan",
+    "label": "腾讯混元 Tencent Hunyuan",
+    "chat_models": [
+      "hunyuan-turbos-latest",
+      "hunyuan-lite"
+    ],
+    "tts_models": [],
+    "asr_models": [],
+    "voice": "",
+    "regions": [
+      "cn"
+    ]
+  }
+]

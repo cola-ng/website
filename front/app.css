@@ -466,3 +466,31 @@ body:has(.chat-page) .footer { display: none; }
  .sapid-dialog[data-gly-layer=center] { position: fixed !important; inset: auto !important; top: calc(var(--app-top,0px) + 12px) !important; left: 50% !important; margin: 0 !important; transform: translateX(-50%) !important; }
 }
 @media(pointer:coarse) { .message-actions .sapid-button,.study-chart .choices .sapid-button { min-height: 44px !important; } }
+
+/* Provider selectors and modality controls share the application type scale. */
+.provider-form .sapid-combobox { width:100%; min-width:0; }
+.provider-form input { font-size:16px; }
+.provider-models { display:grid; gap:12px; min-width:0; }
+.provider-capability { display:grid; gap:12px; padding:14px; border:1px solid var(--line); border-radius:10px; min-width:0; }
+.provider-capability h2 { font-size:16px; margin:0; }
+.provider-capability.unavailable { color:var(--muted); background:var(--surface-soft,#fffaf5); }
+.provider-capability p { font-size:14px; margin:0; }
+.provider-card { display:grid; gap:12px; margin-top:16px; }
+.provider-card h2 { font-size:18px; margin:0; }
+.provider-card p { margin:0; overflow-wrap:anywhere; }
+.provider-usage-row { display:flex; gap:12px; justify-content:space-between; align-items:center; min-width:0; }
+.provider-usage-row p { min-width:0; flex:1; }
+.provider-usage-row button { flex-shrink:0; }
+.provider-catalog-marker { display:none; }
+@media(max-width:400px) { .provider-capability { padding:12px; } .provider-usage-row { align-items:flex-start; flex-direction:column; } }
+
+.sentence-audio { display:inline-flex; flex-wrap:wrap; align-items:center; gap:8px; max-width:100%; }
+.sentence-audio p { font-size:14px; margin:0; }
+.audio-review-card h2 { font-size:20px; line-height:1.5; overflow-wrap:anywhere; }
+.audio-review-card p { overflow-wrap:anywhere; }
+
+.provider-select-field { position:relative; min-width:0; }
+.provider-select-field::after { content:'⌄'; pointer-events:none; position:absolute; right:14px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:18px; }
+.provider-select-field input { padding-right:36px!important; }
+
+.audio-admin { display:grid; gap:20px; min-width:0; }

@@ -28,13 +28,13 @@
 
 ## 模型与部署
 
-用户启用的个人 AI 配置优先，配置失败时不会使用平台密钥。没有启用的个人配置时，仅已支付且订阅有效的用户可使用服务器的 `AI_PROVIDER_DEFAULT`；免费、试用及其他非付费用户需配置自己的服务。具体资格及接口见 [账户与 AI 说明](account-and-ai.md)。服务器通过 `DOUBAO_CHAT_MODEL` / `ZHIPU_CHAT_MODEL` 指定平台模型；服务器环境变量修改后需要重启服务，个人配置修改则立即生效。
+用户启用的个人 AI 配置优先，配置失败时不会使用平台密钥。没有启用的个人配置时，仅已支付且订阅有效的用户可使用服务器的 `AI_PROVIDER_DEFAULT`；免费、试用及其他非付费用户需配置自己的服务。具体资格及接口见 [账户与 AI 说明](account-and-ai.md)。服务器通过 `ZHIPU_CHAT_MODEL` 指定平台模型；服务器环境变量修改后需要重启服务，个人配置修改则立即生效。
 
-本次生产检查发现旧默认模型 `doubao-1-5-pro-32k-250115` 返回 `InvalidEndpoint.ClosedEndpoint`。新默认值为已通过实际调用的 `doubao-seed-2-0-mini-260428`；账户仍须具备该模型的使用权限。Seed 模型请求关闭深度思考，缩短练习对话的首段等待；自定义 `ep-...` 接入点保留其自身设置。模型是否可用应以真实生成请求为准，不能只检查模型目录列表。
+平台模型由智谱配置提供。模型是否可用应以真实生成请求为准，不能只检查模型目录列表。
 
 Nginx 关闭 API 代理缓冲；SSE 返回 `Cache-Control: no-cache, no-transform`、`X-Accel-Buffering: no` 并定期发送保活注释。外层代理也应允许持续发送数据。
 
-依据：[火山方舟模型参数](https://docs.volcengine.com/docs/ark/model-parameter-support?lang=zh)、项目锁定版本的 outfox Doubao / Zhipu 流式客户端。
+依据：项目锁定版本的 outfox Zhipu 流式客户端。
 
 ## 验证
 

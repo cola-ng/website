@@ -57,7 +57,6 @@ tokio-tungstenite = { workspace = true }
 url = { workspace = true }
 
 # Outfox AI crates
-outfox-doubao = { workspace = true }
 outfox-zhipu = { workspace = true }
 uuid = { workspace = true, features = ["serde", "v4", "v7"] }
 thiserror = { workspace = true }
@@ -65,6 +64,6 @@ tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 byteorder = { workspace = true }
 regex = { workspace = true }
-reqwest = { workspace = true, features = ["form"] }
+reqwest = { workspace = true, features = ["form", "multipart", "stream"] }
 futures-util = { workspace = true }
 image = { workspace = true }
