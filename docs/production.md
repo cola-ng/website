@@ -14,6 +14,9 @@
 ```caddyfile
 cola.ng {
     encode zstd gzip
+    request_body {
+        max_size 14MB
+    }
     @api path /api /api/*
     handle @api {
         reverse_proxy 127.0.0.1:6019
@@ -25,6 +28,8 @@ cola.ng {
 ```
 
 `app.cola.ng` 的旧 API 来源保留，非 API 页面跳转到 `https://cola.ng{uri}`，让网页登录及 OAuth Cookie 保持同一来源。修改 Caddy 后先验证配置，再平滑加载。
+
+两个站点均限制请求体为 14 MB；生产实测超大请求返回 413，正常请求继续由应用执行更细的大小及权限校验。该边界限制缓解旧版表单解析的无界内存风险，依赖本身仍需升级，不能将代理限制视为完整修复。配置依据：[Caddy request_body](https://caddyserver.com/docs/caddyfile/directives/request_body)。
 
 此次发布目录为 `/repo/colang/releases/oauth-20261109`，其中 `backup` 保存变更前 Compose、Caddy 配置及数据库备份，权限仅限 root。更新镜像前保存当前 Compose 和环境文件；API 与前端通过健康检查后才完成切换。保留上一版 `colang-api:oauth-20261109`、`colang-wui:oauth-20261109` 镜像供回退。回退代码时无需回退本次仅新增可空验证时间字段的迁移。
 

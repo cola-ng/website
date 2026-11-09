@@ -42,3 +42,11 @@
 - 当前 WASM 压缩后仍约 1.2 MB，跨地区首次下载依赖网络质量；可以继续评估 WASM 体积优化、CDN 和缓存策略。
 - 仓库已有未使用代码等编译警告，需要独立清理；本次保持前端 Clippy 零警告，并运行后端编译和针对行为的回归。
 - 当前锁定版本的语音 SDK 内部仍有打印请求正文的调试输出；应用层已移除自己的敏感调试日志，后续升级或修订 SDK 时应一并关闭底层输出。
+
+## 依赖安全复审
+
+推送后通过 GitHub API 核对 [Dependabot 告警](https://github.com/cola-ng/website/security/dependabot)，当前 `Cargo.lock` 有 35 条未关闭告警：16 条 high、11 条 medium、8 条 low。本次没有升级整个依赖图；功能验证通过不代表依赖安全问题已经解决。
+
+优先项包括 Salvo 0.89.0 的表单解析内存问题，以及 rustls / webpki、OpenSSL、aws-lc-sys、quinn-proto 的告警。Salvo 对应修复版本为 0.89.3；生产 Caddy 已为 `cola.ng`、`app.cola.ng` 设置 14 MB 请求体上限并实测 413，缓解表单解析的大请求入口。仍应升级受影响依赖并对实际启用的模块、TLS 调用及功能路径重新验证，不能仅凭告警数量推定每项均可在应用中利用。
+
+依据：[Salvo 表单解析安全公告](https://github.com/advisories/GHSA-pp9r-xg4c-8j4x)。依赖升级应独立完成构建、功能及部署验证。
