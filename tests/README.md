@@ -8,6 +8,8 @@
 
 `parity.cjs` 将迁移前 `b486031a` 的 React 参考界面与实际 WASM 界面注入同一份 `ui-fixtures.cjs` 数据，输出桌面 / 手机对照截图，并验证恢复的页面布局与交互。见 [界面对照说明](../docs/ui-parity.md)。React 参考文件只保存在忽略的构建产物目录中。
 
+`responsive.cjs` 检查 9 种手机、平板、桌面及横屏尺寸，覆盖 81 项页面检查和 313 项布局／交互检查，包括虚拟键盘可见区域模拟、长表单、卡片式表格和缩放后的状态保留。见 [响应式复检说明](../docs/responsive-ui.md)。
+
 ## Windows 一键运行
 
 需要 PowerShell 7.4+、Rust、Trunk、Python 3、Node.js 和 PostgreSQL 18。将 PostgreSQL 的 `bin` 加入 PATH；前端工具安装步骤见 `../front/README.md`。

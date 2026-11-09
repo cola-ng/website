@@ -1,6 +1,10 @@
 use super::*;
 #[wasm_bindgen(module = "/src/browser/platform.js")]
 extern "C" {
+    #[wasm_bindgen(js_name = trackViewport)]
+    fn track_viewport() -> js_sys::Function;
+    #[wasm_bindgen(js_name = watchMedia)]
+    fn watch_media(query: &str, callback: &js_sys::Function) -> js_sys::Function;
     #[wasm_bindgen(catch, js_name = copyText)]
     async fn clipboard_text(text: &str) -> std::result::Result<(), JsValue>;
     #[wasm_bindgen(js_name = followChat)]
@@ -21,6 +25,22 @@ extern "C" {
     fn speak_text(text: &str) -> std::result::Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = uploadAvatar)]
     async fn upload_avatar(token: &str) -> std::result::Result<JsValue, JsValue>;
+}
+pub fn viewport(scope: &Scope) {
+    let stop = track_viewport();
+    let _ = scope.on_cleanup(move || {
+        let _ = stop.call0(&JsValue::NULL);
+    });
+}
+pub fn compact(scope: &Scope) -> Cage<bool> {
+    let compact = scope.cage(false);
+    let callback = Closure::<dyn FnMut(bool)>::new(move |next| compact.revise(|v| *v = next));
+    let stop = watch_media("(max-width: 950px)", callback.as_ref().unchecked_ref());
+    let _ = scope.on_cleanup(move || {
+        let _ = stop.call0(&JsValue::NULL);
+        drop(callback);
+    });
+    compact
 }
 pub fn copy_text(value: String, notice: Cage<String>, error: Cage<String>) {
     spawn(async move {

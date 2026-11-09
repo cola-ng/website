@@ -1,4 +1,5 @@
 use super::*;
+use glory::ui::fragment;
 
 pub fn chat(id: Option<i64>) -> impl Widget {
     widget(move |scope| {
@@ -73,7 +74,8 @@ pub fn chat(id: Option<i64>) -> impl Widget {
         let keyboard_send = send.clone();
         let result=view().class("chat-page").fill((
             view().class("sr-only").fill(title("天天唠嗑")),
-            view().class("mobile-chat-navigation").fill(sapid::drawer("conversation-list").theme(theme::orange()).label("我的对话").title("我的对话").close_label("关闭对话列表").content(move||view().fill((view().class("chat-new-actions").fill((action_button().label("新建自由对话").on_press(new_chat),action_button().label("选择场景").on_press(move||picker.revise(|b|*b=true)))),chat_links(chats))))),
+            when(id.is_none(),move||chat_navigation(chats,picker,new_chat)),
+
             sapid::dialog("chat-contexts").theme(theme::orange()).show_trigger(false).open(picker).on_open_change(move|v|picker.revise(|b|*b=v)).title("选择对话场景").close_label("关闭场景选择").content(move||view().class("scene-grid").fill((contexts.status(),each(contexts.data.map(items)).key(|v|v.to_string()).seed(move|v|{
                 let id=v["id"].as_i64();let name=string(&v,"name_zh");action_button().label(format!("{} {}",string(&v,"icon_emoji"),name)).variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||{context.revise(|c|*c=id);title_value.revise(|t|*t=name.clone());new_chat();})
             })))),
@@ -86,10 +88,10 @@ pub fn chat(id: Option<i64>) -> impl Widget {
                     when(id.is_some(),move||{
                         let id=id.unwrap();let stream=stream.clone();let audio_stream=stream.clone();let send=send.clone();let keyboard_send=keyboard_send.clone();
                         view().class("chat-content").fill((
-                            view().class("chat-toolbar").fill((
+                            view().class("chat-toolbar").fill((chat_navigation(chats,picker,new_chat),
                                 text().class("chat-title").content(chats.data.map(move|v|items(v).iter().find(|c|c["id"].as_i64()==Some(id)).map(|c|string(c,"title")).unwrap_or_else(||"英语对话".into()))),
-                                sapid::dialog("rename-chat").theme(theme::orange()).open(rename_open).on_open_change(move|v|{if v{let current=items(&chats.data.get()).iter().find(|c|c["id"].as_i64()==Some(id)).map(|c|string(c,"title")).unwrap_or_default();title_value.revise(|s|*s=current);}rename_open.revise(|b|*b=v);}).label("修改标题").title("重命名对话").close_label("关闭重命名").content(move||view().class("dialog-form").fill((field("对话标题",title_value),action_button().label("保存标题").enabled(action.busy.map(|b|!*b)).on_press(move||{if title_value.get().trim().is_empty(){action.error.revise(|e|*e="请输入对话标题".into());return;}action.run("PUT",format!("/api/learn/chats/{id}"),Some(json!({"title":title_value.get().trim()})),move |_|{rename_open.revise(|b|*b=false);chats.load("/api/learn/chats?limit=200");});}),action.status()))),
-                                sapid::popover("chat-tools").theme(theme::orange()).label("对话操作").close_label("关闭对话操作").content(move||view().class("dialog-form").fill((
+                                sapid::dialog("rename-chat").theme(theme::orange()).open(rename_open).on_open_change(move|v|{if v{let current=items(&chats.data.get()).iter().find(|c|c["id"].as_i64()==Some(id)).map(|c|string(c,"title")).unwrap_or_default();title_value.revise(|s|*s=current);}rename_open.revise(|b|*b=v);}).label("修改标题").trigger_content(||fragment((text().content("✎"),text().class("toolbar-action-label").content("修改标题")))).title("重命名对话").close_label("关闭重命名").content(move||view().class("dialog-form").fill((field("对话标题",title_value),action_button().label("保存标题").enabled(action.busy.map(|b|!*b)).on_press(move||{if title_value.get().trim().is_empty(){action.error.revise(|e|*e="请输入对话标题".into());return;}action.run("PUT",format!("/api/learn/chats/{id}"),Some(json!({"title":title_value.get().trim()})),move |_|{rename_open.revise(|b|*b=false);chats.load("/api/learn/chats?limit=200");});}),action.status()))),
+                                sapid::popover("chat-tools").theme(theme::orange()).label("对话操作").trigger_content(||fragment((text().content("⋯"),text().class("toolbar-action-label").content("对话操作")))).close_label("关闭对话操作").content(move||view().class("dialog-form").fill((
                                     action_button().label("导出对话").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::export_chat(id,action)),
                                     danger_button().label("重置本次对话").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("清空这段对话的全部内容？"){action.run("POST",format!("/api/learn/chats/{id}/reset"),None,move |_|turns.load(format!("/api/learn/chats/{id}/turns?limit=50&from_latest=true")));}}),
                                 ))),
@@ -116,6 +118,32 @@ pub fn chat(id: Option<i64>) -> impl Widget {
         media::follow_chat(scope);
         result
     })
+}
+fn chat_navigation<F: Fn() + Clone + 'static>(
+    chats: Resource,
+    picker: Cage<bool>,
+    new_chat: F,
+) -> impl Widget {
+    view().class("mobile-chat-navigation").fill(
+        sapid::drawer("conversation-list")
+            .theme(theme::orange())
+            .label("我的对话")
+            .trigger_content(|| text().content("☷"))
+            .title("我的对话")
+            .close_label("关闭对话列表")
+            .content(move || {
+                let create = new_chat.clone();
+                view().fill((
+                    view().class("chat-new-actions").fill((
+                        action_button().label("新建自由对话").on_press(create),
+                        action_button()
+                            .label("选择场景")
+                            .on_press(move || picker.revise(|b| *b = true)),
+                    )),
+                    chat_links(chats),
+                ))
+            }),
+    )
 }
 fn chat_links(chats: Resource) -> impl Widget {
     view().class("chat-links").fill((

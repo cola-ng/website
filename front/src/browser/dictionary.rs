@@ -258,65 +258,14 @@ fn word_card(data: Value) -> impl Widget {
                 )),
             ));
         }
-        let mut tabs = sapid::tabs("word-sections")
-            .theme(theme::orange())
-            .class("word-tabs")
-            .orientation(Orientation::Vertical);
-        let mut first = true;
-        for (key, label_text) in [
-            ("definitions", "基本释义"),
-            ("sentences", "例句"),
-            ("relations", "关联词"),
-            ("forms", "词形变化"),
-            ("etymologies", "词源"),
-            ("dictionaries", "词典来源"),
-        ] {
-            let entries = items(&data[key]);
-            if entries.is_empty() {
-                continue;
-            }
-            if first {
-                tabs = tabs.default_value(key);
-                first = false;
-            }
-            tabs = tabs.tab(sapid::tab(key).label(label_text).content(move || {
-                view().class("word-section").fill((
-                    heading(label_text),
-                    nodes(
-                        entries
-                            .iter()
-                            .map(|entry| {
-                                let keys: &[&str] = match key {
-                                    "definitions" => {
-                                        &["part_of_speech", "definition", "usage_notes"]
-                                    }
-                                    "sentences" => &["sentence", "translation", "source"],
-                                    "relations" => &["relation_type", "related_word"],
-                                    "forms" => &["form_type", "form", "notes"],
-                                    "etymologies" => {
-                                        &["etymology", "origin_word", "origin_meaning"]
-                                    }
-                                    _ => &["name_zh", "name_en", "publisher", "license_type"],
-                                };
-                                boxed(
-                                    view().class("definition-entry").fill(p(keys
-                                        .iter()
-                                        .map(|k| string(entry, k))
-                                        .filter(|v| !v.is_empty())
-                                        .collect::<Vec<_>>()
-                                        .join(" · "))),
-                                )
-                            })
-                            .collect(),
-                    ),
-                ))
-            }));
-        }
-        if first {
-            sections.push(boxed(p("此词条暂未收录详细释义。")));
-        } else {
-            sections.push(boxed(tabs));
-        }
+        let compact = media::compact(scope);
+        let selected = scope.cage(String::new());
+        let sections_data = data.clone();
+        sections.push(boxed(
+            each(scope.bond(move || vec![compact.get()]))
+                .key(|compact| *compact)
+                .seed(move |compact| word_sections(sections_data.clone(), compact, selected)),
+        ));
         for image_value in items(&data["images"]) {
             let src = string(&image_value, "image_url");
             if src.starts_with("https://") || src.starts_with('/') && !src.starts_with("//") {
@@ -336,6 +285,71 @@ fn word_card(data: Value) -> impl Widget {
             .build(scope)
     })
 }
+fn word_sections(data: Value, compact: bool, selected: Cage<String>) -> Box<dyn Widget> {
+    let mut tabs = sapid::tabs("word-sections")
+        .theme(theme::orange())
+        .class("word-tabs")
+        .orientation(if compact {
+            Orientation::Horizontal
+        } else {
+            Orientation::Vertical
+        })
+        .value(selected)
+        .on_value_change(move |v| selected.revise(|s| *s = v));
+    let mut first = true;
+    for (key, label_text) in [
+        ("definitions", "基本释义"),
+        ("sentences", "例句"),
+        ("relations", "关联词"),
+        ("forms", "词形变化"),
+        ("etymologies", "词源"),
+        ("dictionaries", "词典来源"),
+    ] {
+        let entries = items(&data[key]);
+        if entries.is_empty() {
+            continue;
+        }
+        if first {
+            if selected.get().is_empty() {
+                selected.revise(|v| *v = key.into());
+            }
+            first = false;
+        }
+        tabs = tabs.tab(sapid::tab(key).label(label_text).content(move || {
+            view().class("word-section").fill((
+                heading(label_text),
+                nodes(
+                    entries
+                        .iter()
+                        .map(|entry| {
+                            let keys: &[&str] = match key {
+                                "definitions" => &["part_of_speech", "definition", "usage_notes"],
+                                "sentences" => &["sentence", "translation", "source"],
+                                "relations" => &["relation_type", "related_word"],
+                                "forms" => &["form_type", "form", "notes"],
+                                "etymologies" => &["etymology", "origin_word", "origin_meaning"],
+                                _ => &["name_zh", "name_en", "publisher", "license_type"],
+                            };
+                            boxed(
+                                view().class("definition-entry").fill(p(keys
+                                    .iter()
+                                    .map(|k| string(entry, k))
+                                    .filter(|v| !v.is_empty())
+                                    .collect::<Vec<_>>()
+                                    .join(" · "))),
+                            )
+                        })
+                        .collect(),
+                ),
+            ))
+        }));
+    }
+    if first {
+        boxed(p("此词条暂未收录详细释义。"))
+    } else {
+        boxed(tabs)
+    }
+}
 fn dictionary_tabs() -> impl Widget {
     view()
         .role(Role::Navigation)
@@ -353,14 +367,24 @@ pub fn translate() -> impl Widget {
         let result = Resource::new(scope);
         let action = Resource::new(scope);
         let notice = scope.cage(String::new());
+        let compact = media::compact(scope);
+        let options_open = scope.cage(!compact.get());
+        let previous_compact = scope.cage(compact.get());
+        scope.effect(move || {
+            let current = compact.get();
+            if previous_compact.get_untracked() != current {
+                previous_compact.revise(|v| *v = current);
+                options_open.revise(|v| *v = !current);
+            }
+        });
         view().class("translation-page").fill((title("词典翻译"),dictionary_tabs(), view().class("panel translation-workspace").fill((
             view().class("translation-source").fill((heading("原文"),textarea("需要翻译的内容",source))),
-            view().class("translation-options").fill((heading("翻译设置"),
+            sapid::accordion("translation-options").theme(theme::orange()).class("translation-options").content_policy(sapid::ContentPolicy::KeepMounted).open(options_open.map(|open|if *open{vec!["options".into()]}else{vec![]})).on_open_change(move|v|options_open.revise(|b|*b = !v.is_empty())).item(sapid::accordion_item("options").label("翻译设置").content(move||view().class("translation-settings-fields").fill((
             choices(target, &[("zh","译为中文"),("en","译为英文")]),
             choices(tone, &[("original","原文语气"),("casual","日常"),("business","商务"),("academic","学术"),("literary","文学"),("simple","简明")]),
             checkbox_control().label("自动纠正语法与拼写").checked(correct).on_checked_change(move |v| correct.revise(|c| *c=v)),
             checkbox_control().label("保留原文格式").checked(formatting).on_checked_change(move |v| formatting.revise(|c| *c=v)),
-            )),
+            )))),
             action_button().class("translate-submit").label("翻译").loading(result.busy).enabled(result.busy.map(|v| !v)).on_press(move || {
                 let input=source.get().trim().to_string(); if input.is_empty() || input.len()>5000 { result.error.revise(|s| *s="请输入内容，长度不超过 5000 字节".into()); return; }
             result.data.revise(|v|*v=Value::Null);

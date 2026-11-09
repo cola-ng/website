@@ -1,4 +1,26 @@
 // Browser platform adapters only. Application state and UI live in Rust.
+export function watchMedia(query, callback) {
+  const media=matchMedia(query), update=()=>callback(media.matches);
+  update();media.addEventListener('change',update);
+  return ()=>media.removeEventListener('change',update);
+}
+export function trackViewport() {
+  const viewport=window.visualViewport, root=document.documentElement;
+  let frame;
+  const update=()=>{
+    frame=undefined;
+    // Preserve native pinch zoom and panning; do not reflow the app under it.
+    if(viewport && Math.abs(viewport.scale-1)>.05)return;
+    const height=viewport?.height||innerHeight;
+    root.style.setProperty('--app-height',`${height}px`);
+    root.style.setProperty('--app-top',`${viewport?.offsetTop||0}px`);
+    root.classList.toggle('short-viewport',height<500);
+  };
+  const schedule=()=>{if(frame===undefined)frame=requestAnimationFrame(update);};
+  update();window.addEventListener('resize',schedule);
+  viewport?.addEventListener('resize',schedule);viewport?.addEventListener('scroll',schedule);
+  return ()=>{cancelAnimationFrame(frame);window.removeEventListener('resize',schedule);viewport?.removeEventListener('resize',schedule);viewport?.removeEventListener('scroll',schedule);root.style.removeProperty('--app-height');root.style.removeProperty('--app-top');root.classList.remove('short-viewport');};
+}
 export async function copyText(text) {
   if(!navigator.clipboard?.writeText)throw new Error('当前浏览器不支持复制，请选择译文后手动复制。');
   try { await navigator.clipboard.writeText(text); }

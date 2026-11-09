@@ -230,6 +230,7 @@ pub fn start() -> std::result::Result<(), JsValue> {
         .ok_or("missing app root")?;
     root.set_text_content(None);
     let web = glory::web::launch_with(root, move |scope| {
+        media::viewport(scope);
         let session = scope.cage(Value::Null);
         let ready = scope.cage(token().is_none());
         SESSION.with(|s| *s.borrow_mut() = Some(session));

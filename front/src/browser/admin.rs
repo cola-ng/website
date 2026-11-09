@@ -489,35 +489,41 @@ fn table(resource: Resource, columns: &'static [(&'static str, &'static str)]) -
     view().fill((
         resource.status(),
         empty(resource, "暂无记录。"),
-        view().class("table-scroll").fill(
-            view()
-                .document_part(DocumentPart::Table)
-                .class("data-table")
-                .fill((
-                    view().document_part(DocumentPart::TableHead).fill(
-                        view().document_part(DocumentPart::TableRow).fill(nodes(
-                            columns
-                                .iter()
-                                .map(|(_, name)| {
-                                    boxed(
-                                        view()
-                                            .document_part(DocumentPart::ColumnHeader)
-                                            .fill(text().content(*name)),
-                                    )
-                                })
-                                .collect(),
-                        )),
-                    ),
-                    view().document_part(DocumentPart::TableBody).fill(
-                        each(resource.data.map(items))
-                            .key(|v| v.to_string())
-                            .seed(move |v| {
-                                view().document_part(DocumentPart::TableRow).fill(nodes(
-                                    columns
-                                        .iter()
-                                        .map(|(key, _)| {
-                                            let cell: Box<dyn Widget> =
-                                                if *key == "id" || *key == "user_id" {
+        view()
+            .class("table-scroll")
+            .role(Role::Group)
+            .name("数据表格，可横向滚动")
+            .focus(glory::render::FocusMode::TabStop)
+            .fill(
+                view()
+                    .document_part(DocumentPart::Table)
+                    .class("data-table")
+                    .fill((
+                        view().document_part(DocumentPart::TableHead).fill(
+                            view().document_part(DocumentPart::TableRow).fill(nodes(
+                                columns
+                                    .iter()
+                                    .map(|(_, name)| {
+                                        boxed(
+                                            view()
+                                                .document_part(DocumentPart::ColumnHeader)
+                                                .fill(text().content(*name)),
+                                        )
+                                    })
+                                    .collect(),
+                            )),
+                        ),
+                        view().document_part(DocumentPart::TableBody).fill(
+                            each(resource.data.map(items))
+                                .key(|v| v.to_string())
+                                .seed(move |v| {
+                                    view().document_part(DocumentPart::TableRow).fill(nodes(
+                                        columns
+                                            .iter()
+                                            .map(|(key, name)| {
+                                                let cell: Box<dyn Widget> = if *key == "id"
+                                                    || *key == "user_id"
+                                                {
                                                     boxed(nav(
                                                         display_value(&v[*key]),
                                                         format!("/admin/users/{}", string(&v, key)),
@@ -525,18 +531,18 @@ fn table(resource: Resource, columns: &'static [(&'static str, &'static str)]) -
                                                 } else {
                                                     boxed(text().content(display_value(&v[*key])))
                                                 };
-                                            boxed(
-                                                view()
-                                                    .document_part(DocumentPart::TableCell)
-                                                    .fill(cell),
-                                            )
-                                        })
-                                        .collect(),
-                                ))
-                            }),
-                    ),
-                )),
-        ),
+                                                boxed(
+                                                    view()
+                                                        .document_part(DocumentPart::TableCell)
+                                                        .fill((cell_label(*name), cell)),
+                                                )
+                                            })
+                                            .collect(),
+                                    ))
+                                }),
+                        ),
+                    )),
+            ),
     ))
 }
 fn pagination(page: Cage<i64>, data: Resource) -> impl Widget {
@@ -571,6 +577,43 @@ fn defaults(fields: &[Field]) -> Value {
         };
     }
     v
+}
+fn cell_label(value: impl Into<String>) -> impl Widget {
+    view()
+        .class("cell-label")
+        .semantics(Some(Box::new(Semantics {
+            inert: true,
+            ..Default::default()
+        })))
+        .fill(text().content(value.into()))
+}
+fn selection_cell(
+    id: i64,
+    label_text: &'static str,
+    selected: Cage<Vec<i64>>,
+    action: Resource,
+) -> impl Widget {
+    view().document_part(DocumentPart::TableCell).fill((
+        cell_label("编号"),
+        view().class("cell-main").fill((
+            text().content(id.to_string()),
+            when(label_text == "词典管理", move || {
+                checkbox_control()
+                    .enabled(action.busy.map(|b| !*b))
+                    .name(format!("选择单词 {id}"))
+                    .label("")
+                    .checked(selected.map(move |ids| ids.contains(&id)))
+                    .on_checked_change(move |checked| {
+                        selected.revise(|ids| {
+                            ids.retain(|v| *v != id);
+                            if checked {
+                                ids.push(id);
+                            }
+                        })
+                    })
+            }),
+        )),
+    ))
 }
 fn visible_fields(fields: &[Field]) -> Vec<Field> {
     let keys: &[&str] = if fields.iter().any(|f| f.key == "word") {
@@ -729,144 +772,135 @@ fn crud(
                 field("搜索内容", search),
                 data.status(),
                 empty(data, "没有匹配的记录。"),
-                view().class("table-scroll").fill(
-                    view()
-                        .document_part(DocumentPart::Table)
-                        .class("data-table")
-                        .fill((
-                            view().document_part(DocumentPart::TableHead).fill(
-                                view().document_part(DocumentPart::TableRow).fill((
-                                    view()
-                                        .document_part(DocumentPart::ColumnHeader)
-                                        .fill(text().content("编号")),
-                                    nodes(
-                                        visible_fields(fields)
-                                            .into_iter()
-                                            .map(|f| {
-                                                boxed(
-                                                    view()
-                                                        .document_part(DocumentPart::ColumnHeader)
-                                                        .fill(text().content(label(f.key))),
-                                                )
-                                            })
-                                            .collect(),
-                                    ),
-                                    view()
-                                        .document_part(DocumentPart::ColumnHeader)
-                                        .fill(text().content("操作")),
-                                )),
-                            ),
-                            view().document_part(DocumentPart::TableBody).fill(
-                                each(data.data.map(items))
-                                    .key(|v| v.to_string())
-                                    .seed(move |v| {
-                                        let id = v["id"].as_i64().unwrap_or_default();
-                                        let editing = v.clone();
-                                        let base = rows_base.clone();
-                                        let refresh = refresh.clone();
+                view()
+                    .class("table-scroll")
+                    .role(Role::Group)
+                    .name("数据表格，可横向滚动")
+                    .focus(glory::render::FocusMode::TabStop)
+                    .fill(
+                        view()
+                            .document_part(DocumentPart::Table)
+                            .class("data-table")
+                            .fill((
+                                view().document_part(DocumentPart::TableHead).fill(
+                                    view().document_part(DocumentPart::TableRow).fill((
                                         view()
-                                            .document_part(DocumentPart::TableRow)
-                                            .class("record")
-                                            .fill((
-                                                view().document_part(DocumentPart::TableCell).fill(
-                                                    (
-                                                        text().content(id.to_string()),
-                                                        when(
-                                                            label_text == "词典管理",
-                                                            move || {
-                                                                checkbox_control()
-                                                                    .enabled(
-                                                                        action.busy.map(|b| !*b),
-                                                                    )
-                                                                    .label(format!("选择单词 {id}"))
-                                                                    .checked(selected.map(
-                                                                        move |ids| {
-                                                                            ids.contains(&id)
-                                                                        },
-                                                                    ))
-                                                                    .on_checked_change(
-                                                                        move |checked| {
-                                                                            selected.revise(|ids| {
-                                                                                ids.retain(|v| {
-                                                                                    *v != id
-                                                                                });
-                                                                                if checked {
-                                                                                    ids.push(id);
-                                                                                }
-                                                                            })
-                                                                        },
-                                                                    )
-                                                            },
-                                                        ),
-                                                    ),
-                                                ),
-                                                nodes(
-                                                    visible_fields(fields)
-                                                        .into_iter()
-                                                        .map(|f| {
-                                                            boxed(
-                                                                view()
-                                                                    .document_part(
-                                                                        DocumentPart::TableCell,
-                                                                    )
-                                                                    .fill(record_value(&v, f.key)),
+                                            .document_part(DocumentPart::ColumnHeader)
+                                            .fill(text().content("编号")),
+                                        nodes(
+                                            visible_fields(fields)
+                                                .into_iter()
+                                                .map(|f| {
+                                                    boxed(
+                                                        view()
+                                                            .document_part(
+                                                                DocumentPart::ColumnHeader,
                                                             )
-                                                        })
-                                                        .collect(),
-                                                ),
-                                                view().document_part(DocumentPart::TableCell).fill(
-                                                    view().class("actions").fill((
-                                                        action_button()
-                                                            .label("编辑")
-                                                            .enabled(action.busy.map(|b| !*b))
-                                                            .variant(sapid::ButtonVariant::Outline)
-                                                            .on_press(move || {
-                                                                editor_open.revise(|v| *v = true);
-                                                                attempted.revise(|a| *a = false);
-                                                                edit_id.revise(|i| *i = Some(id));
-                                                                draft.revise(|d| {
-                                                                    *d = editing.clone()
-                                                                });
-                                                                notice.revise(String::clear);
-                                                            }),
-                                                        when(
-                                                            label_text == "词典管理",
-                                                            move || {
-                                                                nav(
-                                                                    "编辑释义和发音",
-                                                                    format!("/admin/dict/{id}"),
+                                                            .fill(text().content(label(f.key))),
+                                                    )
+                                                })
+                                                .collect(),
+                                        ),
+                                        view()
+                                            .document_part(DocumentPart::ColumnHeader)
+                                            .fill(text().content("操作")),
+                                    )),
+                                ),
+                                view().document_part(DocumentPart::TableBody).fill(
+                                    each(data.data.map(items)).key(|v| v.to_string()).seed(
+                                        move |v| {
+                                            let id = v["id"].as_i64().unwrap_or_default();
+                                            let editing = v.clone();
+                                            let base = rows_base.clone();
+                                            let refresh = refresh.clone();
+                                            view()
+                                                .document_part(DocumentPart::TableRow)
+                                                .class("record")
+                                                .fill((
+                                                    selection_cell(
+                                                        id, label_text, selected, action,
+                                                    ),
+                                                    nodes(
+                                                        visible_fields(fields)
+                                                            .into_iter()
+                                                            .map(|f| {
+                                                                boxed(
+                                                                    view()
+                                                                        .document_part(
+                                                                            DocumentPart::TableCell,
+                                                                        )
+                                                                        .fill((
+                                                                            cell_label(label(
+                                                                                f.key,
+                                                                            )),
+                                                                            record_value(&v, f.key),
+                                                                        )),
                                                                 )
-                                                            },
-                                                        ),
-                                                        danger_button()
-                                                            .label("删除")
-                                                            .enabled(action.busy.map(|b| !*b))
-                                                            .enabled(action.busy.map(|b| !*b))
-                                                            .on_press(move || {
-                                                                if confirm("确认删除此记录？")
-                                                                {
-                                                                    let refresh = refresh.clone();
-                                                                    action.run(
-                                                                        "DELETE",
-                                                                        format!("{base}/{id}"),
-                                                                        None,
-                                                                        move |_| {
-                                                                            refresh();
-                                                                            notice.revise(|n| {
+                                                            })
+                                                            .collect(),
+                                                    ),
+                                                    view()
+                                                        .document_part(DocumentPart::TableCell)
+                                                        .fill(
+                                                        view().class("actions").fill((
+                                                            action_button()
+                                                                .label("编辑")
+                                                                .enabled(action.busy.map(|b| !*b))
+                                                                .variant(
+                                                                    sapid::ButtonVariant::Outline,
+                                                                )
+                                                                .on_press(move || {
+                                                                    editor_open
+                                                                        .revise(|v| *v = true);
+                                                                    attempted
+                                                                        .revise(|a| *a = false);
+                                                                    edit_id
+                                                                        .revise(|i| *i = Some(id));
+                                                                    draft.revise(|d| {
+                                                                        *d = editing.clone()
+                                                                    });
+                                                                    notice.revise(String::clear);
+                                                                }),
+                                                            when(
+                                                                label_text == "词典管理",
+                                                                move || {
+                                                                    nav(
+                                                                        "编辑释义和发音",
+                                                                        format!("/admin/dict/{id}"),
+                                                                    )
+                                                                },
+                                                            ),
+                                                            danger_button()
+                                                                .label("删除")
+                                                                .enabled(action.busy.map(|b| !*b))
+                                                                .enabled(action.busy.map(|b| !*b))
+                                                                .on_press(move || {
+                                                                    if confirm("确认删除此记录？")
+                                                                    {
+                                                                        let refresh =
+                                                                            refresh.clone();
+                                                                        action.run(
+                                                                            "DELETE",
+                                                                            format!("{base}/{id}"),
+                                                                            None,
+                                                                            move |_| {
+                                                                                refresh();
+                                                                                notice.revise(|n| {
                                                                                 *n = "记录已删除"
                                                                                     .into()
                                                                             });
-                                                                        },
-                                                                    );
-                                                                }
-                                                            }),
-                                                    )),
-                                                ),
-                                            ))
-                                    }),
-                            ),
-                        )),
-                ),
+                                                                            },
+                                                                        );
+                                                                    }
+                                                                }),
+                                                        )),
+                                                    ),
+                                                ))
+                                        },
+                                    ),
+                                ),
+                            )),
+                    ),
                 pagination(page, data),
                 success_notice(notice, action),
                 action.status(),
