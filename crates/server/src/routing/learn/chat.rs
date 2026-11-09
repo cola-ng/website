@@ -15,7 +15,7 @@ use crate::db::schema::*;
 use crate::db::with_conn;
 use crate::models::learn::{Chat, ChatIssue, ChatTurn, NewChat, NewChatIssue, NewChatTurn};
 use crate::services::{
-    AiProviderError, ChatMessage, StructuredChatResponse, TextIssue, create_provider_from_env,
+    AiProviderError, ChatMessage, StructuredChatResponse, TextIssue, get_user_provider,
 };
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
@@ -831,15 +831,14 @@ pub async fn text_to_speech(
     input: JsonBody<TtsRequest>,
     depot: &mut Depot,
 ) -> JsonResult<TtsResponse> {
-    let _user_id = depot.user_id()?;
+    let user_id = depot.user_id()?;
 
     if input.text.trim().is_empty() {
         return Err(StatusError::bad_request().brief("text is required").into());
     }
 
     // Get AI provider
-    let provider = create_provider_from_env()
-        .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
+    let provider = get_user_provider(user_id).await?;
 
     // Get TTS service
     let tts = provider

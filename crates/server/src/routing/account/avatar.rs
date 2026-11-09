@@ -23,7 +23,13 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(source_path: P, output_dir: P) ->
     let dir = output_dir.as_ref().to_path_buf();
 
     tokio::task::spawn_blocking(move || {
-        let img = image::open(&source)?;
+        let mut reader = image::ImageReader::open(&source)?.with_guessed_format()?;
+        let mut limits = image::Limits::default();
+        limits.max_image_width = Some(8192);
+        limits.max_image_height = Some(8192);
+        limits.max_alloc = Some(64 * 1024 * 1024);
+        reader.limits(limits);
+        let img = reader.decode()?;
         let (width, height) = img.dimensions();
         let min_dimension = width.min(height);
 
@@ -36,7 +42,7 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(source_path: P, output_dir: P) ->
             }
 
             // Resize to square (thumbnail_exact maintains aspect and crops to square)
-            let resized = img.thumbnail_exact(size, size);
+            let resized = img.resize_to_fill(size, size, image::imageops::FilterType::Lanczos3);
 
             for format in AVATAR_FORMATS {
                 let output_file = dir.join(format!("{size}x{size}.{format}"));
@@ -61,7 +67,7 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(source_path: P, output_dir: P) ->
 
         if generated_count == 0 {
             // Image too small, generate at least 160x160 from whatever we have
-            let resized = img.thumbnail_exact(160, 160);
+            let resized = img.resize_to_fill(160, 160, image::imageops::FilterType::Lanczos3);
             for format in AVATAR_FORMATS {
                 let output_file = dir.join(format!("160x160.{format}"));
                 match format {
@@ -93,7 +99,7 @@ async fn generate_avatar_sizes<P: AsRef<Path>>(source_path: P, output_dir: P) ->
 /// Get avatar for current user
 #[endpoint(tags("Account"))]
 pub async fn show(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
-    println!("Serving avatar request");
+    res.add_header("Cache-Control", "private, no-store", true)?;
     let user_id = depot.user_id()?;
 
     // Get user's avatar from database
@@ -147,6 +153,10 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
             .into());
     };
 
+    if std::fs::metadata(file.path())?.len() > 5 * 1024 * 1024 {
+        return Err(StatusError::bad_request().brief("头像不能超过 5 MB").into());
+    }
+
     // Get file extension
     let ext = file
         .path()
@@ -164,7 +174,7 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
     }
 
     // Generate unique avatar directory using UTC timestamp
-    let timestamp = Utc::now().timestamp();
+    let timestamp = format!("{}_{}", Utc::now().timestamp(), uuid::Uuid::new_v4());
     let space_path = &AppConfig::get().space_path;
     // Relative path for database storage
     let avatar_rel_path = format!("uploads/avatars/{}/{}", user_id, timestamp);

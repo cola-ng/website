@@ -1,6 +1,6 @@
 use salvo::prelude::*;
 
-use crate::hoops::{self, require_subscribed};
+use crate::hoops;
 
 mod achievement;
 mod chat;
@@ -30,7 +30,6 @@ pub fn router() -> Router {
         )
         .push(
             Router::with_path("pronunciation/evaluate")
-                .hoop(require_subscribed)
                 .post(pronunciation::evaluate),
         )
         .push(

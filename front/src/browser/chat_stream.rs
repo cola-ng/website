@@ -212,7 +212,7 @@ async fn receive(
         .set("Content-Type", "application/json")
         .map_err(js_error)?;
     headers
-        .set("Accept", "text/event-stream")
+        .set("Accept", "text/event-stream, application/json")
         .map_err(js_error)?;
     if let Some(token) = token() {
         headers

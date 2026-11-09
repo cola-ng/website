@@ -51,6 +51,14 @@ email = f'learner-{suffix}@example.test'
 learner = call('POST', '/api/register', {'name': 'QA Learner ' + suffix, 'email': email, 'password': password})
 admin = call('POST', '/api/register', {'name': 'QA Admin ' + suffix, 'email': f'admin-{suffix}@example.test', 'password': password})
 learner_token = learner['access_token']
+assert learner['user']['handle'].startswith('user_')
+handle = 'qa' + suffix
+assert call('PUT', '/api/me', {'handle': handle.upper()}, token=learner_token)['handle'] == handle
+assert call('GET', '/api/me', token=learner_token)['handle'] == handle
+call('PUT', '/api/me', {'handle': handle}, token=admin['access_token'], expected=409)
+for invalid in ['ab', '1invalid', '含中文', 'a' * 33, 'a/b', 'user_9999999']:
+    call('PUT', '/api/me', {'handle': invalid}, token=learner_token, expected=400)
+assert call('PUT', '/api/me', {'handle': handle + 'x'}, token=learner_token)['handle'] == handle + 'x'
 psql = shutil.which('psql') or r'C:\Program Files\PostgreSQL\18\bin\psql.exe'
 subprocess.run([psql, database, '-v', 'ON_ERROR_STOP=1', '-c', f"INSERT INTO base_admins (user_id) VALUES ({int(admin['user']['id'])});"], check=True, capture_output=True)
 admin_token = admin['access_token']

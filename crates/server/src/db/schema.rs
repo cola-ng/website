@@ -325,6 +325,7 @@ diesel::table! {
         updated_at -> Timestamptz,
         created_by -> Nullable<Int8>,
         created_at -> Timestamptz,
+        handle -> Text,
     }
 }
 

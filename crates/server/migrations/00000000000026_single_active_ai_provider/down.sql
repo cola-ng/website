@@ -1,0 +1,1 @@
+DROP INDEX user_ai_providers_one_active;

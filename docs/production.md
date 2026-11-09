@@ -34,3 +34,5 @@ cola.ng {
 此次发布目录为 `/repo/colang/releases/oauth-20261109`，其中 `backup` 保存变更前 Compose、Caddy 配置及数据库备份，权限仅限 root。更新镜像前保存当前 Compose 和环境文件；API 与前端通过健康检查后才完成切换。保留上一版 `colang-api:oauth-20261109`、`colang-wui:oauth-20261109` 镜像供回退。回退代码时无需回退本次仅新增可空验证时间字段的迁移。
 
 不要将完整 `docker inspect`、`docker compose config` 或环境文件输出到公开日志，它们可能包含密钥。验证压缩时请求真实 WASM URL，检查 `Content-Encoding`、`Vary`、MIME、实际响应字节，并比较解压后内容；只检查配置文件不能证明浏览器获得了压缩响应。
+
+账户 handle 和自备 AI 规则的发布目录为 `/repo/colang/releases/profiles-20261109`。其 `backup` 保存迁移前数据库和 Compose；迁移 25 添加并回填 handle，迁移 26 强制每个账户最多一条启用的 AI 配置。平台环境密钥继续只留在后端，服务端资格判断决定能否使用；上线检查必须同时验证非付费拦截和个人配置流程，不能用给生产测试账户伪造支付记录的方式通过验证。

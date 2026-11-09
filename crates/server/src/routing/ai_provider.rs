@@ -14,6 +14,7 @@ pub fn router() -> Router {
         .hoop(hoops::require_auth)
         .get(list_providers)
         .post(create_provider)
+        .push(Router::with_path("access").get(access))
         .push(
             Router::with_path("{provider_id}")
                 .get(get_provider)
@@ -38,24 +39,65 @@ fn get_provider_id(req: &Request) -> Result<i64, StatusError> {
         .map_err(|_| StatusError::bad_request().brief("invalid provider_id"))
 }
 
-/// Mask sensitive fields in settings JSON
+fn secret_field(key: &str) -> bool {
+    key.contains("key") || key.contains("token") || key.contains("secret")
+}
+
 fn mask_settings(settings: &Value) -> Value {
     let mut masked = settings.clone();
     if let Some(obj) = masked.as_object_mut() {
-        for (key, value) in obj.iter_mut() {
-            if key.contains("key") || key.contains("token") || key.contains("secret") {
-                if let Some(s) = value.as_str() {
-                    let len = s.len();
-                    if len > 8 {
-                        *value = Value::String(format!("{}****{}", &s[..4], &s[len - 4..]));
-                    } else {
-                        *value = Value::String("****".to_string());
-                    }
-                }
+        for (key, value) in obj {
+            if secret_field(key) {
+                *value = Value::String("********".into());
             }
         }
     }
     masked
+}
+
+fn validated_settings(kind: &str, settings: Value) -> Result<Value, StatusError> {
+    let bad = || {
+        StatusError::bad_request()
+            .brief("请填写有效的 AI 密钥和配置；豆包语音需同时填写 App ID 与 Access Token")
+    };
+    let valid_key =
+        |s: &str| !s.trim().is_empty() && s.len() <= 4096 && !s.chars().all(|c| c == '*');
+    match kind {
+        "zhipu" => {
+            let mut v: ZhipuSettings = serde_json::from_value(settings).map_err(|_| bad())?;
+            v.api_key = v.api_key.trim().into();
+            if !valid_key(&v.api_key) {
+                return Err(bad());
+            }
+            if v.chat_model.trim().is_empty() {
+                v.chat_model = "glm-4-flash".into();
+            }
+            serde_json::to_value(v).map_err(|_| bad())
+        }
+        "doubao" => {
+            let mut v: DoubaoSettings = serde_json::from_value(settings).map_err(|_| bad())?;
+            v.api_key = v.api_key.trim().into();
+            v.app_id = v.app_id.trim().into();
+            v.access_token = v.access_token.trim().into();
+            if !valid_key(&v.api_key) || v.app_id.is_empty() != v.access_token.is_empty() {
+                return Err(bad());
+            }
+            if v.chat_model.trim().is_empty() {
+                v.chat_model = "doubao-seed-2-0-mini-260428".into();
+            }
+            serde_json::to_value(v).map_err(|_| bad())
+        }
+        _ => Err(StatusError::bad_request().brief("不支持的 AI 提供方")),
+    }
+}
+
+fn provider_error() -> StatusError {
+    StatusError::internal_server_error().brief("无法保存 AI 配置，请重试")
+}
+
+#[endpoint(tags("AI Provider"))]
+pub async fn access(depot: &mut Depot) -> JsonResult<services::AiAccess> {
+    json_ok(services::ai_access(depot.user_id()?).await?)
 }
 
 /// Convert UserAiProvider to response with masked settings
@@ -109,33 +151,40 @@ pub async fn create_provider(
     }
 
     let set_active = input.set_active;
-    let settings = input.settings.clone();
+    let settings = validated_settings(&provider_type, input.settings.clone())?;
 
     let provider: UserAiProvider = with_conn(move |conn| {
-        // If set_active is true, deactivate all other providers first
-        if set_active {
-            diesel::update(
-                user_ai_providers::table
-                    .filter(user_ai_providers::user_id.eq(user_id))
-                    .filter(user_ai_providers::is_active.eq(true)),
-            )
-            .set((
-                user_ai_providers::is_active.eq(false),
-                user_ai_providers::updated_at.eq(Utc::now()),
-            ))
-            .execute(conn)?;
-        }
+        conn.transaction(|conn| {
+            base_users::table
+                .find(user_id)
+                .for_update()
+                .select(base_users::id)
+                .first::<i64>(conn)?;
+            // If set_active is true, deactivate all other providers first
+            if set_active {
+                diesel::update(
+                    user_ai_providers::table
+                        .filter(user_ai_providers::user_id.eq(user_id))
+                        .filter(user_ai_providers::is_active.eq(true)),
+                )
+                .set((
+                    user_ai_providers::is_active.eq(false),
+                    user_ai_providers::updated_at.eq(Utc::now()),
+                ))
+                .execute(conn)?;
+            }
 
-        let new_provider = NewUserAiProvider {
-            user_id,
-            provider_type,
-            is_active: set_active,
-            settings,
-        };
+            let new_provider = NewUserAiProvider {
+                user_id,
+                provider_type,
+                is_active: set_active,
+                settings,
+            };
 
-        diesel::insert_into(user_ai_providers::table)
-            .values(&new_provider)
-            .get_result::<UserAiProvider>(conn)
+            diesel::insert_into(user_ai_providers::table)
+                .values(&new_provider)
+                .get_result::<UserAiProvider>(conn)
+        })
     })
     .await
     .map_err(|e| {
@@ -179,43 +228,13 @@ pub async fn update_provider(req: &mut Request, depot: &mut Depot) -> JsonResult
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let is_active = input.is_active;
-    let settings = input.settings.clone();
-
-    let provider: UserAiProvider = with_conn(move |conn| {
-        // Verify ownership
-        let existing = user_ai_providers::table
-            .filter(user_ai_providers::id.eq(provider_id))
-            .filter(user_ai_providers::user_id.eq(user_id))
-            .first::<UserAiProvider>(conn)?;
-
-        // If activating this provider, deactivate others first
-        if is_active == Some(true) && !existing.is_active {
-            diesel::update(
-                user_ai_providers::table
-                    .filter(user_ai_providers::user_id.eq(user_id))
-                    .filter(user_ai_providers::is_active.eq(true)),
-            )
-            .set((
-                user_ai_providers::is_active.eq(false),
-                user_ai_providers::updated_at.eq(Utc::now()),
-            ))
-            .execute(conn)?;
-        }
-
-        let update = UpdateUserAiProvider {
-            is_active,
-            settings,
-            updated_at: Some(Utc::now()),
-            ..Default::default()
-        };
-
-        diesel::update(user_ai_providers::table.filter(user_ai_providers::id.eq(provider_id)))
-            .set(&update)
-            .get_result::<UserAiProvider>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to update provider"))?;
+    let provider = change_provider(
+        user_id,
+        provider_id,
+        input.settings.clone(),
+        input.is_active,
+    )
+    .await?;
 
     json_ok(to_response(provider))
 }
@@ -229,16 +248,26 @@ pub async fn delete_provider(
     let user_id = depot.user_id()?;
     let provider_id = get_provider_id(req)?;
 
-    with_conn(move |conn| {
-        diesel::delete(
-            user_ai_providers::table
-                .filter(user_ai_providers::id.eq(provider_id))
-                .filter(user_ai_providers::user_id.eq(user_id)),
-        )
-        .execute(conn)
+    let deleted = with_conn(move |conn| {
+        conn.transaction(|conn| {
+            base_users::table
+                .find(user_id)
+                .for_update()
+                .select(base_users::id)
+                .first::<i64>(conn)?;
+            diesel::delete(
+                user_ai_providers::table
+                    .filter(user_ai_providers::id.eq(provider_id))
+                    .filter(user_ai_providers::user_id.eq(user_id)),
+            )
+            .execute(conn)
+        })
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to delete provider"))?;
+    .map_err(|_| provider_error())?;
+    if deleted == 0 {
+        return Err(StatusError::not_found().brief("AI 配置不存在").into());
+    }
 
     json_ok(serde_json::json!({ "deleted": true }))
 }
@@ -305,37 +334,75 @@ pub async fn activate_provider(req: &mut Request, depot: &mut Depot) -> JsonResu
     let user_id = depot.user_id()?;
     let provider_id = get_provider_id(req)?;
 
-    let provider: UserAiProvider = with_conn(move |conn| {
-        // Verify ownership
-        let _ = user_ai_providers::table
-            .filter(user_ai_providers::id.eq(provider_id))
-            .filter(user_ai_providers::user_id.eq(user_id))
-            .first::<UserAiProvider>(conn)?;
-
-        // Deactivate all other providers
-        diesel::update(
-            user_ai_providers::table
-                .filter(user_ai_providers::user_id.eq(user_id))
-                .filter(user_ai_providers::is_active.eq(true)),
-        )
-        .set((
-            user_ai_providers::is_active.eq(false),
-            user_ai_providers::updated_at.eq(Utc::now()),
-        ))
-        .execute(conn)?;
-
-        // Activate this provider
-        diesel::update(user_ai_providers::table.filter(user_ai_providers::id.eq(provider_id)))
-            .set((
-                user_ai_providers::is_active.eq(true),
-                user_ai_providers::updated_at.eq(Utc::now()),
-            ))
-            .get_result::<UserAiProvider>(conn)
-    })
-    .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to activate provider"))?;
+    let provider = change_provider(user_id, provider_id, None, Some(true)).await?;
 
     json_ok(to_response(provider))
+}
+
+async fn change_provider(
+    user_id: i64,
+    id: i64,
+    patch: Option<Value>,
+    active: Option<bool>,
+) -> Result<UserAiProvider, StatusError> {
+    with_conn(move |conn| {
+        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+            base_users::table
+                .find(user_id)
+                .for_update()
+                .select(base_users::id)
+                .first::<i64>(conn)?;
+            let Some(existing) = user_ai_providers::table
+                .find(id)
+                .filter(user_ai_providers::user_id.eq(user_id))
+                .first::<UserAiProvider>(conn)
+                .optional()?
+            else {
+                return Ok(Err(StatusError::not_found().brief("AI 配置不存在")));
+            };
+            let mut settings = existing.settings.clone();
+            if let Some(patch) = patch {
+                let Some(fields) = patch.as_object() else {
+                    return Ok(Err(StatusError::bad_request().brief("配置格式无效")));
+                };
+                for (key, value) in fields {
+                    if secret_field(key)
+                        && (value.is_null()
+                            || value
+                                .as_str()
+                                .is_some_and(|s| s.is_empty() || s.chars().all(|c| c == '*')))
+                    {
+                        continue;
+                    }
+                    settings[key] = value.clone();
+                }
+            }
+            let settings = match validated_settings(&existing.provider_type, settings) {
+                Ok(s) => s,
+                Err(e) => return Ok(Err(e)),
+            };
+            if active == Some(true) {
+                diesel::update(
+                    user_ai_providers::table.filter(user_ai_providers::user_id.eq(user_id)),
+                )
+                .set(user_ai_providers::is_active.eq(false))
+                .execute(conn)?;
+            }
+            let updated = diesel::update(user_ai_providers::table.find(id))
+                .set(UpdateUserAiProvider {
+                    settings: Some(settings),
+                    is_active: active,
+                    updated_at: Some(Utc::now()),
+                    last_tested_at: None,
+                    test_status: None,
+                    test_error: None,
+                })
+                .get_result::<UserAiProvider>(conn)?;
+            Ok(Ok(updated))
+        })
+    })
+    .await
+    .map_err(|_| provider_error())?
 }
 
 // ============================================================================
@@ -378,9 +445,13 @@ async fn test_provider_connection(provider_type: &str, settings: &Value) -> Resu
             content: "Hello, please respond with 'OK' if you can hear me.".to_string(),
         }];
 
-        chat.chat(messages, None, None)
-            .await
-            .map_err(|e| format!("Chat test failed: {}", e))?;
+        tokio::time::timeout(
+            std::time::Duration::from_secs(20),
+            chat.chat(messages, Some(0.0), Some(16)),
+        )
+        .await
+        .map_err(|_| "连接测试超时，请检查网络与模型配置".to_string())?
+        .map_err(|_| "连接失败，请检查密钥、模型权限与网络".to_string())?;
 
         Ok(())
     } else {

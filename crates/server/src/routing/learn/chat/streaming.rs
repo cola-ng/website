@@ -52,9 +52,7 @@ pub(super) async fn prepare(
             Input::Audio(bytes)
         }
     };
-    let provider = get_user_provider(user).await.ok_or_else(|| {
-        StatusError::service_unavailable().brief("AI 服务尚未配置，请先设置有效的 AI 提供方")
-    })?;
+    let provider = get_user_provider(user).await?;
     Ok((input, provider))
 }
 

@@ -78,7 +78,7 @@ impl AppError {
 }
 #[async_trait]
 impl Writer for AppError {
-    async fn write(mut self, _req: &mut Request, _depot: &mut Depot, res: &mut Response) {
+    async fn write(mut self, req: &mut Request, _depot: &mut Depot, res: &mut Response) {
         let code = match &self {
             AppError::StatusError(e) => e.code,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -106,7 +106,17 @@ impl Writer for AppError {
             AppError::StatusError(e) => e,
             _e => StatusError::internal_server_error().brief("Unknown error happened."),
         };
-        res.render(data);
+        res.status_code(data.code);
+        if req.uri().path().starts_with("/api/") {
+            // API clients (including an SSE request rejected before streaming)
+            // need a readable JSON error regardless of content negotiation.
+            res.render(salvo::prelude::Json(serde_json::json!({
+                "code": data.code.as_u16(), "name": data.name,
+                "brief": data.brief, "detail": data.detail.unwrap_or_default(),
+            })));
+        } else {
+            res.render(data);
+        }
     }
 }
 impl EndpointOutRegister for AppError {
@@ -126,5 +136,43 @@ impl EndpointOutRegister for AppError {
             oapi::Response::new("Bad request")
                 .add_content("application/json", StatusError::to_schema(components)),
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn api_errors_preserve_status_and_json_for_stream_clients() {
+        for (error, expected) in [
+            (
+                AppError::Diesel(diesel::result::Error::NotFound),
+                StatusCode::NOT_FOUND,
+            ),
+            (AppError::FrequentlyRequest, StatusCode::BAD_REQUEST),
+            (
+                AppError::StatusError(
+                    StatusError::payment_required().brief("Configure your own provider"),
+                ),
+                StatusCode::PAYMENT_REQUIRED,
+            ),
+        ] {
+            let mut req = Request::new();
+            *req.uri_mut() = "/api/qa/errors".parse().unwrap();
+            req.headers_mut()
+                .insert("Accept", "text/event-stream".parse().unwrap());
+            let mut res = Response::new();
+            error.write(&mut req, &mut Depot::new(), &mut res).await;
+            assert_eq!(res.status_code, Some(expected));
+            assert!(
+                res.headers()
+                    .get("Content-Type")
+                    .unwrap()
+                    .to_str()
+                    .unwrap()
+                    .starts_with("application/json")
+            );
+        }
     }
 }

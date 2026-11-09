@@ -191,40 +191,98 @@ fn build_provider_from_env() -> Option<Arc<dyn AiProvider>> {
     None
 }
 
-/// Get AI provider for a specific user
-///
-/// Priority:
-/// 1. User's active provider configuration from database
-/// 2. System default from environment variables
-pub async fn get_user_provider(user_id: i64) -> Option<Arc<dyn AiProvider>> {
-    // Try to get user's active provider from database
-    let user_provider = with_conn(move |conn| {
-        user_ai_providers::table
+/// Only a paid, unexpired subscription with a settled payment may use platform keys.
+/// A personal active configuration always takes precedence, including on failure.
+#[derive(serde::Serialize, salvo::oapi::ToSchema)]
+pub struct AiAccess {
+    pub source: String,
+    pub platform_allowed: bool,
+    pub active_provider_id: Option<i64>,
+    pub message: String,
+}
+
+async fn provider_selection(
+    user_id: i64,
+) -> Result<(Option<UserAiProvider>, bool), salvo::http::StatusError> {
+    with_conn(move |conn| {
+        let personal = user_ai_providers::table
             .filter(user_ai_providers::user_id.eq(user_id))
             .filter(user_ai_providers::is_active.eq(true))
+            .order(user_ai_providers::id.desc())
             .first::<UserAiProvider>(conn)
-            .optional()
+            .optional()?;
+        #[derive(diesel::QueryableByName)]
+        struct Paid {
+            #[diesel(sql_type = diesel::sql_types::Bool)]
+            allowed: bool,
+        }
+        let paid = diesel::sql_query(
+            "SELECT EXISTS (
+            SELECT 1 FROM user_subscriptions s
+            JOIN subscription_plans p ON p.id = s.plan_id
+            JOIN payment_orders o ON o.id = s.last_payment_id AND o.user_id = s.user_id
+            WHERE s.user_id = $1 AND s.status = 'active' AND s.started_at <= now()
+              AND (s.expires_at IS NULL OR s.expires_at > now())
+              AND p.tier <> 'free' AND p.price_credits > 0
+              AND o.status = 'paid' AND o.paid_at IS NOT NULL
+              AND (o.amount_cents > 0 OR o.amount_credits > 0)
+        ) AS allowed",
+        )
+        .bind::<diesel::sql_types::BigInt, _>(user_id)
+        .get_result::<Paid>(conn)?
+        .allowed;
+        Ok((personal, paid))
     })
     .await
-    .ok()
-    .flatten();
+    .map_err(|_| {
+        salvo::http::StatusError::service_unavailable()
+            .brief("无法验证 AI 配置与付费资格，请稍后重试")
+    })
+}
 
-    if let Some(provider) = user_provider {
-        if let Some(ai_provider) =
-            create_provider_from_user_config(&provider.provider_type, &provider.settings)
-        {
-            tracing::info!(
-                "Using user's {} provider for user_id={}",
-                provider.provider_type,
-                user_id
-            );
-            return Some(ai_provider);
-        }
+pub async fn ai_access(user_id: i64) -> Result<AiAccess, salvo::http::StatusError> {
+    let (personal, paid) = provider_selection(user_id).await?;
+    let id = personal.as_ref().map(|p| p.id);
+    let (source, message) = if personal.is_some() {
+        (
+            "personal",
+            "当前使用你自己的 AI 服务，费用由对应提供方收取。",
+        )
+    } else if paid && create_provider_from_env().is_some() {
+        ("platform", "当前使用付费订阅提供的平台 AI 服务。")
+    } else {
+        (
+            "none",
+            "请添加并启用自己的 AI 服务配置。平台 AI 仅向已付费且订阅有效的用户提供，免费与试用账户需自备密钥。",
+        )
+    };
+    Ok(AiAccess {
+        source: source.into(),
+        platform_allowed: paid,
+        active_provider_id: id,
+        message: message.into(),
+    })
+}
+
+pub async fn get_user_provider(
+    user_id: i64,
+) -> Result<Arc<dyn AiProvider>, salvo::http::StatusError> {
+    let (personal, paid) = provider_selection(user_id).await?;
+    if let Some(provider) = personal {
+        return create_provider_from_user_config(&provider.provider_type, &provider.settings)
+            .ok_or_else(|| {
+                salvo::http::StatusError::bad_request()
+                    .brief("个人 AI 配置无效，请在我的学习中修正配置；不会切换到平台密钥")
+            });
     }
-
-    // Fall back to system default
-    tracing::info!("Using system default provider for user_id={}", user_id);
-    create_provider_from_env()
+    if !paid {
+        return Err(salvo::http::StatusError::payment_required()
+            .brief("请先添加并启用自己的 AI 服务配置；平台 AI 仅供已付费且订阅有效的用户使用"));
+    }
+    create_provider_from_env().ok_or_else(|| {
+        salvo::http::StatusError::service_unavailable()
+            .brief("平台 AI 暂不可用，请配置自己的 AI 服务或稍后重试")
+    })
 }
 
 /// Create AI provider from user configuration stored in database

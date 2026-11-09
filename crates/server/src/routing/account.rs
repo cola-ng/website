@@ -261,6 +261,7 @@ pub struct UpdateUserProfile {
     pub name: Option<String>,
     /// Updated phone number
     pub phone: Option<String>,
+    pub handle: Option<String>,
 }
 
 /// Update current user profile
@@ -271,7 +272,32 @@ pub async fn update_me(input: JsonBody<UpdateUserProfile>, depot: &mut Depot) ->
     let input_value = UpdateUserProfile {
         name: input.name.clone(),
         phone: input.phone.clone(),
+        handle: input
+            .handle
+            .as_deref()
+            .map(|h| h.trim().to_ascii_lowercase()),
     };
+    if let Some(handle) = &input_value.handle {
+        if handle
+            .strip_prefix("user_")
+            .is_some_and(|s| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit()))
+            && handle != &format!("user_{user_id}")
+        {
+            return Err(StatusError::bad_request()
+                .brief("user_数字 为系统保留格式，请选择其他 Handle")
+                .into());
+        }
+        if !(3..=32).contains(&handle.len())
+            || !handle.as_bytes()[0].is_ascii_lowercase()
+            || !handle
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'-')
+        {
+            return Err(StatusError::bad_request()
+                .brief("Handle 需为 3–32 位，以字母开头，仅含英文字母、数字、下划线或短横线")
+                .into());
+        }
+    }
 
     let updated: User = with_conn(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
@@ -280,7 +306,9 @@ pub async fn update_me(input: JsonBody<UpdateUserProfile>, depot: &mut Depot) ->
     })
     .await
     .map_err(|e| {
-        if e.contains("base_users_name_key") {
+        if e.contains("base_users_handle_unique") {
+            StatusError::conflict().brief("此 Handle 已被使用，请选择其他标识")
+        } else if e.contains("base_users_name_key") {
             StatusError::conflict().brief("name already registered")
         } else {
             StatusError::internal_server_error().brief("failed to update profile")

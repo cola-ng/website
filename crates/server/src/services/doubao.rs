@@ -589,10 +589,20 @@ impl AiProvider for DoubaoClient {
     }
 
     fn asr(&self) -> Option<Arc<dyn AsrService>> {
+        if self.client.config().app_id().is_empty()
+            || self.client.config().access_token().is_empty()
+        {
+            return None;
+        }
         Some(Arc::new(self.clone()))
     }
 
     fn tts(&self) -> Option<Arc<dyn TtsService>> {
+        if self.client.config().app_id().is_empty()
+            || self.client.config().access_token().is_empty()
+        {
+            return None;
+        }
         Some(Arc::new(self.clone()))
     }
 

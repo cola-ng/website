@@ -9,7 +9,7 @@ const artifacts = JSON.parse(execFileSync('cargo', ['metadata','--no-deps','--fo
 const output = path.join(artifacts,'qa-ui'); fs.mkdirSync(output,{recursive:true});
 const base = process.env.QA_WEB || 'http://127.0.0.1:5173';
 assert(['localhost','127.0.0.1'].includes(new URL(base).hostname));
-const user = {id:123,name:'界面复检账户',email:'ui@example.test',is_admin:true};
+const user = {id:123,name:'界面复检账户',handle:'ui_learner',email:'ui@example.test',is_admin:true};
 const word = {id:1,word:'hello',is_active:true};
 const sentence = {id:1,subject_id:1,sentence_order:1,content_en:'Hello world.',content_zh:'你好，世界。',difficulty:1};
 const turn = {id:1,speaker:'ai',content_en:'Hello! Let us practice English.',content_zh:'你好，让我们开始练习。',status:'completed',issues:[]};
@@ -47,6 +47,7 @@ function fixture(url) {
   if(p==='/api/learn/daily')return {tasks:[{id:1,task_title:'完成一次英语练习',target_value:1,status:'pending'}]};
   if(p==='/api/learn/summary')return {learning_days:7,total_vocabulary_count:32,pending_review_count:5};
   if(p==='/api/me/account-status')return {has_password:true,linked_identities:[]};
+  if(p==='/api/ai-providers/access')return {source:'personal',platform_allowed:false,active_provider_id:1,message:'当前使用你自己的 AI 服务。'};
   if(p==='/api/ai-providers')return [{id:1,provider_type:'zhipu',is_active:true,settings:{chat_model:'example-model'}}];
   if(p==='/api/admin/users')return {users:[user],total:1};
   if(p.startsWith('/api/admin/users/'))return {user};
@@ -221,6 +222,27 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.getByRole('textbox',{name:'新密码',exact:true}).fill('valid-password');await page.getByRole('textbox',{name:'确认新密码',exact:true}).fill('valid-password');await page.getByRole('button',{name:'设置密码',exact:true}).click();await page.getByRole('button',{name:'更新密码',exact:true}).waitFor();
     await page.getByRole('button',{name:'解除 GitHub 绑定',exact:true}).click();await page.getByRole('button',{name:'绑定 GitHub',exact:true}).waitFor();assert.equal(linked.length,0);
     await page.unroute('**/api/me/account-status');await page.unroute('**/api/me/oauth/*');await page.unroute('**/api/me/change-password');
+  });
+  await scenario('personal AI settings activate, retain secrets on edit and refresh access state',async()=>{
+    let rows=[],saved;
+    await page.route('**/api/ai-providers**',route=>{
+      const p=new URL(route.request().url()).pathname,method=route.request().method();
+      if(p.endsWith('/access'))return route.fulfill({json:{source:rows.some(r=>r.is_active)?'personal':'none',platform_allowed:false,message:rows.some(r=>r.is_active)?'当前使用你自己的 AI 服务。':'请配置自己的密钥，免费用户不能使用平台 AI。'}});
+      if(p==='/api/ai-providers'&&method==='GET')return route.fulfill({json:rows});
+      if(p==='/api/ai-providers'&&method==='POST'){saved=route.request().postDataJSON();assert(saved.set_active);rows=[{id:44,provider_type:saved.provider_type,is_active:true,settings:{...saved.settings,api_key:'********'}}];return route.fulfill({status:201,json:rows[0]});}
+      if(method==='DELETE'){rows=[];return route.fulfill({json:{deleted:true}});}
+      if(p.endsWith('/activate')){rows[0].is_active=true;return route.fulfill({json:rows[0]});}
+      if(method==='PUT'){saved=route.request().postDataJSON();if(saved.settings)rows[0].settings={...rows[0].settings,...saved.settings};if(saved.is_active!==undefined)rows[0].is_active=saved.is_active;return route.fulfill({json:rows[0]});}
+      throw new Error('Unexpected provider operation '+method+' '+p);
+    });
+    await page.goto(base+'/me');await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();
+    await page.getByRole('textbox',{name:'API Key',exact:true}).fill('private-ui-test-key');await page.getByRole('button',{name:'添加并启用',exact:true}).click();
+    await page.locator('.ai-access-status').getByText('当前使用你自己的 AI 服务。',{exact:true}).waitFor();assert.equal(await page.getByRole('textbox',{name:'API Key',exact:true}).inputValue(),'');
+    await page.locator('.provider-row').getByRole('button',{name:'编辑',exact:true}).click();await page.getByRole('textbox',{name:'对话模型（可选）',exact:true}).fill('edited-model');await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByRole('button',{name:'保存配置',exact:true}).waitFor({state:'detached'});assert.equal(saved.settings.api_key,undefined);
+    await page.locator('.provider-row').getByRole('button',{name:'停用',exact:true}).click();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();
+    await page.locator('.provider-row').getByRole('button',{name:'启用',exact:true}).click();await page.locator('.ai-access-status').getByText('当前使用你自己的 AI 服务。',{exact:true}).waitFor();
+    await page.locator('.provider-row').getByRole('button',{name:'删除配置',exact:true}).click();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();assert.equal(rows.length,0);
+    await page.unroute('**/api/ai-providers**');
   });
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({pages:routes.length,viewports:[1280,390],audits:routes.length*2,results},null,2));for(const name of ['failure.png','failure.txt']){const file=path.join(output,name);if(fs.existsSync(file))fs.unlinkSync(file);}console.log(`${routes.length*2} page/viewport audits and ${checks-1} interaction regressions passed.`);
 })().catch(async error=>{if(page){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});fs.writeFileSync(path.join(output,'failure.txt'),await page.locator('body').innerText().catch(()=>''));}console.error(error);process.exitCode=1;}).finally(async()=>{await browser?.close();});

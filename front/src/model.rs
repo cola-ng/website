@@ -68,6 +68,7 @@ impl Route {
         matches!(
             self,
             Self::Chat(_)
+                | Self::Translate
                 | Self::Review
                 | Self::ReviewSession(_)
                 | Self::Read

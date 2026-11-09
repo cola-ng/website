@@ -41,8 +41,8 @@ async function api(method,endpoint,body,auth=fixture.learner){
   await test('real email login, profile and logout',async()=>{
     const p=await pageFor();await p.goto(base+'/login');await p.getByRole('textbox',{name:'邮箱',exact:true}).fill(fixture.email);await p.getByRole('textbox',{name:'密码',exact:true}).fill(fixture.password);await p.getByRole('button',{name:'登录',exact:true}).last().click();
     const updatedName='QA Updated Learner '+fixture.learner.user.id;
-    await p.waitForURL('**/me');await text(p,'我的学习');await p.getByRole('textbox',{name:'昵称',exact:true}).fill(updatedName);await p.getByRole('button',{name:'保存资料',exact:true}).click();await text(p,'资料已保存');
-    await p.reload();await p.getByRole('textbox',{name:'昵称',exact:true}).waitFor();assert.equal(await p.getByRole('textbox',{name:'昵称',exact:true}).inputValue(),updatedName);
+    await p.waitForURL('**/me');await text(p,'我的学习');await p.getByRole('textbox',{name:'昵称',exact:true}).fill(updatedName);await p.getByRole('textbox',{name:'Handle（用户标识）',exact:true}).fill('browser_'+Date.now());const savedHandle=await p.getByRole('textbox',{name:'Handle（用户标识）',exact:true}).inputValue();await p.getByRole('button',{name:'保存资料',exact:true}).click();await text(p,'资料已保存');
+    await p.reload();await p.getByRole('textbox',{name:'昵称',exact:true}).waitFor();assert.equal(await p.getByRole('textbox',{name:'昵称',exact:true}).inputValue(),updatedName);assert.equal(await p.getByRole('textbox',{name:'Handle（用户标识）',exact:true}).inputValue(),savedHandle);
     await p.getByRole('button',{name:'退出登录',exact:true}).click();await p.waitForURL(base+'/');assert.equal(await p.evaluate(()=>localStorage.getItem('colang.token')),null);await p.qaClose();
   });
   await test('registration validates confirmation and creates a real account',async()=>{

@@ -26,6 +26,10 @@ pwsh -File tests/run.ps1
 
 开发机已有 Playwright 时，可通过 `PLAYWRIGHT_MODULE` 指向其模块目录，无需重复安装。测试依赖只用于验证，不参与前端构建或运行。
 
+提供方权限回归由 `tests/providers.py` 执行。`run.ps1` 额外启动只监听本机的 `provider_stub.py`（默认端口 8134，可用 `-ProviderPort` 调整），明确覆盖所有测试 API Key 和上游地址。测试检查真实 SDK 发送的个人/平台凭据、付费条件、配置归属和失败不回退，不消耗真实 API 额度。handle、头像和 AI 配置的规则见 [账户与 AI 说明](../docs/account-and-ai.md)。
+
+正式环境临时账户未付费时，测试凭据文件设置 `expect_personal_required: true`：验证 handle、头像和个人配置的真实操作，并确认没有自备配置时无法发送 AI 请求。不向临时账户提供平台密钥，也不在生产数据库伪造支付记录。
+
 OAuth 检查包含 `tests/oauth.py` 和隔离数据库中的 `oauth_database_flow` Rust 测试。测试服务器使用明确覆盖的假 Google/GitHub 凭据，验证 PKCE 跳转、错误提供方、state/浏览器绑定、取消授权、过期/重复授权结果、账户关联规则及并发解除绑定；不会调用真实第三方 API。真实应用配置与登录应另外在浏览器中验证，详见 `docs/oauth.md`。
 
 `node tests/production.cjs` 在独立的无凭据浏览器中检查正式域名的公开页面、两家的授权跳转、HTTPS Cookie、PKCE 和取消授权。它只读取页面并创建随后取消的 OAuth 会话，不读取用户浏览器或修改生产内容。报告和截图位于 `target/qa-production`。

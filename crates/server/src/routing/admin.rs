@@ -124,6 +124,7 @@ pub async fn dashboard_stats() -> JsonResult<DashboardStats> {
 #[derive(Serialize, ToSchema)]
 pub struct UserListItem {
     pub id: i64,
+    pub handle: String,
     pub name: String,
     pub email: Option<String>,
     pub phone: Option<String>,
@@ -171,7 +172,8 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
                 .filter(
                     base_users::name
                         .ilike(&pattern)
-                        .or(base_users::email.ilike(&pattern)),
+                        .or(base_users::email.ilike(&pattern))
+                        .or(base_users::handle.ilike(&pattern)),
                 )
                 .select(count(base_users::id))
                 .first(conn)?
@@ -188,7 +190,8 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
                 .filter(
                     base_users::name
                         .ilike(&pattern)
-                        .or(base_users::email.ilike(&pattern)),
+                        .or(base_users::email.ilike(&pattern))
+                        .or(base_users::handle.ilike(&pattern)),
                 )
                 .order(base_users::created_at.desc())
                 .offset(offset)
@@ -213,6 +216,7 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
             .into_iter()
             .map(|u| UserListItem {
                 id: u.id,
+                handle: u.handle,
                 name: u.name,
                 email: u.email,
                 phone: u.phone,

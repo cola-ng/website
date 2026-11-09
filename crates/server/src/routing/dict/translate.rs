@@ -4,7 +4,7 @@ use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
-use crate::services::{ChatMessage, create_provider_from_env, get_user_provider};
+use crate::services::{ChatMessage, get_user_provider};
 use crate::{AppResult, DepotExt, JsonResult, json_ok};
 
 #[derive(Debug, Deserialize, ToSchema)]
@@ -97,15 +97,7 @@ pub async fn translate(req: &mut Request, depot: &mut Depot) -> JsonResult<Trans
             .into());
     }
 
-    // Try to get user's provider, fall back to system default
-    let provider = if let Ok(user_id) = depot.user_id() {
-        get_user_provider(user_id).await
-    } else {
-        create_provider_from_env()
-    };
-
-    let provider = provider
-        .ok_or_else(|| StatusError::service_unavailable().brief("AI service not available"))?;
+    let provider = get_user_provider(depot.user_id()?).await?;
 
     let chat_service = provider
         .chat_service()

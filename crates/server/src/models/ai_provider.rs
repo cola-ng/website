@@ -87,7 +87,9 @@ fn default_zhipu_chat_model() -> String {
 
 #[derive(Debug, Serialize, Deserialize, ToSchema)]
 pub struct DoubaoSettings {
+    #[serde(default)]
     pub app_id: String,
+    #[serde(default)]
     pub access_token: String,
     pub api_key: String,
     #[serde(default = "default_doubao_chat_model")]
@@ -97,7 +99,7 @@ pub struct DoubaoSettings {
 }
 
 fn default_doubao_chat_model() -> String {
-    "doubao-1-5-pro-32k-250115".to_string()
+    "doubao-seed-2-0-mini-260428".to_string()
 }
 
 // ============================================================================

@@ -63,6 +63,8 @@ pub struct User {
     pub updated_at: DateTime<Utc>,
     pub created_by: Option<i64>,
     pub created_at: DateTime<Utc>,
+    /// Public, unique, mutable identifier; numeric id remains stable internally.
+    pub handle: String,
 }
 #[derive(Insertable, AsChangeset, Deserialize, Clone, Debug)]
 #[diesel(table_name = base_users)]

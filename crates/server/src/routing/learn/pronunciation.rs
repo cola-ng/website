@@ -1,15 +1,15 @@
 use base64::prelude::{BASE64_STANDARD as BASE64, Engine};
 use salvo::prelude::*;
 
-use crate::AppResult;
 use crate::routing::asset::reading::{
     EvaluateRequest, EvaluateResponse, calculate_pronunciation_score,
 };
 use crate::services::ai_provider::{AiProviderError, AsrResponse};
-use crate::services::create_provider_from_env;
+use crate::services::get_user_provider;
+use crate::{AppResult, DepotExt};
 
 #[handler]
-pub async fn evaluate(req: &mut Request, res: &mut Response) -> AppResult<()> {
+pub async fn evaluate(req: &mut Request, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     // Parse request body
     let body_bytes = req.payload().await.map_err(|e| {
         tracing::error!("evaluate_pronunciation: read_body error: {:?}", e);
@@ -33,8 +33,7 @@ pub async fn evaluate(req: &mut Request, res: &mut Response) -> AppResult<()> {
     }
 
     // Get AI provider
-    let provider = create_provider_from_env()
-        .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
+    let provider = get_user_provider(depot.user_id()?).await?;
 
     // Get ASR service
     let asr = provider
@@ -52,7 +51,7 @@ pub async fn evaluate(req: &mut Request, res: &mut Response) -> AppResult<()> {
             })?;
 
     let transcribed_text = asr_result.text.trim().to_string();
-    tracing::info!("ASR result: {}", transcribed_text);
+    tracing::debug!("ASR completed, {} chars", transcribed_text.len());
 
     if transcribed_text.is_empty() {
         return Err(StatusError::bad_request()
