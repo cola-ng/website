@@ -40,7 +40,7 @@ let browser;
   page.on('requestfailed',request=>console.error('REQUEST FAILED',request.url(),request.failure()?.errorText));
   const routes=['/','/login','/auth/complete','/dict','/dict/hello','/translate','/stages','/subscription','/terms','/privacy','/review','/me'];
   let audits=0;
-  for(const width of [1280,390]){
+  for(const width of [1280,820,390,320]){
     await page.setViewportSize({width,height:900});
     for(const route of routes){
       console.log('AUDIT',route,width);
@@ -83,6 +83,11 @@ let browser;
       await page.locator('.provider-row').getByRole('button',{name:'删除配置',exact:true}).click();await page.locator('.provider-row').waitFor({state:'detached'});await page.locator('.ai-access-status').getByText(/请添加并启用自己的/).waitFor();
       await page.goto(base+'/chat/'+qa.chat_id);await page.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello, this is a free account.');await page.getByRole('button',{name:'发送消息',exact:true}).click();
       await page.getByRole('alert').getByText(/请先添加并启用自己的/).waitFor();assert.equal(await page.getByRole('textbox',{name:'输入消息',exact:true}).inputValue(),'Hello, this is a free account.');
+      for(const viewport of [{width:320,height:568},{width:390,height:430}]){
+        await page.setViewportSize(viewport);await page.waitForFunction(()=>document.querySelector('.chat-composer')?.getBoundingClientRect().bottom<=innerHeight+1);
+        assert.equal(await page.getByRole('textbox',{name:'输入消息',exact:true}).inputValue(),'Hello, this is a free account.');
+      }
+      await page.setViewportSize({width:1280,height:900});
       accountPolicy={handlePersisted:true,avatarUploadAndDelete:true,personalProviderCreateEditDelete:true,freePlatformDenied:true,draftPreserved:true};
       await page.screenshot({path:path.join(output,'personal-provider-required.png'),fullPage:true});
       console.log('Production account policy passed:',JSON.stringify(accountPolicy));
