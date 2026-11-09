@@ -83,6 +83,8 @@ async function dialogBounds(page,width,height){
   const mobile=await keyboard.newPage();current=mobile;mobile.on('pageerror',e=>errors.push(e.message));
   await loaded(mobile,'/chat/1');await mobile.getByRole('textbox',{name:'输入消息',exact:true}).fill('Keep this unsent draft.');await mobile.evaluate(()=>window.qaViewport(430));await settle(mobile);await chatBounds(mobile,430);
   verify(await mobile.getByRole('textbox',{name:'输入消息',exact:true}).inputValue()==='Keep this unsent draft.','keyboard resize preserves the draft');
+  await mobile.route('**/api/learn/chats/1/send/stream',r=>r.fulfill({status:402,json:{error:{brief:'请先配置自己的 AI 服务后再发送消息。'}}}));await mobile.getByRole('button',{name:'发送消息',exact:true}).click();await mobile.getByRole('alert').waitFor();await settle(mobile);
+  const failureBox=await mobile.locator('.chat-composer').boundingBox();verify(failureBox.y+failureBox.height<=431,'error feedback does not push the composer behind the keyboard');verify(await mobile.getByRole('textbox',{name:'输入消息',exact:true}).inputValue()==='Keep this unsent draft.','a failed send preserves the draft');
   await mobile.evaluate(()=>window.qaViewport(844));await settle(mobile);await chatBounds(mobile,844);
   await loaded(mobile,'/me#settings');await mobile.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await mobile.getByRole('button',{name:'豆包',exact:true}).click();await mobile.evaluate(()=>window.qaViewport(430));await settle(mobile);await dialogBounds(mobile,390,430);
   await mobile.screenshot({path:path.join(output,'keyboard-provider.png')});await keyboard.close();
