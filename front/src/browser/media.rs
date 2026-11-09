@@ -1,6 +1,10 @@
 use super::*;
-#[wasm_bindgen(module = "/src/browser/media.js")]
+#[wasm_bindgen(module = "/src/browser/platform.js")]
 extern "C" {
+    #[wasm_bindgen(catch, js_name = copyText)]
+    async fn clipboard_text(text: &str) -> std::result::Result<(), JsValue>;
+    #[wasm_bindgen(js_name = followChat)]
+    fn watch_chat() -> js_sys::Function;
     #[wasm_bindgen(js_name = cancelRecording)]
     fn cancel_recording(owner: u32);
     #[wasm_bindgen(js_name = downloadText)]
@@ -17,6 +21,21 @@ extern "C" {
     fn speak_text(text: &str) -> std::result::Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = uploadAvatar)]
     async fn upload_avatar(token: &str) -> std::result::Result<JsValue, JsValue>;
+}
+pub fn copy_text(value: String, notice: Cage<String>, error: Cage<String>) {
+    spawn(async move {
+        match clipboard_text(&value).await {
+            Ok(()) if notice.is_alive() => notice.revise(|s| *s = "已复制译文".into()),
+            Err(e) if error.is_alive() => error.revise(|s| *s = message(e)),
+            _ => {}
+        }
+    });
+}
+pub fn follow_chat(scope: &Scope) {
+    let stop = watch_chat();
+    let _ = scope.on_cleanup(move || {
+        let _ = stop.call0(&JsValue::NULL);
+    });
 }
 pub fn export_chat(id: i64, action: Resource) {
     if action.busy.get() {

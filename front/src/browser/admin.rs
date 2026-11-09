@@ -1,4 +1,5 @@
 use super::*;
+use glory::render::DocumentPart;
 
 #[derive(Clone, Copy)]
 struct Field {
@@ -170,43 +171,58 @@ pub fn page(path: Vec<String>) -> impl Widget {
                     ))
                 }),
             ))),
-            "taxonomy" => boxed(view().fill((
-                crud(
-                    "领域管理",
-                    "/api/asset/domains".into(),
-                    DOMAIN,
-                    if path.get(1).is_some_and(|s| s == "domains") {
-                        id
-                    } else {
-                        None
-                    },
-                ),
-                crud(
-                    "分类管理",
-                    "/api/asset/categories".into(),
-                    CATEGORY,
-                    if path.get(1).is_some_and(|s| s == "categories") {
-                        id
-                    } else {
-                        None
-                    },
-                ),
-            ))),
+            "taxonomy" => {
+                let category = path.get(1).is_some_and(|s| s == "categories");
+                boxed(
+                    view().fill((
+                        title("分类管理"),
+                        sapid::tabs("taxonomy-tabs")
+                            .theme(theme::orange())
+                            .default_value(if category { "categories" } else { "domains" })
+                            .tab(sapid::tab("domains").label("领域").content(move || {
+                                crud(
+                                    "领域管理",
+                                    "/api/asset/domains".into(),
+                                    DOMAIN,
+                                    if !category { id } else { None },
+                                )
+                            }))
+                            .tab(sapid::tab("categories").label("分类").content(move || {
+                                crud(
+                                    "分类管理",
+                                    "/api/asset/categories".into(),
+                                    CATEGORY,
+                                    if category { id } else { None },
+                                )
+                            })),
+                    )),
+                )
+            }
             "chat-scenarios" => boxed(crud("对话场景管理", "/api/admin/stages".into(), STAGE, id)),
-            "read" => boxed(view().fill((
-                crud(
-                    "跟读主题管理",
-                    "/api/admin/read-subjects".into(),
-                    SUBJECT,
-                    None,
-                ),
-                crud(
-                    "跟读句子管理",
-                    "/api/admin/read-sentences".into(),
-                    SENTENCE,
-                    None,
-                ),
-            ))),
+            "read" => boxed(
+                view().fill((
+                    title("跟读管理"),
+                    sapid::tabs("read-management")
+                        .theme(theme::orange())
+                        .default_value("subjects")
+                        .tab(sapid::tab("subjects").label("跟读主题").content(|| {
+                            crud(
+                                "跟读主题管理",
+                                "/api/admin/read-subjects".into(),
+                                SUBJECT,
+                                None,
+                            )
+                        }))
+                        .tab(sapid::tab("sentences").label("跟读句子").content(|| {
+                            crud(
+                                "跟读句子管理",
+                                "/api/admin/read-sentences".into(),
+                                SENTENCE,
+                                None,
+                            )
+                        })),
+                )),
+            ),
             _ => boxed(view().fill((title("管理页面不存在"), nav("返回管理首页", "/admin")))),
         };
         view()
@@ -217,12 +233,12 @@ pub fn page(path: Vec<String>) -> impl Widget {
                     .class("admin-nav")
                     .fill((
                         nav("概览", "/admin"),
-                        nav("用户", "/admin/users"),
-                        nav("财务", "/admin/finance"),
-                        nav("词典", "/admin/dict"),
-                        nav("分类", "/admin/taxonomy"),
-                        nav("对话场景", "/admin/chat-scenarios"),
-                        nav("跟读内容", "/admin/read"),
+                        section_nav("用户", "/admin/users"),
+                        section_nav("财务", "/admin/finance"),
+                        section_nav("词典", "/admin/dict"),
+                        section_nav("分类", "/admin/taxonomy"),
+                        section_nav("对话场景", "/admin/chat-scenarios"),
+                        section_nav("跟读内容", "/admin/read"),
                     )),
                 nodes(vec![content]),
             ))
@@ -242,10 +258,46 @@ fn dashboard() -> impl Widget {
         view()
             .fill((
                 title("管理概览"),
-                account::data_section("平台统计", stats),
-                account::data_section("用户增长", users),
-                account::data_section("今日 AI 使用", ai),
-                account::data_section("AI 使用排行", top),
+                view().class("stat-grid").fill((
+                    dashboard::stat(stats, "注册用户", "total_users", "人"),
+                    dashboard::stat(stats, "今日新增", "users_today", "人"),
+                    dashboard::stat(stats, "词典单词", "total_words", "个"),
+                    dashboard::stat(stats, "管理员", "total_admins", "人"),
+                )),
+                stats.status(),
+                view().class("panel").fill((
+                    heading("用户增长"),
+                    table(
+                        users,
+                        &[
+                            ("date", "日期"),
+                            ("new_users", "新增用户"),
+                            ("total_users", "累计用户"),
+                        ],
+                    ),
+                )),
+                view().class("panel").fill((
+                    heading("今日 AI 使用"),
+                    ai.status(),
+                    view().class("stat-grid").fill((
+                        dashboard::stat(ai, "请求数", "total_requests", "次"),
+                        dashboard::stat(ai, "Token 用量", "total_tokens", ""),
+                        dashboard::stat(ai, "语音识别", "total_asr_seconds", "秒"),
+                        dashboard::stat(ai, "语音合成", "total_tts_seconds", "秒"),
+                    )),
+                )),
+                view().class("panel").fill((
+                    heading("AI 使用排行"),
+                    table(
+                        top,
+                        &[
+                            ("user_id", "用户编号"),
+                            ("user_name", "名称"),
+                            ("total_requests", "请求数"),
+                            ("total_tokens", "Token 用量"),
+                        ],
+                    ),
+                )),
             ))
             .build(scope)
     })
@@ -274,15 +326,16 @@ fn users() -> impl Widget {
                 field("搜索用户", search),
                 data.status(),
                 empty(data, "没有匹配的用户。"),
-                each(data.data.map(items)).key(|v| v.to_string()).seed(|v| {
-                    view().class("panel").fill((
-                        nav(
-                            format!("{} · {}", string(&v, "name"), string(&v, "email")),
-                            format!("/admin/users/{}", string(&v, "id")),
-                        ),
-                        details(&v),
-                    ))
-                }),
+                table(
+                    data,
+                    &[
+                        ("id", "编号"),
+                        ("name", "名称"),
+                        ("handle", "Handle"),
+                        ("email", "邮箱"),
+                        ("created_at", "注册时间"),
+                    ],
+                ),
                 pagination(page, data),
                 heading("管理员"),
                 account::data_section("管理员列表", administrators),
@@ -371,7 +424,13 @@ fn finance(tab: Option<String>) -> impl Widget {
         view()
             .fill((
                 title("财务管理"),
-                account::data_section("财务概览", stats),
+                view().class("stat-grid").fill((
+                    money_stat(stats, "总收入", "total_revenue_cents"),
+                    money_stat(stats, "今日收入", "revenue_today_cents"),
+                    dashboard::stat(stats, "订单数量", "total_orders", "笔"),
+                    dashboard::stat(stats, "有效订阅", "active_subscriptions", "个"),
+                )),
+                stats.status(),
                 view().class("actions").fill((
                     nav(
                         "订单",
@@ -387,13 +446,98 @@ fn finance(tab: Option<String>) -> impl Widget {
                 field("状态筛选（留空显示全部）", status),
                 orders.status(),
                 empty(orders, "暂无记录。"),
-                each(orders.data.map(items))
-                    .key(|v| v.to_string())
-                    .seed(|v| view().class("panel").fill(details(&v))),
+                table(
+                    orders,
+                    if subscriptions {
+                        &[
+                            ("id", "编号"),
+                            ("user_id", "用户"),
+                            ("plan_code", "套餐"),
+                            ("status", "状态"),
+                            ("expires_at", "到期时间"),
+                        ]
+                    } else {
+                        &[
+                            ("order_no", "订单号"),
+                            ("user_id", "用户"),
+                            ("plan_code", "套餐"),
+                            ("amount_cents", "金额（分）"),
+                            ("status", "状态"),
+                            ("created_at", "创建时间"),
+                        ]
+                    },
+                ),
                 pagination(page, orders),
             ))
             .build(scope)
     })
+}
+fn money_stat(resource: Resource, label: &'static str, key: &'static str) -> impl Widget {
+    view().class("stat-card").fill((
+        text().class("muted").content(label),
+        text()
+            .class("stat-value")
+            .content(resource.data.map(move |v| {
+                v[key]
+                    .as_f64()
+                    .map(|c| format!("¥ {:.2}", c / 100.))
+                    .unwrap_or_else(|| "—".into())
+            })),
+    ))
+}
+fn table(resource: Resource, columns: &'static [(&'static str, &'static str)]) -> impl Widget {
+    view().fill((
+        resource.status(),
+        empty(resource, "暂无记录。"),
+        view().class("table-scroll").fill(
+            view()
+                .document_part(DocumentPart::Table)
+                .class("data-table")
+                .fill((
+                    view().document_part(DocumentPart::TableHead).fill(
+                        view().document_part(DocumentPart::TableRow).fill(nodes(
+                            columns
+                                .iter()
+                                .map(|(_, name)| {
+                                    boxed(
+                                        view()
+                                            .document_part(DocumentPart::ColumnHeader)
+                                            .fill(text().content(*name)),
+                                    )
+                                })
+                                .collect(),
+                        )),
+                    ),
+                    view().document_part(DocumentPart::TableBody).fill(
+                        each(resource.data.map(items))
+                            .key(|v| v.to_string())
+                            .seed(move |v| {
+                                view().document_part(DocumentPart::TableRow).fill(nodes(
+                                    columns
+                                        .iter()
+                                        .map(|(key, _)| {
+                                            let cell: Box<dyn Widget> =
+                                                if *key == "id" || *key == "user_id" {
+                                                    boxed(nav(
+                                                        display_value(&v[*key]),
+                                                        format!("/admin/users/{}", string(&v, key)),
+                                                    ))
+                                                } else {
+                                                    boxed(text().content(display_value(&v[*key])))
+                                                };
+                                            boxed(
+                                                view()
+                                                    .document_part(DocumentPart::TableCell)
+                                                    .fill(cell),
+                                            )
+                                        })
+                                        .collect(),
+                                ))
+                            }),
+                    ),
+                )),
+        ),
+    ))
 }
 fn pagination(page: Cage<i64>, data: Resource) -> impl Widget {
     view().class("actions").fill((
@@ -428,6 +572,58 @@ fn defaults(fields: &[Field]) -> Value {
     }
     v
 }
+fn visible_fields(fields: &[Field]) -> Vec<Field> {
+    let keys: &[&str] = if fields.iter().any(|f| f.key == "word") {
+        &["word", "is_active", "difficulty", "frequency", "created_at"]
+    } else if fields.iter().any(|f| f.key == "content_en") {
+        &["content_en", "content_zh", "difficulty", "subject_id"]
+    } else if fields.iter().any(|f| f.key == "name_zh")
+        && fields.iter().any(|f| f.key == "is_active")
+    {
+        &["name_zh", "name_en", "difficulty", "is_active"]
+    } else if fields.iter().any(|f| f.key == "title_zh") {
+        &["title_zh", "title_en", "code", "is_active"]
+    } else {
+        return fields
+            .iter()
+            .filter(|f| !matches!(f.kind, Kind::Long))
+            .take(5)
+            .copied()
+            .collect();
+    };
+    keys.iter()
+        .map(|key| {
+            fields
+                .iter()
+                .find(|f| f.key == *key)
+                .copied()
+                .unwrap_or_else(|| t(key))
+        })
+        .collect()
+}
+fn record_value(value: &Value, key: &str) -> impl Widget + use<> {
+    if key == "is_active" {
+        boxed(
+            text()
+                .class(if value[key] == true {
+                    "status-badge active"
+                } else {
+                    "status-badge inactive"
+                })
+                .content(if value[key] == true {
+                    "启用"
+                } else {
+                    "停用"
+                }),
+        )
+    } else {
+        boxed(
+            text()
+                .class("record-cell")
+                .content(display_value(&value[key])),
+        )
+    }
+}
 fn crud(
     label_text: &'static str,
     endpoint: String,
@@ -439,6 +635,7 @@ fn crud(
         let action = Resource::new(scope);
         let draft = scope.cage(defaults(fields));
         let edit_id = scope.cage(initial);
+        let editor_open = scope.cage(initial.is_some());
         let attempted = scope.cage(false);
         let page = scope.cage(1_i64);
         let search = scope.cage(String::new());
@@ -480,7 +677,15 @@ fn crud(
         view()
             .class("admin-section")
             .fill((
-                heading(label_text),
+                view().class("section-heading").fill((
+                    heading(label_text),
+                    action_button().label("新建记录").on_press(move || {
+                        attempted.revise(|v| *v = false);
+                        edit_id.revise(|v| *v = None);
+                        draft.revise(|d| *d = defaults(fields));
+                        editor_open.revise(|v| *v = true);
+                    }),
+                )),
                 when(label_text == "词典管理", move || {
                     let refresh = batch_refresh.clone();
                     let delete_refresh = refresh.clone();
@@ -524,199 +729,299 @@ fn crud(
                 field("搜索内容", search),
                 data.status(),
                 empty(data, "没有匹配的记录。"),
-                each(data.data.map(items))
-                    .key(|v| v.to_string())
-                    .seed(move |v| {
-                        let id = v["id"].as_i64().unwrap_or_default();
-                        let editing = v.clone();
-                        let base = rows_base.clone();
-                        let refresh = refresh.clone();
-                        view().class("panel record").fill((
-                            when(label_text == "词典管理", move || {
-                                checkbox_control()
-                                    .enabled(action.busy.map(|b| !*b))
-                                    .label(format!("选择单词 {id}"))
-                                    .checked(selected.map(move |ids| ids.contains(&id)))
-                                    .on_checked_change(move |checked| {
-                                        selected.revise(|ids| {
-                                            ids.retain(|v| *v != id);
-                                            if checked {
-                                                ids.push(id);
-                                            }
-                                        })
-                                    })
-                            }),
-                            details(&v),
-                            view().class("actions").fill((
-                                action_button()
-                                    .label("编辑")
-                                    .enabled(action.busy.map(|b| !*b))
-                                    .variant(sapid::ButtonVariant::Outline)
-                                    .on_press(move || {
-                                        attempted.revise(|a| *a = false);
-                                        edit_id.revise(|i| *i = Some(id));
-                                        draft.revise(|d| *d = editing.clone());
-                                        notice.revise(String::clear);
+                view().class("table-scroll").fill(
+                    view()
+                        .document_part(DocumentPart::Table)
+                        .class("data-table")
+                        .fill((
+                            view().document_part(DocumentPart::TableHead).fill(
+                                view().document_part(DocumentPart::TableRow).fill((
+                                    view()
+                                        .document_part(DocumentPart::ColumnHeader)
+                                        .fill(text().content("编号")),
+                                    nodes(
+                                        visible_fields(fields)
+                                            .into_iter()
+                                            .map(|f| {
+                                                boxed(
+                                                    view()
+                                                        .document_part(DocumentPart::ColumnHeader)
+                                                        .fill(text().content(label(f.key))),
+                                                )
+                                            })
+                                            .collect(),
+                                    ),
+                                    view()
+                                        .document_part(DocumentPart::ColumnHeader)
+                                        .fill(text().content("操作")),
+                                )),
+                            ),
+                            view().document_part(DocumentPart::TableBody).fill(
+                                each(data.data.map(items))
+                                    .key(|v| v.to_string())
+                                    .seed(move |v| {
+                                        let id = v["id"].as_i64().unwrap_or_default();
+                                        let editing = v.clone();
+                                        let base = rows_base.clone();
+                                        let refresh = refresh.clone();
+                                        view()
+                                            .document_part(DocumentPart::TableRow)
+                                            .class("record")
+                                            .fill((
+                                                view().document_part(DocumentPart::TableCell).fill(
+                                                    (
+                                                        text().content(id.to_string()),
+                                                        when(
+                                                            label_text == "词典管理",
+                                                            move || {
+                                                                checkbox_control()
+                                                                    .enabled(
+                                                                        action.busy.map(|b| !*b),
+                                                                    )
+                                                                    .label(format!("选择单词 {id}"))
+                                                                    .checked(selected.map(
+                                                                        move |ids| {
+                                                                            ids.contains(&id)
+                                                                        },
+                                                                    ))
+                                                                    .on_checked_change(
+                                                                        move |checked| {
+                                                                            selected.revise(|ids| {
+                                                                                ids.retain(|v| {
+                                                                                    *v != id
+                                                                                });
+                                                                                if checked {
+                                                                                    ids.push(id);
+                                                                                }
+                                                                            })
+                                                                        },
+                                                                    )
+                                                            },
+                                                        ),
+                                                    ),
+                                                ),
+                                                nodes(
+                                                    visible_fields(fields)
+                                                        .into_iter()
+                                                        .map(|f| {
+                                                            boxed(
+                                                                view()
+                                                                    .document_part(
+                                                                        DocumentPart::TableCell,
+                                                                    )
+                                                                    .fill(record_value(&v, f.key)),
+                                                            )
+                                                        })
+                                                        .collect(),
+                                                ),
+                                                view().document_part(DocumentPart::TableCell).fill(
+                                                    view().class("actions").fill((
+                                                        action_button()
+                                                            .label("编辑")
+                                                            .enabled(action.busy.map(|b| !*b))
+                                                            .variant(sapid::ButtonVariant::Outline)
+                                                            .on_press(move || {
+                                                                editor_open.revise(|v| *v = true);
+                                                                attempted.revise(|a| *a = false);
+                                                                edit_id.revise(|i| *i = Some(id));
+                                                                draft.revise(|d| {
+                                                                    *d = editing.clone()
+                                                                });
+                                                                notice.revise(String::clear);
+                                                            }),
+                                                        when(
+                                                            label_text == "词典管理",
+                                                            move || {
+                                                                nav(
+                                                                    "编辑释义和发音",
+                                                                    format!("/admin/dict/{id}"),
+                                                                )
+                                                            },
+                                                        ),
+                                                        danger_button()
+                                                            .label("删除")
+                                                            .enabled(action.busy.map(|b| !*b))
+                                                            .enabled(action.busy.map(|b| !*b))
+                                                            .on_press(move || {
+                                                                if confirm("确认删除此记录？")
+                                                                {
+                                                                    let refresh = refresh.clone();
+                                                                    action.run(
+                                                                        "DELETE",
+                                                                        format!("{base}/{id}"),
+                                                                        None,
+                                                                        move |_| {
+                                                                            refresh();
+                                                                            notice.revise(|n| {
+                                                                                *n = "记录已删除"
+                                                                                    .into()
+                                                                            });
+                                                                        },
+                                                                    );
+                                                                }
+                                                            }),
+                                                    )),
+                                                ),
+                                            ))
                                     }),
-                                when(label_text == "词典管理", move || {
-                                    nav("编辑释义和发音", format!("/admin/dict/{id}"))
-                                }),
-                                danger_button()
-                                    .label("删除")
-                                    .enabled(action.busy.map(|b| !*b))
-                                    .enabled(action.busy.map(|b| !*b))
-                                    .on_press(move || {
-                                        if confirm("确认删除此记录？") {
-                                            let refresh = refresh.clone();
-                                            action.run(
-                                                "DELETE",
-                                                format!("{base}/{id}"),
-                                                None,
-                                                move |_| {
-                                                    refresh();
-                                                    notice.revise(|n| *n = "记录已删除".into());
-                                                },
-                                            );
-                                        }
-                                    }),
-                            )),
-                        ))
-                    }),
+                            ),
+                        )),
+                ),
                 pagination(page, data),
-                view().class("panel editor").fill((
-                    text().kind(TextKind::Heading(3)).content(edit_id.map(|id| {
-                        id.map(|id| format!("编辑记录 #{id}"))
-                            .unwrap_or_else(|| "新建记录".into())
-                    })),
-                    nodes(
-                        fields
-                            .iter()
-                            .map(|spec| {
-                                let spec = *spec;
-                                let key = spec.key;
-                                let label_text = format!(
-                                    "{}{}",
-                                    label(key),
-                                    if spec.required { " *" } else { "" }
-                                );
-                                if matches!(spec.kind, Kind::Bool) {
-                                    boxed(
-                                        checkbox_control()
-                                            .enabled(action.busy.map(|b| !*b))
-                                            .label(label_text)
-                                            .checked(
-                                                draft.map(move |v| {
-                                                    v[key].as_bool().unwrap_or(false)
-                                                }),
+                success_notice(notice, action),
+                action.status(),
+                sapid::dialog(format!("editor-{}", endpoint.replace('/', "-")))
+                    .theme(theme::orange())
+                    .show_trigger(false)
+                    .open(editor_open)
+                    .on_open_change(move |v| editor_open.revise(|b| *b = v))
+                    .title(label_text)
+                    .close_label("关闭记录编辑")
+                    .content(move || {
+                        let save_base = save_base.clone();
+                        let save_refresh = save_refresh.clone();
+                        view().class("editor dialog-form").fill((
+                            text().kind(TextKind::Heading(3)).content(edit_id.map(|id| {
+                                id.map(|id| format!("编辑记录 #{id}"))
+                                    .unwrap_or_else(|| "新建记录".into())
+                            })),
+                            nodes(
+                                fields
+                                    .iter()
+                                    .map(|spec| {
+                                        let spec = *spec;
+                                        let key = spec.key;
+                                        let label_text = format!(
+                                            "{}{}",
+                                            label(key),
+                                            if spec.required { " *" } else { "" }
+                                        );
+                                        if matches!(spec.kind, Kind::Bool) {
+                                            boxed(
+                                                checkbox_control()
+                                                    .enabled(action.busy.map(|b| !*b))
+                                                    .label(label_text)
+                                                    .checked(draft.map(move |v| {
+                                                        v[key].as_bool().unwrap_or(false)
+                                                    }))
+                                                    .on_checked_change(move |v| {
+                                                        draft.revise(|d| d[key] = json!(v))
+                                                    }),
                                             )
-                                            .on_checked_change(move |v| {
-                                                draft.revise(|d| d[key] = json!(v))
-                                            }),
-                                    )
-                                } else {
-                                    boxed(
-                                        view().class("field").fill((
-                                            text().content(label_text.clone()),
-                                            text_control()
-                                                .enabled(action.busy.map(|b| !*b))
-                                                .invalid(draft.map(move |value| {
-                                                    if !attempted.get() {
-                                                        return false;
-                                                    }
-                                                    let raw = string(value, key);
-                                                    (spec.required && raw.trim().is_empty())
-                                                        || (matches!(spec.kind, Kind::Number)
-                                                            && !raw.trim().is_empty()
-                                                            && raw.trim().parse::<i64>().is_err())
-                                                }))
-                                                .name(label_text)
-                                                .multiline(matches!(spec.kind, Kind::Long))
-                                                .purpose(if matches!(spec.kind, Kind::Number) {
-                                                    Purpose::Number
-                                                } else {
-                                                    Purpose::Text
-                                                })
-                                                .value(draft.map(move |v| string(v, key)))
-                                                .on_value_change(move |v| {
-                                                    draft.revise(|d| d[key] = json!(v))
-                                                }),
-                                        )),
-                                    )
-                                }
-                            })
-                            .collect(),
-                    ),
-                    action_button()
-                        .label("保存记录")
-                        .enabled(action.busy.map(|b| !*b))
-                        .on_press(move || {
-                            attempted.revise(|a| *a = true);
-                            let mut body = json!({});
-                            let value = draft.get();
-                            for field in fields {
-                                let raw = string(&value, field.key);
-                                if field.required && raw.trim().is_empty() {
-                                    action
-                                        .error
-                                        .revise(|e| *e = format!("请填写{}", label(field.key)));
-                                    return;
-                                }
-                                body[field.key] = match field.kind {
-                                    Kind::Bool => {
-                                        json!(value[field.key].as_bool().unwrap_or(false))
-                                    }
-                                    Kind::Number => {
-                                        if raw.trim().is_empty() {
-                                            Value::Null
                                         } else {
-                                            match raw.trim().parse::<i64>() {
-                                                Ok(n) => json!(n),
-                                                Err(_) => {
-                                                    action.error.revise(|e| {
-                                                        *e = format!(
-                                                            "{}必须为整数",
-                                                            label(field.key)
+                                            boxed(
+                                                view().class("field").fill((
+                                                    text().content(label_text.clone()),
+                                                    text_control()
+                                                        .enabled(action.busy.map(|b| !*b))
+                                                        .invalid(draft.map(move |value| {
+                                                            if !attempted.get() {
+                                                                return false;
+                                                            }
+                                                            let raw = string(value, key);
+                                                            (spec.required && raw.trim().is_empty())
+                                                                || (matches!(
+                                                                    spec.kind,
+                                                                    Kind::Number
+                                                                ) && !raw.trim().is_empty()
+                                                                    && raw
+                                                                        .trim()
+                                                                        .parse::<i64>()
+                                                                        .is_err())
+                                                        }))
+                                                        .name(label_text)
+                                                        .multiline(matches!(spec.kind, Kind::Long))
+                                                        .purpose(
+                                                            if matches!(spec.kind, Kind::Number) {
+                                                                Purpose::Number
+                                                            } else {
+                                                                Purpose::Text
+                                                            },
                                                         )
-                                                    });
-                                                    return;
+                                                        .value(draft.map(move |v| string(v, key)))
+                                                        .on_value_change(move |v| {
+                                                            draft.revise(|d| d[key] = json!(v))
+                                                        }),
+                                                )),
+                                            )
+                                        }
+                                    })
+                                    .collect(),
+                            ),
+                            action_button()
+                                .label("保存记录")
+                                .enabled(action.busy.map(|b| !*b))
+                                .on_press(move || {
+                                    attempted.revise(|a| *a = true);
+                                    let mut body = json!({});
+                                    let value = draft.get();
+                                    for field in fields {
+                                        let raw = string(&value, field.key);
+                                        if field.required && raw.trim().is_empty() {
+                                            action.error.revise(|e| {
+                                                *e = format!("请填写{}", label(field.key))
+                                            });
+                                            return;
+                                        }
+                                        body[field.key] = match field.kind {
+                                            Kind::Bool => {
+                                                json!(value[field.key].as_bool().unwrap_or(false))
+                                            }
+                                            Kind::Number => {
+                                                if raw.trim().is_empty() {
+                                                    Value::Null
+                                                } else {
+                                                    match raw.trim().parse::<i64>() {
+                                                        Ok(n) => json!(n),
+                                                        Err(_) => {
+                                                            action.error.revise(|e| {
+                                                                *e = format!(
+                                                                    "{}必须为整数",
+                                                                    label(field.key)
+                                                                )
+                                                            });
+                                                            return;
+                                                        }
+                                                    }
                                                 }
                                             }
-                                        }
+                                            _ => {
+                                                if raw.trim().is_empty() && !field.required {
+                                                    Value::Null
+                                                } else {
+                                                    json!(raw.trim())
+                                                }
+                                            }
+                                        };
                                     }
-                                    _ => {
-                                        if raw.trim().is_empty() && !field.required {
-                                            Value::Null
-                                        } else {
-                                            json!(raw.trim())
-                                        }
-                                    }
-                                };
-                            }
-                            let (method, path) = edit_id
-                                .get()
-                                .map(|id| ("PUT", format!("{save_base}/{id}")))
-                                .unwrap_or(("POST", save_base.clone()));
-                            let refresh = save_refresh.clone();
-                            action.run(method, path, Some(body), move |_| {
-                                attempted.revise(|a| *a = false);
-                                edit_id.revise(|i| *i = None);
-                                draft.revise(|d| *d = defaults(fields));
-                                notice.revise(|n| *n = "记录已保存".into());
-                                refresh();
-                            });
-                        }),
-                    action_button()
-                        .label("新建 / 取消编辑")
-                        .enabled(action.busy.map(|b| !*b))
-                        .variant(sapid::ButtonVariant::Outline)
-                        .on_press(move || {
-                            attempted.revise(|a| *a = false);
-                            edit_id.revise(|i| *i = None);
-                            draft.revise(|d| *d = defaults(fields));
-                        }),
-                    action.status(),
-                    success_notice(notice, action),
-                )),
+                                    let (method, path) = edit_id
+                                        .get()
+                                        .map(|id| ("PUT", format!("{save_base}/{id}")))
+                                        .unwrap_or(("POST", save_base.clone()));
+                                    let refresh = save_refresh.clone();
+                                    action.run(method, path, Some(body), move |_| {
+                                        attempted.revise(|a| *a = false);
+                                        edit_id.revise(|i| *i = None);
+                                        draft.revise(|d| *d = defaults(fields));
+                                        editor_open.revise(|v| *v = false);
+                                        notice.revise(|n| *n = "记录已保存".into());
+                                        refresh();
+                                    });
+                                }),
+                            action_button()
+                                .label("取消编辑")
+                                .enabled(action.busy.map(|b| !*b))
+                                .variant(sapid::ButtonVariant::Outline)
+                                .on_press(move || {
+                                    editor_open.revise(|v| *v = false);
+                                    attempted.revise(|a| *a = false);
+                                    edit_id.revise(|i| *i = None);
+                                    draft.revise(|d| *d = defaults(fields));
+                                }),
+                            action.status(),
+                            success_notice(notice, action),
+                        ))
+                    }),
             ))
             .build(scope)
     })

@@ -32,18 +32,19 @@ pub fn section_nav(label: impl Into<String>, path: impl Into<String>) -> impl Wi
 fn navigation_link(label: String, path: String, section: bool) -> impl Widget {
     let current_path = window().location().pathname().unwrap_or_default();
     let target = path.split(['?', '#']).next().unwrap_or_default();
-    let current = if current_path == target {
-        Some(Current::Page)
-    } else if section
-        && target != "/"
-        && current_path
-            .strip_prefix(target)
-            .is_some_and(|tail| tail.starts_with('/'))
-    {
-        Some(Current::Location)
-    } else {
-        None
-    };
+    let current =
+        if current_path == target || section && target == "/dict" && current_path == "/translate" {
+            Some(Current::Page)
+        } else if section
+            && target != "/"
+            && current_path
+                .strip_prefix(target)
+                .is_some_and(|tail| tail.starts_with('/'))
+        {
+            Some(Current::Location)
+        } else {
+            None
+        };
     link()
         .label(label)
         .target(path)
@@ -84,6 +85,32 @@ pub fn textarea(label: &str, value: Cage<String>) -> impl Widget + use<> {
             .multiline(true)
             .value(value)
             .on_value_change(move |v| value.revise(|s| *s = v)),
+    ))
+}
+/// Editable controls must explicitly opt in to Glory's submit command. An
+/// ancestor alone cannot consume native editing keys (including IME input).
+pub fn submit_field<F: FnMut() + 'static>(
+    label: &str,
+    value: Cage<String>,
+    multiline: bool,
+    mut submit: F,
+) -> impl Widget + use<F> {
+    view().class("field").fill((
+        text().content(label.to_string()),
+        text_control()
+            .name(label.to_string())
+            .multiline(multiline)
+            .value(value)
+            .on_value_change(move |next| value.revise(|v| *v = next))
+            .on(glory::render::EventKind::Keyboard, move |event| {
+                if let Event::Keyboard {
+                    command: glory::render::KeyboardCommand::Submit,
+                    ..
+                } = event
+                {
+                    submit();
+                }
+            }),
     ))
 }
 pub fn choices(selected: Cage<String>, options: &[(&str, &str)]) -> impl Widget + use<> {

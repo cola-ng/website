@@ -77,8 +77,8 @@ let browser;
       const chooser=page.waitForEvent('filechooser');await page.getByRole('button',{name:'上传头像（居中裁剪）',exact:true}).click();await(await chooser).setFiles(path.resolve(__dirname,'../front/public/colang-logo.png'));
       await page.waitForFunction(()=>document.querySelector('.profile-avatar')?.src.startsWith('data:image/'));await page.reload();await page.waitForFunction(()=>document.querySelector('.profile-avatar')?.src.startsWith('data:image/'));
       await page.getByRole('button',{name:'删除头像',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.profile-avatar')?.src.endsWith('/colang-logo.svg'));
-      await page.getByRole('textbox',{name:'API Key',exact:true}).fill('qa-production-invalid-key');await page.getByRole('button',{name:'添加并启用',exact:true}).click();await page.locator('.ai-access-status').getByText(/当前使用你自己的/).waitFor();
-      assert.equal(await page.getByRole('textbox',{name:'API Key',exact:true}).inputValue(),'');
+      await page.getByRole('tab',{name:'设置',exact:true}).click();await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();await page.getByRole('textbox',{name:'API Key',exact:true}).fill('qa-production-invalid-key');await page.getByRole('button',{name:'添加并启用',exact:true}).click();await page.locator('.ai-access-status').getByText(/当前使用你自己的/).waitFor();
+      assert.equal(await page.getByRole('textbox',{name:'API Key',exact:true}).count(),0);
       await page.locator('.provider-row').getByRole('button',{name:'编辑',exact:true}).click();await page.getByRole('textbox',{name:'对话模型（可选）',exact:true}).fill('glm-4-flash');await page.getByRole('button',{name:'保存配置',exact:true}).click();await page.getByRole('button',{name:'保存配置',exact:true}).waitFor({state:'detached'});
       await page.locator('.provider-row').getByRole('button',{name:'删除配置',exact:true}).click();await page.locator('.provider-row').waitFor({state:'detached'});await page.locator('.ai-access-status').getByText(/请添加并启用自己的/).waitFor();
       await page.goto(base+'/chat/'+qa.chat_id);await page.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello, this is a free account.');await page.getByRole('button',{name:'发送消息',exact:true}).click();
@@ -104,7 +104,7 @@ let browser;
     await page.screenshot({path:path.join(output,'conversation.png'),fullPage:true});
     console.log('Production real conversation passed:',JSON.stringify(conversation));
     }
-    await page.getByRole('button',{name:'退出登录',exact:true}).click();
+    await page.getByRole('button',{name:/我的账户$/}).click();await page.getByRole('button',{name:'退出登录',exact:true}).click();
   }
   assert.deepEqual(errors,[]);
   for(const name of ['failure.png']){const file=path.join(output,name);if(fs.existsSync(file))fs.unlinkSync(file);}

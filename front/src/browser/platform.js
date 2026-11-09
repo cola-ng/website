@@ -1,4 +1,28 @@
 // Browser platform adapters only. Application state and UI live in Rust.
+export async function copyText(text) {
+  if(!navigator.clipboard?.writeText)throw new Error('当前浏览器不支持复制，请选择译文后手动复制。');
+  try { await navigator.clipboard.writeText(text); }
+  catch { throw new Error('未获得剪贴板权限，请选择译文后手动复制。'); }
+}
+export function followChat() {
+  let feed, height=0, first, pinned=true, stopped=false;
+  const onScroll=()=>{ pinned=feed.scrollHeight-feed.clientHeight-feed.scrollTop<80; };
+  const update=()=>{
+    if(stopped)return;
+    const next=document.querySelector('.chat-messages');
+    if(next!==feed){if(feed)resize.unobserve(feed);feed?.removeEventListener('scroll',onScroll);feed=next;height=0;first=undefined;pinned=true;if(feed)resize.observe(feed);feed?.addEventListener('scroll',onScroll,{passive:true});}
+    if(!feed)return;
+    const nextFirst=feed.querySelector('.message');
+    if(first&&first.isConnected&&nextFirst!==first)feed.scrollTop+=feed.scrollHeight-height;
+    else if(pinned)feed.scrollTop=feed.scrollHeight;
+    height=feed.scrollHeight;first=nextFirst;
+  };
+  const observer=new MutationObserver(update);
+  observer.observe(document.body,{childList:true,subtree:true,characterData:true});
+  const resize=new ResizeObserver(update);
+  const frame=requestAnimationFrame(()=>{update();if(feed)resize.observe(feed);});
+  return ()=>{stopped=true;cancelAnimationFrame(frame);observer.disconnect();resize.disconnect();feed?.removeEventListener('scroll',onScroll);};
+}
 let recorder, stream, chunks = [], pending, timer, audio, objectUrl, starting = false, audioGeneration = 0;
 let recordingSequence=0, recordingOwner, rejectRecording;
 function release() {

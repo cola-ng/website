@@ -245,25 +245,65 @@ pub fn profile(session: Cage<Value>) -> impl Widget {
         account.load("/api/me/account-status");
         let summary = Resource::new(scope);
         summary.load("/api/learn/summary");
-        let study = Resource::new(scope);
-        study.load("/api/learn/study-time?days=7");
+
         let achievements = Resource::new(scope);
         achievements.load("/api/achievements/my");
-        let tasks = Resource::new(scope);
-        tasks.load("/api/learn/daily");
-        view().fill((title("我的学习"),view().class("cards").fill((
-            view().class("panel").fill((heading("个人资料"),media::avatar(session),p(string(&session.get(),"email")),field_state("Handle（用户标识）",handle,Purpose::Text,false.into(),action.busy.map(|b|!*b).into()),p("唯一标识，可随时修改；3–32 位，以英文字母开头，可含数字、下划线和短横线。"),field_state("昵称",name,Purpose::Text,false.into(),action.busy.map(|b|!*b).into()),field_state("手机（可选）",phone,Purpose::Tel,false.into(),action.busy.map(|b|!*b).into()),
+
+        let ranks = Resource::new(scope);
+        ranks.load("/api/achievements/profile");
+        let initial = match window().location().hash().unwrap_or_default().as_str() {
+            "#settings" => "settings",
+            "#achievements" => "achievements",
+            _ => "profile",
+        };
+        let selected = scope.cage(initial.to_string());
+        let listener = Closure::<dyn FnMut(web_sys::Event)>::new(move |_| {
+            let next = match window().location().hash().unwrap_or_default().as_str() {
+                "#settings" => "settings",
+                "#achievements" => "achievements",
+                _ => "profile",
+            };
+            selected.revise(|v| *v = next.into());
+        });
+        if window()
+            .add_event_listener_with_callback("hashchange", listener.as_ref().unchecked_ref())
+            .is_ok()
+        {
+            let _ = scope.on_cleanup(move || {
+                let _ = window().remove_event_listener_with_callback(
+                    "hashchange",
+                    listener.as_ref().unchecked_ref(),
+                );
+                drop(listener);
+            });
+        }
+        view().class("profile-page").fill((
+            view().class("profile-hero").fill((
+                view().class("profile-cover"),
+                view().class("profile-identity").fill((
+                    media::avatar(session),
+                    view().fill((
+                        title("我的学习"),
+                        text().class("profile-name").content(session.map(|s|string(s,"name"))),
+                        text().class("muted").content(session.map(|s|format!("@{} · {}",string(s,"handle"),string(s,"email")))),
+                    )),
+                )),
+            )),
+            sapid::tabs("profile-tabs").theme(theme::orange()).value(selected).on_value_change(move|v|{selected.revise(|s|*s=v.clone());let _=window().history().and_then(|h|h.replace_state_with_url(&JsValue::NULL,"",Some(&format!("#{}",v))));}).grow(true)
+            .tab(sapid::tab("profile").label("个人资料").content(move || view().class("cards profile-columns").fill((
+            view().class("panel account-information").fill((heading("账户信息"),p(format!("邮箱地址\n{}",string(&session.get(),"email"))),text().kind(TextKind::Paragraph).content(session.map(|s|format!("用户标识\n@{}",string(s,"handle")))),text().kind(TextKind::Paragraph).content(session.map(|s|format!("手机号码\n{}",if string(s,"phone").is_empty(){"未设置".into()}else{string(s,"phone")}))),p(format!("注册时间\n{}",if string(&session.get(),"created_at").is_empty(){"—".into()}else{string(&session.get(),"created_at")})))),
+            view().class("panel").fill((heading("编辑资料"),field_state("Handle（用户标识）",handle,Purpose::Text,false.into(),action.busy.map(|b|!*b).into()),text().kind(TextKind::Paragraph).class("muted").content("唯一标识，可随时修改；3–32 位，以英文字母开头，可含数字、下划线和短横线。"),field_state("昵称",name,Purpose::Text,false.into(),action.busy.map(|b|!*b).into()),field_state("手机（可选）",phone,Purpose::Tel,false.into(),action.busy.map(|b|!*b).into()),
                 action_button().label("保存资料").enabled(action.busy.map(|b|!*b)).on_press(move||action.run("PUT","/api/me".into(),Some(json!({"name":name.get().trim(),"phone":phone.get().trim(),"handle":handle.get().trim()})),move|value|{let admin=session.get()["is_admin"].clone();let mut user=value;user["is_admin"]=admin;handle.revise(|h|*h=string(&user,"handle"));session.revise(|s|*s=user);notice.revise(|s|*s="资料已保存".into());})),
-                action_button().label("上传头像（居中裁剪）").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::avatar_upload(action,session)),
-                danger_button().label("删除头像").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("删除当前头像？"){action.run("DELETE","/api/me/avatar".into(),None,move|v|{session.revise(|s|s["avatar"]=v["avatar"].clone());notice.revise(|s|*s="头像已删除".into());});}}),action.status(),success_notice(notice,action),
+                view().class("actions avatar-actions").fill((action_button().label("上传头像（居中裁剪）").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::avatar_upload(action,session)),
+                danger_button().class("avatar-delete").variant(sapid::ButtonVariant::Subtle).label("删除头像").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("删除当前头像？"){action.run("DELETE","/api/me/avatar".into(),None,move|v|{session.revise(|s|s["avatar"]=v["avatar"].clone());notice.revise(|s|*s="头像已删除".into());});}}),)),action.status(),success_notice(notice,action),
             )),
             account_security(account),
-        )),
-        data_section("学习概览",summary),data_section("最近 7 天学习时长",study),
-        view().class("panel").fill((heading("今日任务"),tasks.status(),each(tasks.data.map(|v|items(&v["tasks"]))).key(|v|v.to_string()).seed(move|v|{
-            let id=string(&v,"id");let completed=v["status"]=="completed";let target=v["target_value"].clone();
-            view().class("history-row").fill((p(string(&v,"task_title")),checkbox_control().label("已完成").checked(completed).on_checked_change(move|next|action.run("PUT",format!("/api/learn/daily/tasks/{id}"),Some(json!({"status":if next{"completed"}else{"pending"},"current_value":if next{target.clone()}else{json!(0)}})),move |_|tasks.load("/api/learn/daily")))))
-        }))),data_section("成就",achievements),providers(),view().class("actions").fill((nav("管理订阅和钱包","/subscription"),nav("生词复习","/review"))),
+            ))))
+            .tab(sapid::tab("achievements").label("成就").content(move || view().class("achievement-page").fill((
+                view().class("panel").fill((heading("学习概览"),view().class("stat-grid").fill((dashboard::stat(summary,"学习天数","learning_days","天"),dashboard::stat(summary,"词汇积累","total_vocabulary_count","个"),dashboard::stat(ranks,"经验值","total_xp","XP"),dashboard::stat(ranks,"连续学习","current_streak_days","天"))),summary.status(),ranks.status(),text().class("badge").content(ranks.data.map(|v|format!("{} · 距下一级还需 {} XP",string(&v["rank"],"name_zh"),string(v,"xp_to_next_rank")))))),
+                view().class("panel").fill((heading("我的成就"),achievements.status(),empty(achievements,"还没有成就记录，坚持练习解锁第一枚徽章吧。"),view().class("achievement-grid").fill(each(achievements.data.map(items)).key(|v|v.to_string()).seed(|v|view().class(if v["is_completed"]==true{"achievement-card earned"}else{"achievement-card"}).fill((text().class("scene-emoji").content(if string(&v,"icon").is_empty(){"🏅".into()}else{string(&v,"icon")}),heading(string(&v,"name_zh")),p(string(&v,"description_zh")),text().class("badge").content(format!("{} / {} · {} XP",string(&v,"progress"),string(&v,"requirement_value"),string(&v,"xp_reward"))))))))),
+            ))))
+            .tab(sapid::tab("settings").label("设置").content(providers)),
         )).build(scope)
     })
 }
@@ -281,11 +321,13 @@ fn account_security(account: Resource) -> impl Widget {
         let old = scope.cage(String::new());
         let password = scope.cage(String::new());
         let repeat = scope.cage(String::new());
+        let password_open = scope.cage(false);
         let enabled = scope.bond(move || {
             !action.busy.get() && !account.busy.get() && account.data.get().is_object()
         });
         view().class("panel").fill((
-            heading("账户安全"),account.status(),
+            heading("账户安全"),p("管理你的密码与第三方登录方式。"),account.status(),
+            sapid::dialog("password-editor").theme(theme::orange()).open(password_open).on_open_change(move|v|password_open.revise(|b|*b=v)).label(account.data.map(|v|if v["has_password"]==true{"修改密码"}else{"设置密码"}.into())).title("账户密码").close_label("关闭密码设置").content(move || view().class("dialog-form").fill((
             when(account.data.map(|v|v["has_password"]==true), move || field_state("当前密码",old,Purpose::Password,false.into(),enabled.into())),
             field_state("新密码",password,Purpose::Password,false.into(),enabled.into()),
             field_state("确认新密码",repeat,Purpose::Password,false.into(),enabled.into()),
@@ -293,9 +335,10 @@ fn account_security(account: Resource) -> impl Widget {
                 if password.get().len()<8||password.get()!=repeat.get(){action.error.revise(|e|*e="新密码至少 8 字节，两次输入必须一致".into());return;}
                 action.run("POST","/api/me/change-password".into(),Some(json!({"current_password":if old.get().is_empty(){Value::Null}else{json!(old.get())},"new_password":password.get()})),move |_|{
                     old.revise(String::clear);password.revise(String::clear);repeat.revise(String::clear);
-                    notice.revise(|s|*s="密码已更新".into());account.load("/api/me/account-status");
+                    password_open.revise(|v|*v=false);notice.revise(|s|*s="密码已更新".into());account.load("/api/me/account-status");
                 });
-            }),
+            }),action.status(),
+            ))),
             social_buttons(Some(account),action),
             each(account.data.map(|v|items(&v["linked_identities"]))).key(|v|v.to_string()).seed(move |identity| {
                 let id=string(&identity,"id");let verified=identity["verified"]==true;
@@ -351,12 +394,14 @@ fn providers() -> impl Widget {
         let resource = scope.cage(String::new());
         let voice = scope.cage(String::new());
         let editing = scope.cage(None::<i64>);
+        let editor_open = scope.cage(false);
         let notice = scope.cage(String::new());
         let reload = move || {
             providers.load("/api/ai-providers");
             entitlement.load("/api/ai-providers/access");
         };
         let reset = move || {
+            editor_open.revise(|v| *v = false);
             editing.revise(|v| *v = None);
             key.revise(String::clear);
             access.revise(String::clear);
@@ -368,7 +413,8 @@ fn providers() -> impl Widget {
         view().class("panel").fill((
             heading("AI 服务配置"),p("自备密钥即可使用 AI 功能，无需平台付费订阅。个人配置失败时不会自动使用平台密钥。"),
             view().fill((entitlement.status(),view().role(Role::Status).class("ai-access-status").fill(text().content(entitlement.data.map(|v|string(v,"message")))),providers.status())),
-            view().class("form-fields").fill((choices_enabled(kind,&[("zhipu","智谱"),("doubao","豆包")],action.busy.map(move|b|!*b&&editing.get().is_none()).into()),
+            action_button().label("添加 AI 配置").on_press(move ||{reset();editor_open.revise(|v|*v=true);}),
+            sapid::dialog("provider-editor").theme(theme::orange()).title("AI 服务配置").show_trigger(false).close_label("关闭 AI 配置").open(editor_open).on_open_change(move|v|editor_open.revise(|b|*b=v)).content(move || view().class("form-fields dialog-form").fill((choices_enabled(kind,&[("zhipu","智谱"),("doubao","豆包")],action.busy.map(move|b|!*b&&editing.get().is_none()).into()),
             field_state("API Key",key,Purpose::Password,false.into(),action.busy.map(|b|!*b).into()),
             when(editing.map(|v|v.is_some()),||p("编辑时 API Key 和 Access Token 留空可保留原密钥。")),
             field_state("对话模型（可选）",model,Purpose::Text,false.into(),action.busy.map(|b|!*b).into()),
@@ -392,11 +438,11 @@ fn providers() -> impl Widget {
                 let (method,path,body)=if let Some(id)=editing.get(){("PUT",format!("/api/ai-providers/{id}"),json!({"settings":settings}))}else{("POST","/api/ai-providers".into(),json!({"provider_type":kind.get(),"settings":settings,"set_active":true}))};
                 action.run(method,path,Some(body),move |_|{reset();reload();notice.revise(|s|*s="配置已保存".into());});
             }),
-            when(editing.map(|v|v.is_some()),move||action_button().label("取消编辑").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(reset)),)),
+            when(editing.map(|v|v.is_some()),move||action_button().label("取消编辑").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(reset)),action.status(),))),
             each(providers.data.map(items)).key(|v|v.to_string()).seed(move|v|{
                 let id=v["id"].as_i64().unwrap_or_default();let original=v.clone();let active=v["is_active"]==true;
                 view().class("provider-row").fill((p(format!("{} · {}",string(&v,"provider_type"),if active{"使用中（个人密钥）"}else{"未启用"})),
-                    action_button().label("编辑").enabled(action.busy.map(|b|!*b)).variant(sapid::ButtonVariant::Outline).on_press(move||{editing.revise(|v|*v=Some(id));kind.revise(|k|*k=string(&original,"provider_type"));model.revise(|m|*m=string(&original["settings"],"chat_model"));key.revise(String::clear);access.revise(String::clear);app.revise(|s|*s=string(&original["settings"],"app_id"));resource.revise(|s|*s=string(&original["settings"],"tts_resource_id"));voice.revise(|s|*s=string(&original["settings"],"voice_type"));}),
+                    action_button().label("编辑").enabled(action.busy.map(|b|!*b)).variant(sapid::ButtonVariant::Outline).on_press(move||{editor_open.revise(|v|*v=true);editing.revise(|v|*v=Some(id));kind.revise(|k|*k=string(&original,"provider_type"));model.revise(|m|*m=string(&original["settings"],"chat_model"));key.revise(String::clear);access.revise(String::clear);app.revise(|s|*s=string(&original["settings"],"app_id"));resource.revise(|s|*s=string(&original["settings"],"tts_resource_id"));voice.revise(|s|*s=string(&original["settings"],"voice_type"));}),
                     action_button().label("测试连接").enabled(action.busy.map(|b|!*b)).on_press(move||action.run("POST",format!("/api/ai-providers/{id}/test"),None,move|v|{if v["success"]==true{notice.revise(|s|*s="连接成功".into());}else{notice.revise(String::clear);action.error.revise(|e|*e=string(&v,"error"));}})),
                     action_button().label(if active{"停用"}else{"启用"}).enabled(action.busy.map(|b|!*b)).on_press(move||{
                         if active {action.run("PUT",format!("/api/ai-providers/{id}"),Some(json!({"is_active":false})),move |_|reload());}

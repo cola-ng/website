@@ -1,6 +1,7 @@
 mod account;
 mod admin;
 mod chat_stream;
+mod dashboard;
 mod dictionary;
 mod learning;
 mod media;
@@ -253,7 +254,7 @@ pub fn start() -> std::result::Result<(), JsValue> {
             });
         }
         heartbeat(&route);
-        view().class("site").fill((
+        view().class("site sapid-theme-colang-light").fill((
             header(session),
             view().role(Role::Main).class("main").fill((
                 when(ready.map(|v| !v), || text().content("正在验证登录状态…")),
@@ -317,51 +318,74 @@ pub fn start() -> std::result::Result<(), JsValue> {
     APP.with(|app| *app.borrow_mut() = Some(web));
     Ok(())
 }
+fn main_navigation() -> impl Widget {
+    view()
+        .role(Role::Navigation)
+        .name("主导航")
+        .class("nav")
+        .fill((
+            section_nav("天天唠嗑", "/chat"),
+            section_nav("温故知新", "/review"),
+            section_nav("角色扮演", "/stages"),
+            section_nav("大声跟读", "/read"),
+            section_nav("词典翻译", "/dict"),
+        ))
+}
 fn header(session: Cage<Value>) -> impl Widget {
-    view().role(Role::Banner).class("header").fill((
-        link().target("/").class("brand").fill((
-            image().source("/colang-logo.svg").alt("开朗英语标志"),
-            text().content("开朗英语"),
-        )),
-        view()
-            .role(Role::Navigation)
-            .name("主导航")
-            .class("nav")
-            .fill((
-                section_nav("词典", "/dict"),
-                section_nav("翻译", "/translate"),
-                section_nav("对话", "/chat"),
-                section_nav("复习", "/review"),
-                section_nav("场景", "/stages"),
-                section_nav("跟读", "/read"),
-                section_nav("收藏", "/favorites"),
-                section_nav("订阅", "/subscription"),
+    view().role(Role::Banner).class("header").fill(
+        view().class("header-inner").fill((
+            link().target("/").class("brand").fill((
+                image().source("/colang-logo.svg").alt("开朗英语标志"),
+                text().content("开朗英语"),
             )),
-        when(
-            session.map(|s| !s.is_null() && s["session_error"].is_null()),
-            move || {
-                view().class("actions").fill((
-                    section_nav("我的", "/me"),
-                    when(
-                        session.map(|s| s["is_admin"].as_bool().unwrap_or(false)),
-                        || section_nav("管理", "/admin"),
-                    ),
-                    action_button()
-                        .label("退出登录")
-                        .variant(sapid::ButtonVariant::Subtle)
-                        .on_press(|| {
-                            clear_auth();
-                            go("/");
-                        }),
-                ))
-            },
-        )
-        .otherwise(|| section_nav("登录 / 注册", "/login")),
-    ))
+            view().class("desktop-navigation").fill(main_navigation()),
+            view().class("mobile-navigation").fill(
+                sapid::drawer("mobile-navigation")
+                    .theme(theme::orange())
+                    .label("打开导航菜单")
+                    .trigger_content(|| text().content("☰"))
+                    .title("学习导航")
+                    .close_label("关闭导航菜单")
+                    .content(main_navigation),
+            ),
+            when(
+                session.map(|s| !s.is_null() && s["session_error"].is_null()),
+                move || {
+                    sapid::popover("account-menu")
+                        .theme(theme::orange())
+                        .label(session.map(|s| format!("{} · 我的账户", string(s, "name"))))
+                        .close_label("关闭账户菜单")
+                        .content(move || {
+                            view().class("account-menu").fill((
+                                media::avatar(session),
+                                text().content(session.map(|s| string(s, "name"))),
+                                nav("我的学习", "/me"),
+                                nav("我的收藏", "/favorites"),
+                                nav("成就", "/me#achievements"),
+                                nav("AI 服务设置", "/me#settings"),
+                                nav("订阅与钱包", "/subscription"),
+                                when(
+                                    session.map(|s| s["is_admin"].as_bool().unwrap_or(false)),
+                                    || nav("管理后台", "/admin"),
+                                ),
+                                action_button()
+                                    .label("退出登录")
+                                    .variant(sapid::ButtonVariant::Subtle)
+                                    .on_press(|| {
+                                        clear_auth();
+                                        go("/");
+                                    }),
+                            ))
+                        })
+                },
+            )
+            .otherwise(|| section_nav("登录 / 注册", "/login")),
+        )),
+    )
 }
 fn page(route: Route, session: Cage<Value>) -> Nodes {
     let page: Box<dyn Widget> = match route {
-        Route::Landing => boxed(landing()),
+        Route::Landing => boxed(dashboard::landing(session)),
         Route::Login => boxed(account::login_page(false)),
         Route::Auth => boxed(account::authorize()),
         Route::AuthComplete => boxed(account::oauth_complete()),
@@ -394,36 +418,6 @@ fn page(route: Route, session: Cage<Value>) -> Nodes {
         ))),
     };
     nodes(vec![page])
-}
-fn landing() -> impl Widget {
-    view().fill((
-        view().class("hero").fill((
-            text().class("eyebrow").content("COLANG · 开朗英语"),
-            title("让英语，成为你的日常。"),
-            p("从一次对话、一个单词、一句跟读开始，逐步建立表达的自信。"),
-            view()
-                .class("actions")
-                .fill((nav("开始对话 →", "/chat"), nav("查一个单词", "/dict"))),
-        )),
-        view().class("cards").fill((
-            feature(
-                "开口表达",
-                "在真实情境里练习，获得语法和用词反馈。",
-                "/chat",
-            ),
-            feature("听说一起练", "跟读标准发音，查看评分与改进建议。", "/read"),
-            feature(
-                "记得更牢",
-                "收藏单词，按词义、拼写和发音分类复习。",
-                "/review",
-            ),
-        )),
-    ))
-}
-fn feature(label: &'static str, body: &'static str, path: &'static str) -> impl Widget {
-    view()
-        .class("panel")
-        .fill((heading(label), p(body), nav("开始练习 →", path)))
 }
 fn legal(content: &'static str, label: &'static str) -> impl Widget {
     view().class("panel legal").fill((

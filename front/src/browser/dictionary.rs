@@ -1,77 +1,94 @@
 use super::*;
 
-pub fn dictionary(mut initial: Option<String>) -> impl Widget {
+pub fn dictionary(initial: Option<String>) -> impl Widget {
     widget(move |scope| {
         let query_value = scope.cage(initial.clone().unwrap_or_default());
         let result = Resource::new(scope);
         let history = Resource::new(scope);
-        if let Some(word) = initial.take() {
-            result.load(format!("/api/dict/lookup?{}", query("word", &word)));
-        }
+        let history_epoch = scope.cage(0u32);
         if token().is_some() {
             history.load("/api/dict/words/searched?limit=30");
+        } else {
+            let entries = storage()
+                .and_then(|s| s.get_item("dict_search_history").ok().flatten())
+                .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
+                .map(|v| items(&v))
+                .unwrap_or_default();
+            history.data.revise(|v| *v = json!(entries));
         }
+        let lookup = std::rc::Rc::new(move || {
+            if result.busy.get() {
+                return;
+            }
+            let word = query_value.get().trim().to_string();
+            if word.is_empty() {
+                result.error.revise(|e| *e = "请输入要查询的单词".into());
+                return;
+            }
+            let lookup_epoch = history_epoch.get();
+            result.data.revise(|v| *v = Value::Null);
+            result.run("GET",format!("/api/dict/lookup?{}",query("word",&word)),None,move|value|{
+                result.data.revise(|v|*v=value);
+                let _=window().history().and_then(|h|h.replace_state_with_url(&JsValue::NULL,"",Some(&format!("/dict/{}",query("w",&word).trim_start_matches("w=")))));
+                if history_epoch.get()!=lookup_epoch{return;}
+                if token().is_some(){spawn(async move{match request("POST","/api/dict/words/searched",Some(json!({"word":word}))).await{Ok(_)=>{if history.data.is_alive(){history.load("/api/dict/words/searched?limit=30");}},Err(e)=>{if history.error.is_alive(){history.error.revise(|v|*v=e);}}}});}else{
+                    let mut entries=items(&history.data.get());entries.retain(|v|!string(v,"word").eq_ignore_ascii_case(&word));entries.insert(0,json!({"word":word,"searched_at":js_sys::Date::new_0().to_iso_string().as_string()}));entries.truncate(50);local_history(entries,history);
+                }
+            });
+        });
+        if initial.is_some() {
+            lookup();
+        }
+        let keyboard_lookup = lookup.clone();
         view()
+            .class("dictionary-page")
             .fill((
-                title("英语词典"),
-                p("查词、听发音，将值得记住的词加入复习。"),
+                title("词典翻译"),
+                dictionary_tabs(),
                 view().class("panel search").fill((
-                    field("单词或短语", query_value),
+                    submit_field("单词或短语", query_value, false, move || {
+                        keyboard_lookup()
+                    }),
                     action_button()
                         .label("查询")
                         .loading(result.busy)
-                        .enabled(result.busy.map(|b| !b))
-                        .on_press(move || {
-                            let word = query_value.get().trim().to_string();
-                            if word.is_empty() {
-                                result.error.revise(|e| *e = "请输入要查询的单词".into());
-                                return;
-                            }
-                            result.load(format!("/api/dict/lookup?{}", query("word", &word)));
-                            let _ = window().history().and_then(|h| {
-                                h.replace_state_with_url(
-                                    &JsValue::NULL,
-                                    "",
-                                    Some(&format!(
-                                        "/dict/{}",
-                                        query("w", &word).trim_start_matches("w=")
-                                    )),
-                                )
-                            });
-                            if token().is_some() {
-                                spawn(async move {
-                                    let _ = request(
-                                        "POST",
-                                        "/api/dict/words/searched",
-                                        Some(json!({"word":word})),
-                                    )
-                                    .await;
-                                    if history.data.is_alive() {
-                                        history.load("/api/dict/words/searched?limit=30");
-                                    }
-                                });
-                            }
-                        }),
+                        .enabled(result.busy.map(|b| !*b))
+                        .on_press(move || lookup()),
                 )),
-                result.status(),
-                each(
-                    result
-                        .data
-                        .map(|v| if v.is_null() { vec![] } else { vec![v.clone()] }),
-                )
-                .key(|v| v.to_string())
-                .seed(word_card),
-                when(history.data.map(|v| !items(v).is_empty()), move || {
-                    view().class("panel").fill((
+                view().class("dictionary-layout").fill((
+                    view().class("dictionary-main").fill((
+                        result.status(),
+                        each(
+                            result
+                                .data
+                                .map(|v| if v.is_null() { vec![] } else { vec![v.clone()] }),
+                        )
+                        .key(|v| v.to_string())
+                        .seed(word_card),
+                        when(
+                            result.data.map(move |v| {
+                                v.is_null() && !result.busy.get() && result.error.get().is_empty()
+                            }),
+                            || {
+                                view().class("panel dictionary-empty").fill((
+                                    heading("探索每一个单词"),
+                                    p("输入单词或短语，查看释义、发音、例句与词形。"),
+                                ))
+                            },
+                        ),
+                    )),
+                    view().class("panel dictionary-history").fill((
                         heading("最近查词"),
+                        history.status(),
                         each(history.data.map(items))
                             .key(|v| v.to_string())
                             .seed(move |v| {
                                 let word = string(&v, "word");
+                                let remove_word = word.clone();
                                 let id = string(&v, "id");
                                 view().class("history-row").fill((
                                     nav(
-                                        &word,
+                                        word.clone(),
                                         format!(
                                             "/dict/{}",
                                             query("w", &word).trim_start_matches("w=")
@@ -81,37 +98,71 @@ pub fn dictionary(mut initial: Option<String>) -> impl Widget {
                                         .label("删除记录")
                                         .enabled(history.busy.map(|b| !*b))
                                         .on_press(move || {
+                                            history_epoch.revise(|n| *n += 1);
+                                            if token().is_some() {
+                                                history.run(
+                                                    "DELETE",
+                                                    format!("/api/dict/words/searched/{id}"),
+                                                    None,
+                                                    move |_| {
+                                                        history.load(
+                                                            "/api/dict/words/searched?limit=30",
+                                                        )
+                                                    },
+                                                );
+                                            } else {
+                                                let mut entries = items(&history.data.get());
+                                                entries.retain(|v| {
+                                                    !string(v, "word")
+                                                        .eq_ignore_ascii_case(&remove_word)
+                                                });
+                                                local_history(entries, history);
+                                            }
+                                        }),
+                                ))
+                            }),
+                        empty(history, "查过的单词会保存在这里。"),
+                        when(history.data.map(|v| !items(v).is_empty()), move || {
+                            danger_button()
+                                .label("清空查词记录")
+                                .enabled(history.busy.map(|b| !*b))
+                                .on_press(move || {
+                                    if confirm("清空全部查词记录？") {
+                                        history_epoch.revise(|n| *n += 1);
+                                        if token().is_some() {
                                             history.run(
                                                 "DELETE",
-                                                format!("/api/dict/words/searched/{id}"),
+                                                "/api/dict/words/searched".into(),
                                                 None,
                                                 move |_| {
                                                     history
                                                         .load("/api/dict/words/searched?limit=30")
                                                 },
-                                            )
-                                        }),
-                                ))
-                            }),
-                        danger_button()
-                            .label("清空查词记录")
-                            .enabled(history.busy.map(|b| !*b))
-                            .on_press(move || {
-                                if confirm("清空全部查词记录？") {
-                                    history.run(
-                                        "DELETE",
-                                        "/api/dict/words/searched".into(),
-                                        None,
-                                        move |_| history.load("/api/dict/words/searched?limit=30"),
-                                    );
-                                }
-                            }),
-                        history.status(),
-                    ))
-                }),
+                                            );
+                                        } else {
+                                            local_history(vec![], history);
+                                        }
+                                    }
+                                })
+                        }),
+                    )),
+                )),
             ))
             .build(scope)
     })
+}
+fn local_history(entries: Vec<Value>, history: Resource) {
+    let data = json!(entries);
+    if let Some(store) = storage()
+        && store
+            .set_item("dict_search_history", &data.to_string())
+            .is_err()
+    {
+        history
+            .error
+            .revise(|v| *v = "浏览器暂时无法保存查词记录".into());
+    }
+    history.data.revise(|v| *v = data);
 }
 fn word_card(data: Value) -> impl Widget {
     widget(move |scope| {
@@ -207,11 +258,16 @@ fn word_card(data: Value) -> impl Widget {
                 )),
             ));
         }
+        let mut tabs = sapid::tabs("word-sections")
+            .theme(theme::orange())
+            .class("word-tabs")
+            .orientation(Orientation::Vertical);
+        let mut first = true;
         for (key, label_text) in [
-            ("definitions", "释义"),
+            ("definitions", "基本释义"),
             ("sentences", "例句"),
             ("relations", "关联词"),
-            ("forms", "词形"),
+            ("forms", "词形变化"),
             ("etymologies", "词源"),
             ("dictionaries", "词典来源"),
         ] {
@@ -219,23 +275,47 @@ fn word_card(data: Value) -> impl Widget {
             if entries.is_empty() {
                 continue;
             }
-            sections.push(boxed(heading(label_text)));
-            for entry in entries {
-                let keys: &[&str] = match key {
-                    "definitions" => &["part_of_speech", "definition", "usage_notes"],
-                    "sentences" => &["sentence", "source"],
-                    "relations" => &["relation_type", "related_word"],
-                    "forms" => &["form_type", "form", "notes"],
-                    "etymologies" => &["etymology", "origin_word", "origin_meaning"],
-                    _ => &["name_zh", "name_en", "publisher", "license_type"],
-                };
-                sections.push(boxed(p(keys
-                    .iter()
-                    .map(|k| string(&entry, k))
-                    .filter(|s| !s.is_empty())
-                    .collect::<Vec<_>>()
-                    .join(" · "))));
+            if first {
+                tabs = tabs.default_value(key);
+                first = false;
             }
+            tabs = tabs.tab(sapid::tab(key).label(label_text).content(move || {
+                view().class("word-section").fill((
+                    heading(label_text),
+                    nodes(
+                        entries
+                            .iter()
+                            .map(|entry| {
+                                let keys: &[&str] = match key {
+                                    "definitions" => {
+                                        &["part_of_speech", "definition", "usage_notes"]
+                                    }
+                                    "sentences" => &["sentence", "translation", "source"],
+                                    "relations" => &["relation_type", "related_word"],
+                                    "forms" => &["form_type", "form", "notes"],
+                                    "etymologies" => {
+                                        &["etymology", "origin_word", "origin_meaning"]
+                                    }
+                                    _ => &["name_zh", "name_en", "publisher", "license_type"],
+                                };
+                                boxed(
+                                    view().class("definition-entry").fill(p(keys
+                                        .iter()
+                                        .map(|k| string(entry, k))
+                                        .filter(|v| !v.is_empty())
+                                        .collect::<Vec<_>>()
+                                        .join(" · "))),
+                                )
+                            })
+                            .collect(),
+                    ),
+                ))
+            }));
+        }
+        if first {
+            sections.push(boxed(p("此词条暂未收录详细释义。")));
+        } else {
+            sections.push(boxed(tabs));
         }
         for image_value in items(&data["images"]) {
             let src = string(&image_value, "image_url");
@@ -256,6 +336,13 @@ fn word_card(data: Value) -> impl Widget {
             .build(scope)
     })
 }
+fn dictionary_tabs() -> impl Widget {
+    view()
+        .role(Role::Navigation)
+        .name("词典与翻译")
+        .class("dictionary-tabs")
+        .fill((nav("英语词典", "/dict"), nav("中英翻译", "/translate")))
+}
 pub fn translate() -> impl Widget {
     widget(|scope| {
         let source = scope.cage(String::new());
@@ -266,21 +353,23 @@ pub fn translate() -> impl Widget {
         let result = Resource::new(scope);
         let action = Resource::new(scope);
         let notice = scope.cage(String::new());
-        view().fill((title("中英翻译"), view().class("panel").fill((
-            textarea("需要翻译的内容",source),
+        view().class("translation-page").fill((title("词典翻译"),dictionary_tabs(), view().class("panel translation-workspace").fill((
+            view().class("translation-source").fill((heading("原文"),textarea("需要翻译的内容",source))),
+            view().class("translation-options").fill((heading("翻译设置"),
             choices(target, &[("zh","译为中文"),("en","译为英文")]),
             choices(tone, &[("original","原文语气"),("casual","日常"),("business","商务"),("academic","学术"),("literary","文学"),("simple","简明")]),
             checkbox_control().label("自动纠正语法与拼写").checked(correct).on_checked_change(move |v| correct.revise(|c| *c=v)),
             checkbox_control().label("保留原文格式").checked(formatting).on_checked_change(move |v| formatting.revise(|c| *c=v)),
-            action_button().label("翻译").loading(result.busy).enabled(result.busy.map(|v| !v)).on_press(move || {
+            )),
+            action_button().class("translate-submit").label("翻译").loading(result.busy).enabled(result.busy.map(|v| !v)).on_press(move || {
                 let input=source.get().trim().to_string(); if input.is_empty() || input.len()>5000 { result.error.revise(|s| *s="请输入内容，长度不超过 5000 字节".into()); return; }
-                result.data.revise(|v|*v=Value::Null);
+            result.data.revise(|v|*v=Value::Null);
                 let target=target.get(); let tone=tone.get(); let text=input.clone(); let lang=target.clone(); let style=tone.clone();
                 result.run("POST", "/api/dict/translate".into(), Some(json!({"text":input,"source":"auto","target":target,"options":{"tone":tone,"auto_correct":correct.get(),"preserve_formatting":formatting.get()}})), move |mut v| { v["source_text"]=json!(text); v["target_lang"]=json!(lang); v["tone"]=json!(style); result.data.revise(|d| *d=v); notice.revise(String::clear); });
             }), result.status(),
             each(result.data.map(|v| if v.is_null() {vec![]} else {vec![v.clone()]})).key(|v| v.to_string()).seed(move |v| {
-                let translated=string(&v,"translated"); let spoken=translated.clone();
-                view().class("translation-result").fill((heading("翻译结果"), p(translated), action_button().label("朗读译文").on_press(move || media::speak(&spoken, action.error)),
+                let translated=string(&v,"translated"); let spoken=translated.clone();let copied=translated.clone();
+                view().class("translation-result").fill((heading("翻译结果"), p(translated), action_button().label("复制译文").variant(sapid::ButtonVariant::Outline).on_press(move||media::copy_text(copied.clone(),notice,action.error)),action_button().label("朗读译文").on_press(move || media::speak(&spoken, action.error)),
                     when(token().is_some(), move || { let v=v.clone(); action_button().label("收藏 / 取消收藏译文").enabled(action.busy.map(|b| !b)).on_press(move || { let source_lang=v["detected_source"].as_str().unwrap_or(if v["target_lang"]=="zh" {"en"} else {"zh"}); action.run("POST", "/api/dict/translate/favorite".into(), Some(json!({"source_text":v["source_text"],"translated_text":v["translated"],"source_lang":source_lang,"target_lang":v["target_lang"],"tone":v["tone"]})), move |v| notice.revise(|n| *n=if v["is_favorited"]==true {"已收藏"} else {"已取消收藏"}.into())); }) })
                 ))
             }), action.status(), success_notice(notice,action),

@@ -7,20 +7,37 @@ pub fn chat(id: Option<i64>) -> impl Widget {
         let turns = Resource::new(scope);
         let action = Resource::new(scope);
         let stream = chat_stream::ConversationStream::new(scope);
-        let text_stream = stream.clone();
-        let audio_stream = stream.clone();
         let message = scope.cage(String::new());
         let title_value = scope.cage(String::new());
         let context = scope.cage(None::<i64>);
+        let picker = scope.cage(false);
+        let rename_open = scope.cage(false);
         let contexts = Resource::new(scope);
         contexts.load("/api/asset/contexts?limit=200");
+        let display = [
+            "conv_showBotEn",
+            "conv_showBotZh",
+            "conv_showUserEn",
+            "conv_showUserZh",
+        ]
+        .map(|key| {
+            scope.cage(
+                storage()
+                    .and_then(|s| s.get_item(key).ok().flatten())
+                    .is_none_or(|v| v != "false"),
+            )
+        });
         if let Some(id) = id {
             turns.load(format!(
                 "/api/learn/chats/{id}/turns?limit=50&from_latest=true"
             ));
         }
         let new_chat = move || {
-            let title = title_value.get();
+            let title = if context.get().is_some() {
+                title_value.get()
+            } else {
+                "英语对话".into()
+            };
             let title = if title.trim().is_empty() {
                 "英语对话".into()
             } else {
@@ -33,30 +50,88 @@ pub fn chat(id: Option<i64>) -> impl Widget {
                 move |v| go(&format!("/chat/{}", string(&v, "id"))),
             );
         };
-        view().fill((title("英语对话"),view().class("chat-layout").fill((
-            view().class("panel chat-sidebar").fill((heading("我的对话"),field("对话标题",title_value),
-                action_button().label("自由对话").enabled(action.busy.map(|b|!*b)).on_press(new_chat),contexts.status(),
-                each(contexts.data.map(items)).key(|v|v.to_string()).seed(move|v|{let id=v["id"].as_i64();let name=string(&v,"name_zh");action_button().label(format!("{} {}",string(&v,"icon_emoji"),name)).variant(sapid::ButtonVariant::Outline).on_press(move||{context.revise(|c|*c=id);title_value.revise(|t|*t=name.clone());new_chat();context.revise(|c|*c=None);})}),
-                chats.status(),empty(chats,"还没有对话，创建一段开始练习。"),
-                each(chats.data.map(items)).key(|v|v.to_string()).seed(|v|nav(string(&v,"title"),format!("/chat/{}",string(&v,"id")))),
+        let text_stream = stream.clone();
+        let send = std::rc::Rc::new(move || {
+            if action.busy.get() {
+                return;
+            }
+            let Some(id) = id else {
+                return;
+            };
+            let text = message.get().trim().to_string();
+            if text.is_empty() {
+                return;
+            }
+            text_stream.clone().send(
+                id,
+                json!({"type":"text","message":text}),
+                turns,
+                action,
+                Some(message),
+            );
+        });
+        let keyboard_send = send.clone();
+        let result=view().class("chat-page").fill((
+            view().class("sr-only").fill(title("天天唠嗑")),
+            view().class("mobile-chat-navigation").fill(sapid::drawer("conversation-list").theme(theme::orange()).label("我的对话").title("我的对话").close_label("关闭对话列表").content(move||view().fill((view().class("chat-new-actions").fill((action_button().label("新建自由对话").on_press(new_chat),action_button().label("选择场景").on_press(move||picker.revise(|b|*b=true)))),chat_links(chats))))),
+            sapid::dialog("chat-contexts").theme(theme::orange()).show_trigger(false).open(picker).on_open_change(move|v|picker.revise(|b|*b=v)).title("选择对话场景").close_label("关闭场景选择").content(move||view().class("scene-grid").fill((contexts.status(),each(contexts.data.map(items)).key(|v|v.to_string()).seed(move|v|{
+                let id=v["id"].as_i64();let name=string(&v,"name_zh");action_button().label(format!("{} {}",string(&v,"icon_emoji"),name)).variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||{context.revise(|c|*c=id);title_value.revise(|t|*t=name.clone());new_chat();})
+            })))),
+            view().class("chat-layout").fill((
+                view().class("chat-sidebar").fill((
+                    view().class("chat-new-actions").fill((action_button().label("自由对话").enabled(action.busy.map(|b|!*b)).on_press(new_chat),action_button().label("选择场景").variant(sapid::ButtonVariant::Outline).on_press(move||picker.revise(|b|*b=true)))),
+                    chat_links(chats),
+                )),
+                view().class(scope.bond(move||format!("conversation{}{}{}{}",if !display[0].get(){" hide-ai-en"}else{""},if !display[1].get(){" hide-ai-zh"}else{""},if !display[2].get(){" hide-user-en"}else{""},if !display[3].get(){" hide-user-zh"}else{""}))).fill((
+                    when(id.is_some(),move||{
+                        let id=id.unwrap();let stream=stream.clone();let audio_stream=stream.clone();let send=send.clone();let keyboard_send=keyboard_send.clone();
+                        view().class("chat-content").fill((
+                            view().class("chat-toolbar").fill((
+                                text().class("chat-title").content(chats.data.map(move|v|items(v).iter().find(|c|c["id"].as_i64()==Some(id)).map(|c|string(c,"title")).unwrap_or_else(||"英语对话".into()))),
+                                sapid::dialog("rename-chat").theme(theme::orange()).open(rename_open).on_open_change(move|v|{if v{let current=items(&chats.data.get()).iter().find(|c|c["id"].as_i64()==Some(id)).map(|c|string(c,"title")).unwrap_or_default();title_value.revise(|s|*s=current);}rename_open.revise(|b|*b=v);}).label("修改标题").title("重命名对话").close_label("关闭重命名").content(move||view().class("dialog-form").fill((field("对话标题",title_value),action_button().label("保存标题").enabled(action.busy.map(|b|!*b)).on_press(move||{if title_value.get().trim().is_empty(){action.error.revise(|e|*e="请输入对话标题".into());return;}action.run("PUT",format!("/api/learn/chats/{id}"),Some(json!({"title":title_value.get().trim()})),move |_|{rename_open.revise(|b|*b=false);chats.load("/api/learn/chats?limit=200");});}),action.status()))),
+                                sapid::popover("chat-tools").theme(theme::orange()).label("对话操作").close_label("关闭对话操作").content(move||view().class("dialog-form").fill((
+                                    action_button().label("导出对话").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::export_chat(id,action)),
+                                    danger_button().label("重置本次对话").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("清空这段对话的全部内容？"){action.run("POST",format!("/api/learn/chats/{id}/reset"),None,move |_|turns.load(format!("/api/learn/chats/{id}/turns?limit=50&from_latest=true")));}}),
+                                ))),
+                            )),
+                            view().class("chat-display-options").fill(nodes(display.iter().enumerate().map(|(i,cage)|{
+                                let cage=*cage;let label=["AI 英","AI 中","我 英","我 中"][i];let key=["conv_showBotEn","conv_showBotZh","conv_showUserEn","conv_showUserZh"][i];
+                                boxed(action_button().label(label).variant(sapid::ButtonVariant::Subtle).pressed(cage).on_press(move||{cage.revise(|b|*b = !*b);if let Some(s)=storage(){let _=s.set_item(key,if cage.get(){"true"}else{"false"});}}))
+                            }).collect())),
+                            view().class("chat-messages").fill((turns.status(),empty(turns,"发送一句英语，开始对话。"),
+                                when(turns.data.map(|v|v["has_prev"]==true),move||action_button().label("加载更早的消息").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||chat_stream::load_older(id,turns,action))),
+                                each(turns.data.map(items)).key(|v|v.to_string()).seed(move|v|chat_turn(v,id,turns,action)),stream.view(),
+                            )),
+                            view().class("chat-composer").fill((
+                                view().class("compose-text").fill((submit_field("输入消息",message,true,move||keyboard_send()),action_button().label("发送消息").enabled(action.busy.map(|b|!*b)).on_press(move||send()))),
+                                media::recorder(move|audio|audio_stream.clone().send(id,json!({"type":"audio","audio_base64":audio}),turns,action,None),action),
+                                text().class("muted").content("Enter 发送 · Shift + Enter 换行"),
+                            )),
+                        ))
+                    }).otherwise(move||view().class("chat-empty").fill((heading("今天想聊什么？"),p("选择一个场景，或创建自由对话。"),view().class("actions").fill((action_button().label("新建自由对话").on_press(new_chat),action_button().label("挑选场景").variant(sapid::ButtonVariant::Outline).on_press(move||picker.revise(|b|*b=true))))))),
+                    action.status(),
+                )),
             )),
-            view().class("panel conversation").fill((
-                when(id.is_some(),move||{let id=id.unwrap();let text_stream=text_stream.clone();let audio_stream=audio_stream.clone();let stream=stream.clone();view().fill((
-                    view().class("actions").fill((action_button().label("修改标题").enabled(action.busy.map(|b|!*b)).variant(sapid::ButtonVariant::Outline).on_press(move||{if title_value.get().trim().is_empty(){action.error.revise(|e|*e="请在左侧填写新标题".into());return;}action.run("PUT",format!("/api/learn/chats/{id}"),Some(json!({"title":title_value.get().trim()})),move |_|chats.load("/api/learn/chats?limit=200"));}),
-                        action_button().label("导出对话").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::export_chat(id,action)),
-                        danger_button().label("重置本次对话").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("清空这段对话的全部内容？"){action.run("POST",format!("/api/learn/chats/{id}/reset"),None,move |_|turns.load(format!("/api/learn/chats/{id}/turns?limit=50&from_latest=true")));}}))),
-                    turns.status(),empty(turns,"发送一句英语，开始对话。"),
-                    action_button().label("加载更早的消息").variant(sapid::ButtonVariant::Outline).enabled(turns.data.map(move|v|v["has_prev"].as_bool().unwrap_or(false)&&!action.busy.get()&&!turns.busy.get())).on_press(move||chat_stream::load_older(id,turns,action)),
-                    each(turns.data.map(items)).key(|v|v.to_string()).seed(move|v|chat_turn(v,id,turns,action)),
-                    stream.view(),textarea("输入消息",message),action_button().label("发送消息").enabled(action.busy.map(|b|!*b)).on_press(move||{
-                        let text=message.get().trim().to_string();if text.is_empty(){return;}
-                        text_stream.clone().send(id,json!({"type":"text","message":text}),turns,action,Some(message));
-                    }),
-                    media::recorder(move|audio|audio_stream.clone().send(id,json!({"type":"audio","audio_base64":audio}),turns,action,None),action),
-                ))}).otherwise(||view().fill((heading("今天想聊什么？"),p("选择一个场景，或创建自由对话。")))),action.status(),
-            )),
-        )))).build(scope)
+        )).build(scope);
+        media::follow_chat(scope);
+        result
     })
+}
+fn chat_links(chats: Resource) -> impl Widget {
+    view().class("chat-links").fill((
+        chats.status(),
+        empty(chats, "还没有对话，创建一段开始练习。"),
+        each(chats.data.map(items))
+            .key(|v| v.to_string())
+            .seed(|v| {
+                view().class("chat-list-row").fill((
+                    nav(string(&v, "title"), format!("/chat/{}", string(&v, "id"))),
+                    text()
+                        .class("muted")
+                        .content(string(&v, "last_message_preview")),
+                ))
+            }),
+    ))
 }
 fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl Widget {
     let id = string(&v, "id");
@@ -76,12 +151,25 @@ fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl 
             } else {
                 "AI 伙伴"
             }),
-            p(&spoken),
-            p(string(&v, "content_zh")),
-            when(v["status"] == "processing", move || chat_stream::pending_turn(pending_id.clone(), chat_id, turns)),
+            text()
+                .kind(TextKind::Paragraph)
+                .class("message-en")
+                .content(spoken.clone()),
+            text()
+                .kind(TextKind::Paragraph)
+                .class("message-zh")
+                .content(string(&v, "content_zh")),
+            when(v["status"] == "processing", move || {
+                chat_stream::pending_turn(pending_id.clone(), chat_id, turns)
+            }),
             when(v["status"] == "error", {
                 let error = string(&v, "error");
-                move || view().role(Role::Alert).class("error").fill(p(error.clone()))
+                move || {
+                    view()
+                        .role(Role::Alert)
+                        .class("error")
+                        .fill(p(error.clone()))
+                }
             }),
             nodes(
                 items(&v["issues"])
@@ -96,36 +184,38 @@ fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl 
                     })
                     .collect(),
             ),
-            action_button()
-                .label("朗读消息")
-                .variant(sapid::ButtonVariant::Subtle)
-                .on_press(move || {
-                    if !v["audio_path"].is_null() {
-                        media::play(
-                            format!("/api/learn/chats/turns/{audio_id}/audio"),
-                            action.error,
-                        );
-                    } else {
-                        media::speak(&spoken, action.error);
-                    }
-                }),
-            danger_button()
-                .label("删除消息")
-                .enabled(action.busy.map(|b| !*b))
-                .on_press(move || {
-                    if confirm("删除此条消息？") {
-                        action.run(
-                            "DELETE",
-                            format!("/api/learn/chats/turns/{id}"),
-                            None,
-                            move |_| {
-                                turns.load(format!(
-                                    "/api/learn/chats/{chat_id}/turns?limit=50&from_latest=true"
-                                ))
-                            },
-                        );
-                    }
-                }),
+            view().class("message-actions").fill((
+                action_button()
+                    .label("朗读消息")
+                    .variant(sapid::ButtonVariant::Subtle)
+                    .on_press(move || {
+                        if !v["audio_path"].is_null() {
+                            media::play(
+                                format!("/api/learn/chats/turns/{audio_id}/audio"),
+                                action.error,
+                            );
+                        } else {
+                            media::speak(&spoken, action.error);
+                        }
+                    }),
+                danger_button()
+                    .label("删除消息")
+                    .enabled(action.busy.map(|b| !*b))
+                    .on_press(move || {
+                        if confirm("删除此条消息？") {
+                            action.run(
+                                "DELETE",
+                                format!("/api/learn/chats/turns/{id}"),
+                                None,
+                                move |_| {
+                                    turns.load(format!(
+                                        "/api/learn/chats/{chat_id}/turns?limit=50&from_latest=true"
+                                    ))
+                                },
+                            );
+                        }
+                    }),
+            )),
         ))
 }
 pub fn stages() -> impl Widget {
@@ -222,32 +312,61 @@ pub fn review() -> impl Widget {
     widget(|scope| {
         let data = Resource::new(scope);
         data.load("/api/learn/review/stats");
-        let vocabulary = Resource::new(scope);
-        vocabulary.load("/api/learn/vocabulary?per_page=100");
         view()
+            .class("review-page")
             .fill((
-                title("巩固每一点进步"),
-                p("选择需要加强的练习类型。"),
+                title("温故知新"),
+                p("科学复习，牢记所学。"),
                 data.status(),
-                view().class("cards").fill(nodes(
+                link()
+                    .class("panel smart-review")
+                    .target("/review/session")
+                    .fill((
+                        text().class("scene-emoji").content("✨"),
+                        heading("智能选择"),
+                        text().class("stat-value").content(
+                            data.data
+                                .map(|v| format!("{} 项待复习", string(v, "total"))),
+                        ),
+                        p("根据遗忘曲线智能推荐复习内容"),
+                    )),
+                view().class("cards review-modes").fill(nodes(
                     REVIEW_TYPES
                         .iter()
-                        .map(|(kind, label)| {
+                        .enumerate()
+                        .map(|(i, (kind, label))| {
                             let kind = kind.to_string();
                             let count_kind = kind.clone();
-                            boxed(view().class("panel").fill((
-                                heading(*label),
-                                text().content(
-                                    data.data.map(move |v| {
-                                        format!("{} 项待复习", string(v, &count_kind))
-                                    }),
-                                ),
-                                nav("开始复习 →", format!("/review/session/{kind}")),
-                            )))
+                            let descriptions = [
+                                "练习准确发音，查看评分反馈",
+                                "巩固单词释义，理解词语用法",
+                                "听音拼写，强化记忆",
+                                "翻卡片复习，自评掌握程度",
+                                "填空练习，掌握常用搭配",
+                            ];
+                            let icons = ["🎙", "📖", "✍", "🧠", "🧩"];
+                            boxed(
+                                link()
+                                    .class("panel review-mode")
+                                    .target(format!("/review/session/{kind}"))
+                                    .fill((
+                                        text().class("scene-emoji").content(icons[i]),
+                                        view().class("section-heading").fill((
+                                            heading(*label),
+                                            text().class("badge").content(
+                                                data.data.map(move |v| string(v, &count_kind)),
+                                            ),
+                                        )),
+                                        p(descriptions[i]),
+                                    )),
+                            )
                         })
                         .collect(),
                 )),
-                account::data_section("生词本", vocabulary),
+                view().class("actions").fill((
+                    nav("查看收藏词汇", "/favorites"),
+                    nav("去词典添加生词", "/dict"),
+                )),
             ))
             .build(scope)
     })
@@ -255,7 +374,11 @@ pub fn review() -> impl Widget {
 pub fn review_session(kind: String) -> impl Widget {
     widget(move |scope| {
         let data = Resource::new(scope);
-        data.load(format!("/api/learn/review/items?type={kind}&limit=100"));
+        data.load(if kind == "smart" {
+            "/api/learn/review/items?limit=20".into()
+        } else {
+            format!("/api/learn/review/items?type={kind}&limit=20")
+        });
         let index = scope.cage(0usize);
         let correct = scope.cage(0usize);
         let kind = kind.clone();
@@ -264,10 +387,13 @@ pub fn review_session(kind: String) -> impl Widget {
                 title("复习练习"),
                 nav("← 返回复习", "/review"),
                 data.status(),
-                text().class("muted").content(
-                    data.data
-                        .map(move |v| format!("本轮 {} 项", items(v).len())),
-                ),
+                text().class("muted").content(data.data.map(move |v| {
+                    format!(
+                        "进度 {} / {}",
+                        (index.get() + 1).min(items(v).len()),
+                        items(v).len()
+                    )
+                })),
                 each(data.data.map(move |v| {
                     items(v)
                         .get(index.get())
@@ -276,7 +402,23 @@ pub fn review_session(kind: String) -> impl Widget {
                         .collect::<Vec<_>>()
                 }))
                 .key(|v| v.to_string())
-                .seed(move |v| review_item(v, kind.clone(), data, index, correct)),
+                .seed(move |v| {
+                    let mode = if kind == "smart" {
+                        string(&v, "review_type")
+                    } else {
+                        kind.clone()
+                    };
+                    review_item(v, mode, data, index, correct)
+                }),
+                when(
+                    data.data.map(move |v| index.get() < items(v).len()),
+                    move || {
+                        action_button()
+                            .label("跳过此项")
+                            .variant(sapid::ButtonVariant::Subtle)
+                            .on_press(move || index.revise(|i| *i += 1))
+                    },
+                ),
                 when(
                     data.data
                         .map(move |v| !v.is_null() && index.get() >= items(v).len()),
@@ -425,7 +567,7 @@ fn review_item(
                 },
                 evaluation,
             )));
-            body.push(boxed(account::data_section("发音反馈", evaluation)));
+            body.push(boxed(pronunciation_feedback(evaluation)));
         } else {
             body.push(boxed(
                 action_button()
@@ -493,7 +635,9 @@ pub fn reading() -> impl Widget {
         let action = Resource::new(scope);
         let index = scope.cage(0usize);
         let filter = scope.cage(None::<i64>);
+        let subject_open = scope.cage(false);
         let refresh = move || {
+            subject_open.revise(|b| *b = false);
             index.revise(|i| *i = 0);
             data.load(format!(
                 "/api/asset/read/recommended?limit=10{}",
@@ -505,37 +649,52 @@ pub fn reading() -> impl Widget {
         };
         view()
             .fill((
-                title("跟读练习"),
+                title("大声跟读"),
                 p("听一句，读一句，逐步掌握自然的英语发音。"),
                 subjects.status(),
-                view().class("choices").fill((
-                    action_button()
-                        .label("全部主题")
-                        .variant(sapid::ButtonVariant::Outline)
-                        .pressed(filter.map(|id| id.is_none()))
-                        .on_press(move || {
-                            filter.revise(|f| *f = None);
-                            refresh();
-                        }),
-                    each(subjects.data.map(items))
-                        .key(|v| v.to_string())
-                        .seed(move |v| {
-                            let id = v["id"].as_i64();
+                sapid::dialog("reading-subjects")
+                    .open(subject_open)
+                    .on_open_change(move |v| subject_open.revise(|b| *b = v))
+                    .theme(theme::orange())
+                    .label("选择跟读主题")
+                    .title("选择跟读主题")
+                    .close_label("关闭主题选择")
+                    .content(move || {
+                        view().class("choices subject-grid").fill((
                             action_button()
-                                .label(string(&v, "title_zh"))
-                                .pressed(filter.map(move |current| *current == id))
+                                .label("全部主题")
                                 .variant(sapid::ButtonVariant::Outline)
+                                .pressed(filter.map(|id| id.is_none()))
                                 .on_press(move || {
-                                    filter.revise(|f| *f = id);
+                                    filter.revise(|f| *f = None);
                                     refresh();
-                                })
-                        }),
-                )),
+                                }),
+                            each(subjects.data.map(items))
+                                .key(|v| v.to_string())
+                                .seed(move |v| {
+                                    let id = v["id"].as_i64();
+                                    action_button()
+                                        .label(string(&v, "title_zh"))
+                                        .pressed(filter.map(move |current| *current == id))
+                                        .variant(sapid::ButtonVariant::Outline)
+                                        .on_press(move || {
+                                            filter.revise(|f| *f = id);
+                                            refresh();
+                                        })
+                                }),
+                        ))
+                    }),
                 data.status(),
-                text().content(
-                    data.data
-                        .map(|v| format!("当前等级 {}", string(v, "user_level"))),
-                ),
+                text()
+                    .class("reading-progress badge")
+                    .content(data.data.map(move |v| {
+                        format!(
+                            "Lv.{} · {} / {}",
+                            string(v, "user_level"),
+                            (index.get() + 1).min(items(v).len()),
+                            items(v).len()
+                        )
+                    })),
                 each(data.data.map(move |v| {
                     items(v)
                         .get(index.get())
@@ -651,7 +810,7 @@ fn reading_item(v: Value, index: Cage<usize>, action: Resource) -> impl Widget {
                     },
                     evaluation,
                 ),
-                account::data_section("发音反馈", evaluation),
+                pronunciation_feedback(evaluation),
                 action_button()
                     .label(saved.map(|s| {
                         if *s {
@@ -699,6 +858,28 @@ fn reading_item(v: Value, index: Cage<usize>, action: Resource) -> impl Widget {
     })
 }
 
+fn pronunciation_feedback(evaluation: Resource) -> impl Widget {
+    view().class("pronunciation-feedback").fill((
+        evaluation.status(),
+        when(evaluation.data.map(|v| !v.is_null()), move || {
+            view().class("panel").fill((
+                heading("发音反馈"),
+                view().class("stat-grid").fill((
+                    dashboard::stat(evaluation, "综合评分", "overall_score", ""),
+                    dashboard::stat(evaluation, "发音", "pronunciation_score", ""),
+                    dashboard::stat(evaluation, "流利度", "fluency_score", ""),
+                    dashboard::stat(evaluation, "语调", "intonation_score", ""),
+                )),
+                text().content(
+                    evaluation
+                        .data
+                        .map(|v| format!("识别结果：{}", string(v, "transcribed_text"))),
+                ),
+                text().content(evaluation.data.map(|v| display_value(&v["feedback"]))),
+            ))
+        }),
+    ))
+}
 fn script_practice(v: Value, action: Resource) -> impl Widget {
     widget(move |scope| {
         let evaluation = Resource::new(scope);
@@ -744,7 +925,7 @@ fn script_practice(v: Value, action: Resource) -> impl Widget {
                                     evaluation.error,
                                 )
                             }),
-                        account::data_section("发音反馈", evaluation),
+                        pronunciation_feedback(evaluation),
                     ))
                 })
                 .otherwise(|| nav("登录后跟读练习", "/login")),

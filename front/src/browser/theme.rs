@@ -5,7 +5,7 @@ fn rgb(hex: u32) -> Color {
 }
 
 // Supply both Sapid's typed styles and its CSS interaction tokens from one palette.
-fn orange() -> sapid::Theme {
+pub fn orange() -> sapid::Theme {
     let mut theme = sapid::Theme::blue_light();
     theme.name = "colang".into();
     theme.canvas = rgb(0xfffbf7);

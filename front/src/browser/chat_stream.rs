@@ -91,9 +91,11 @@ impl ConversationStream {
                 text().class("eyebrow").content("AI 伙伴"),
                 text()
                     .kind(TextKind::Paragraph)
+                    .class("message-en")
                     .content(live.map(|v| string(v, "reply_en"))),
                 text()
                     .kind(TextKind::Paragraph)
+                    .class("message-zh")
                     .content(live.map(|v| string(v, "reply_zh"))),
                 view()
                     .role(Role::Status)

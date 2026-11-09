@@ -47,7 +47,7 @@ impl Route {
             ["chat"] => Self::Chat(None),
             ["chat", n] => id(n).map(|n| Self::Chat(Some(n))).unwrap_or(Self::NotFound),
             ["review"] => Self::Review,
-            ["review", "session"] => Self::ReviewSession("recognition".into()),
+            ["review", "session"] => Self::ReviewSession("smart".into()),
             ["review", "session", kind] if REVIEW_TYPES.iter().any(|(k, _)| k == kind) => {
                 Self::ReviewSession((*kind).into())
             }
