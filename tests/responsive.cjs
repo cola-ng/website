@@ -70,6 +70,9 @@ async function dialogBounds(page,width,height){
    await loaded(page,'/admin/dict');await page.getByRole('button',{name:'新建记录',exact:true}).click();await dialogBounds(page,width,height);await page.keyboard.press('Escape');
    await context.close();console.log('PASS responsive viewport',width,height);
   }
+  const safe=await browser.newContext({viewport:{width:844,height:390}});await setup(safe);const safePage=await safe.newPage();current=safePage;await loaded(safePage,'/chat/1');
+  await safePage.evaluate(()=>{const style=document.documentElement.style;style.setProperty('--safe-left','44px');style.setProperty('--safe-right','44px');style.setProperty('--safe-bottom','16px');});await settle(safePage);
+  const safeBrand=await safePage.locator('.brand').boundingBox(),safeComposer=await safePage.locator('.chat-composer').boundingBox();verify(safeBrand.x>=44,'landscape navigation avoids the notch');verify(safeComposer.x>=44&&safeComposer.x+safeComposer.width<=800,'landscape composer avoids both side cutouts');verify(safeComposer.y+safeComposer.height<=374,'composer clears the bottom safe area');await safePage.screenshot({path:path.join(output,'landscape-safe-area.png')});await safe.close();
   const context=await browser.newContext({viewport:{width:1280,height:900}});await setup(context);const page=await context.newPage();current=page;
   page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&m.text().startsWith('Glory frame:'))errors.push(m.text());});
   await loaded(page,'/dict/hello');await page.getByRole('tab',{name:'例句',exact:true}).click();await page.setViewportSize({width:390,height:844});await settle(page);
