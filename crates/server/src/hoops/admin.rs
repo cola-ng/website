@@ -2,7 +2,7 @@ use diesel::prelude::*;
 use salvo::prelude::*;
 
 use crate::AppResult;
-use crate::db::schema::base_admins;
+use crate::db::schema::{base_admins, base_users};
 use crate::db::with_conn;
 
 /// Requires admin privileges. Must be used after `maybe_auth` in the handler chain.
@@ -34,6 +34,15 @@ pub async fn is_user_admin(user_id: i64) -> bool {
     with_conn(move |conn| {
         base_admins::table
             .filter(base_admins::user_id.eq(user_id))
+            .filter(
+                base_admins::user_id.eq_any(
+                    base_users::table
+                        .filter(base_users::id.eq(user_id))
+                        .filter(base_users::disabled_at.is_null())
+                        .filter(base_users::locked_at.is_null())
+                        .select(base_users::id),
+                ),
+            )
             .select(base_admins::id)
             .first::<i64>(conn)
             .optional()

@@ -41,6 +41,11 @@ def call(method, path, body=None, token=None, expected=200):
     return json.loads(raw) if raw.strip() else None
 
 suffix = str(time.time_ns())
+call('GET', '/api/subscription/plans')
+for path in ['/api/wallet', '/api/subscription/current']:
+    call('GET', path, expected=401)
+for path in ['/api/subscription/subscribe', '/api/subscription/cancel']:
+    call('POST', path, {}, expected=401)
 password = 'Qa-password-2026!'
 email = f'learner-{suffix}@example.test'
 learner = call('POST', '/api/register', {'name': 'QA Learner ' + suffix, 'email': email, 'password': password})
@@ -98,6 +103,29 @@ call('POST', '/api/auth/consume', {'code': code['code'], 'redirect_uri': code['r
 call('POST', '/api/auth/consume', {'code': code['code'], 'redirect_uri': code['redirect_uri']}, expected=401)
 call('POST', '/api/auth/code', {'redirect_uri': 'https://example.test/steal', 'state': suffix}, token=learner_token, expected=400)
 call('GET', '/api/does-not-exist', expected=404)
+for route in ['send', 'send/stream']:
+    call('POST', f"/api/learn/chats/{chat['id']}/{route}", {'type': 'text', 'message': 'forbidden'}, token=admin_token, expected=404)
+call('POST', f"/api/learn/chats/{chat['id']}/send/stream", {'type': 'text', 'message': 'unauthenticated'}, expected=401)
+revoked = call('POST', '/api/register', {'name': 'QA Revoked ' + suffix, 'email': f'revoked-{suffix}@example.test', 'password': password})
+revoked_id = int(revoked['user']['id'])
+subprocess.run([psql, database, '-v', 'ON_ERROR_STOP=1', '-c', f"UPDATE base_users SET locked_at=now() WHERE id={revoked_id}; INSERT INTO base_admins(user_id) VALUES ({revoked_id});"], check=True, capture_output=True)
+call('GET', '/api/me', token=revoked['access_token'], expected=401)
+call('GET', '/api/admin/stats', token=revoked['access_token'], expected=401)
+call('POST', '/api/login', {'email': f'revoked-{suffix}@example.test', 'password': password}, expected=401)
+subprocess.run([psql, database, '-v', 'ON_ERROR_STOP=1', '-c', f"UPDATE base_users SET locked_at=NULL,disabled_at=now() WHERE id={revoked_id};"], check=True, capture_output=True)
+call('GET', '/api/me', token=revoked['access_token'], expected=401)
+import wave
+audio_dir = Path(os.environ['QA_SPACE_PATH']) / 'learn' / 'audios' / str(learner['user']['id'])
+audio_dir.mkdir(parents=True, exist_ok=True)
+audio_file = audio_dir / ('qa-' + suffix + '.wav')
+with wave.open(str(audio_file), 'wb') as wav:
+    wav.setnchannels(1); wav.setsampwidth(2); wav.setframerate(16000); wav.writeframes(bytes(320))
+relative_audio = 'learn/audios/' + str(learner['user']['id']) + '/' + audio_file.name
+audio_id = subprocess.check_output([psql, database, '-XAt', '-v', 'ON_ERROR_STOP=1', '-c', f"INSERT INTO learn_chat_turns(user_id,chat_id,speaker,use_lang,content_en,content_zh,audio_path,status) VALUES ({int(learner['user']['id'])},{int(chat['id'])},'assistant','en','QA audio','','{relative_audio}','completed') RETURNING id;"], text=True).splitlines()[0]
+with urlopen(Request(base + f'/api/learn/chats/turns/{audio_id}/audio', headers={'Authorization': 'Bearer ' + learner_token}), timeout=10) as response:
+    assert response.status == 200 and response.read().startswith(b'RIFF')
+count += 1
+call('GET', f'/api/learn/chats/turns/{audio_id}/audio', token=admin_token, expected=404)
 fixture = {'learner': learner, 'admin': admin, 'password': password, 'email': email, 'word': word, 'stage': stage, 'subject': subject, 'sentence': sentence, 'chat': chat}
 (artifacts / 'qa-fixture.json').write_text(json.dumps(fixture), encoding='utf-8')
 print(f'{count} API regression checks passed. Fixtures: {artifacts / "qa-fixture.json"}')

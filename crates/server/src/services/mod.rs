@@ -9,11 +9,13 @@
 
 pub mod activity;
 pub mod ai_provider;
+pub mod chat_stream;
 pub mod doubao;
 pub mod study_time;
 pub mod zhipu;
 
-use std::sync::Arc;
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock};
 
 pub use ai_provider::{
     AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig,
@@ -80,7 +82,30 @@ impl AiProvider for CombinedProvider {
 /// - Doubao config: Creates Doubao provider for ASR/TTS, adds Zhipu for Chat if available
 /// - Zhipu config: Creates Zhipu provider with full ASR/TTS/Chat capabilities
 pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
-    tracing::info!("Creating provider with config: {:?}", config);
+    static CLIENTS: OnceLock<Mutex<HashMap<String, Arc<dyn AiProvider>>>> = OnceLock::new();
+    let key = crate::auth::hash_code(
+        &serde_json::to_string(config).expect("provider configuration serializes"),
+    );
+    let clients = CLIENTS.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(provider) = clients
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+        .cloned()
+    {
+        return provider;
+    }
+    let provider = build_provider(config);
+    let mut clients = clients.lock().unwrap_or_else(|e| e.into_inner());
+    if clients.len() >= 128 {
+        clients.clear();
+    }
+    clients.insert(key, provider.clone());
+    provider
+}
+
+fn build_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
+    tracing::debug!("Creating configured AI provider");
 
     match config {
         ProviderConfig::Doubao {
@@ -124,6 +149,10 @@ pub fn create_provider(config: &ProviderConfig) -> Arc<dyn AiProvider> {
 /// 2. Zhipu-only provider if only Zhipu is configured
 /// 3. Doubao-only provider if only Doubao is configured
 pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
+    static DEFAULT: OnceLock<Option<Arc<dyn AiProvider>>> = OnceLock::new();
+    DEFAULT.get_or_init(build_provider_from_env).clone()
+}
+fn build_provider_from_env() -> Option<Arc<dyn AiProvider>> {
     // // Try to create combined provider first (for best experience)
     // if let Some(combined) = CombinedProvider::from_env() {
     //     tracing::info!("Created combined provider: Doubao (ASR/TTS) + Zhipu (Chat)");
@@ -133,7 +162,6 @@ pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
         .ok()
         .map(|s| s.to_lowercase());
 
-    println!("Default provider from env: {:?}", default_provider);
     match default_provider.as_deref() {
         Some("zhipu") => {
             // Try Zhipu alone (has full capabilities)
@@ -145,6 +173,14 @@ pub fn create_provider_from_env() -> Option<Arc<dyn AiProvider>> {
         Some("doubao") => {
             if let Some(doubao) = DoubaoClient::from_env() {
                 tracing::info!("Created Doubao provider with full ASR/TTS/Chat capabilities");
+                return Some(Arc::new(doubao));
+            }
+        }
+        None | Some("") => {
+            if let Some(zhipu) = ZhipuClient::from_env() {
+                return Some(Arc::new(zhipu));
+            }
+            if let Some(doubao) = DoubaoClient::from_env() {
                 return Some(Arc::new(doubao));
             }
         }

@@ -5,6 +5,7 @@ pub enum Route {
     Landing,
     Login,
     Auth,
+    AuthComplete,
     Dict(Option<String>),
     Translate,
     Chat(Option<i64>),
@@ -34,6 +35,7 @@ impl Route {
             [] => Self::Landing,
             ["login"] => Self::Login,
             ["auth"] => Self::Auth,
+            ["auth", "complete"] => Self::AuthComplete,
             ["dict"] => Self::Dict(None),
             ["dict", word] => Self::Dict(Some(
                 url::form_urlencoded::parse(format!("w={word}").replace('+', "%2B").as_bytes())

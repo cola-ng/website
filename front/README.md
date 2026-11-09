@@ -48,4 +48,4 @@ cargo clippy -p colang-front --target wasm32-unknown-unknown -- -D warnings
 
 完整数据库及浏览器测试说明见 `../tests/README.md`。
 
-邮箱登录和注册已接入现有 API。第三方 OAuth 尚无真实服务端授权流程，界面明确显示未配置。AI 对话、翻译及评分需要服务器配置对应服务凭据；无配置时显示接口错误。浏览器朗读使用系统语音，跟读原音使用服务端音频。
+邮箱登录、注册及 Google/GitHub OAuth 已接入服务端。配置对应服务端凭据后显示第三方登录和账户绑定入口，配置方法见 [OAuth 说明](../docs/oauth.md)。AI 对话、翻译及评分需要服务器配置对应服务凭据；无配置时显示接口错误。浏览器朗读使用系统语音，跟读原音使用服务端音频。

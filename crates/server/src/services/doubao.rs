@@ -23,7 +23,7 @@ use super::ai_provider::{
     StructuredChatResponse, TextIssue, TtsResponse, TtsService, WordTiming,
 };
 
-const DEFAULT_CHAT_MODEL: &str = "doubao-1-5-pro-32k-250115";
+const DEFAULT_CHAT_MODEL: &str = "doubao-seed-2-0-mini-260428";
 
 /// Doubao client wrapper around outfox-doubao crate
 #[derive(Debug, Clone)]
@@ -33,6 +33,20 @@ pub struct DoubaoClient {
 }
 
 impl DoubaoClient {
+    fn chat_request(&self) -> CreateChatCompletionRequestArgs {
+        let mut request = CreateChatCompletionRequestArgs::default();
+        request.model(&self.chat_model);
+        // Conversation practice needs an immediate reply. Seed models otherwise
+        // enable hidden reasoning by default, delaying the first visible token.
+        // Leave custom/legacy endpoint capabilities to their configuration.
+        if self.chat_model.starts_with("doubao-seed-") {
+            request.thinking(outfox_doubao::spec::chat::Thinking {
+                thinking_type: outfox_doubao::spec::chat::ThinkingType::Disabled,
+            });
+        }
+        request
+    }
+
     /// Create a new Doubao client with the given credentials
     pub fn new(app_id: String, access_token: String, api_key: String) -> Self {
         Self::with_options(app_id, access_token, api_key, None, None, None)
@@ -120,8 +134,6 @@ impl AsrService for DoubaoClient {
             .map_err(|e| AiProviderError::Api(e.to_string()))?;
 
         let text = response.result.text.clone();
-        println!("Doubao ASR transcribed text  1: {:#?}", response);
-        println!("Doubao ASR text 2: {}", text);
 
         // Extract word timings from utterances
         let words = if !response.result.utterances.is_empty() {
@@ -144,7 +156,7 @@ impl AsrService for DoubaoClient {
             None
         };
 
-        tracing::info!("Doubao ASR: transcribed text: {}", text);
+        tracing::debug!("Doubao ASR completed, {} chars", text.len());
 
         Ok(AsrResponse {
             text,
@@ -166,7 +178,9 @@ impl TtsService for DoubaoClient {
         voice: Option<&str>,
         speed: Option<f32>,
     ) -> Result<TtsResponse, AiProviderError> {
-        let speaker = voice.unwrap_or("zh_female_cancan_mars_bigtts").to_string();
+        let speaker = voice
+            .unwrap_or(self.client.config().voice_type())
+            .to_string();
 
         // Convert speed ratio to API format: speed 1.0 = 0, range [-50, 100]
         let speech_rate = speed
@@ -233,10 +247,8 @@ impl ChatService for DoubaoClient {
         let doubao_messages: Vec<DoubaoChatMessage> =
             messages.iter().map(Self::to_doubao_message).collect();
 
-        let mut request_builder = CreateChatCompletionRequestArgs::default();
-        request_builder
-            .model(&self.chat_model)
-            .messages(doubao_messages);
+        let mut request_builder = self.chat_request();
+        request_builder.messages(doubao_messages);
 
         if let Some(temp) = temperature {
             request_builder.temperature(temp);
@@ -281,6 +293,60 @@ impl ChatService for DoubaoClient {
         Ok(reply)
     }
 
+    async fn chat_structured_stream(
+        &self,
+        history: Vec<ChatMessage>,
+        user_text: &str,
+        system_prompt: &str,
+        deltas: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> Result<StructuredChatResponse, AiProviderError> {
+        use futures_util::StreamExt;
+        let messages = super::chat_stream::messages(history, user_text, system_prompt);
+        let request = self
+            .chat_request()
+            .messages(
+                messages
+                    .iter()
+                    .map(Self::to_doubao_message)
+                    .collect::<Vec<_>>(),
+            )
+            .temperature(0.7f32)
+            .max_tokens(1600i32)
+            .response_format(ResponseFormat {
+                format_type: ResponseFormatType::JsonObject,
+                json_schema: None,
+            })
+            .build()
+            .map_err(|e| AiProviderError::Config(e.to_string()))?;
+        let chat = self.client.chat();
+        let stream = chat
+            .create_stream(request)
+            .await
+            .map_err(|e| AiProviderError::Api(e.to_string()))?;
+        let mut stream = Box::pin(stream);
+        let mut raw = String::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk =
+                chunk.map_err(|_| AiProviderError::Api("AI 流式连接中断，请重试".into()))?;
+            if let Some(choice) = chunk.choices.first() {
+                if let Some(content) = choice.delta.content.as_ref() {
+                    raw.push_str(content);
+                    if raw.len() > super::chat_stream::MAX_OUTPUT_BYTES {
+                        return Err(AiProviderError::Parse("AI 回答超过长度限制".into()));
+                    }
+                    let _ = deltas.send(content.clone());
+                }
+                if let Some(reason) = choice.finish_reason.as_ref() {
+                    if !matches!(reason, outfox_doubao::spec::chat::FinishReason::Stop) {
+                        return Err(AiProviderError::Api("AI 未能完整生成回答，请重试".into()));
+                    }
+                    break;
+                }
+            }
+        }
+        super::chat_stream::finish(&raw)
+    }
+
     async fn chat_structured(
         &self,
         messages: Vec<ChatMessage>,
@@ -296,11 +362,6 @@ impl ChatService for DoubaoClient {
             role: "user".to_owned(),
             content: user_text.to_owned(),
         });
-
-        println!(
-            "Doubao Chat Structured: total messages: {:#?}",
-            all_messages
-        );
 
         // Convert to Doubao messages
         let doubao_messages: Vec<DoubaoChatMessage> =
@@ -379,8 +440,8 @@ impl ChatService for DoubaoClient {
             "required": ["use_lang", "original_en", "original_zh", "reply_en", "reply_zh", "issues"],
             "additionalProperties": false
         });
-        let request = CreateChatCompletionRequestArgs::default()
-            .model(&self.chat_model)
+        let request = self
+            .chat_request()
             .messages(doubao_messages)
             .temperature(0.7f32)
             .max_tokens(2000i32)
@@ -399,8 +460,8 @@ impl ChatService for DoubaoClient {
             .map_err(|e| AiProviderError::Config(e.to_string()))?;
 
         tracing::info!(
-            "Doubao Chat Structured: sending request for user text: {}",
-            user_text
+            "Doubao Chat Structured: sending request ({} chars)",
+            user_text.len()
         );
 
         let response = self
@@ -424,8 +485,6 @@ impl ChatService for DoubaoClient {
             })
             .unwrap_or_default();
 
-        tracing::debug!("Doubao Chat Structured response: {}", content);
-
         // Parse JSON response
         let json_str = content
             .trim()
@@ -438,11 +497,7 @@ impl ChatService for DoubaoClient {
         let structured: serde_json::Value = match serde_json::from_str(json_str) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
-                    "Failed to parse structured response as JSON: {}, content: {}",
-                    e,
-                    content
-                );
+                tracing::warn!("Failed to parse structured response as JSON: {}", e);
                 // Fallback: detect if user_text is Chinese or English
                 let is_chinese = user_text
                     .chars()

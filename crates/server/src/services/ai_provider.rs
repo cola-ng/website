@@ -208,6 +208,24 @@ pub trait ChatService: Send + Sync {
         user_text: &str,
         system_prompt: &str,
     ) -> Result<StructuredChatResponse, AiProviderError>;
+
+    /// Stream raw JSON deltas; providers without streaming retain a working fallback.
+    async fn chat_structured_stream(
+        &self,
+        messages: Vec<ChatMessage>,
+        user_text: &str,
+        system_prompt: &str,
+        deltas: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> Result<StructuredChatResponse, AiProviderError> {
+        let response = self
+            .chat_structured(messages, user_text, system_prompt)
+            .await?;
+        let _ = deltas.send(
+            serde_json::to_string(&response)
+                .map_err(|_| AiProviderError::Parse("invalid response".into()))?,
+        );
+        Ok(response)
+    }
 }
 
 /// Pronunciation Assessment Service Trait (optional capability)

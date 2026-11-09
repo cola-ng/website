@@ -14,6 +14,7 @@ pub struct OauthIdentity {
     pub user_id: Option<i64>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
+    pub verified_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Insertable)]
@@ -23,6 +24,7 @@ pub struct NewOauthIdentity {
     pub provider_user_id: String,
     pub email: Option<String>,
     pub user_id: Option<i64>,
+    pub verified_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Queryable, Identifiable, Serialize, Debug, Clone)]

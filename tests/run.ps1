@@ -37,6 +37,9 @@ try {
         DATABASE_URL=$databaseUrl; JWT_SECRET='isolated-local-qa-secret'; BIND_ADDR="127.0.0.1:$ApiPort"
         STATIC_DIR=(Join-Path $repo 'front/dist'); SPACE_PATH=(Join-Path $artifacts "qa-space-$PID")
         ZHIPU_API_KEY=''; ZHIPUAI_API_KEY=''; DOUBAO_API_KEY=''; DOUBAO_APP_ID=''; DOUBAO_ACCESS_TOKEN=''
+        PUBLIC_BASE_URL="http://127.0.0.1:$WebPort"
+        GITHUB_CLIENT_ID='qa-github-client'; GITHUB_CLIENT_SECRET='qa-github-secret'
+        GOOGLE_CLIENT_ID='qa-google-client'; GOOGLE_CLIENT_SECRET='qa-google-secret'
     }
     $apiProcess = Start-Process -FilePath (Join-Path $artifacts 'debug/colang.exe') -WorkingDirectory $repo -Environment $environment -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-api-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-api-$PID.err")
     $ready=$false
@@ -48,7 +51,12 @@ try {
     $env:QA_DATABASE_URL=$databaseUrl
     $env:QA_API="http://127.0.0.1:$ApiPort"
     $env:QA_WEB="http://127.0.0.1:$WebPort"
+    $env:QA_ARTIFACTS=$artifacts
+    $env:QA_SPACE_PATH=$environment.SPACE_PATH
     Checked { python tests/api.py }
+    Checked { cargo test --locked -p colang --lib oauth_database_flow -- --ignored }
+    Checked { cargo test --locked -p colang --lib chat_stream_database_flow -- --ignored }
+    Checked { python tests/oauth.py }
     $webProcess = Start-Process -FilePath (Get-Command python).Source -ArgumentList @('scripts/serve.py','--port',"$WebPort",'--api',"http://127.0.0.1:$ApiPort") -WorkingDirectory $repo -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-web-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-web-$PID.err")
     for ($attempt=0; $attempt -lt 20; $attempt++) {
         if ($webProcess.HasExited) { throw 'QA preview exited during startup' }
@@ -60,5 +68,5 @@ try {
     if ($webProcess -and !$webProcess.HasExited) { Stop-Process -Id $webProcess.Id }
     if ($apiProcess -and !$apiProcess.HasExited) { Stop-Process -Id $apiProcess.Id }
     if ($startedDatabase) { & (Join-Path $pgBin 'pg_ctl') -D $databaseDir -m fast -w stop }
-    Remove-Item Env:QA_DATABASE_URL,Env:QA_API,Env:QA_WEB -ErrorAction SilentlyContinue
+    Remove-Item Env:QA_DATABASE_URL,Env:QA_API,Env:QA_WEB,Env:QA_ARTIFACTS,Env:QA_SPACE_PATH -ErrorAction SilentlyContinue
 }

@@ -33,6 +33,10 @@ pub fn router() -> Router {
                     Router::with_path("oauth")
                         .get(oauth::list_identities)
                         .post(oauth::link_identity)
+                        .push(
+                            Router::with_path("{provider}/start")
+                                .post(super::auth::social::link_start),
+                        )
                         .push(Router::with_path("{id}").delete(oauth::unlink_identity)),
                 )
                 .push(Router::with_path("account-status").get(oauth::get_account_status))

@@ -6,6 +6,9 @@ pub fn chat(id: Option<i64>) -> impl Widget {
         chats.load("/api/learn/chats?limit=200");
         let turns = Resource::new(scope);
         let action = Resource::new(scope);
+        let stream = chat_stream::ConversationStream::new(scope);
+        let text_stream = stream.clone();
+        let audio_stream = stream.clone();
         let message = scope.cage(String::new());
         let title_value = scope.cage(String::new());
         let context = scope.cage(None::<i64>);
@@ -38,81 +41,27 @@ pub fn chat(id: Option<i64>) -> impl Widget {
                 each(chats.data.map(items)).key(|v|v.to_string()).seed(|v|nav(string(&v,"title"),format!("/chat/{}",string(&v,"id")))),
             )),
             view().class("panel conversation").fill((
-                when(id.is_some(),move||{let id=id.unwrap();view().fill((
+                when(id.is_some(),move||{let id=id.unwrap();let text_stream=text_stream.clone();let audio_stream=audio_stream.clone();let stream=stream.clone();view().fill((
                     view().class("actions").fill((action_button().label("修改标题").enabled(action.busy.map(|b|!*b)).variant(sapid::ButtonVariant::Outline).on_press(move||{if title_value.get().trim().is_empty(){action.error.revise(|e|*e="请在左侧填写新标题".into());return;}action.run("PUT",format!("/api/learn/chats/{id}"),Some(json!({"title":title_value.get().trim()})),move |_|chats.load("/api/learn/chats?limit=200"));}),
                         action_button().label("导出对话").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::export_chat(id,action)),
                         danger_button().label("重置本次对话").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("清空这段对话的全部内容？"){action.run("POST",format!("/api/learn/chats/{id}/reset"),None,move |_|turns.load(format!("/api/learn/chats/{id}/turns?limit=50&from_latest=true")));}}))),
                     turns.status(),empty(turns,"发送一句英语，开始对话。"),
-                    action_button().label("加载更早的消息").variant(sapid::ButtonVariant::Outline).enabled(turns.data.map(|v|v["has_prev"].as_bool().unwrap_or(false))).on_press(move||{let before=string(&turns.data.get(),"first_id");turns.load(format!("/api/learn/chats/{id}/turns?limit=50&before_id={before}"));}),
+                    action_button().label("加载更早的消息").variant(sapid::ButtonVariant::Outline).enabled(turns.data.map(move|v|v["has_prev"].as_bool().unwrap_or(false)&&!action.busy.get()&&!turns.busy.get())).on_press(move||chat_stream::load_older(id,turns,action)),
                     each(turns.data.map(items)).key(|v|v.to_string()).seed(move|v|chat_turn(v,id,turns,action)),
-                    textarea("输入消息",message),action_button().label("发送消息").enabled(action.busy.map(|b|!*b)).on_press(move||{
+                    stream.view(),textarea("输入消息",message),action_button().label("发送消息").enabled(action.busy.map(|b|!*b)).on_press(move||{
                         let text=message.get().trim().to_string();if text.is_empty(){return;}
-                        send(id,json!({"type":"text","message":text}),turns,action,Some(message));
+                        text_stream.clone().send(id,json!({"type":"text","message":text}),turns,action,Some(message));
                     }),
-                    media::recorder(move|audio|send(id,json!({"type":"audio","audio_base64":audio}),turns,action,None),action),
+                    media::recorder(move|audio|audio_stream.clone().send(id,json!({"type":"audio","audio_base64":audio}),turns,action,None),action),
                 ))}).otherwise(||view().fill((heading("今天想聊什么？"),p("选择一个场景，或创建自由对话。")))),action.status(),
             )),
         )))).build(scope)
     })
 }
-fn send(id: i64, body: Value, turns: Resource, action: Resource, message: Option<Cage<String>>) {
-    action.run(
-        "POST",
-        format!("/api/learn/chats/{id}/send"),
-        Some(body),
-        move |v| {
-            if let Some(message) = message {
-                message.revise(String::clear);
-            }
-            turns.load(format!(
-                "/api/learn/chats/{id}/turns?limit=50&from_latest=true"
-            ));
-            let turn_id = v["ai_turn"]["id"].as_i64();
-            if v["ai_turn"]["status"] == "processing"
-                && let Some(turn_id) = turn_id
-            {
-                action.busy.revise(|b| *b = true);
-                spawn(async move {
-                    for _ in 0..12 {
-                        let response =
-                            request("GET", &format!("/api/learn/chats/turns/{turn_id}"), None)
-                                .await;
-                        if !action.busy.is_alive() {
-                            return;
-                        }
-                        match response {
-                            Ok(v) if v["status"] == "processing" => {
-                                gloo_timers::future::TimeoutFuture::new(1000).await
-                            }
-                            Ok(v) => {
-                                action.busy.revise(|b| *b = false);
-                                if v["status"] == "error" {
-                                    action.error.revise(|e| *e = string(&v, "error"));
-                                }
-                                turns.load(format!(
-                                    "/api/learn/chats/{id}/turns?limit=50&from_latest=true"
-                                ));
-                                return;
-                            }
-                            Err(e) => {
-                                action.busy.revise(|b| *b = false);
-                                action.error.revise(|s| *s = e);
-                                return;
-                            }
-                        }
-                    }
-                    action.busy.revise(|b| *b = false);
-                    action
-                        .error
-                        .revise(|e| *e = "AI 仍在处理，请稍后刷新对话。".into());
-                });
-            }
-        },
-    );
-}
 fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl Widget {
     let id = string(&v, "id");
     let audio_id = id.clone();
+    let pending_id = id.clone();
     let speaker = string(&v, "speaker");
     let spoken = string(&v, "content_en");
     view()
@@ -129,10 +78,10 @@ fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl 
             }),
             p(&spoken),
             p(string(&v, "content_zh")),
-            when(v["status"] == "processing", || p("AI 正在回复…")),
+            when(v["status"] == "processing", move || chat_stream::pending_turn(pending_id.clone(), chat_id, turns)),
             when(v["status"] == "error", {
                 let error = string(&v, "error");
-                move || p(error.clone())
+                move || view().role(Role::Alert).class("error").fill(p(error.clone()))
             }),
             nodes(
                 items(&v["issues"])
@@ -162,7 +111,6 @@ fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl 
                 }),
             danger_button()
                 .label("删除消息")
-                .enabled(action.busy.map(|b| !*b))
                 .enabled(action.busy.map(|b| !*b))
                 .on_press(move || {
                     if confirm("删除此条消息？") {

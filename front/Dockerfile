@@ -9,7 +9,10 @@ WORKDIR /app/front
 RUN trunk build --release --locked
 
 FROM nginx:alpine
+ENV API_UPSTREAM=colang:8119 \
+    NGINX_ENVSUBST_OUTPUT_DIR=/etc/nginx \
+    NGINX_ENVSUBST_FILTER=^API_UPSTREAM$
 COPY --from=builder /app/front/dist /usr/share/nginx/html
-COPY front/nginx.conf /etc/nginx/nginx.conf
+COPY front/nginx.conf /etc/nginx/templates/nginx.conf.template
 EXPOSE 80
 CMD ["nginx", "-g", "daemon off;"]

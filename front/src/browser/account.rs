@@ -53,8 +53,140 @@ pub fn login_page(required: bool) -> impl Widget {
                 });
             }),
             action.status(),
-            p("第三方登录尚未配置，请使用邮箱登录。"),
+            social_buttons(None, action),
+            when(param("oauth_error").is_some(), || view().role(Role::Alert).class("error").fill(p(oauth_error()))),
         )).build(scope)
+    })
+}
+fn login_return() -> String {
+    param("next").unwrap_or_else(|| {
+        let path = window().location().pathname().unwrap_or_default();
+        if path == "/auth" || Route::parse(&path).requires_auth() {
+            format!("{path}{}", window().location().search().unwrap_or_default())
+        } else {
+            "/me".into()
+        }
+    })
+}
+
+fn oauth_error() -> &'static str {
+    match param("oauth_error").as_deref() {
+        Some("access_denied") => "已取消第三方登录，可以重试或使用邮箱登录。",
+        Some("account_exists") => {
+            "此邮箱已有账户。请先用邮箱和密码登录，再到「我的学习 → 账户安全」绑定第三方账户。"
+        }
+        Some("already_linked" | "provider_already_linked") => {
+            "此第三方账户已绑定其他账户，或当前账户已有同类绑定。请在账户安全中检查。"
+        }
+        Some("verified_email_required") => "请先在第三方账户中验证邮箱，再重新登录。",
+        Some("account_disabled") => "账户已停用或锁定，请联系管理员。",
+        Some("invalid_state") => "登录会话已过期或浏览器不一致，请从本站重新发起登录。",
+        Some("not_configured" | "unsupported_provider") => "该登录方式尚未配置，请使用邮箱登录。",
+        _ => "第三方登录暂时未完成，请重试或使用邮箱登录。",
+    }
+}
+
+fn social_buttons(account: Option<Resource>, action: Resource) -> impl Widget {
+    widget(move |scope| {
+        let config = Resource::new(scope);
+        config.load("/api/auth/providers");
+        view()
+            .class("social-login")
+            .fill((
+                config.status(),
+                each(scope.bond(move || {
+                    let linked = account.map(|a| a.data.get());
+                    if account.is_some_and(|a| a.busy.get() || !a.data.get().is_object()) {
+                        return Vec::new();
+                    }
+                    items(&config.data.get()["providers"])
+                        .into_iter()
+                        .filter(|p| {
+                            !linked.as_ref().is_some_and(|a| {
+                                items(&a["linked_identities"])
+                                    .iter()
+                                    .any(|i| i["provider"] == p["id"] && i["verified"] == true)
+                            })
+                        })
+                        .collect::<Vec<_>>()
+                }))
+                .key(|v| string(v, "id"))
+                .seed(move |provider| {
+                    let id = string(&provider, "id");
+                    action_button()
+                        .variant(sapid::ButtonVariant::Outline)
+                        .label(format!(
+                            "{} {}",
+                            if account.is_some() {
+                                "绑定"
+                            } else {
+                                "使用"
+                            },
+                            string(&provider, "name")
+                        ))
+                        .enabled(action.busy.map(|b| !*b))
+                        .on_press(move || {
+                            if !matches!(id.as_str(), "github" | "google") {
+                                return;
+                            }
+                            if account.is_some() {
+                                action.run(
+                                    "POST",
+                                    format!("/api/me/oauth/{id}/start"),
+                                    None,
+                                    move |v| {
+                                        if let Some(url) = v["authorization_url"].as_str() {
+                                            go(url);
+                                        }
+                                    },
+                                );
+                            } else {
+                                action.busy.revise(|b| *b = true);
+                                go(&format!(
+                                    "/api/auth/{id}/start?{}",
+                                    query("next", safe_return(&login_return()))
+                                ));
+                            }
+                        })
+                }),
+            ))
+            .build(scope)
+    })
+}
+
+pub fn oauth_complete() -> impl Widget {
+    widget(|scope| {
+        let action = Resource::new(scope);
+        let hash = window().location().hash().unwrap_or_default();
+        let code = url::form_urlencoded::parse(hash.trim_start_matches('#').as_bytes())
+            .find(|(k, _)| k == "code")
+            .map(|(_, v)| v.into_owned());
+        if let Ok(history) = window().history() {
+            let _ = history.replace_state_with_url(&JsValue::NULL, "", Some("/auth/complete"));
+        }
+        if let Some(code) = code {
+            action.run(
+                "POST",
+                "/api/auth/complete".into(),
+                Some(json!({"code":code})),
+                move |v| match save_auth(&v) {
+                    Ok(()) => go(safe_return(v["next"].as_str().unwrap_or("/me"))),
+                    Err(error) => action.error.revise(|e| *e = error),
+                },
+            );
+        } else {
+            action
+                .error
+                .revise(|e| *e = "登录结果已过期，请重新发起登录。".into());
+        }
+        view()
+            .class("panel auth-card")
+            .fill((
+                title("正在完成登录"),
+                action.status(),
+                nav("返回登录", "/login"),
+            ))
+            .build(scope)
     })
 }
 pub fn authorize() -> impl Widget {
@@ -106,9 +238,6 @@ pub fn profile(session: Cage<Value>) -> impl Widget {
     widget(move |scope| {
         let name = scope.cage(string(&session.get(), "name"));
         let phone = scope.cage(string(&session.get(), "phone"));
-        let old_pass = scope.cage(String::new());
-        let new_pass = scope.cage(String::new());
-        let repeat = scope.cage(String::new());
         let action = Resource::new(scope);
         let notice = scope.cage(String::new());
         let account = Resource::new(scope);
@@ -127,13 +256,7 @@ pub fn profile(session: Cage<Value>) -> impl Widget {
                 action_button().label("上传头像（居中裁剪）").variant(sapid::ButtonVariant::Outline).enabled(action.busy.map(|b|!*b)).on_press(move||media::avatar_upload(action,session)),
                 danger_button().label("删除头像").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("删除当前头像？"){action.run("DELETE","/api/me/avatar".into(),None,move|v|{session.revise(|s|s["avatar"]=v["avatar"].clone());notice.revise(|s|*s="头像已删除".into());});}}),action.status(),success_notice(notice,action),
             )),
-            view().class("panel").fill((heading("账户安全"),field_state("当前密码",old_pass,Purpose::Password,false.into(),action.busy.map(|b|!*b).into()),field_state("新密码",new_pass,Purpose::Password,false.into(),action.busy.map(|b|!*b).into()),field_state("确认新密码",repeat,Purpose::Password,false.into(),action.busy.map(|b|!*b).into()),
-                action_button().label("更新密码").enabled(action.busy.map(|b|!*b)).on_press(move||{
-                    if new_pass.get().len()<8 || new_pass.get()!=repeat.get(){action.error.revise(|e|*e="新密码至少 8 字节，两次输入必须一致".into());return;}
-                    action.run("POST","/api/me/change-password".into(),Some(json!({"current_password":if old_pass.get().is_empty(){Value::Null}else{json!(old_pass.get())},"new_password":new_pass.get()})),move |_|{old_pass.revise(String::clear);new_pass.revise(String::clear);repeat.revise(String::clear);notice.revise(|s|*s="密码已更新".into());});
-                }),account.status(),
-                each(account.data.map(|v|items(&v["linked_identities"]))).key(|v|v.to_string()).seed(move|v|{let id=string(&v,"id");view().fill((p(format!("{} {}",string(&v,"provider"),string(&v,"email"))),danger_button().label("解除绑定").enabled(action.busy.map(|b|!*b)).on_press(move||{if confirm("解除该账户的绑定？"){action.run("DELETE",format!("/api/me/oauth/{id}"),None,move |_|account.load("/api/me/account-status"));}})))})
-            )),
+            account_security(account),
         )),
         data_section("学习概览",summary),data_section("最近 7 天学习时长",study),
         view().class("panel").fill((heading("今日任务"),tasks.status(),each(tasks.data.map(|v|items(&v["tasks"]))).key(|v|v.to_string()).seed(move|v|{
@@ -143,6 +266,58 @@ pub fn profile(session: Cage<Value>) -> impl Widget {
         )).build(scope)
     })
 }
+fn verified_login_count(account: &Value) -> usize {
+    items(&account["linked_identities"])
+        .iter()
+        .filter(|i| i["verified"] == true)
+        .count()
+}
+
+fn account_security(account: Resource) -> impl Widget {
+    widget(move |scope| {
+        let action = Resource::new(scope);
+        let notice = scope.cage(String::new());
+        let old = scope.cage(String::new());
+        let password = scope.cage(String::new());
+        let repeat = scope.cage(String::new());
+        let enabled = scope.bond(move || {
+            !action.busy.get() && !account.busy.get() && account.data.get().is_object()
+        });
+        view().class("panel").fill((
+            heading("账户安全"),account.status(),
+            when(account.data.map(|v|v["has_password"]==true), move || field_state("当前密码",old,Purpose::Password,false.into(),enabled.into())),
+            field_state("新密码",password,Purpose::Password,false.into(),enabled.into()),
+            field_state("确认新密码",repeat,Purpose::Password,false.into(),enabled.into()),
+            action_button().label(account.data.map(|v|if v["has_password"]==true{"更新密码"}else{"设置密码"}.into())).enabled(enabled).on_press(move || {
+                if password.get().len()<8||password.get()!=repeat.get(){action.error.revise(|e|*e="新密码至少 8 字节，两次输入必须一致".into());return;}
+                action.run("POST","/api/me/change-password".into(),Some(json!({"current_password":if old.get().is_empty(){Value::Null}else{json!(old.get())},"new_password":password.get()})),move |_|{
+                    old.revise(String::clear);password.revise(String::clear);repeat.revise(String::clear);
+                    notice.revise(|s|*s="密码已更新".into());account.load("/api/me/account-status");
+                });
+            }),
+            social_buttons(Some(account),action),
+            each(account.data.map(|v|items(&v["linked_identities"]))).key(|v|v.to_string()).seed(move |identity| {
+                let id=string(&identity,"id");let verified=identity["verified"]==true;
+                let provider=match identity["provider"].as_str(){Some("google")=>"Google",Some("github")=>"GitHub",_=>"第三方账户"};
+                view().class("linked-account").fill((
+                    p(format!("{provider} {}{}",string(&identity,"email"),if verified{"（已绑定）"}else{"（需重新授权验证）"})),
+                    danger_button().label(format!("解除 {provider} 绑定"))
+                        .enabled(account.data.map(move |a|!action.busy.get()&&!account.busy.get()&&(a["has_password"]==true||verified_login_count(a)>1||!verified)))
+                        .on_press(move || {
+                            if confirm(&format!("解除 {provider} 账户的绑定？")) {
+                                action.run("DELETE",format!("/api/me/oauth/{id}"),None,move |_|{
+                                    notice.revise(|s|*s=format!("已解除 {provider} 绑定"));account.load("/api/me/account-status");
+                                });
+                            }
+                        }),
+                ))
+            }),
+            when(account.data.map(|v|v["has_password"]!=true&&verified_login_count(v)==1),||p("请先设置密码或绑定其他账户，才能解除最后一种登录方式。")),
+            action.status(),success_notice(notice,action),
+        )).build(scope)
+    })
+}
+
 pub fn data_section(label_text: &'static str, resource: Resource) -> impl Widget {
     view().class("panel").fill((
         heading(label_text),

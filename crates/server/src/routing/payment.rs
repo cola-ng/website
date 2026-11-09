@@ -14,18 +14,30 @@ use crate::{DepotExt, JsonResult, json_ok};
 
 pub fn router() -> Router {
     Router::new()
-        .hoop(require_auth)
         .push(
             Router::with_path("wallet")
+                .hoop(require_auth)
                 .get(get_wallet)
                 .push(Router::with_path("transactions").get(list_transactions)),
         )
         .push(
             Router::with_path("subscription")
                 .push(Router::with_path("plans").get(list_plans))
-                .push(Router::with_path("current").get(get_current_subscription))
-                .push(Router::with_path("subscribe").post(subscribe))
-                .push(Router::with_path("cancel").post(cancel_subscription)),
+                .push(
+                    Router::with_path("current")
+                        .hoop(require_auth)
+                        .get(get_current_subscription),
+                )
+                .push(
+                    Router::with_path("subscribe")
+                        .hoop(require_auth)
+                        .post(subscribe),
+                )
+                .push(
+                    Router::with_path("cancel")
+                        .hoop(require_auth)
+                        .post(cancel_subscription),
+                ),
         )
 }
 

@@ -28,7 +28,7 @@ pub fn hash_password(password: &str) -> Result<String, String> {
 }
 
 pub async fn verify_password(user: &User, password: &str) -> AppResult<()> {
-    if user.disabled_at.is_some() {
+    if user.disabled_at.is_some() || user.locked_at.is_some() {
         return Err(StatusError::unauthorized()
             .brief("the user has been deactivated")
             .into());

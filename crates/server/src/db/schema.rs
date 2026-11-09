@@ -901,6 +901,7 @@ diesel::table! {
         user_id -> Nullable<Int8>,
         created_at -> Timestamptz,
         updated_at -> Timestamptz,
+        verified_at -> Nullable<Timestamptz>,
     }
 }
 

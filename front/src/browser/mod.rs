@@ -1,5 +1,6 @@
 mod account;
 mod admin;
+mod chat_stream;
 mod dictionary;
 mod learning;
 mod media;
@@ -226,6 +227,7 @@ pub fn start() -> std::result::Result<(), JsValue> {
     let root = document()
         .get_element_by_id("app")
         .ok_or("missing app root")?;
+    root.set_text_content(None);
     let web = glory::web::launch_with(root, move |scope| {
         let session = scope.cage(Value::Null);
         let ready = scope.cage(token().is_none());
@@ -362,6 +364,7 @@ fn page(route: Route, session: Cage<Value>) -> Nodes {
         Route::Landing => boxed(landing()),
         Route::Login => boxed(account::login_page(false)),
         Route::Auth => boxed(account::authorize()),
+        Route::AuthComplete => boxed(account::oauth_complete()),
         Route::Dict(word) => boxed(dictionary::dictionary(word)),
         Route::Translate => boxed(dictionary::translate()),
         Route::Chat(id) => boxed(learning::chat(id)),

@@ -18,6 +18,7 @@ const domain = {id:1,code:'daily',name_en:'Daily life',name_zh:'日常生活'};
 const plan = {id:1,code:'free',name_zh:'基础版',description_zh:'每日学习，持续积累。',price_display:'免费',trial_days:0,features:['基础词典','词汇复习']};
 function fixture(url) {
   const p=url.pathname;
+  if(p==='/api/auth/providers')return {providers:[{id:'github',name:'GitHub'},{id:'google',name:'Google'}]};
   if(p==='/api/me')return user;
   if(p==='/api/dict/lookup')return {word,definitions:[{definition:'你好',part_of_speech:'interj.'}],sentences:[{sentence:'Hello world.'}]};
   if(p==='/api/dict/words')return {words:[word],total:1,per_page:30};
@@ -60,15 +61,24 @@ async function scenario(name,run){await run();checks++;results.push({name,status
 (async()=>{
   browser=await chromium.launch({headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
   const context=await browser.newContext({viewport:{width:1280,height:900},permissions:['microphone']});
-  page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
+  page=await context.newPage();const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',page.url(),e.message);});page.on('dialog',d=>d.accept());
   await page.route('**/api/**',route=>route.fulfill({json:fixture(new URL(route.request().url()))}));
+  await scenario('slow WASM startup shows a loading message and removes it after mounting',async()=>{
+    let release;const gate=new Promise(resolve=>{release=resolve;});
+    await page.route('**/*_bg.wasm',async route=>{await gate;await route.continue();});
+    await page.goto(base+'/login',{waitUntil:'commit'});
+    await page.getByText('正在加载开朗英语…',{exact:true}).waitFor();
+    release();await page.getByRole('heading',{name:'欢迎来到开朗英语',exact:true}).waitFor();
+    assert.equal(await page.getByText('正在加载开朗英语…',{exact:true}).count(),0);
+    await page.unroute('**/*_bg.wasm');
+  });
   await page.goto(base);await page.evaluate(()=>localStorage.setItem('colang.token','ui-fixture'));
-  const routes=['/','/dict','/dict/hello','/translate','/chat','/chat/1','/review',...['meaning','spelling','recognition','phrase','pronunciation'].map(s=>'/review/session/'+s),'/stages','/stages/1','/read','/login','/auth','/me','/favorites','/subscription','/admin','/admin/users','/admin/users/123','/admin/finance','/admin/finance/orders','/admin/finance/subscriptions','/admin/dict','/admin/dict/1','/admin/taxonomy','/admin/taxonomy/domains/1','/admin/taxonomy/categories/1','/admin/chat-scenarios','/admin/read','/feedback','/terms','/privacy','/missing'];
-  await scenario('37 routes: desktop/mobile theme, typography, focus and overflow',async()=>{
+  const routes=['/','/dict','/dict/hello','/translate','/chat','/chat/1','/review',...['meaning','spelling','recognition','phrase','pronunciation'].map(s=>'/review/session/'+s),'/stages','/stages/1','/read','/login','/auth','/auth/complete','/me','/favorites','/subscription','/admin','/admin/users','/admin/users/123','/admin/finance','/admin/finance/orders','/admin/finance/subscriptions','/admin/dict','/admin/dict/1','/admin/taxonomy','/admin/taxonomy/domains/1','/admin/taxonomy/categories/1','/admin/chat-scenarios','/admin/read','/feedback','/terms','/privacy','/missing'];
+  await scenario('38 routes: desktop/mobile theme, typography, focus and overflow',async()=>{
     for(const width of [1280,390]){
       await page.setViewportSize({width,height:900});
       for(const route of routes){
-        await page.goto(base+route);await page.locator('main h1,main h2').first().waitFor();await page.waitForFunction(()=>!document.querySelector('main .loading-status'));await settle(page);
+        await page.goto(base+route);await page.locator('main h1,main h2').first().waitFor().catch(e=>{throw new Error(route+'@'+width+': '+e.message+'; browser errors: '+errors.join('; '));});await page.waitForFunction(()=>!document.querySelector('main .loading-status'));await settle(page);
         const audit=await page.evaluate(()=>{
           const blue=c=>{const v=c.match(/[\d.]+/g)?.map(Number);return v&&v[2]>v[0]*1.3&&v[2]>v[1]*1.15&&v[2]>100;};
           const controls=[...document.querySelectorAll('main button,main input,main textarea')];
@@ -84,6 +94,21 @@ async function scenario(name,run){await run();checks++;results.push({name,status
         if(['/login','/translate','/chat/1','/read','/me','/admin/read'].includes(route))await page.screenshot({path:path.join(output,route.slice(1).replaceAll('/','-')+'-'+width+'.png'),fullPage:true});
       }
     }
+  });
+  await scenario('social login preserves return paths and explains cancelled or conflicting accounts',async()=>{
+    let next;await page.evaluate(()=>localStorage.removeItem('colang.token'));
+    await page.route('**/api/auth/github/start?*',route=>{next=new URL(route.request().url()).searchParams.get('next');return route.fulfill({status:302,headers:{location:'/login?oauth_error=access_denied'}});});
+    await page.goto(base+'/review');await page.getByRole('button',{name:'使用 GitHub',exact:true}).click();await page.getByText('已取消第三方登录，可以重试或使用邮箱登录。',{exact:true}).waitFor();assert.equal(next,'/review');await page.unroute('**/api/auth/github/start?*');
+    await page.goto(base+'/login?oauth_error=account_exists');await page.getByRole('alert').getByText('此邮箱已有账户。请先用邮箱和密码登录，再到「我的学习 → 账户安全」绑定第三方账户。',{exact:true}).waitFor();assert(await page.getByRole('button',{name:'使用 Google',exact:true}).isEnabled());
+  });
+  await scenario('OAuth completion removes the URL code and saves only the site session',async()=>{
+    let completion;await page.route('**/api/auth/complete',async route=>{completion=route.request().postDataJSON();assert.equal(new URL(page.url()).hash,'');return route.fulfill({json:{user,is_admin:true,access_token:'oauth-ui-fixture',next:'/review'}});});
+    await page.goto(base+'/auth/complete#code=one-time-code');await page.getByRole('heading',{name:'巩固每一点进步',exact:true}).waitFor();assert.deepEqual(completion,{code:'one-time-code'});assert.equal(await page.evaluate(()=>localStorage.getItem('colang.token')),'oauth-ui-fixture');await page.unroute('**/api/auth/complete');
+    await page.goto(base+'/auth/complete');await page.getByRole('alert').getByText('登录结果已过期，请重新发起登录。',{exact:true}).waitFor();
+  });
+  await scenario('linking a provider starts an authenticated server authorization flow',async()=>{
+    let request;await page.route('**/api/me/oauth/github/start',route=>{request=route.request();return route.fulfill({json:{authorization_url:base+'/me?oauth_linked=1'}});});
+    await page.goto(base+'/me');await page.getByRole('button',{name:'绑定 GitHub',exact:true}).click();await page.waitForURL('**/me?oauth_linked=1');assert.equal(request.method(),'POST');assert.equal(request.headers()['authorization'],'Bearer oauth-ui-fixture');await page.unroute('**/api/me/oauth/github/start');
   });
   await scenario('login validation, keyboard focus, loading lock and credential error recovery',async()=>{
     await page.evaluate(()=>localStorage.removeItem('colang.token'));await page.goto(base+'/login');const submit=page.getByRole('button',{name:'登录',exact:true}).last();
@@ -120,7 +145,7 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.getByRole('button',{name:'开始录音',exact:true}).click();await page.getByRole('button',{name:'停止录音并提交',exact:true}).waitFor();await page.goto(base+'/review');await page.unroute('**/api/asset/read/recommended?*');
   });
   await scenario('session expiry removes protected content immediately',async()=>{
-    await page.goto(base+'/chat/1');await page.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello');await page.route('**/api/learn/chats/1/send',route=>route.fulfill({status:401,json:{error:{brief:'expired token'}}}));await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByRole('heading',{name:'登录后继续学习',exact:true}).waitFor();assert.equal(await page.getByRole('textbox',{name:'输入消息',exact:true}).count(),0);assert.equal(await page.evaluate(()=>localStorage.getItem('colang.token')),null);await page.unroute('**/api/learn/chats/1/send');
+    await page.goto(base+'/chat/1');await page.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello');await page.route('**/api/learn/chats/1/send/stream',route=>route.fulfill({status:401,json:{error:{brief:'expired token'}}}));await page.getByRole('button',{name:'发送消息',exact:true}).click();await page.getByRole('heading',{name:'登录后继续学习',exact:true}).waitFor();assert.equal(await page.getByRole('textbox',{name:'输入消息',exact:true}).count(),0);assert.equal(await page.evaluate(()=>localStorage.getItem('colang.token')),null);await page.unroute('**/api/learn/chats/1/send/stream');
   });
   await scenario('primary, selected, disabled and danger components share state colors',async()=>{
     await page.setViewportSize({width:1280,height:900});await page.emulateMedia({reducedMotion:'reduce'});await page.goto(base+'/login');const primary=page.getByRole('button',{name:'登录',exact:true}).last();await page.mouse.move(0,0);assert.equal((await color(primary)).background,'rgb(194, 65, 12)');await primary.hover();assert.equal((await color(primary)).background,'rgb(154, 52, 18)');await page.mouse.down();assert.equal((await color(primary)).background,'rgb(124, 45, 18)');await page.mouse.move(0,0);await page.mouse.up();await page.getByRole('button',{name:'注册',exact:true}).click();await settle(page);assert.equal((await color(page.getByRole('button',{name:'注册',exact:true}))).background,'rgb(255, 237, 213)');assert.equal(await page.getByRole('checkbox').evaluate(e=>getComputedStyle(e).accentColor),'rgb(194, 65, 12)');
@@ -131,6 +156,71 @@ async function scenario(name,run){await run();checks++;results.push({name,status
   });
   await scenario('admin searches reset pagination before requesting filtered data',async()=>{
     const queries=[];await page.route('**/api/admin/users?*',route=>{const u=new URL(route.request().url());queries.push([u.searchParams.get('page'),u.searchParams.get('search')]);return route.fulfill({json:{users:[user],total:61,per_page:30}});});await page.goto(base+'/admin/users');await page.getByRole('button',{name:'下一页',exact:true}).click();await page.getByText('第 2 页',{exact:true}).waitFor();await page.getByRole('textbox',{name:'搜索用户',exact:true}).fill('filtered');await page.getByText('第 1 页',{exact:true}).waitFor();await page.waitForFunction(()=>!document.querySelector('main .loading-status'));assert.deepEqual(queries.at(-1),['1','filtered']);await page.unroute('**/api/admin/users?*');
+  });
+  await scenario('streamed text appears before completion and handles split UTF-8 without polling',async()=>{
+    await page.evaluate(()=>localStorage.setItem('colang.token','ui-fixture'));await page.goto(base+'/chat/1');
+    await page.getByRole('textbox',{name:'输入消息',exact:true}).waitFor();
+    await page.evaluate(()=>{
+      window.qaOriginalFetch=window.fetch;
+      window.fetch=(input,init)=>{
+        if(!String(input).endsWith('/send/stream'))return window.qaOriginalFetch(input,init);
+        const encoder=new TextEncoder();let timers=[];
+        const frame=(event,data)=>encoder.encode('data: '+JSON.stringify({event,data})+'\n\n');
+        const user={id:9991,speaker:'user',content_en:'Stream me',status:'completed',issues:[]};
+        return Promise.resolve(new Response(new ReadableStream({start(controller){
+          controller.enqueue(frame('accepted',{user_turn:user,ai_turn_id:9992}));
+          const partial=frame('delta',{reply_en:'Hello',reply_zh:'你好'});const cut=partial.indexOf(0xe4)+1;
+          timers.push(setTimeout(()=>controller.enqueue(partial.slice(0,cut)),100));
+          timers.push(setTimeout(()=>controller.enqueue(partial.slice(cut)),200));
+          timers.push(setTimeout(()=>{controller.enqueue(frame('done',{user_turn:user,ai_turn:{id:9992,speaker:'assistant',content_en:'Hello from the stream.',content_zh:'流式回复',status:'completed',issues:[]}}));controller.close();},1000));
+          init.signal.addEventListener('abort',()=>{timers.forEach(clearTimeout);try{controller.close();}catch{}});
+        },cancel(){timers.forEach(clearTimeout);}}),{headers:{'Content-Type':'text/event-stream'}}));
+      };
+    });
+    await page.getByRole('textbox',{name:'输入消息',exact:true}).fill('Stream me');await page.getByRole('button',{name:'发送消息',exact:true}).click();
+    await page.locator('.streaming-reply').getByText('Hello',{exact:true}).waitFor();assert(await page.getByRole('button',{name:'发送消息',exact:true}).isDisabled());
+    await page.getByText('Hello from the stream.',{exact:true}).waitFor();assert.equal(await page.locator('.streaming-reply').count(),0);assert(await page.getByRole('button',{name:'发送消息',exact:true}).isEnabled());
+    await page.evaluate(()=>{window.fetch=window.qaOriginalFetch;});
+  });
+  await scenario('reopening a pending conversation recovers its completed reply',async()=>{
+    let completed=false,reads=0;
+    await page.route('**/api/learn/chats/1/turns?*',route=>route.fulfill({json:{items:[{...turn,id:700,status:completed?'completed':'processing',content_en:completed?'Recovered answer.':'Partial answer'}],has_prev:false}}));
+    await page.route('**/api/learn/chats/turns/700',route=>{reads++;completed=true;return route.fulfill({json:{...turn,id:700,status:'completed',content_en:'Recovered answer.'}});});
+    await page.goto(base+'/chat/1');await page.getByText('AI 正在回复…',{exact:true}).waitFor();
+    await page.getByText('Recovered answer.',{exact:true}).waitFor();assert.equal(reads,1);assert.equal(await page.getByText('AI 正在回复…',{exact:true}).count(),0);
+    await page.unroute('**/api/learn/chats/1/turns?*');await page.unroute('**/api/learn/chats/turns/700');
+  });
+  await scenario('older chat pages prepend in order and preserve recent messages',async()=>{
+    const requests=[];
+    await page.route('**/api/learn/chats/1/turns?*',route=>{
+      const q=new URL(route.request().url()).searchParams;requests.push([q.get('before_id'),q.get('from_latest')]);
+      const ids=q.get('before_id')==='51'?[1,50]:q.get('before_id')==='101'?[51,100]:[101,102];
+      return route.fulfill({json:{items:ids.map(id=>({...turn,id,content_en:'History '+id})),first_id:ids[0],last_id:ids.at(-1),has_prev:ids[0]>1}});
+    });
+    await page.goto(base+'/chat/1');await page.getByText('History 102',{exact:true}).waitFor();
+    await page.getByRole('button',{name:'加载更早的消息',exact:true}).click();await page.getByText('History 51',{exact:true}).waitFor();
+    assert(await page.getByText('History 102',{exact:true}).isVisible());
+    await page.getByRole('button',{name:'加载更早的消息',exact:true}).click();await page.getByText('History 1',{exact:true}).waitFor();
+    assert.deepEqual(await page.locator('.message > p').allTextContents(),['History 1','你好，让我们开始练习。','History 50','你好，让我们开始练习。','History 51','你好，让我们开始练习。','History 100','你好，让我们开始练习。','History 101','你好，让我们开始练习。','History 102','你好，让我们开始练习。']);
+    assert(await page.getByRole('button',{name:'加载更早的消息',exact:true}).isDisabled());
+    assert.deepEqual(requests,[[null,'true'],['101','true'],['51','true']]);
+    await page.unroute('**/api/learn/chats/1/turns?*');
+  });
+  await scenario('linked providers disappear from binding choices and unlinking refreshes the account',async()=>{
+    let linked=[{id:11,provider:'google',email:'ui@example.test',verified:true},{id:12,provider:'github',email:'ui@example.test',verified:true}],hasPassword=false;
+    await page.evaluate(()=>localStorage.setItem('colang.token','ui-fixture'));
+    await page.route('**/api/me/account-status',route=>route.fulfill({json:{has_password:hasPassword,linked_identities:linked}}));
+    await page.route('**/api/me/oauth/*',async route=>{assert.equal(route.request().method(),'DELETE');const id=Number(new URL(route.request().url()).pathname.split('/').at(-1));linked=linked.filter(i=>i.id!==id);return route.fulfill({json:{deleted:true}});});
+    await page.goto(base+'/me');await page.getByText('Google ui@example.test（已绑定）',{exact:true}).waitFor();
+    assert.equal(await page.getByRole('button',{name:'绑定 Google',exact:true}).count(),0);assert.equal(await page.getByRole('button',{name:'绑定 GitHub',exact:true}).count(),0);
+    assert.equal(await page.getByRole('textbox',{name:'当前密码',exact:true}).count(),0);
+    await page.screenshot({path:path.join(output,'account-linked.png'),fullPage:true});
+    await page.getByRole('button',{name:'解除 Google 绑定',exact:true}).click();await page.getByRole('button',{name:'绑定 Google',exact:true}).waitFor();assert.equal(linked.length,1);assert(await page.getByRole('button',{name:'解除 GitHub 绑定',exact:true}).isDisabled());
+    await page.screenshot({path:path.join(output,'account-unlinked.png'),fullPage:true});
+    await page.route('**/api/me/change-password',route=>{hasPassword=true;return route.fulfill({json:{success:true}});});
+    await page.getByRole('textbox',{name:'新密码',exact:true}).fill('valid-password');await page.getByRole('textbox',{name:'确认新密码',exact:true}).fill('valid-password');await page.getByRole('button',{name:'设置密码',exact:true}).click();await page.getByRole('button',{name:'更新密码',exact:true}).waitFor();
+    await page.getByRole('button',{name:'解除 GitHub 绑定',exact:true}).click();await page.getByRole('button',{name:'绑定 GitHub',exact:true}).waitFor();assert.equal(linked.length,0);
+    await page.unroute('**/api/me/account-status');await page.unroute('**/api/me/oauth/*');await page.unroute('**/api/me/change-password');
   });
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({pages:routes.length,viewports:[1280,390],audits:routes.length*2,results},null,2));for(const name of ['failure.png','failure.txt']){const file=path.join(output,name);if(fs.existsSync(file))fs.unlinkSync(file);}console.log(`${routes.length*2} page/viewport audits and ${checks-1} interaction regressions passed.`);
 })().catch(async error=>{if(page){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});fs.writeFileSync(path.join(output,'failure.txt'),await page.locator('body').innerText().catch(()=>''));}console.error(error);process.exitCode=1;}).finally(async()=>{await browser?.close();});

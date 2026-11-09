@@ -15,6 +15,7 @@ async function pageFor(auth){
   const context=await browser.newContext({viewport:{width:1280,height:900},permissions:['microphone']});
   const page=await context.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('dialog',d=>d.accept());
   await page.goto(base);
+  await page.locator('main h1,main h2').first().waitFor();
   if(auth)await page.evaluate(auth=>{localStorage.setItem('colang.token',auth.access_token);localStorage.setItem('colang.user',JSON.stringify(auth.user));},auth);
   page.qaClose=async()=>{assert.deepEqual(errors,[]);await context.close();};return page;
 }
@@ -86,18 +87,18 @@ async function api(method,endpoint,body,auth=fixture.learner){
     await p.goto(base+'/read');await p.getByRole('button',{name:'开始录音',exact:true}).click();await p.getByRole('button',{name:'停止录音并提交',exact:true}).waitFor();await p.waitForTimeout(1200);await p.getByRole('button',{name:'停止录音并提交',exact:true}).click();await text(p,'继续练习');assert.equal(wav.toString('ascii',0,4),'RIFF');assert.equal(wav.readUInt32LE(24),16000);assert.equal(wav.readUInt16LE(22),1);assert(wav.length>44);
     await p.getByRole('button',{name:'保存本次成绩',exact:true}).click();await text(p,'成绩已保存');assert(await p.getByRole('button',{name:'已保存',exact:true}).isDisabled());await p.qaClose();
   });
-  await test('chat create, asynchronous AI reply polling and title update',async()=>{
+  await test('chat create, streamed reply and title update',async()=>{
     const p=await pageFor(fixture.learner);await p.goto(base+'/chat');await p.getByRole('textbox',{name:'对话标题',exact:true}).fill('Browser QA Chat');await p.getByRole('button',{name:'自由对话',exact:true}).click();await p.waitForURL(/\/chat\/\d+$/);const id=Number(p.url().split('/').at(-1));
     let turns=[],polls=0;await p.route(`**/api/learn/chats/${id}/turns?*`,route=>route.fulfill({json:{items:turns,total:turns.length,has_prev:false}}));
-    await p.route(`**/api/learn/chats/${id}/send`,route=>{assert.equal(route.request().postDataJSON().message,'Hello there');turns=[{id:900001,speaker:'user',content_en:'Hello there',status:'completed'},{id:900002,speaker:'ai',content_en:'',status:'processing'}];return route.fulfill({json:{user_turn:turns[0],ai_turn:turns[1]}});});
+    await p.route(`**/api/learn/chats/${id}/send/stream`,route=>{assert.equal(route.request().postDataJSON().message,'Hello there');turns=[{id:900001,speaker:'user',content_en:'Hello there',status:'completed'},{id:900002,speaker:'assistant',content_en:'Hello! How are you?',content_zh:'你好！',status:'completed',issues:[]}];const frames=[{event:'accepted',data:{user_turn:turns[0],ai_turn_id:900002}},{event:'delta',data:{reply_en:'Hello!',reply_zh:''}},{event:'done',data:{user_turn:turns[0],ai_turn:turns[1]}}];return route.fulfill({contentType:'text/event-stream',body:frames.map(v=>'data: '+JSON.stringify(v)+'\n\n').join('')});});
     await p.route('**/api/learn/chats/turns/900002',route=>{polls++;turns[1]={...turns[1],content_en:'Hello! How are you?',content_zh:'你好！',status:'completed',issues:[]};return route.fulfill({json:turns[1]});});
-    await p.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello there');await p.getByRole('button',{name:'发送消息',exact:true}).click();await text(p,'Hello! How are you?');assert.equal(polls,1);
+    await p.getByRole('textbox',{name:'输入消息',exact:true}).fill('Hello there');await p.getByRole('button',{name:'发送消息',exact:true}).click();await text(p,'Hello! How are you?');assert.equal(polls,0);
     await p.getByRole('textbox',{name:'对话标题',exact:true}).fill('Browser Renamed');await p.getByRole('button',{name:'修改标题',exact:true}).click();await p.getByRole('link',{name:'Browser Renamed',exact:true}).waitFor();await p.qaClose();
   });
   await test('admin create, edit, delete domain and word deep link',async()=>{
     const p=await pageFor(fixture.admin);await p.goto(base+'/admin/taxonomy');const section=p.locator('.admin-section').first();const code='browser'+Date.now();
     await section.getByRole('textbox',{name:'代码 *',exact:true}).fill(code);await section.getByRole('textbox',{name:'英文名称 *',exact:true}).fill('Browser Domain '+code);await section.getByRole('textbox',{name:'中文名称 *',exact:true}).fill('浏览器测试领域 '+code);await section.getByRole('button',{name:'保存记录',exact:true}).click();await section.getByText('记录已保存',{exact:true}).waitFor();
-    let row=section.locator('.record').filter({hasText:code});await row.getByRole('button',{name:'编辑',exact:true}).click();await section.getByRole('textbox',{name:'中文名称 *',exact:true}).fill('已编辑的领域 '+code);await section.getByRole('button',{name:'保存记录',exact:true}).click();await text(row,'已编辑的领域');await row.getByRole('button',{name:'删除',exact:true}).click();await section.getByText('记录已删除',{exact:true}).waitFor();assert.equal(await section.locator('.record').filter({hasText:code}).count(),0);
+    let row=section.locator('.record').filter({hasText:code});await row.getByRole('button',{name:'编辑',exact:true}).click();await section.getByRole('textbox',{name:'中文名称 *',exact:true}).fill('已编辑的领域 '+code);await section.getByRole('button',{name:'保存记录',exact:true}).click();await text(row,'已编辑的领域');await row.getByRole('button',{name:'删除',exact:true}).click();await section.getByText('记录已删除',{exact:true}).waitFor();await section.locator('.record').filter({hasText:code}).waitFor({state:'detached'});
     await p.goto(base+'/admin/dict/'+fixture.word.id);await p.getByRole('textbox',{name:'单词 *',exact:true}).waitFor();await p.waitForFunction(word=>document.querySelector('.editor input')?.value===word,fixture.word.word);await text(p,'回归测试单词');await p.qaClose();
   });
   await test('all admin deep routes and public scene/subscription routes',async()=>{

@@ -92,7 +92,7 @@ impl AsrService for ZhipuClient {
             .await
             .map_err(|e| AiProviderError::Api(e.to_string()))?;
 
-        tracing::info!("Zhipu ASR: transcribed text: {}", response.text);
+        tracing::debug!("Zhipu ASR completed, {} chars", response.text.len());
 
         Ok(AsrResponse {
             text: response.text,
@@ -201,6 +201,57 @@ impl ChatService for ZhipuClient {
         Ok(reply)
     }
 
+    async fn chat_structured_stream(
+        &self,
+        history: Vec<ChatMessage>,
+        user_text: &str,
+        system_prompt: &str,
+        deltas: tokio::sync::mpsc::UnboundedSender<String>,
+    ) -> Result<StructuredChatResponse, AiProviderError> {
+        use futures_util::StreamExt;
+        let messages = super::chat_stream::messages(history, user_text, system_prompt);
+        let request = CreateChatCompletionRequestArgs::default()
+            .model(&self.chat_model)
+            .messages(
+                messages
+                    .iter()
+                    .map(Self::to_zhipu_message)
+                    .collect::<Vec<_>>(),
+            )
+            .temperature(0.7f32)
+            .max_tokens(1600u32)
+            .response_format(ResponseFormat::json_object())
+            .build()
+            .map_err(|e| AiProviderError::Config(e.to_string()))?;
+        let chat = self.client.chat();
+        let stream = chat
+            .create_stream(request)
+            .await
+            .map_err(|e| AiProviderError::Api(e.to_string()))?;
+        let mut stream = Box::pin(stream);
+        let mut raw = String::new();
+        while let Some(chunk) = stream.next().await {
+            let chunk =
+                chunk.map_err(|_| AiProviderError::Api("AI 流式连接中断，请重试".into()))?;
+            if let Some(choice) = chunk.choices.first() {
+                if let Some(content) = choice.delta.content.as_ref() {
+                    raw.push_str(content);
+                    if raw.len() > super::chat_stream::MAX_OUTPUT_BYTES {
+                        return Err(AiProviderError::Parse("AI 回答超过长度限制".into()));
+                    }
+                    let _ = deltas.send(content.clone());
+                }
+                if let Some(reason) = choice.finish_reason.as_deref() {
+                    if reason != "stop" {
+                        return Err(AiProviderError::Api("AI 未能完整生成回答，请重试".into()));
+                    }
+                    break;
+                }
+            }
+        }
+        super::chat_stream::finish(&raw)
+    }
+
     async fn chat_structured(
         &self,
         messages: Vec<ChatMessage>,
@@ -227,8 +278,8 @@ impl ChatService for ZhipuClient {
             .map_err(|e| AiProviderError::Config(e.to_string()))?;
 
         tracing::info!(
-            "Zhipu Chat Structured: sending request for user text: {}",
-            user_text
+            "Zhipu Chat Structured: sending request ({} chars)",
+            user_text.len()
         );
 
         let response = self
@@ -244,8 +295,6 @@ impl ChatService for ZhipuClient {
             .map(|c| c.message.content.clone())
             .unwrap_or_default();
 
-        tracing::debug!("Zhipu Chat Structured response: {}", content);
-
         // Parse JSON response
         let json_str = content
             .trim()
@@ -254,16 +303,10 @@ impl ChatService for ZhipuClient {
             .trim_end_matches("```")
             .trim();
 
-        println!("Parsed JSON string: {}", json_str);
-
         let structured: serde_json::Value = match serde_json::from_str(json_str) {
             Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
-                    "Failed to parse structured response as JSON: {}, content: {}",
-                    e,
-                    content
-                );
+                tracing::warn!("Failed to parse structured response as JSON: {}", e);
                 // Fallback: detect if user_text is Chinese or English
                 let is_chinese = user_text
                     .chars()

@@ -19,6 +19,9 @@ use crate::services::{
 };
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
+mod streaming;
+pub(super) use streaming::send_stream;
+
 // Type aliases for backward compatibility
 type ChatSession = Chat;
 type NewChatSession = NewChat;
@@ -587,10 +590,7 @@ pub async fn delete_turn(
     Ok(())
 }
 
-/// Get a single chat turn by ID with long-polling support
-///
-/// If the turn status is "processing", the server will block for up to 30 seconds,
-/// polling periodically until the turn is completed or timeout is reached.
+/// Get the current persisted snapshot of an owned chat turn.
 #[endpoint(tags("Chat"))]
 pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTurnWithIssues> {
     let user_id = depot.user_id()?;
@@ -678,102 +678,42 @@ pub struct HistoryResponse {
     pub messages: Vec<HistoryMessage>,
 }
 
-const DEFAULT_SYSTEM_PROMPT: &str = r#"You are a friendly English conversation partner helping users practice their English speaking skills.
-
-CRITICAL: You MUST respond with a valid JSON object. NO OTHER TEXT ALLOWED.
-
-STEPS:
-1. Detect language: If Chinese set use_lang=\"zh\", if English set use_lang=\"en\", if mixed set use_lang=\"mix\"
-
-2. *** MUST ANALYZE ENGLISH FOR ERRORS ***
-   When user writes in English, you MUST check for grammar/vocabulary errors.
-   For EACH error found, add to 'issues' array:
-   {\"type\":\"grammar\",\"original\":\"wrong text\",\"suggested\":\"correct text\",\"description_en\":\"explanation\",\"description_zh\":\"中文解释\",\"severity\":\"medium\",\"start_position\":0,\"end_position\":0}
-
-   Then add a suggestion with the full corrected sentence:
-   {\"type\":\"suggestion\",\"original\":\"full original\",\"suggested\":\"full corrected\",\"description_en\":\"Better way to say this\",\"description_zh\":\"更好的表达\",\"severity\":\"low\",\"start_position\":0,\"end_position\":0}
-
-3. Generate reply_en and reply_zh as natural conversation. Do NOT mention errors here - errors go in 'issues' only.
-
-EXAMPLE for \"I go to school yesterday\":
-{
-  \"use_lang\":\"en\",
-  \"original_en\":\"I go to school yesterday\",
-  \"original_zh\":\"我昨天去学校了\",
-  \"reply_en\":\"That sounds nice! What did you do there?\",
-  \"reply_zh\":\"听起来不错！你在那里做了什么？\",
-  \"issues\":[
-    {\"type\":\"grammar\",\"original\":\"go\",\"suggested\":\"went\",\"description_en\":\"Use past tense with yesterday\",\"description_zh\":\"yesterday要用过去式\",\"severity\":\"medium\",\"start_position\":2,\"end_position\":4},
-    {\"type\":\"suggestion\",\"original\":\"I go to school yesterday\",\"suggested\":\"I went to school yesterday\",\"description_en\":\"Corrected sentence\",\"description_zh\":\"修正后的句子\",\"severity\":\"low\",\"start_position\":0,\"end_position\":0}
-  ]
-}
-
-JSON format:
-{\"use_lang\":\"\",\"original_en\":\"\",\"original_zh\":\"\",\"reply_en\":\"\",\"reply_zh\":\"\",\"issues\":[]}"#;
-
 // ============================================================================
 // Database helper functions
 // ============================================================================
 
 /// Get chat history for a session (last 20 messages)
-async fn get_chat_leatest_turns(
+async fn get_chat_latest_turns(
     chat_id: i64,
-    max_count: i64,
-) -> Result<Vec<HistoryMessage>, StatusError> {
-    with_conn(move |conn| {
-        let messages = learn_chat_turns::table
-            .filter(learn_chat_turns::chat_id.eq(chat_id))
-            .order(learn_chat_turns::created_at.asc())
-            .limit(max_count)
-            .load::<DbChatMessage>(conn)?;
-
-        Ok(messages.into_iter().map(Into::into).collect())
-    })
-    .await
-    .map_err(|e| {
-        tracing::error!("Failed to get history: {:?}", e);
-        StatusError::internal_server_error().brief("database error")
-    })
-}
-
-/// Parameters for saving a chat message
-struct SaveMessageParams {
     user_id: i64,
-    chat_id: i64,
-    speaker: String,
-    use_lang: String,
-    content_en: String,
-    content_zh: String,
-    audio_path: Option<String>,
-    issues_count: Option<i32>,
-}
-
-/// Save a single message to database and return the created turn
-async fn save_message(params: SaveMessageParams, status: &str) -> Result<ChatTurn, StatusError> {
-    let status = status.to_string();
+    before: i64,
+    max_count: i64,
+) -> Result<Vec<ChatMessage>, StatusError> {
     with_conn(move |conn| {
-        diesel::insert_into(learn_chat_turns::table)
-            .values(&NewChatTurn {
-                user_id: params.user_id,
-                chat_id: params.chat_id,
-                speaker: params.speaker,
-                use_lang: params.use_lang,
-                content_en: params.content_en,
-                content_zh: params.content_zh,
-                audio_path: params.audio_path,
-                duration_ms: None,
-                words_per_minute: None,
-                issues_count: params.issues_count,
-                hesitation_count: None,
-                status,
+        let mut turns = learn_chat_turns::table
+            .filter(learn_chat_turns::chat_id.eq(chat_id))
+            .filter(learn_chat_turns::user_id.eq(user_id))
+            .filter(learn_chat_turns::id.lt(before))
+            .filter(learn_chat_turns::status.eq("completed"))
+            .order(learn_chat_turns::id.desc())
+            .limit(max_count)
+            .load::<ChatTurn>(conn)?;
+        turns.reverse();
+        let mut messages: Vec<HistoryMessage> = turns.into_iter().map(Into::into).collect();
+        while messages.len() > 1 && messages.iter().map(|m| m.content.len()).sum::<usize>() > 24000
+        {
+            messages.remove(0);
+        }
+        Ok(messages
+            .into_iter()
+            .map(|m| ChatMessage {
+                role: m.role,
+                content: m.content,
             })
-            .get_result::<ChatTurn>(conn)
+            .collect())
     })
     .await
-    .map_err(|e| {
-        tracing::error!("Failed to save message: {:?}", e);
-        StatusError::internal_server_error().brief("database error")
-    })
+    .map_err(|_| StatusError::internal_server_error().brief("无法读取对话历史"))
 }
 
 /// Get the audio storage directory for a user
@@ -878,263 +818,11 @@ pub async fn send_chat(
     req: &mut Request,
     depot: &mut Depot,
 ) -> JsonResult<ChatSendResponse> {
-    let chat_id = id.into_inner();
-    let user_id = depot.user_id()?;
-
-    // Read body with larger size limit for audio (50MB)
-    let body_bytes = req
-        .payload_with_max_size(50 * 1024 * 1024)
-        .await
-        .map_err(|e| {
-            tracing::error!("send_chat: failed to read body: {:?}", e);
-            StatusError::bad_request().brief("failed to read body")
-        })?;
-
-    // Parse JSON
-    let input: ChatSendRequest = serde_json::from_slice(&body_bytes).map_err(|e| {
-        tracing::error!("send_chat: parse_json error: {:?}", e);
-        StatusError::bad_request().brief("invalid json")
-    })?;
-
-    // Get AI provider early - needed for both ASR and user input analysis
-    let provider = create_provider_from_env()
-        .ok_or_else(|| StatusError::internal_server_error().brief("AI provider not configured"))?;
-
-    // Process based on input type - transcribe audio if needed
-    let (user_text, user_audio_data) = match &input {
-        ChatSendRequest::Audio { audio_base64 } => {
-            // Decode audio
-            let audio_data = BASE64
-                .decode(audio_base64)
-                .map_err(|_| StatusError::bad_request().brief("invalid base64 audio"))?;
-
-            if audio_data.is_empty() {
-                return Err(StatusError::bad_request()
-                    .brief("audio data is empty")
-                    .into());
-            }
-
-            // Transcribe audio to text using ASR
-            let asr = provider.asr().ok_or_else(|| {
-                StatusError::internal_server_error().brief("ASR service not available")
-            })?;
-
-            tracing::info!("Calling {} ASR API...", provider.name());
-            let asr_result = asr
-                .transcribe(audio_data.clone(), Some("auto"))
-                .await
-                .map_err(|e: AiProviderError| {
-                    tracing::error!("{} ASR error: {:?}", provider.name(), e);
-                    StatusError::internal_server_error().brief(e.to_string())
-                })?;
-            tracing::info!("{} ASR API completed: {}", provider.name(), asr_result.text);
-
-            if asr_result.text.trim().is_empty() {
-                return Err(StatusError::bad_request()
-                    .brief("Could not transcribe audio - no speech detected")
-                    .into());
-            }
-
-            (asr_result.text, Some(audio_data))
-        }
-        ChatSendRequest::Text { message } => {
-            if message.trim().is_empty() {
-                return Err(StatusError::bad_request()
-                    .brief("message is required")
-                    .into());
-            }
-
-            (message.clone(), None)
-        }
-    };
-
-    println!("======user_text: {}", user_text);
-
-    // Save user's audio file if provided
-    let user_audio_path = if let Some(audio_data) = &user_audio_data {
-        save_audio_file(user_id, audio_data, "user", "wav").await
-    } else {
-        None
-    };
-
-    // Get chat service for structured output
-    let chat_service = provider
-        .chat_service()
-        .ok_or_else(|| StatusError::internal_server_error().brief("Chat service not available"))?;
-
-    // Get conversation history (last 100 messages for context)
-    let history_messages = get_chat_leatest_turns(chat_id, 100)
-        .await
-        .unwrap_or_default();
-    let history: Vec<ChatMessage> = history_messages
-        .into_iter()
-        .filter(|m| m.role != "assistant" || !m.content.is_empty())
-        .map(|m| ChatMessage {
-            role: m.role,
-            content: m.content,
-        })
-        .collect();
-
-    tracing::info!(
-        "Calling {} chat_structured API with {} history messages...",
-        provider.name(),
-        history.len()
-    );
-    let structured_response = chat_service
-        .chat_structured(history, &user_text, DEFAULT_SYSTEM_PROMPT)
-        .await
-        .unwrap_or_else(|e| {
-            tracing::warn!("Failed to get structured response: {}, using defaults", e);
-            // Fallback: assume English, use original text
-            StructuredChatResponse {
-                use_lang: "en".to_string(),
-                original_en: user_text.clone(),
-                original_zh: String::new(),
-                reply_en: "I'm sorry, I couldn't process your input.".to_string(),
-                reply_zh: "抱歉，我无法处理您的输入。".to_string(),
-                issues: vec![],
-            }
-        });
-    tracing::info!(
-        "{} chat_structured completed: use_lang={}, reply_len={}",
-        provider.name(),
-        structured_response.use_lang,
-        structured_response.reply_en.len()
-    );
-
-    println!("======structured_response: {:#?}", structured_response);
-    // Create user turn with enriched info (status: completed)
-    let user_turn = save_message(
-        SaveMessageParams {
-            user_id,
-            chat_id,
-            speaker: "user".to_string(),
-            use_lang: structured_response.use_lang.clone(),
-            content_en: structured_response.original_en.clone(),
-            content_zh: structured_response.original_zh.clone(),
-            audio_path: user_audio_path,
-            issues_count: Some(structured_response.issues.len() as i32),
-        },
-        "completed",
-    )
-    .await?;
-
-    // Save chat issues if any issues were found in user input
-    if !structured_response.issues.is_empty() {
-        tracing::info!(
-            "Saving {} chat issues for user turn {}",
-            structured_response.issues.len(),
-            user_turn.id
-        );
-
-        let user_turn_id = user_turn.id;
-        let issues: Vec<NewChatIssue> = structured_response
-            .issues
-            .iter()
-            .map(|issue| NewChatIssue {
-                user_id,
-                chat_id,
-                chat_turn_id: user_turn_id,
-                issue_type: issue.issue_type.clone(),
-                start_position: issue.start_position,
-                end_position: issue.end_position,
-                original_text: Some(issue.original.clone()),
-                suggested_text: Some(issue.suggested.clone()),
-                description_en: Some(issue.description_en.clone()),
-                description_zh: Some(issue.description_zh.clone()),
-                severity: Some(issue.severity.clone()),
-            })
-            .collect();
-
-        if let Err(e) = with_conn(move |conn| {
-            diesel::insert_into(learn_chat_issues::table)
-                .values(&issues)
-                .execute(conn)
-        })
-        .await
-        {
-            tracing::error!("Failed to save chat issues: {:?}", e);
-        } else {
-            tracing::info!(
-                "Saved {} issues successfully",
-                structured_response.issues.len()
-            );
-        }
-    }
-
-    // Spawn background task for AI response generation
-    tracing::info!(
-        "Background: {} chat_structured API completed: reply_en_len={}",
-        provider.name(),
-        structured_response.reply_en.len()
-    );
-
-    // Generate TTS for AI response if needed
-    let ai_audio_path = if let Some(tts) = provider.tts() {
-        tracing::info!(
-            "Generating TTS for AI response ({} chars)...",
-            structured_response.reply_en.len()
-        );
-        // Use English voice for English response text
-        match tts
-            .synthesize(
-                &structured_response.reply_en,
-                Some("zh_female_vv_uranus_bigtts"),
-                None,
-            )
-            .await
-        {
-            Ok(tts_response) => {
-                tracing::info!(
-                    "Background: TTS succeeded, saving {} bytes audio...",
-                    tts_response.audio_data.len()
-                );
-                save_audio_file(user_id, &tts_response.audio_data, "ai", "mp3").await
-            }
-            Err(e) => {
-                tracing::error!("Background: AI TTS failed: {}", e);
-                None
-            }
-        }
-    } else {
-        tracing::warn!("Background: TTS service not available");
-        None
-    };
-
-    let ai_turn = save_message(
-        SaveMessageParams {
-            user_id,
-            chat_id,
-            speaker: "assistant".to_string(),
-            use_lang: "en".to_owned(),
-            content_en: structured_response.reply_en.clone(),
-            content_zh: structured_response.reply_zh.clone(),
-            audio_path: ai_audio_path,
-            issues_count: None,
-        },
-        "completed",
-    )
-    .await?;
-
-    // Fetch issues that were saved for the user turn
-    let user_turn_id = user_turn.id;
-    let user_issues: Vec<ChatIssue> = if user_turn.issues_count > 0 {
-        with_conn(move |conn| {
-            learn_chat_issues::table
-                .filter(learn_chat_issues::chat_turn_id.eq(user_turn_id))
-                .filter(learn_chat_issues::user_id.eq(user_id))
-                .load::<ChatIssue>(conn)
-        })
-        .await
-        .unwrap_or_default()
-    } else {
-        vec![]
-    };
-
-    json_ok(ChatSendResponse {
-        user_turn: ChatTurnWithIssues::from_turn_with_issues(user_turn, user_issues),
-        ai_turn: ChatTurnWithIssues::from_turn(ai_turn),
-    })
+    let user = depot.user_id()?;
+    let chat = id.into_inner();
+    let (input, provider) = streaming::prepare(req, user, chat).await?;
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    json_ok(streaming::conversation(user, chat, input, provider, &tx).await?)
 }
 
 /// Convert text to speech only
@@ -1276,7 +964,12 @@ pub async fn list_turn_issues(
 ///
 /// Path: /learn/chats/turns/{id}/audio
 #[handler]
-pub async fn serve_turn_audio(req: &mut Request, res: &mut Response) -> AppResult<()> {
+pub async fn serve_turn_audio(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> AppResult<()> {
+    let user_id = depot.user_id()?;
     let turn_id: i64 = req
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
@@ -1285,6 +978,7 @@ pub async fn serve_turn_audio(req: &mut Request, res: &mut Response) -> AppResul
     let turn: ChatTurn = with_conn(move |conn| {
         learn_chat_turns::table
             .find(turn_id)
+            .filter(learn_chat_turns::user_id.eq(user_id))
             .first::<ChatTurn>(conn)
     })
     .await

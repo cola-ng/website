@@ -8,6 +8,11 @@ services:
     environment:
       - DATABASE_URL=postgresql://user:password@db:5432/colang
       - JWT_SECRET=your_jwt_secret_key
+      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
+      - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
+      - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
       - BIND_ADDR=0.0.0.0:8119
     depends_on:
       - db
@@ -19,6 +24,8 @@ services:
       dockerfile: front/Dockerfile
     ports:
       - "5173:80"
+    environment:
+      - API_UPSTREAM=${API_UPSTREAM:-colang:8119}
     depends_on:
       - colang
     restart: unless-stopped
