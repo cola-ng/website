@@ -10,6 +10,7 @@ mod taxonomy;
 
 pub fn router() -> Router {
     Router::with_path("asset")
+        .hoop(require_taxonomy_admin)
         // Taxonomy Domains
         .push(
             Router::with_path("domains")
@@ -93,4 +94,32 @@ pub fn router() -> Router {
                         .post(reading::advance_pronunciation_level),
                 ),
         )
+}
+
+#[handler]
+async fn require_taxonomy_admin(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+    ctrl: &mut FlowCtrl,
+) {
+    let path = req.uri().path();
+    let taxonomy = ["/api/asset/domains", "/api/asset/categories"]
+        .iter()
+        .any(|base| {
+            path == *base
+                || path
+                    .strip_prefix(base)
+                    .is_some_and(|tail| tail.starts_with('/'))
+        });
+    if taxonomy
+        && !matches!(
+            *req.method(),
+            salvo::http::Method::GET | salvo::http::Method::HEAD | salvo::http::Method::OPTIONS
+        )
+    {
+        crate::hoops::require_admin
+            .handle(req, depot, res, ctrl)
+            .await;
+    }
 }

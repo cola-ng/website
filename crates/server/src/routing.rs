@@ -55,16 +55,26 @@ pub fn router() -> Router {
                 .push(asset::router())
                 .push(dict::router())
                 .push(learn::router())
-                .push(payment::router()),
+                .push(payment::router())
+                .push(Router::with_path("{**}").goal(api_not_found)),
         )
         .push(
             Router::with_path("{**}").get(
-                StaticDir::new("static")
+                StaticDir::new(std::env::var("STATIC_DIR").unwrap_or_else(|_| "static".into()))
                     .include_dot_files(false)
                     .defaults("index.html")
-                    .auto_list(true),
+                    .fallback("index.html")
+                    .auto_list(false),
             ),
         )
+}
+
+#[handler]
+async fn api_not_found(res: &mut Response) {
+    res.status_code(StatusCode::NOT_FOUND);
+    res.render(Json(
+        serde_json::json!({"error":{"brief":"API endpoint not found"}}),
+    ));
 }
 
 /// Health check endpoint

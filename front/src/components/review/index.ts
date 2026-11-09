@@ -1,6 +1,0 @@
-export * from './ScoreDisplay'
-export * from './PronunciationPractice'
-export * from './MeaningPractice'
-export * from './SpellingPractice'
-export * from './RecognitionPractice'
-export * from './PhrasePractice'

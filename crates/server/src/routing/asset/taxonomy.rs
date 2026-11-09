@@ -24,10 +24,28 @@ pub async fn list_domains(req: &mut Request) -> JsonResult<DomainListResponse> {
     let page = req.query::<i64>("page").unwrap_or(1).max(1);
     let per_page = req.query::<i64>("per_page").unwrap_or(20).clamp(1, 200);
     let offset = (page - 1) * per_page;
+    let pattern = format!(
+        "%{}%",
+        req.query::<String>("search").unwrap_or_default().trim()
+    );
 
     let (domains, total) = with_conn(move |conn| {
-        let total: i64 = taxon_domains::table.count().get_result(conn)?;
+        let total: i64 = taxon_domains::table
+            .filter(
+                taxon_domains::code
+                    .ilike(&pattern)
+                    .or(taxon_domains::name_en.ilike(&pattern))
+                    .or(taxon_domains::name_zh.ilike(&pattern)),
+            )
+            .count()
+            .get_result(conn)?;
         let domains: Vec<TaxonDomain> = taxon_domains::table
+            .filter(
+                taxon_domains::code
+                    .ilike(&pattern)
+                    .or(taxon_domains::name_en.ilike(&pattern))
+                    .or(taxon_domains::name_zh.ilike(&pattern)),
+            )
             .order(taxon_domains::id.asc())
             .limit(per_page)
             .offset(offset)
@@ -207,6 +225,10 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
     let page = req.query::<i64>("page").unwrap_or(1).max(1);
     let per_page = req.query::<i64>("per_page").unwrap_or(20).clamp(1, 500);
     let offset = (page - 1) * per_page;
+    let pattern = format!(
+        "%{}%",
+        req.query::<String>("search").unwrap_or_default().trim()
+    );
 
     let domain_id_clone = domain_id;
     let parent_id_clone = parent_id;
@@ -214,6 +236,12 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
     let (categories, total) = with_conn(move |conn| {
         // Count query with same filters
         let mut count_query = taxon_categories::table.into_boxed();
+        count_query = count_query.filter(
+            taxon_categories::code
+                .ilike(&pattern)
+                .or(taxon_categories::name_en.ilike(&pattern))
+                .or(taxon_categories::name_zh.ilike(&pattern)),
+        );
         if let Some(did) = domain_id {
             count_query = count_query.filter(taxon_categories::domain_id.eq(did));
         }
@@ -224,6 +252,12 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
 
         // Data query with same filters
         let mut query = taxon_categories::table.into_boxed();
+        query = query.filter(
+            taxon_categories::code
+                .ilike(&pattern)
+                .or(taxon_categories::name_en.ilike(&pattern))
+                .or(taxon_categories::name_zh.ilike(&pattern)),
+        );
         if let Some(did) = domain_id_clone {
             query = query.filter(taxon_categories::domain_id.eq(did));
         }

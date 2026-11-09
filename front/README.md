@@ -1,29 +1,51 @@
-## Usage
+# 开朗英语前端
 
-```bash
-$ npm install # or pnpm install or yarn install
+前端使用 Rust + Glory 0.7.0 + Sapid 0.7.1，编译为 WebAssembly。
+不再依赖 React、React Router、Radix、Recharts、Vite、TypeScript 或 Tailwind。
+少量原生浏览器适配位于 `src/browser/media.js`（录音、WAV 编码、音频播放与图片裁剪），不包含前端框架。
+
+## 本地开发
+
+需要 Rust 1.95+、`wasm32-unknown-unknown` 和 Trunk。推荐与 CI 一致使用 Rust 1.99。
+
+```powershell
+rustup target add wasm32-unknown-unknown
+cargo install trunk --version 0.22.1 --locked
+# 在 website 启动 API（需要 PostgreSQL，参见 .env.example）
+cargo run -p colang --bin colang
+# 另一个终端
+cd front
+trunk serve
 ```
 
-### Learn more on the [Solid Website](https://solidjs.com) and come chat with us on our [Discord](https://discord.com/invite/solidjs)
-### Learn more about [React](https://react.dev) and [shadcn/ui](https://ui.shadcn.com)
+访问 http://127.0.0.1:5173 。Trunk 将 `/api/` 代理到 `127.0.0.1:8119`。
 
-## Available Scripts
+## 发布构建
 
-In the project directory, you can run:
+```powershell
+cd front
+trunk build --release --locked
+```
 
-### `npm run dev`
+产物为 `front/dist`。可设置 `STATIC_DIR=front/dist` 由 API 直接托管，或使用 `front/nginx.conf` 配置的 Nginx。API 请求和音频使用同源代理；嵌套路由刷新返回 `index.html`。
 
-Runs the app in the development mode.<br>
-Open [http://localhost:8118](http://localhost:8118) to view it in the browser.
+```powershell
+# 在 website 预览构建产物（API 默认 8119）
+python scripts/serve.py
+```
 
-### `npm run build`
+Sapid 的结构样式保存在 `public/sapid.css`，来源为 Sapid 0.7.1，许可证见 `public/SAPID-LICENSE.txt`。升级 Sapid 时同步核对样式。
 
-Builds the app for production to the `dist` folder.<br>
-It correctly bundles React in production mode and optimizes the build for the best performance.
+应用配色与控件字号统一定义在 `src/browser/theme.rs`，页面排版层级在 `app.css`。新增按钮、文本框和复选框请使用 `action_button`、`text_control` 和 `checkbox_control`；删除、重置、撤权等破坏性操作使用 `danger_button`。处理中、错误、成功和空数据提示使用共享组件，保留橙色操作、红色错误、绿色成功和灰色禁用的语义区分。
 
-The build is minified and the filenames include the hashes.<br>
-Your app is ready to be deployed!
+## 检查与回归
 
-## Deployment
+```powershell
+cargo fmt -p colang-front --check
+cargo test -p colang-front
+cargo clippy -p colang-front --target wasm32-unknown-unknown -- -D warnings
+```
 
-Learn more about deploying your application with the [documentations](https://vite.dev/guide/static-deploy.html)
+完整数据库及浏览器测试说明见 `../tests/README.md`。
+
+邮箱登录和注册已接入现有 API。第三方 OAuth 尚无真实服务端授权流程，界面明确显示未配置。AI 对话、翻译及评分需要服务器配置对应服务凭据；无配置时显示接口错误。浏览器朗读使用系统语音，跟读原音使用服务端音频。

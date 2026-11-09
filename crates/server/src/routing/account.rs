@@ -33,7 +33,7 @@ pub fn router() -> Router {
                     Router::with_path("oauth")
                         .get(oauth::list_identities)
                         .post(oauth::link_identity)
-                        .push(Router::with_path("<id>").delete(oauth::unlink_identity)),
+                        .push(Router::with_path("{id}").delete(oauth::unlink_identity)),
                 )
                 .push(Router::with_path("account-status").get(oauth::get_account_status))
                 .push(Router::with_path("change-password").post(change_password)),
@@ -208,6 +208,8 @@ pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthRespon
             StatusError::conflict().brief("email already registered")
         } else if e.contains(ERR_PHONE_EXISTS) {
             StatusError::conflict().brief("phone already registered")
+        } else if e.contains("base_users_name_key") {
+            StatusError::conflict().brief("name already registered")
         } else if e.contains("UniqueViolation") || e.contains("unique") {
             StatusError::conflict().brief("email or phone already registered")
         } else {
@@ -273,7 +275,13 @@ pub async fn update_me(input: JsonBody<UpdateUserProfile>, depot: &mut Depot) ->
             .get_result::<User>(conn)
     })
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to update profile"))?;
+    .map_err(|e| {
+        if e.contains("base_users_name_key") {
+            StatusError::conflict().brief("name already registered")
+        } else {
+            StatusError::internal_server_error().brief("failed to update profile")
+        }
+    })?;
 
     json_ok(User::from(updated))
 }
@@ -326,7 +334,9 @@ pub async fn change_password(
                 .into());
         }
         let user: User = with_conn(move |conn| {
-            base_users::table.filter(base_users::id.eq(user_id)).first(conn)
+            base_users::table
+                .filter(base_users::id.eq(user_id))
+                .first(conn)
         })
         .await
         .map_err(|_| StatusError::not_found().brief("user not found"))?;

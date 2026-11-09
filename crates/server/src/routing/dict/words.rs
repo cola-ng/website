@@ -16,6 +16,15 @@ pub struct WordListResponse {
 }
 
 #[handler]
+pub async fn get_word(req: &mut Request) -> JsonResult<Word> {
+    let id = super::get_path_id(req, "id")?;
+    let word = with_conn(move |conn| dict_words::table.find(id).first::<Word>(conn))
+        .await
+        .map_err(|_| StatusError::not_found().brief("word not found"))?;
+    json_ok(word)
+}
+
+#[handler]
 pub async fn list_words(req: &mut Request) -> JsonResult<WordListResponse> {
     let search_term = req
         .query::<String>("search")

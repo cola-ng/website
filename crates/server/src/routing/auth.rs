@@ -48,9 +48,9 @@ pub async fn create_code(
     input: JsonBody<CodeRequest>,
     depot: &mut Depot,
 ) -> JsonResult<CodeResponse> {
-    if input.redirect_uri.trim().is_empty() {
+    if !valid_desktop_callback(&input.redirect_uri) {
         return Err(StatusError::bad_request()
-            .brief("redirect_uri is required")
+            .brief("redirect_uri must be a loopback HTTP or registered desktop callback")
             .into());
     }
     if input.state.trim().is_empty() {
@@ -115,17 +115,18 @@ pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<Con
     let now = Utc::now();
 
     let user_id: i64 = with_conn(move |conn| {
-        let item: AuthCode = auth_codes::table
-            .filter(auth_codes::code_hash.eq(code_hash_value))
-            .filter(auth_codes::redirect_uri.eq(redirect_uri_value))
-            .filter(auth_codes::used_at.is_null())
-            .filter(auth_codes::expires_at.gt(now))
-            .first::<AuthCode>(conn)?;
-
-        diesel::update(auth_codes::table.filter(auth_codes::id.eq(item.id)))
-            .set(auth_codes::used_at.eq(now))
-            .execute(conn)?;
-        Ok(item.user_id)
+        // Claim and return the code in one statement so concurrent exchanges
+        // cannot both consume the same authorization code.
+        diesel::update(
+            auth_codes::table
+                .filter(auth_codes::code_hash.eq(code_hash_value))
+                .filter(auth_codes::redirect_uri.eq(redirect_uri_value))
+                .filter(auth_codes::used_at.is_null())
+                .filter(auth_codes::expires_at.gt(now)),
+        )
+        .set(auth_codes::used_at.eq(now))
+        .returning(auth_codes::user_id)
+        .get_result::<i64>(conn)
     })
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid or expired code"))?;
@@ -135,6 +136,31 @@ pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<Con
             .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     json_ok(ConsumeCodeResponse { access_token })
+}
+
+fn valid_desktop_callback(raw: &str) -> bool {
+    let Ok(url) = url::Url::parse(raw) else {
+        return false;
+    };
+    url.username().is_empty()
+        && url.password().is_none()
+        && ((url.scheme() == "http"
+            && matches!(url.host_str(), Some("127.0.0.1" | "localhost" | "[::1]")))
+            || (matches!(url.scheme(), "colang" | "amigo") && url.host_str().is_some()))
+}
+
+#[cfg(test)]
+mod callback_tests {
+    use super::valid_desktop_callback;
+    #[test]
+    fn callback_requires_a_desktop_destination() {
+        assert!(valid_desktop_callback("http://127.0.0.1:3456/callback"));
+        assert!(valid_desktop_callback("amigo://auth"));
+        assert!(!valid_desktop_callback("https://example.com/collect"));
+        assert!(!valid_desktop_callback("javascript:alert(1)"));
+        assert!(!valid_desktop_callback("http://localhost.evil.test"));
+        assert!(!valid_desktop_callback("http://user@localhost"));
+    }
 }
 
 // #[derive(Deserialize)]

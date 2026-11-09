@@ -8,6 +8,7 @@
 /front/dist-ssr/
 /front/.vite/
 /front/*.local
+/tests/node_modules/
 
 # Env / secrets
 .env

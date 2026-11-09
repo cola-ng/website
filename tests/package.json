@@ -1,0 +1,1 @@
+{"name":"colang-browser-tests","private":true,"scripts":{"test":"node browser.cjs"},"devDependencies":{"playwright":"1.60.0"}}

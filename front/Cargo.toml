@@ -1,0 +1,29 @@
+[package]
+name = "colang-front"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+url = { workspace = true }
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+glory = { version = "=0.7.0", features = ["web"] }
+sapid = "=0.7.1"
+wasm-bindgen = "=0.2.130"
+wasm-bindgen-futures = "=0.4.80"
+js-sys = "=0.3.107"
+gloo-timers = { version = "0.3", features = ["futures"] }
+base64 = "0.22"
+web-sys = { version = "=0.3.107", features = [
+  "Window", "Document", "Element", "HtmlElement", "Location", "History", "Storage",
+  "Request", "RequestInit", "Response", "Headers", "AbortController", "AbortSignal",
+  "Event", "EventTarget", "HtmlAudioElement", "HtmlMediaElement", "Url", "Blob",
+  "BlobPropertyBag", "FormData", "File", "FileList", "HtmlInputElement", "FileReader",
+  "Navigator", "MediaDevices", "MediaStream", "MediaStreamConstraints", "MediaStreamTrack",
+  "MediaRecorder", "MediaRecorderOptions", "BlobEvent", "AudioContext", "AudioBuffer",
+  "BaseAudioContext", "console", "VisibilityState", "SpeechSynthesis", "SpeechSynthesisUtterance"
+] }

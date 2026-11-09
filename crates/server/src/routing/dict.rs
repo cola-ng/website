@@ -26,6 +26,7 @@ mod words;
 
 pub fn router() -> Router {
     Router::with_path("dict")
+        .hoop(require_content_admin)
         .push(Router::with_path("lookup").get(lookup))
         .push(Router::with_path("translate").post(translate::translate))
         .push(
@@ -68,7 +69,7 @@ pub fn router() -> Router {
         )
         .push(Router::with_path("words").get(words::list_words))
         .push(Router::with_path("words").post(words::create_word))
-        .push(Router::with_path("words/{id}").put(words::update_word))
+        .push(Router::with_path("words/{id}").get(words::get_word).put(words::update_word))
         .push(Router::with_path("words/{id}").delete(words::delete_word))
         .push(
             Router::with_path("words/{id}/definitions")
@@ -117,6 +118,31 @@ pub fn router() -> Router {
                 .post(image::create_image),
         )
         .push(Router::with_path("words/{id}/images/{image_id}").delete(image::delete_image))
+}
+
+// Public dictionary reads and personal translation/search actions remain available.
+// Content mutations must be authorized independently of the frontend route guard.
+#[handler]
+async fn require_content_admin(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+    ctrl: &mut FlowCtrl,
+) {
+    let path = req.uri().path();
+    let personal = path == "/api/dict/translate"
+        || path.starts_with("/api/dict/translate/")
+        || path == "/api/dict/words/searched"
+        || path.starts_with("/api/dict/words/searched/");
+    if !matches!(
+        *req.method(),
+        salvo::http::Method::GET | salvo::http::Method::HEAD | salvo::http::Method::OPTIONS
+    ) && !personal
+    {
+        crate::hoops::require_admin
+            .handle(req, depot, res, ctrl)
+            .await;
+    }
 }
 
 pub(super) fn get_path_id(req: &Request, key: &str) -> Result<i64, StatusError> {

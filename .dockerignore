@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+target
+front/dist
+front/node_modules
+tests/node_modules
+uploads
+space
+*.sql

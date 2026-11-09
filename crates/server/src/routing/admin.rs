@@ -40,7 +40,7 @@ pub fn router() -> Router {
                 .get(list_stages)
                 .post(create_stage)
                 .push(
-                    Router::with_path("{stage_id}")
+                    Router::with_path("{id}")
                         .get(get_stage)
                         .put(update_stage)
                         .delete(delete_stage),
@@ -52,7 +52,7 @@ pub fn router() -> Router {
                 .get(list_read_subjects)
                 .post(create_read_subject)
                 .push(
-                    Router::with_path("{subject_id}")
+                    Router::with_path("{id}")
                         .get(get_read_subject)
                         .put(update_read_subject)
                         .delete(delete_read_subject),
@@ -63,7 +63,7 @@ pub fn router() -> Router {
                 .get(list_read_sentences)
                 .post(create_read_sentence)
                 .push(
-                    Router::with_path("{sentence_id}")
+                    Router::with_path("{id}")
                         .get(get_read_sentence)
                         .put(update_read_sentence)
                         .delete(delete_read_sentence),
