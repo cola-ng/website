@@ -336,27 +336,11 @@ fn word_card(data: Value) -> impl Widget {
                 if selected.get().is_empty() {
                     selected.revise(|v| *v = language.into());
                 }
-                tabs = tabs.tab(sapid::tab(language).label(label).content(move || {
-                    view().class("word-section").fill(nodes(
-                        entries
-                            .iter()
-                            .map(|entry| {
-                                boxed(
-                                    view().class("definition-entry").fill((
-                                        text()
-                                            .class("word-part-of-speech")
-                                            .content(string(entry, "part_of_speech")),
-                                        p(string(entry, "definition")),
-                                        when(!string(entry, "usage_notes").is_empty(), {
-                                            let notes = string(entry, "usage_notes");
-                                            move || p(notes.clone())
-                                        }),
-                                    )),
-                                )
-                            })
-                            .collect(),
-                    ))
-                }));
+                tabs = tabs.tab(
+                    sapid::tab(language)
+                        .label(label)
+                        .content(move || definition_groups(entries.clone())),
+                );
             }
             sections.push(boxed(view().class("panel dictionary-section").fill(tabs)));
         }
@@ -461,6 +445,83 @@ fn word_card(data: Value) -> impl Widget {
             .fill(nodes(sections))
             .build(scope)
     })
+}
+fn definition_groups(entries: Vec<Value>) -> impl Widget {
+    widget(move |scope| {
+        let expanded = scope.cage(false);
+        let (summary, detail): (Vec<_>, Vec<_>) = entries
+            .iter()
+            .cloned()
+            .partition(|entry| entry["is_summary"] == true);
+        if summary.is_empty() || detail.is_empty() {
+            return definition_list(entries.clone()).build(scope);
+        }
+        let count = detail.len();
+        view()
+            .class("word-section")
+            .fill((
+                definition_list(summary),
+                action_button()
+                    .class("definition-expand")
+                    .variant(sapid::ButtonVariant::Subtle)
+                    .label(expanded.map(move |open| {
+                        if *open {
+                            "收起详细释义".into()
+                        } else {
+                            format!("展开详细释义 ({count})")
+                        }
+                    }))
+                    .on_press(move || expanded.revise(|open| *open = !*open)),
+                when(expanded, move || definition_list(detail.clone())),
+            ))
+            .build(scope)
+    })
+}
+fn definition_list(entries: Vec<Value>) -> impl Widget {
+    let mut groups: Vec<(String, Vec<Value>)> = Vec::new();
+    for entry in entries {
+        let pos = string(&entry, "part_of_speech");
+        if let Some((previous, definitions)) = groups.last_mut()
+            && previous == &pos
+        {
+            definitions.push(entry);
+        } else {
+            groups.push((pos, vec![entry]));
+        }
+    }
+    view().class("word-section").fill(nodes(
+        groups
+            .into_iter()
+            .map(|(pos, entries)| {
+                let numbered = entries.len() > 1;
+                boxed(
+                    view().class("definition-group").fill((
+                        text().class("word-part-of-speech").content(pos),
+                        nodes(
+                            entries
+                                .into_iter()
+                                .enumerate()
+                                .map(|(index, entry)| {
+                                    let definition = string(&entry, "definition");
+                                    boxed(view().class("definition-entry").fill((
+                                        p(if numbered {
+                                            format!("{}. {definition}", index + 1)
+                                        } else {
+                                            definition
+                                        }),
+                                        when(!string(&entry, "usage_notes").is_empty(), {
+                                            let notes = string(&entry, "usage_notes");
+                                            move || p(notes.clone())
+                                        }),
+                                    )))
+                                })
+                                .collect(),
+                        ),
+                    )),
+                )
+            })
+            .collect(),
+    ))
 }
 fn dictionary_tabs() -> impl Widget {
     view()
