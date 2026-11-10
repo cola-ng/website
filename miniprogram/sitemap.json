@@ -1,0 +1,8 @@
+{
+  "desc": "仅公开首页与查词入口",
+  "rules": [
+    { "action": "allow", "page": "pages/home/index" },
+    { "action": "allow", "page": "pages/dictionary/index" },
+    { "action": "disallow", "page": "*" }
+  ]
+}

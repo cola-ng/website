@@ -1,0 +1,47 @@
+{
+  "pages": [
+    "pages/home/index",
+    "pages/dictionary/index",
+    "pages/study/index",
+    "pages/me/index",
+    "pages/login/index",
+    "pages/chat/index",
+    "pages/stages/index",
+    "pages/stage/index",
+    "pages/read/index",
+    "pages/review/index",
+    "pages/collection/index",
+    "pages/providers/index",
+    "pages/settings/index",
+    "pages/legal/index"
+  ],
+  "window": {
+    "navigationBarTitleText": "开朗英语",
+    "navigationBarBackgroundColor": "#fffaf5",
+    "navigationBarTextStyle": "black",
+    "backgroundColor": "#f7f5f2",
+    "backgroundTextStyle": "dark"
+  },
+  "tabBar": {
+    "color": "#76716c",
+    "selectedColor": "#c45516",
+    "backgroundColor": "#ffffff",
+    "borderStyle": "white",
+    "list": [
+      { "pagePath": "pages/home/index", "text": "首页" },
+      { "pagePath": "pages/dictionary/index", "text": "词典" },
+      { "pagePath": "pages/study/index", "text": "学习" },
+      { "pagePath": "pages/me/index", "text": "我的" }
+    ]
+  },
+  "permission": {
+    "scope.record": { "desc": "用于英语语音对话与跟读发音评估" }
+  },
+  "networkTimeout": {
+    "request": 120000,
+    "downloadFile": 60000,
+    "uploadFile": 60000
+  },
+  "sitemapLocation": "sitemap.json",
+  "usingComponents": { "page-status": "/components/page-status/index" }
+}

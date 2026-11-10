@@ -1,0 +1,58 @@
+.chat-page {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.chat-header {
+  padding: 18rpx 28rpx;
+  background: #fff;
+  border-bottom: 2rpx solid #eee8e0;
+}
+.chat-header .subheading {
+  font-size: 28rpx;
+  max-width: 340rpx;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.messages {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+}
+.message-inner {
+  padding: 24rpx 28rpx;
+}
+.bubble {
+  padding: 28rpx;
+  margin-bottom: 24rpx;
+  max-width: 94%;
+  background: #fff;
+  border: 2rpx solid #eee8e0;
+  border-radius: 26rpx;
+}
+.bubble-user {
+  margin-left: auto;
+  background: #ffeedb;
+  border-color: #f3d5b8;
+}
+.bubble .english {
+  font-size: 31rpx;
+}
+.bubble button {
+  margin-top: 16rpx;
+}
+.composer {
+  padding: 20rpx 28rpx;
+  padding-bottom: calc(22rpx + env(safe-area-inset-bottom));
+  background: #fff;
+  border-top: 2rpx solid #eee8e0;
+}
+.composer textarea {
+  min-height: 84rpx;
+  max-height: 240rpx;
+}
+.composer .actions {
+  margin-top: 14rpx;
+}

@@ -1,0 +1,20 @@
+<view class="page">
+  <view class="eyebrow">ENGLISH IN REAL LIFE</view>
+  <view class="title">把英语，带进生活。</view>
+  <view class="muted">在熟悉的场景中，积累自然的表达。</view>
+  <page-status loading="{{loading}}" error="{{error}}" bindretry="retry" />
+  <view
+    wx:for="{{stages}}"
+    wx:key="id"
+    class="card"
+    data-url="/pages/stage/index?id={{item.id}}"
+    bindtap="open"
+  >
+    <view class="heading">{{item.icon_emoji}} {{item.name_zh}}</view>
+    <view class="english">{{item.name_en}}</view>
+    <view class="muted">{{item.description_zh}}</view>
+    <view class="tag">难度 {{item.difficulty || 1}}</view>
+    <view class="muted">探索场景 ›</view>
+  </view>
+  <view wx:if="{{!stages.length && !loading}}" class="empty">暂无学习场景</view>
+</view>

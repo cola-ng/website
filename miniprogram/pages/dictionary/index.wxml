@@ -1,0 +1,171 @@
+<view class="page">
+  <view class="eyebrow">WORDS OPEN WORLDS</view>
+  <view class="title">每个新词，都是新可能。</view>
+  <view class="tabs">
+    <button
+      class="{{mode === 'word' ? 'selected' : ''}}"
+      data-mode="word"
+      bindtap="switchMode"
+    >
+      词典
+    </button>
+    <button
+      class="{{mode === 'translate' ? 'selected' : ''}}"
+      data-mode="translate"
+      bindtap="switchMode"
+    >
+      AI 翻译
+    </button>
+  </view>
+  <view wx:if="{{mode === 'word'}}">
+    <view class="card">
+      <input
+        placeholder="输入英语单词或短语"
+        aria-label="英语单词"
+        value="{{word}}"
+        data-field="word"
+        bindinput="input"
+        bindconfirm="lookup"
+        confirm-type="search"
+        maxlength="150"
+      />
+      <view class="actions">
+        <button
+          class="primary"
+          loading="{{loading}}"
+          disabled="{{loading}}"
+          bindtap="lookup"
+        >
+          查词
+        </button>
+      </view>
+    </view>
+    <page-status
+      loading="{{loading}}"
+      error="{{error}}"
+      notice="{{notice}}"
+      bindretry="retry"
+    />
+    <view wx:if="{{result.word}}" class="card">
+      <view class="title">{{result.word.word}}</view>
+      <view class="body muted">{{result.word.memory}}</view>
+      <view class="actions">
+        <button class="ghost" disabled="{{busy}}" bindtap="favoriteWord">
+          {{favorite ? '取消收藏' : '收藏单词'}}
+        </button>
+        <button class="ghost" disabled="{{busy}}" bindtap="vocabulary">
+          {{inVocabulary ? '移出生词本' : '加入生词本'}}
+        </button>
+      </view>
+      <view wx:for="{{result.pronunciations}}" wx:key="id" class="list-row row">
+        <text>{{item.dialect}} /{{item.ipa}}/</text>
+        <button
+          class="small"
+          disabled="{{busy}}"
+          data-id="{{item.id}}"
+          bindtap="pronunciation"
+        >
+          听发音
+        </button>
+      </view>
+      <view class="heading">基本释义</view>
+      <view wx:if="{{!result.definitions.length}}" class="muted">暂无释义</view>
+      <view wx:for="{{result.definitions}}" wx:key="id" class="list-row">
+        <text class="tag">{{item.part_of_speech}}</text>
+        <text selectable class="body">{{item.definition}}</text>
+        <view class="muted">{{item.usage_notes}}</view>
+      </view>
+    </view>
+    <view wx:if="{{result.sentences.length}}" class="card">
+      <view class="heading">在句子里记住它</view>
+      <view wx:for="{{result.sentences}}" wx:key="id" class="list-row">
+        <view selectable class="english">{{item.sentence}}</view>
+        <view selectable class="muted">{{item.translation}}</view>
+        <view class="actions">
+          <button
+            class="small ghost"
+            disabled="{{busy}}"
+            data-id="{{item.id}}"
+            bindtap="sentence"
+          >
+            听例句
+          </button>
+        </view>
+      </view>
+    </view>
+    <view
+      wx:if="{{result.forms.length || result.relations.length || result.etymologies.length}}"
+      class="card"
+    >
+      <view class="heading">词形与关联</view>
+      <view wx:for="{{result.forms}}" wx:key="id" class="list-row">
+        {{item.form_type}} · {{item.form}}
+        <text class="muted">{{item.notes}}</text>
+      </view>
+      <view wx:for="{{result.relations}}" wx:key="id" class="list-row">
+        {{item.relation_type}} · {{item.related_word}}
+      </view>
+      <view wx:for="{{result.etymologies}}" wx:key="id" class="list-row body">
+        {{item.etymology}} {{item.origin_word}} {{item.origin_meaning}}
+      </view>
+    </view>
+    <view wx:if="{{history.length}}" class="card">
+      <view class="row">
+        <view class="heading">最近查过</view>
+        <button class="small" disabled="{{busy}}" bindtap="clearHistory">
+          清空
+        </button>
+      </view>
+      <text
+        wx:for="{{history}}"
+        wx:key="word"
+        class="chip"
+        data-word="{{item.word}}"
+        bindtap="historyWord"
+      >
+        {{item.word}}
+      </text>
+    </view>
+  </view>
+  <view wx:else>
+    <view class="card">
+      <textarea
+        aria-label="待翻译文本"
+        value="{{text}}"
+        data-field="text"
+        bindinput="input"
+        maxlength="5000"
+        placeholder="输入一句话，试试更自然的表达…"
+      />
+      <view class="row list-row">
+        <text>翻译为{{target === 'zh' ? '中文' : '英文'}}</text>
+        <switch
+          aria-label="翻译为英文"
+          checked="{{target === 'en'}}"
+          color="#c45516"
+          bindchange="target"
+        />
+      </view>
+      <button
+        class="primary"
+        disabled="{{busy}}"
+        loading="{{busy}}"
+        bindtap="translate"
+      >
+        翻译
+      </button>
+      <view class="field-help">使用账户已配置的 AI 服务。</view>
+    </view>
+    <page-status error="{{error}}" notice="{{notice}}" bindretry="retry" />
+    <view wx:if="{{translated}}" class="card">
+      <view class="heading">译文</view>
+      <view selectable class="body english">{{translated.translated}}</view>
+      <view class="actions">
+        <button bindtap="copy">复制译文</button>
+        <button disabled="{{busy}}" bindtap="favoriteTranslation">
+          收藏 / 取消收藏
+        </button>
+      </view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,4 @@
+.script-button {
+  margin-bottom: 16rpx;
+  text-align: left;
+}

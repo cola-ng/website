@@ -1,0 +1,109 @@
+<view class="page">
+  <view class="eyebrow">LISTEN. REPEAT. GROW.</view>
+  <view class="title">一句一句，说得更好。</view>
+  <view wx:if="{{!user}}" class="card empty">
+    登录后获取适合你的跟读内容。
+    <view class="actions">
+      <button class="primary" bindtap="login">去登录</button>
+    </view>
+  </view>
+  <block wx:else>
+    <view class="card">
+      <view class="row">
+        <text>当前等级 {{level}}</text>
+        <text class="tag">
+          {{sentences.length ? index + 1 : 0}} / {{sentences.length}}
+        </text>
+      </view>
+      <picker
+        disabled="{{busy || recording || loading}}"
+        range="{{subjects}}"
+        range-key="title_zh"
+        value="{{subjectIndex}}"
+        bindchange="subject"
+      >
+        <view class="menu">
+          {{subjects[subjectIndex].title_zh || '选择主题'}}
+          <text>⌄</text>
+        </view>
+      </picker>
+    </view>
+    <page-status
+      loading="{{loading}}"
+      error="{{error}}"
+      notice="{{notice}}"
+      bindretry="retry"
+    />
+    <view wx:if="{{current}}" class="card">
+      <view selectable class="english">{{current.content_en}}</view>
+      <view class="muted">{{current.phonetic_transcription}}</view>
+      <view class="spacer" />
+      <view class="body">{{current.content_zh}}</view>
+      <view class="actions">
+        <button disabled="{{busy || recording}}" bindtap="play">听原音</button>
+        <button
+          class="{{recording ? 'recording' : 'primary'}}"
+          disabled="{{busy}}"
+          bindtap="record"
+        >
+          {{recording ? '结束并评估' : '开始跟读'}}
+        </button>
+      </view>
+      <view class="field-help">
+        录音将发送至你配置的 AI 服务进行识别。最长 60 秒。
+      </view>
+      <view wx:if="{{evaluation}}">
+        <view class="score">
+          {{evaluation.overall_score}}
+          <text class="muted">/ 100</text>
+        </view>
+        <view class="muted">识别结果：{{evaluation.transcribed_text}}</view>
+        <view class="row wrap">
+          <text class="tag">发音 {{evaluation.pronunciation_score}}</text>
+          <text class="tag">流畅度 {{evaluation.fluency_score}}</text>
+          <text class="tag">语调 {{evaluation.intonation_score}}</text>
+        </view>
+        <view wx:for="{{evaluation.feedback}}" wx:key="index" class="feedback">
+          {{item.message}}
+        </view>
+        <view class="field-help">评分根据语音识别与原文的匹配程度估算。</view>
+        <button
+          wx:if="{{!saved}}"
+          disabled="{{busy}}"
+          class="ghost"
+          bindtap="saveAgain"
+        >
+          重试保存练习
+        </button>
+      </view>
+      <view class="actions">
+        <button disabled="{{busy || recording}}" bindtap="favorite">
+          收藏 / 取消收藏
+        </button>
+        <button
+          disabled="{{busy || recording || (evaluation && !saved)}}"
+          bindtap="next"
+        >
+          下一句
+        </button>
+      </view>
+    </view>
+    <view wx:elif="{{!loading}}" class="card empty">
+      <view>
+        {{allCompleted ? '本级内容已完成，继续挑战吧。' :
+        '当前主题暂无推荐句子。'}}
+      </view>
+      <view class="actions">
+        <button
+          wx:if="{{allCompleted}}"
+          class="primary"
+          disabled="{{busy}}"
+          bindtap="advance"
+        >
+          进入下一级
+        </button>
+        <button disabled="{{loading}}" bindtap="retry">刷新</button>
+      </view>
+    </view>
+  </block>
+</view>

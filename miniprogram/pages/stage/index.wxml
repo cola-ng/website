@@ -1,0 +1,62 @@
+<view class="page">
+  <page-status loading="{{loading}}" error="{{error}}" bindretry="retry" />
+  <view wx:if="{{stage}}" class="card hero">
+    <view class="eyebrow">SCENE PRACTICE</view>
+    <view class="title">{{stage.icon_emoji}} {{stage.name_zh}}</view>
+    <view class="english">{{stage.name_en}}</view>
+    <view class="muted">{{stage.description_zh}}</view>
+  </view>
+  <view class="card">
+    <view class="heading">选择对话脚本</view>
+    <view wx:if="{{!scripts.length && !loading}}" class="empty">暂无脚本</view>
+    <button
+      wx:for="{{scripts}}"
+      wx:key="id"
+      class="script-button {{scriptId === item.id ? 'primary' : ''}}"
+      data-id="{{item.id}}"
+      disabled="{{busy || recording}}"
+      bindtap="selectScript"
+    >
+      {{item.title_zh || item.title_en}}
+    </button>
+  </view>
+  <view wx:for="{{turns}}" wx:key="id" class="card">
+    <view class="eyebrow">{{item.speaker_name || item.speaker_role}}</view>
+    <view selectable class="english">{{item.content_en}}</view>
+    <view class="muted">{{item.content_zh}}</view>
+    <view class="muted">{{item.phonetic_transcription}}</view>
+    <view class="actions">
+      <button
+        disabled="{{busy || recording}}"
+        data-id="{{item.id}}"
+        bindtap="play"
+      >
+        听原音
+      </button>
+      <button
+        class="{{recording && evaluatingId === item.id ? 'recording' : 'ghost'}}"
+        disabled="{{busy || (recording && evaluatingId !== item.id)}}"
+        data-id="{{item.id}}"
+        bindtap="record"
+      >
+        {{recording && evaluatingId === item.id ? '结束并评估' : '跟读练习'}}
+      </button>
+    </view>
+    <view wx:if="{{evaluatingId === item.id && evaluation}}">
+      <view class="score">
+        {{evaluation.overall_score}}
+        <text class="muted">/ 100</text>
+      </view>
+      <view class="muted">识别结果：{{evaluation.transcribed_text}}</view>
+      <view
+        wx:for="{{evaluation.feedback}}"
+        wx:for-item="feedback"
+        wx:key="index"
+        class="feedback"
+      >
+        {{feedback.message}}
+      </view>
+      <view class="field-help">评分根据语音识别与原文的匹配程度估算。</view>
+    </view>
+  </view>
+</view>

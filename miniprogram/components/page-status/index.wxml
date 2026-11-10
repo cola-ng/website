@@ -1,0 +1,6 @@
+<view wx:if="{{loading}}" class="status" role="status">正在加载…</view>
+<view wx:if="{{error}}" class="error" role="alert">
+  <text selectable>{{error}}</text>
+  <button size="mini" bindtap="retry">重试</button>
+</view>
+<view wx:if="{{notice}}" class="notice" role="status">{{notice}}</view>

@@ -1,0 +1,153 @@
+<view class="page">
+  <view class="eyebrow">MAKE IT STICK</view>
+  <view class="title">{{name}}</view>
+  <view wx:if="{{!user}}" class="card empty">
+    登录后开始你的专属复习。
+    <view class="actions">
+      <button class="primary" bindtap="login">去登录</button>
+    </view>
+  </view>
+  <block wx:else>
+    <page-status
+      loading="{{loading}}"
+      error="{{error}}"
+      notice="{{notice}}"
+      bindretry="retry"
+    />
+    <view wx:if="{{current}}" class="card">
+      <view class="row">
+        <text class="tag">{{current.typeLabel}}</text>
+        <text class="muted">{{index + 1}} / {{items.length}}</text>
+      </view>
+      <view class="progress">
+        <view
+          class="progress-fill"
+          style="width:{{completed / items.length * 100}}%"
+        />
+      </view>
+      <block wx:if="{{current.review_type === 'spelling'}}">
+        <view class="heading">根据释义，拼出单词</view>
+        <view class="body">
+          {{current.word_zh || '暂无释义，可查看答案后学习'}}
+        </view>
+        <input
+          disabled="{{checked || saved || busy}}"
+          aria-label="单词拼写"
+          value="{{answer}}"
+          data-field="answer"
+          bindinput="input"
+          placeholder="输入英文单词"
+        />
+        <view class="actions">
+          <button
+            wx:if="{{!checked}}"
+            class="primary"
+            disabled="{{!answer || busy}}"
+            bindtap="check"
+          >
+            检查拼写
+          </button>
+        </view>
+        <view wx:if="{{checked}}" class="feedback">
+          {{correct ? '拼写正确！' : '再记一次：'}} {{current.word}}
+        </view>
+      </block>
+      <block wx:elif="{{current.review_type === 'pronunciation'}}">
+        <view class="heading">读出这个单词</view>
+        <view class="title">{{current.word}}</view>
+        <view class="muted">{{current.phonetic}}</view>
+        <view class="actions">
+          <button
+            class="{{recording ? 'recording' : 'primary'}}"
+            disabled="{{busy || saved}}"
+            bindtap="record"
+          >
+            {{recording ? '结束并评估' : '开始录音'}}
+          </button>
+        </view>
+        <view wx:if="{{evaluation}}">
+          <view class="score">
+            {{evaluation.overall_score}}
+            <text class="muted">/ 100</text>
+          </view>
+          <view class="muted">识别：{{evaluation.transcribed_text}}</view>
+          <view
+            wx:for="{{evaluation.feedback}}"
+            wx:key="index"
+            class="feedback"
+          >
+            {{item.message}}
+          </view>
+        </view>
+      </block>
+      <block wx:else>
+        <view class="heading">
+          {{current.review_type === 'phrase' ? '想想它的用法，并造个句子' :
+          '想一想，它是什么意思？'}}
+        </view>
+        <view class="title">{{current.word}}</view>
+        <view wx:if="{{current.example}}" class="english">
+          {{current.example}}
+        </view>
+        <button wx:if="{{!revealed}}" class="ghost" bindtap="reveal">
+          查看答案
+        </button>
+        <view wx:if="{{revealed}}" class="feedback">
+          <view>{{current.word_zh || '暂无释义，可到词典查询'}}</view>
+          <view>{{current.example_zh}}</view>
+        </view>
+      </block>
+      <view wx:if="{{!saved && (revealed || evaluation)}}" class="actions">
+        <block
+          wx:if="{{current.review_type === 'spelling' || current.review_type === 'pronunciation'}}"
+        >
+          <button
+            class="primary"
+            disabled="{{busy || recording}}"
+            bindtap="submit"
+          >
+            保存结果
+          </button>
+        </block>
+        <block wx:else>
+          <button
+            class="danger"
+            disabled="{{busy}}"
+            data-result="incorrect"
+            bindtap="submit"
+          >
+            没记住
+          </button>
+          <button disabled="{{busy}}" data-result="partial" bindtap="submit">
+            有点印象
+          </button>
+          <button
+            class="primary"
+            disabled="{{busy}}"
+            data-result="correct"
+            bindtap="submit"
+          >
+            记住了
+          </button>
+        </block>
+      </view>
+      <view wx:if="{{saved}}" class="actions">
+        <button class="primary" bindtap="next">
+          {{index + 1 === items.length ? '完成复习' : '下一题'}}
+        </button>
+      </view>
+    </view>
+    <view wx:elif="{{!loading}}" class="card empty">
+      <view class="heading">
+        {{done ? '今天又进步了一点。' : '暂时没有待复习内容'}}
+      </view>
+      <view>
+        {{done ? '已完成 ' + completed + ' 项复习' :
+        '去查词、添加生词或开始对话，积累学习内容吧。'}}
+      </view>
+      <view class="actions">
+        <button class="primary" bindtap="retry">刷新复习内容</button>
+      </view>
+    </view>
+  </block>
+</view>

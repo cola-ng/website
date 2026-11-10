@@ -1,0 +1,104 @@
+<view class="page">
+  <view class="card hero">
+    <view class="eyebrow">COLANG · 每天开口一点</view>
+    <view class="title">
+      {{user ? user.name + '，你好' : '让英语，开朗起来。'}}
+    </view>
+    <view class="muted">从一个新词，到一段自然的对话。</view>
+    <view class="spacer" />
+    <view class="row">
+      <input
+        aria-label="查找英语单词"
+        value="{{word}}"
+        data-field="word"
+        bindinput="input"
+        bindconfirm="lookup"
+        confirm-type="search"
+        placeholder="今天想学哪个词？"
+      />
+      <button class="primary small" bindtap="lookup">查词</button>
+    </view>
+  </view>
+  <page-status
+    loading="{{loading}}"
+    error="{{error}}"
+    notice="{{notice}}"
+    bindretry="retry"
+  />
+  <view wx:if="{{summary}}" class="grid">
+    <view class="card">
+      <view class="metric">{{summary.weekly_chat_minutes}}</view>
+      <view class="muted">本周学习 / 分钟</view>
+    </view>
+    <view class="card">
+      <view class="metric">{{summary.mastered_vocabulary_count}}</view>
+      <view class="muted">已掌握词汇</view>
+    </view>
+    <view class="card">
+      <view class="metric">{{summary.pending_review_count}}</view>
+      <view class="muted">待复习词汇</view>
+    </view>
+    <view class="card">
+      <view class="metric">{{summary.learning_days}}</view>
+      <view class="muted">累计学习 / 天</view>
+    </view>
+  </view>
+  <view wx:if="{{!user}}" class="card">
+    <view class="heading">记录每一次进步</view>
+    <view class="muted">登录即可同步网站上的学习记录、对话和生词本。</view>
+    <view class="actions">
+      <button class="primary" bindtap="login">登录 / 注册</button>
+    </view>
+  </view>
+  <view class="heading">今天，从哪里开始？</view>
+  <view class="grid">
+    <view class="card" data-url="/pages/chat/index" bindtap="open">
+      <view class="subheading">💬 AI 口语对话</view>
+      <view class="muted">和伙伴聊聊日常</view>
+    </view>
+    <view class="card" data-url="/pages/read/index" bindtap="open">
+      <view class="subheading">🎙 每日跟读</view>
+      <view class="muted">听一句，说一句</view>
+    </view>
+    <view class="card" data-url="/pages/review/index" bindtap="open">
+      <view class="subheading">✦ 智能复习</view>
+      <view class="muted">把学过的变熟悉</view>
+    </view>
+    <view class="card" data-url="/pages/stages/index" bindtap="open">
+      <view class="subheading">🌍 场景学习</view>
+      <view class="muted">让表达走进生活</view>
+    </view>
+  </view>
+  <view wx:if="{{tasks.length}}" class="card">
+    <view class="heading">今日任务</view>
+    <view
+      wx:for="{{tasks}}"
+      wx:key="id"
+      class="menu"
+      data-id="{{item.id}}"
+      bindtap="task"
+    >
+      <view>
+        <view>{{item.task_title}}</view>
+        <view class="muted">{{item.task_description}}</view>
+      </view>
+      <text>{{item.status === 'completed' ? '✓' : '○'}}</text>
+    </view>
+  </view>
+  <view wx:if="{{stages.length}}" class="heading">在真实场景里练习</view>
+  <view
+    wx:for="{{stages}}"
+    wx:key="id"
+    class="card"
+    data-url="/pages/stage/index?id={{item.id}}"
+    bindtap="open"
+  >
+    <view class="subheading">{{item.icon_emoji}} {{item.name_zh}}</view>
+    <view class="muted">{{item.description_zh || item.name_en}}</view>
+  </view>
+  <view wx:for="{{insights}}" wx:key="id" class="card">
+    <view class="subheading">学习洞察</view>
+    <view class="body">{{item.content_zh}}</view>
+    <view class="muted">{{item.content_en}}</view>
+  </view>
+</view>

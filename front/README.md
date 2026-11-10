@@ -1,5 +1,7 @@
 # 开朗英语前端
 
+微信小程序学习端位于 [`../miniprogram`](../miniprogram/README.md)，使用原生 WXML / WXSS / JavaScript，复用同一服务端 API 与账户数据。
+
 前端使用 Rust + Glory 0.7.0 + Sapid 0.7.1，编译为 WebAssembly。
 不再依赖 React、React Router、Radix、Recharts、Vite、TypeScript 或 Tailwind。
 少量原生浏览器适配位于 `src/browser/media.js`（录音、WAV 编码、音频播放与图片裁剪），不包含前端框架。

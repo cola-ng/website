@@ -1,0 +1,169 @@
+<view wx:if="{{!user}}" class="page">
+  <view class="card empty">
+    <view>登录后，开始你的英语对话。</view>
+    <view class="actions">
+      <button class="primary" bindtap="login">去登录</button>
+    </view>
+  </view>
+</view>
+<view wx:elif="{{!chatId}}" class="page">
+  <view class="eyebrow">YOUR ENGLISH COMPANION</view>
+  <view class="title">聊聊今天，或者远方。</view>
+  <view class="card">
+    <view class="heading">开启一段对话</view>
+    <picker
+      range="{{contexts}}"
+      range-key="name_zh"
+      value="{{contextIndex}}"
+      bindchange="selectContext"
+    >
+      <view class="menu">
+        {{contexts[contextIndex].name_zh || '自由对话'}}
+        <text>⌄</text>
+      </view>
+    </picker>
+    <view class="actions">
+      <button
+        class="primary"
+        disabled="{{busy || loading}}"
+        loading="{{busy}}"
+        bindtap="create"
+      >
+        开始对话
+      </button>
+    </view>
+    <view class="field-help">使用账户的 AI 服务，可在「我的」中配置。</view>
+  </view>
+  <page-status loading="{{loading}}" error="{{error}}" bindretry="retry" />
+  <view class="heading">继续上次的话题</view>
+  <view
+    wx:for="{{chats}}"
+    wx:key="id"
+    class="card"
+    data-id="{{item.id}}"
+    bindtap="select"
+  >
+    <view class="subheading">{{item.title}}</view>
+    <view class="muted">{{item.updated_at || item.created_at}}</view>
+  </view>
+  <view wx:if="{{!chats.length && !loading}}" class="empty">
+    还没有对话，向伙伴说声 Hello 吧。
+  </view>
+</view>
+<view wx:else class="chat-page">
+  <view class="chat-header">
+    <view class="row">
+      <button class="small" disabled="{{busy}}" bindtap="backToList">
+        所有对话
+      </button>
+      <text class="subheading">{{title}}</text>
+      <button class="small" disabled="{{busy}}" bindtap="rename">改名</button>
+    </view>
+    <view class="row">
+      <text class="muted">显示中文译文</text>
+      <switch
+        color="#c45516"
+        checked="{{showZh}}"
+        bindchange="showTranslation"
+      />
+    </view>
+  </view>
+  <scroll-view
+    scroll-y
+    class="messages"
+    scroll-into-view="{{anchor}}"
+    scroll-with-animation="{{!loading}}"
+  >
+    <view class="message-inner">
+      <button
+        wx:if="{{hasPrev}}"
+        disabled="{{loading}}"
+        class="small"
+        bindtap="older"
+      >
+        加载更早消息
+      </button>
+      <page-status loading="{{loading}}" error="{{error}}" bindretry="retry" />
+      <view wx:if="{{!turns.length && !loading}}" class="empty">
+        发一句英语，或点击录音开始。
+      </view>
+      <view
+        wx:for="{{turns}}"
+        wx:key="id"
+        id="turn-{{item.id}}"
+        class="bubble {{item.speaker === 'user' ? 'bubble-user' : ''}}"
+      >
+        <view class="eyebrow">
+          {{item.speaker === 'user' ? '你' : 'AI 伙伴'}}
+        </view>
+        <view selectable class="body english">{{item.content_en}}</view>
+        <view wx:if="{{showZh}}" selectable class="body muted">
+          {{item.content_zh}}
+        </view>
+        <view wx:if="{{item.status === 'processing'}}" class="muted">
+          正在恢复回复…
+        </view>
+        <view wx:if="{{item.status === 'error'}}" class="feedback">
+          {{item.error}}
+        </view>
+        <view
+          wx:for="{{item.issues}}"
+          wx:for-item="issue"
+          wx:key="id"
+          class="feedback"
+        >
+          <view>{{issue.original_text}} → {{issue.suggested_text}}</view>
+          <view class="muted">{{issue.description_zh}}</view>
+        </view>
+        <button
+          wx:if="{{item.audio_path}}"
+          class="small ghost"
+          disabled="{{playing}}"
+          data-id="{{item.id}}"
+          bindtap="play"
+        >
+          听消息
+        </button>
+      </view>
+      <view wx:if="{{live}}" class="bubble">
+        <view selectable class="body english">{{live.reply_en}}</view>
+        <view wx:if="{{showZh}}" selectable class="body muted">
+          {{live.reply_zh}}
+        </view>
+        <view class="muted">{{live.phase}}</view>
+      </view>
+      <view id="bottom" class="spacer" />
+    </view>
+  </scroll-view>
+  <view class="composer">
+    <textarea
+      auto-height
+      maxlength="4000"
+      value="{{message}}"
+      data-field="message"
+      bindinput="input"
+      disabled="{{busy || recording || recovering}}"
+      placeholder="试着用英语说点什么…"
+    />
+    <view class="actions">
+      <button
+        class="{{recording ? 'recording' : ''}}"
+        disabled="{{busy || recovering}}"
+        bindtap="record"
+      >
+        {{recording ? '结束并发送' : '录音'}}
+      </button>
+      <button
+        class="primary"
+        disabled="{{busy || recording || recovering || !message}}"
+        loading="{{busy}}"
+        bindtap="sendText"
+      >
+        发送
+      </button>
+    </view>
+    <view wx:if="{{recording}}" class="field-help">
+      正在录音，最长 60 秒；离开页面将取消发送。
+    </view>
+  </view>
+</view>

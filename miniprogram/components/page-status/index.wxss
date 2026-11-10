@@ -1,0 +1,26 @@
+.status,
+.error,
+.notice {
+  padding: 24rpx;
+  border-radius: 20rpx;
+  margin: 20rpx 0;
+  font-size: 28rpx;
+  line-height: 1.6;
+  word-break: break-word;
+}
+.status {
+  background: #efede9;
+  color: #625c56;
+}
+.error {
+  background: #fff0ef;
+  color: #ae302b;
+}
+.notice {
+  background: #edf7ee;
+  color: #2c6935;
+}
+button {
+  margin: 14rpx 0 0;
+  font-size: 26rpx;
+}

@@ -1,0 +1,95 @@
+<view class="page">
+  <view class="eyebrow">YOUR LEARNING COLLECTION</view>
+  <view class="title">
+    {{type === 'vocabulary' ? '我的生词本' : '我的收藏'}}
+  </view>
+  <view wx:if="{{!user}}" class="card empty">
+    登录后查看收藏和生词。
+    <view class="actions">
+      <button class="primary" bindtap="login">去登录</button>
+    </view>
+  </view>
+  <block wx:else>
+    <view wx:if="{{type === 'favorites'}}" class="tabs">
+      <button
+        disabled="{{loading}}"
+        class="{{filter === 'word' ? 'selected' : ''}}"
+        data-filter="word"
+        bindtap="filter"
+      >
+        单词
+      </button>
+      <button
+        disabled="{{loading}}"
+        class="{{filter === 'sentence' ? 'selected' : ''}}"
+        data-filter="sentence"
+        bindtap="filter"
+      >
+        句子
+      </button>
+      <button
+        disabled="{{loading}}"
+        class="{{filter === 'translation' ? 'selected' : ''}}"
+        data-filter="translation"
+        bindtap="filter"
+      >
+        译文
+      </button>
+    </view>
+    <page-status
+      loading="{{loading}}"
+      error="{{error}}"
+      notice="{{notice}}"
+      bindretry="retry"
+    />
+    <view wx:for="{{items}}" wx:key="id" class="card">
+      <view wx:if="{{item.word}}">
+        <view class="english" data-word="{{item.word}}" bindtap="lookup">
+          {{item.word}} ›
+        </view>
+        <view class="muted">{{item.word_zh}}</view>
+        <view wx:if="{{type === 'vocabulary'}}" class="tag">
+          掌握程度 {{item.mastery_level || 0}} / 5
+        </view>
+      </view>
+      <view wx:elif="{{item.sentence_en}}">
+        <view selectable class="english">{{item.sentence_en}}</view>
+        <view class="muted">{{item.sentence_zh}}</view>
+        <view class="actions">
+          <button
+            class="small"
+            disabled="{{busy}}"
+            data-id="{{item.record_id}}"
+            bindtap="play"
+          >
+            听句子
+          </button>
+        </view>
+      </view>
+      <view wx:else>
+        <view selectable class="body">{{item.source_text}}</view>
+        <view selectable class="english">{{item.translated_text}}</view>
+      </view>
+      <view class="actions">
+        <button
+          class="danger small"
+          disabled="{{busy}}"
+          data-id="{{item.id}}"
+          bindtap="remove"
+        >
+          移除
+        </button>
+      </view>
+    </view>
+    <view wx:if="{{!items.length && !loading}}" class="empty">
+      这里还没有内容，去词典收藏一些吧。
+    </view>
+    <button
+      wx:if="{{hasMore && items.length}}"
+      disabled="{{loading}}"
+      bindtap="more"
+    >
+      加载更多
+    </button>
+  </block>
+</view>

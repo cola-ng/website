@@ -1,0 +1,78 @@
+<view class="page">
+  <view class="card hero">
+    <view class="eyebrow">WELCOME TO COLANG</view>
+    <view class="title">{{register ? '开始你的英语旅程' : '欢迎回来。'}}</view>
+    <view class="muted">与开朗英语网站共用账户，学习进度随时同步。</view>
+  </view>
+  <view class="card">
+    <view wx:if="{{register}}">
+      <text class="label">昵称</text>
+      <input
+        value="{{name}}"
+        data-field="name"
+        bindinput="input"
+        placeholder="怎么称呼你？"
+        maxlength="64"
+      />
+    </view>
+    <text class="label">邮箱</text>
+    <input
+      type="text"
+      value="{{email}}"
+      data-field="email"
+      bindinput="input"
+      placeholder="name@example.com"
+      maxlength="254"
+    />
+    <text class="label">密码</text>
+    <input
+      password
+      value="{{password}}"
+      data-field="password"
+      bindinput="input"
+      placeholder="{{register ? '至少 8 位密码' : '输入账户密码'}}"
+      maxlength="128"
+      bindconfirm="submit"
+    />
+    <view wx:if="{{register}}" class="list-row">
+      <checkbox-group bindchange="agree">
+        <label>
+          <checkbox value="agree" checked="{{agreed}}" color="#c45516" />
+          我已阅读并同意
+        </label>
+      </checkbox-group>
+      <view class="actions">
+        <button
+          class="small ghost"
+          data-url="/pages/legal/index?kind=terms"
+          bindtap="open"
+        >
+          服务条款
+        </button>
+        <button
+          class="small ghost"
+          data-url="/pages/legal/index?kind=privacy"
+          bindtap="open"
+        >
+          隐私政策
+        </button>
+      </view>
+    </view>
+    <page-status error="{{error}}" bindretry="retry" />
+    <view class="actions">
+      <button
+        class="primary"
+        disabled="{{busy}}"
+        loading="{{busy}}"
+        bindtap="submit"
+      >
+        {{register ? '注册并登录' : '登录'}}
+      </button>
+    </view>
+    <view class="actions">
+      <button disabled="{{busy}}" bindtap="mode">
+        {{register ? '已有账户，去登录' : '没有账户？注册一个'}}
+      </button>
+    </view>
+  </view>
+</view>

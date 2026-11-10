@@ -1,0 +1,85 @@
+<view class="page">
+  <view class="card hero">
+    <view class="eyebrow">MY COLANG</view>
+    <view class="title">{{user ? user.name : '每一次努力，都算数。'}}</view>
+    <view wx:if="{{user}}" class="muted">
+      @{{user.handle}} · {{user.email}}
+    </view>
+    <view wx:else>
+      <view class="muted">登录账户，在手机和网站之间同步学习。</view>
+      <view class="actions">
+        <button class="primary" bindtap="login">登录 / 注册</button>
+      </view>
+    </view>
+  </view>
+  <page-status loading="{{loading}}" error="{{error}}" bindretry="retry" />
+  <view wx:if="{{summary}}" class="grid">
+    <view class="card">
+      <view class="metric">{{summary.learning_days}}</view>
+      <view class="muted">累计学习天数</view>
+    </view>
+    <view class="card">
+      <view class="metric">{{summary.total_review_times}}</view>
+      <view class="muted">累计复习次数</view>
+    </view>
+  </view>
+  <view class="spacer" />
+  <view class="card">
+    <view
+      class="menu"
+      data-url="/pages/collection/index?type=vocabulary"
+      bindtap="open"
+    >
+      我的生词本
+      <text class="arrow">›</text>
+    </view>
+    <view
+      class="menu"
+      data-url="/pages/collection/index?type=favorites"
+      bindtap="open"
+    >
+      我的收藏
+      <text class="arrow">›</text>
+    </view>
+    <view class="menu" data-url="/pages/providers/index" bindtap="open">
+      <view>
+        AI 服务配置
+        <view wx:if="{{access}}" class="muted">{{access.message}}</view>
+      </view>
+      <text class="arrow">›</text>
+    </view>
+    <view class="menu" data-url="/pages/settings/index" bindtap="open">
+      个人资料与密码
+      <text class="arrow">›</text>
+    </view>
+  </view>
+  <view wx:if="{{achievements.length}}" class="card">
+    <view class="heading">成就进度</view>
+    <view wx:for="{{achievements}}" wx:key="id" class="list-row">
+      <view>{{item.icon}} {{item.name_zh || item.title || item.name}}</view>
+      <view class="muted">{{item.description_zh || item.description}}</view>
+      <view class="tag">
+        {{item.is_completed ? '已达成' : item.progress + ' / ' +
+        item.requirement_value}}
+      </view>
+    </view>
+  </view>
+  <view class="card">
+    <view class="menu" data-url="/pages/legal/index?kind=terms" bindtap="open">
+      服务条款
+      <text class="arrow">›</text>
+    </view>
+    <view
+      class="menu"
+      data-url="/pages/legal/index?kind=privacy"
+      bindtap="open"
+    >
+      隐私政策
+      <text class="arrow">›</text>
+    </view>
+  </view>
+  <button wx:if="{{user}}" class="danger" disabled="{{busy}}" bindtap="logout">
+    退出登录
+  </button>
+  <view class="empty">开朗英语 · 微信小程序</view>
+</view>

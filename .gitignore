@@ -9,6 +9,8 @@
 /front/.vite/
 /front/*.local
 /tests/node_modules/
+/miniprogram/node_modules/
+/miniprogram/project.private.config.json
 
 # Env / secrets
 .env

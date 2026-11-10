@@ -1,0 +1,205 @@
+<view class="page">
+  <view class="eyebrow">YOUR AI, YOUR CHOICE</view>
+  <view class="title">AI 服务配置</view>
+  <view wx:if="{{!user}}" class="card empty">
+    请先登录，管理自己的 AI 服务。
+    <view class="actions">
+      <button class="primary" bindtap="login">去登录</button>
+    </view>
+  </view>
+  <block wx:else>
+    <view class="card">
+      <view>自备密钥即可使用，无需平台付费订阅。</view>
+      <view class="muted">
+        对话、TTS 和 ASR 可分别选择不同平台。个人配置失败时不会切换到平台密钥。
+      </view>
+      <view wx:if="{{access}}" class="feedback">{{access.message}}</view>
+    </view>
+    <page-status
+      loading="{{loading}}"
+      error="{{error}}"
+      notice="{{notice}}"
+      bindretry="retry"
+    />
+    <button
+      wx:if="{{!editor}}"
+      class="primary"
+      disabled="{{loading || busy || !catalog.length}}"
+      bindtap="add"
+    >
+      添加 AI 配置
+    </button>
+    <view wx:if="{{editor}}" class="card">
+      <view class="row">
+        <view class="heading">{{editingId ? '编辑配置' : '添加配置'}}</view>
+        <button class="small" disabled="{{busy}}" bindtap="close">取消</button>
+      </view>
+      <text class="label">平台</text>
+      <picker
+        disabled="{{!!editingId || busy}}"
+        range="{{catalog}}"
+        range-key="label"
+        value="{{providerIndex}}"
+        bindchange="provider"
+      >
+        <view class="menu">
+          {{catalog[providerIndex].label}}
+          <text>⌄</text>
+        </view>
+      </picker>
+      <text class="label">API Key</text>
+      <input
+        password
+        value="{{apiKey}}"
+        data-field="apiKey"
+        bindinput="input"
+        disabled="{{busy}}"
+        placeholder="{{editingId ? '留空保留原密钥' : '输入平台 API Key'}}"
+        maxlength="1024"
+      />
+      <view class="field-help">
+        密钥仅提交给本站服务器，不写入小程序本地存储。
+      </view>
+      <view wx:if="{{regions.length > 1}}">
+        <text class="label">区域</text>
+        <picker
+          range="{{regions}}"
+          value="{{regionIndex}}"
+          bindchange="region"
+          disabled="{{busy}}"
+        >
+          <view class="menu">
+            {{regions[regionIndex]}}
+            <text>⌄</text>
+          </view>
+        </picker>
+      </view>
+      <view
+        wx:for="{{models}}"
+        wx:for-index="modelIndex"
+        wx:key="cap"
+        class="list-row"
+      >
+        <view class="row">
+          <text>{{item.label}}</text>
+          <switch
+            checked="{{item.enabled}}"
+            disabled="{{!item.supported || busy}}"
+            color="#c45516"
+            data-index="{{modelIndex}}"
+            bindchange="toggleModel"
+          />
+        </view>
+        <view wx:if="{{item.supported && item.enabled}}">
+          <input
+            aria-label="{{item.label}}模型"
+            value="{{item.model}}"
+            data-index="{{modelIndex}}"
+            bindinput="model"
+            disabled="{{busy}}"
+            maxlength="200"
+            placeholder="模型 ID，可手动填写"
+          />
+          <text
+            wx:for="{{item.suggestions}}"
+            wx:for-item="suggestion"
+            wx:key="*this"
+            class="chip"
+            data-index="{{modelIndex}}"
+            data-model="{{suggestion}}"
+            bindtap="suggest"
+          >
+            {{suggestion}}
+          </text>
+        </view>
+        <view wx:if="{{!item.supported}}" class="field-help">
+          此平台暂未接入这项能力。
+        </view>
+      </view>
+      <text class="label">TTS 音色 ID</text>
+      <input
+        value="{{voice}}"
+        data-field="voice"
+        bindinput="input"
+        disabled="{{busy}}"
+        maxlength="100"
+      />
+      <view class="field-help">
+        保存会启用勾选的能力，替换这些能力的当前默认配置。
+      </view>
+      <view class="actions">
+        <button
+          class="primary"
+          disabled="{{busy}}"
+          loading="{{busy}}"
+          bindtap="save"
+        >
+          保存并启用
+        </button>
+      </view>
+    </view>
+    <view class="spacer" />
+    <view wx:for="{{providers}}" wx:key="id" class="card">
+      <view class="heading">{{item.label}}</view>
+      <view class="row wrap">
+        <text wx:if="{{item.is_active}}" class="tag">文本默认</text>
+        <text wx:if="{{item.tts_active}}" class="tag">TTS 默认</text>
+        <text wx:if="{{item.asr_active}}" class="tag">ASR 默认</text>
+      </view>
+      <view class="muted">
+        {{item.settings.chat_model}} {{item.settings.tts_model}}
+        {{item.settings.asr_model}}
+      </view>
+      <view class="actions">
+        <button
+          class="small"
+          disabled="{{busy || editor}}"
+          data-id="{{item.id}}"
+          bindtap="edit"
+        >
+          编辑
+        </button>
+        <button
+          class="small"
+          disabled="{{busy || editor}}"
+          data-id="{{item.id}}"
+          bindtap="activate"
+        >
+          启用配置
+        </button>
+        <button
+          class="small"
+          disabled="{{busy || editor}}"
+          data-id="{{item.id}}"
+          bindtap="deactivate"
+        >
+          停用配置
+        </button>
+      </view>
+      <view class="actions">
+        <button
+          class="small ghost"
+          disabled="{{busy || editor}}"
+          data-id="{{item.id}}"
+          bindtap="test"
+        >
+          测试连接
+        </button>
+        <button
+          class="small danger"
+          disabled="{{busy || editor}}"
+          data-id="{{item.id}}"
+          bindtap="remove"
+        >
+          删除
+        </button>
+      </view>
+      <view wx:if="{{testResults[item.id]}}" class="feedback">
+        {{testResults[item.id]}}
+      </view>
+    </view>
+    <view wx:if="{{!providers.length && !loading && !editor}}" class="empty">
+      还没有个人配置，添加后即可开始学习。
+    </view>
+  </block>
+</view>
