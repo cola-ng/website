@@ -201,7 +201,10 @@ impl AiProvider for SelectedProvider {
 
 pub async fn personal_tts(user:i64)->Result<(String,Value,Arc<dyn TtsService>),salvo::http::StatusError>{
     let row=with_conn(move|conn|user_ai_providers::table.filter(user_ai_providers::user_id.eq(user)).filter(user_ai_providers::tts_active.eq(true)).first::<UserAiProvider>(conn).optional()).await.map_err(|_|salvo::http::StatusError::service_unavailable().brief("无法读取个人 TTS 配置"))?.ok_or_else(||salvo::http::StatusError::bad_request().brief("请先添加并启用自己的语音合成 TTS 配置"))?;
-    let provider=create_provider_from_user_config(&row.provider_type,&row.settings).ok_or_else(||salvo::http::StatusError::bad_request().brief("个人 TTS 配置无效"))?;
+    // Use the same normalized settings for the request and its audit record.
+    // Legacy rows omitted model/voice fields, but their actual SDK request used defaults.
+    let settings=provider_catalog::validate(&row.provider_type,row.settings).map_err(|_|salvo::http::StatusError::bad_request().brief("个人 TTS 配置无效"))?;
+    let provider=create_provider_from_user_config(&row.provider_type,&settings).ok_or_else(||salvo::http::StatusError::bad_request().brief("个人 TTS 配置无效"))?;
     let service=provider.tts().ok_or_else(||salvo::http::StatusError::bad_request().brief("请先启用自己的 TTS 模型"))?;
-    Ok((row.provider_type,row.settings,service))
+    Ok((row.provider_type,settings,service))
 }

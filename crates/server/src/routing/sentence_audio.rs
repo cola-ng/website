@@ -86,6 +86,10 @@ struct Allowed {
 fn db_error() -> StatusError {
     StatusError::service_unavailable().brief("无法读取或保存句子音频，请重试")
 }
+fn source_error(error:String)->StatusError {
+    if error.contains("Record not found"){StatusError::not_found().brief("句子不存在")}else{db_error()}
+}
+
 fn params(req: &Request) -> Result<(String, i64), StatusError> {
     let kind = req
         .param::<String>("kind")
@@ -178,7 +182,7 @@ async fn official_audio(req: &mut Request, res: &mut Response) -> AppResult<()> 
         official(conn, &kind, id, &s)
     })
     .await
-    .map_err(|_| db_error())?
+    .map_err(source_error)?
     .and_then(|p| file(&p))
     .ok_or_else(|| StatusError::not_found().brief("暂无正式音频"))?;
     res.add_header("Cache-Control", "public, max-age=300", true)?;
@@ -218,7 +222,7 @@ async fn candidate_audio(
     res.send_file(path, req.headers()).await;
     Ok(())
 }
-fn audio_format(bytes: &[u8], format: &str) -> Option<&'static str> {
+pub(super) fn audio_format(bytes: &[u8], format: &str) -> Option<&'static str> {
     if bytes.len() > 12 * 1024 * 1024 {
         return None;
     }

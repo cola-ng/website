@@ -42,6 +42,29 @@ assert catalog==json.loads((Path(__file__).parent/'provider-catalog.json').read_
 assert {'qwen','deepseek','minimax','kimi','openai','anthropic','gemini','siliconflow','baidu','hunyuan'}<=set(p['id'] for p in catalog)
 call('GET','/api/ai-providers/catalog',auth=None,expected=401)
 pid=int(sql(f"SELECT id FROM user_ai_providers WHERE user_id={uid} AND provider_type='zhipu'"))
+# Every configured capability must actually pass. A working text model cannot mask broken TTS.
+result=call('POST',f'/api/ai-providers/{pid}/test')
+assert result['success'] and [c['capability'] for c in result['capabilities']]==['chat','tts','asr']
+assert all(c['success'] for c in result['capabilities'])
+call('PUT',f'/api/ai-providers/{pid}',{'settings':{'api_key':'qa-voice-denied-key'}})
+row=call('GET',f'/api/ai-providers/{pid}')
+assert row['last_tested_at'] is None and row['test_status'] is None and row['test_error'] is None
+result=call('POST',f'/api/ai-providers/{pid}/test')
+assert not result['success'] and 'TTS' in result['error']
+assert {c['capability']:c['success'] for c in result['capabilities']}=={'chat':True,'tts':False,'asr':True}
+call('PUT',f'/api/ai-providers/{pid}',{'settings':{'api_key':'qa-slow-test-key'}})
+started=counts().get('slow-test:chat',0)
+with concurrent.futures.ThreadPoolExecutor() as pool:
+    testing=pool.submit(call,'POST',f'/api/ai-providers/{pid}/test')
+    for _ in range(30):
+        if counts().get('slow-test:chat',0)>started:break
+        time.sleep(.02)
+    else:raise AssertionError('connection probe did not start')
+    call('PUT',f'/api/ai-providers/{pid}',{'settings':{'api_key':'qa-personal-key'}})
+    assert testing.result()['success']
+assert call('GET',f'/api/ai-providers/{pid}')['test_status'] is None,'an old probe must not validate newly edited credentials'
+call('GET','/api/sentence-audio/dict/9223372036854775807',expected=404)
+call('GET','/api/sentence-audio/dict/9223372036854775807/audio',expected=404)
 call('PUT',f'/api/ai-providers/{pid}',{'activate_for':[]})
 missing=new_sentence('A sentence without a recording.')
 assert call('GET',path(missing),auth=None)['audio_url'] is None
@@ -67,6 +90,8 @@ call('PUT',f"/api/ai-providers/{text['id']}",{'settings':{'tts_model':'speech-2.
 call('PUT',f'/api/ai-providers/{pid}',{'settings':{'chat_model':'glm-tts'}},expected=400)
 call('PUT',f'/api/ai-providers/{pid}',{'activate_for':['video']},expected=400)
 assert call('GET',path(missing))['can_generate']
+# Exercise the legacy row shape: request and audit record must share normalized defaults.
+sql(f"UPDATE user_ai_providers SET settings=jsonb_build_object('api_key','qa-personal-key') WHERE id={pid}")
 allowed=generate(missing);assert allowed['status']=='approved'
 assert call('GET',allowed['audio_url'],auth=None,binary=True).startswith(b'RIFF')
 before=counts();generate(missing,409);assert counts()==before,'existing audio must never spend a key again'

@@ -9,6 +9,24 @@ use async_trait::async_trait;
 use salvo::oapi::ToSchema;
 use serde::{Deserialize, Serialize};
 
+/// One second of valid mono 16k PCM silence for capability checks.
+pub fn probe_audio() -> Vec<u8> {
+    let mut audio = b"RIFF".to_vec();
+    audio.extend_from_slice(&32036u32.to_le_bytes());
+    audio.extend_from_slice(b"WAVEfmt ");
+    audio.extend_from_slice(&16u32.to_le_bytes());
+    audio.extend_from_slice(&1u16.to_le_bytes());
+    audio.extend_from_slice(&1u16.to_le_bytes());
+    audio.extend_from_slice(&16000u32.to_le_bytes());
+    audio.extend_from_slice(&32000u32.to_le_bytes());
+    audio.extend_from_slice(&2u16.to_le_bytes());
+    audio.extend_from_slice(&16u16.to_le_bytes());
+    audio.extend_from_slice(b"data");
+    audio.extend_from_slice(&32000u32.to_le_bytes());
+    audio.resize(32044, 0);
+    audio
+}
+
 /// Error type for AI provider operations
 #[derive(Debug, thiserror::Error)]
 pub enum AiProviderError {

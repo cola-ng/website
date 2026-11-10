@@ -122,7 +122,7 @@ pub fn panel() -> impl Widget {
                         model_editor("provider-asr","语音识别 ASR",names(&def,"asr_models"),asr,asr_on,action.busy),
                     ))
                 }),
-                p("保存会分别启用本配置中勾选的能力，并替换这些能力当前的默认配置。其他能力保持原来的选择。测试连接会调用模型，可能产生少量费用。"),
+                p("保存会分别启用本配置中勾选的能力，并替换这些能力当前的默认配置。其他能力保持原来的选择。测试连接会分别调用已配置的文本、TTS 和 ASR 模型，可能产生少量费用。"),
                 action_button().label(editing.map(|v|if v.is_some(){"保存并启用"}else{"添加并启用"}.into())).enabled(action.busy.map(move|b|!*b&&selection.get().is_some())).on_press(move||{
                     if editing.get().is_none()&&key.get().trim().is_empty(){action.error.revise(|e|*e="请输入 API Key".into());return;}
                     let mut settings=json!({"region":region.get(),"tts_voice":voice.get().trim()});let mut caps=Vec::new();
@@ -151,7 +151,7 @@ pub fn panel() -> impl Widget {
                 }}
                 children.push(boxed(view().class("actions").fill((
                     action_button().label("编辑").variant(sapid::ButtonVariant::Outline).enabled(enabled).on_press(move||{reset();let platform=string(&source,"provider_type");kind.revise(|s|*s=platform.clone());selection.revise(|s|*s=Some(platform.clone()));search.revise(|s|*s=items(&catalog.data.get()).iter().find(|p|string(p,"id")==platform).map(|p|string(p,"label")).unwrap_or(platform));defaults(&kind.get());for (cap,value,on) in [("chat",chat,chat_on),("tts",tts,tts_on),("asr",asr,asr_on)]{let name=source["settings"].get(format!("{cap}_model")).and_then(Value::as_str).map(str::to_owned);if let Some(name)=name{on.revise(|b|*b= !name.is_empty());value.revise(|s|*s=name);}}voice.revise(|s|*s=source["settings"]["tts_voice"].as_str().unwrap_or("tongtong").into());if let Some(r)=source["settings"]["region"].as_str(){region.revise(|s|*s=r.into());}editing.revise(|v|*v=Some(id));open.revise(|b|*b=true);}),
-                    action_button().label("测试连接").enabled(enabled).on_press(move||action.run("POST",format!("/api/ai-providers/{id}/test"),None,move|v|{if v["success"]==true{notice.revise(|s|*s="连接成功；可在对话或语音练习中验证实际效果。".into());}else{action.error.revise(|e|*e=string(&v,"error"));}})),
+                    action_button().label("测试连接").enabled(enabled).on_press(move||action.run("POST",format!("/api/ai-providers/{id}/test"),None,move|v|{if v["success"]==true{notice.revise(|s|*s=format!("连接成功；已验证：{}。",items(&v["capabilities"]).iter().filter(|c|c["success"]==true).map(|c|match c["capability"].as_str(){Some("chat")=>"文本",Some("tts")=>"TTS",Some("asr")=>"ASR",_=>"配置"}).collect::<Vec<_>>().join("、")));}else{action.error.revise(|e|*e=string(&v,"error"));}})),
                     danger_button().label("删除配置").enabled(enabled).on_press(move||{if confirm("删除此 AI 配置？对应能力将停用。其余平台配置不受影响。"){action.run("DELETE",format!("/api/ai-providers/{id}"),None,move|_|{reset();reload();});}}),
                 ))));view().class("provider-row provider-card").fill(nodes(children))
             }),action.status(),success_notice(notice,action),

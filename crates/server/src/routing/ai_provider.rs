@@ -57,22 +57,61 @@ fn mask_settings(settings: &Value) -> Value {
 }
 
 fn validated_settings(kind: &str, settings: Value) -> Result<Value, StatusError> {
-    provider_catalog::validate(kind,settings).map_err(|e|StatusError::bad_request().brief(e))
+    provider_catalog::validate(kind, settings).map_err(|e| StatusError::bad_request().brief(e))
 }
 #[endpoint(tags("AI Provider"))]
-pub async fn catalog() -> JsonResult<Vec<provider_catalog::ProviderDefinition>> {json_ok(provider_catalog::catalog())}
-fn active_caps(settings:&Value,requested:Option<Vec<String>>,all:bool)->Result<Option<Vec<String>>,StatusError> {
-    let requested=if all && requested.is_none() {Some(["chat","tts","asr"].into_iter().filter(|cap|provider_catalog::model(settings,cap).is_some()).map(str::to_owned).collect())}else{requested};
-    if let Some(caps)=requested.as_ref() {
-        if caps.len()>3 || caps.iter().any(|c|!matches!(c.as_str(),"chat"|"tts"|"asr") || provider_catalog::model(settings,c).is_none()) {return Err(StatusError::bad_request().brief("只能启用已配置的文本、TTS 或 ASR 模型"));}
+pub async fn catalog() -> JsonResult<Vec<provider_catalog::ProviderDefinition>> {
+    json_ok(provider_catalog::catalog())
+}
+fn active_caps(
+    settings: &Value,
+    requested: Option<Vec<String>>,
+    all: bool,
+) -> Result<Option<Vec<String>>, StatusError> {
+    let requested = if all && requested.is_none() {
+        Some(
+            ["chat", "tts", "asr"]
+                .into_iter()
+                .filter(|cap| provider_catalog::model(settings, cap).is_some())
+                .map(str::to_owned)
+                .collect(),
+        )
+    } else {
+        requested
+    };
+    if let Some(caps) = requested.as_ref() {
+        if caps.len() > 3
+            || caps.iter().any(|c| {
+                !matches!(c.as_str(), "chat" | "tts" | "asr")
+                    || provider_catalog::model(settings, c).is_none()
+            })
+        {
+            return Err(StatusError::bad_request().brief("只能启用已配置的文本、TTS 或 ASR 模型"));
+        }
     }
     Ok(requested)
 }
-fn deactivate(conn:&mut diesel::PgConnection,user:i64,caps:&[String])->diesel::QueryResult<()> {
-    let rows=user_ai_providers::table.filter(user_ai_providers::user_id.eq(user));
-    if caps.iter().any(|c|c=="chat"){diesel::update(rows).set(user_ai_providers::is_active.eq(false)).execute(conn)?;}
-    if caps.iter().any(|c|c=="tts"){diesel::update(rows).set(user_ai_providers::tts_active.eq(false)).execute(conn)?;}
-    if caps.iter().any(|c|c=="asr"){diesel::update(rows).set(user_ai_providers::asr_active.eq(false)).execute(conn)?;}
+fn deactivate(
+    conn: &mut diesel::PgConnection,
+    user: i64,
+    caps: &[String],
+) -> diesel::QueryResult<()> {
+    let rows = user_ai_providers::table.filter(user_ai_providers::user_id.eq(user));
+    if caps.iter().any(|c| c == "chat") {
+        diesel::update(rows)
+            .set(user_ai_providers::is_active.eq(false))
+            .execute(conn)?;
+    }
+    if caps.iter().any(|c| c == "tts") {
+        diesel::update(rows)
+            .set(user_ai_providers::tts_active.eq(false))
+            .execute(conn)?;
+    }
+    if caps.iter().any(|c| c == "asr") {
+        diesel::update(rows)
+            .set(user_ai_providers::asr_active.eq(false))
+            .execute(conn)?;
+    }
     Ok(())
 }
 
@@ -129,7 +168,7 @@ pub async fn create_provider(
 
     let provider_type = input.provider_type.to_lowercase();
     let settings = validated_settings(&provider_type, input.settings)?;
-    let caps=active_caps(&settings,input.activate_for,input.set_active)?.unwrap_or_default();
+    let caps = active_caps(&settings, input.activate_for, input.set_active)?.unwrap_or_default();
     let provider: UserAiProvider = with_conn(move |conn| {
         conn.transaction(|conn| {
             base_users::table
@@ -137,13 +176,13 @@ pub async fn create_provider(
                 .for_update()
                 .select(base_users::id)
                 .first::<i64>(conn)?;
-            deactivate(conn,user_id,&caps)?;
+            deactivate(conn, user_id, &caps)?;
             let new_provider = NewUserAiProvider {
                 user_id,
                 provider_type,
-                is_active: caps.iter().any(|c|c=="chat"),
-                tts_active: caps.iter().any(|c|c=="tts"),
-                asr_active: caps.iter().any(|c|c=="asr"),
+                is_active: caps.iter().any(|c| c == "chat"),
+                tts_active: caps.iter().any(|c| c == "tts"),
+                asr_active: caps.iter().any(|c| c == "asr"),
                 settings,
             };
 
@@ -262,36 +301,44 @@ pub async fn test_provider(
     .await
     .map_err(|_| StatusError::not_found().brief("provider not found"))?;
 
-    // Create provider config and test
-    let test_result = test_provider_connection(&provider.provider_type, &provider.settings).await;
-    let now = Utc::now();
-
-    // Update test status in database
-    let (test_status, test_error) = match &test_result {
-        Ok(_) => ("success".to_string(), None),
-        Err(e) => ("failed".to_string(), Some(e.clone())),
+    let capabilities = test_provider_connection(&provider.provider_type, &provider.settings).await;
+    let success = !capabilities.is_empty() && capabilities.iter().all(|c| c.success);
+    let error = if success {
+        None
+    } else {
+        Some(
+            capabilities
+                .iter()
+                .filter_map(|c| c.error.as_deref())
+                .collect::<Vec<_>>()
+                .join("；"),
+        )
     };
-
-    let test_status_clone = test_status.clone();
-    let test_error_clone = test_error.clone();
-
+    let now = Utc::now();
+    let saved_error = error.clone();
+    // A concurrent settings edit invalidates this result; do not mark new credentials as tested.
     with_conn(move |conn| {
-        diesel::update(user_ai_providers::table.filter(user_ai_providers::id.eq(provider_id)))
-            .set((
-                user_ai_providers::last_tested_at.eq(Some(now)),
-                user_ai_providers::test_status.eq(Some(test_status_clone)),
-                user_ai_providers::test_error.eq(test_error_clone),
-                user_ai_providers::updated_at.eq(now),
-            ))
-            .execute(conn)
+        diesel::update(
+            user_ai_providers::table
+                .filter(user_ai_providers::id.eq(provider_id))
+                .filter(user_ai_providers::user_id.eq(user_id))
+                .filter(user_ai_providers::settings.eq(provider.settings)),
+        )
+        .set((
+            user_ai_providers::last_tested_at.eq(Some(now)),
+            user_ai_providers::test_status.eq(Some(if success { "success" } else { "failed" })),
+            user_ai_providers::test_error.eq(saved_error),
+            user_ai_providers::updated_at.eq(now),
+        ))
+        .execute(conn)
     })
     .await
-    .ok();
-
+    .map_err(|_| provider_error())?;
     json_ok(TestProviderResponse {
-        success: test_result.is_ok(),
-        error: test_result.err(),
+        success,
+        error,
         tested_at: now,
+        capabilities,
     })
 }
 
@@ -313,7 +360,9 @@ async fn change_provider(
     active: Option<bool>,
     requested: Option<Vec<String>>,
 ) -> Result<UserAiProvider, StatusError> {
-    if active==Some(false) && requested.as_ref().is_some_and(|c|!c.is_empty()) {return Err(StatusError::bad_request().brief("停用配置时不能同时启用能力"));}
+    if active == Some(false) && requested.as_ref().is_some_and(|c| !c.is_empty()) {
+        return Err(StatusError::bad_request().brief("停用配置时不能同时启用能力"));
+    }
     with_conn(move |conn| {
         conn.transaction::<_, diesel::result::Error, _>(|conn| {
             base_users::table
@@ -329,6 +378,7 @@ async fn change_provider(
             else {
                 return Ok(Err(StatusError::not_found().brief("AI 配置不存在")));
             };
+            let settings_changed = patch.is_some();
             let mut settings = existing.settings.clone();
             if let Some(patch) = patch {
                 let Some(fields) = patch.as_object() else {
@@ -337,9 +387,9 @@ async fn change_provider(
                 for (key, value) in fields {
                     if secret_field(key)
                         && (value.is_null()
-                            || value
-                                .as_str()
-                                .is_some_and(|s| s.trim().is_empty() || s.chars().all(|c| c == '*')))
+                            || value.as_str().is_some_and(|s| {
+                                s.trim().is_empty() || s.chars().all(|c| c == '*')
+                            }))
                     {
                         continue;
                     }
@@ -350,22 +400,32 @@ async fn change_provider(
                 Ok(s) => s,
                 Err(e) => return Ok(Err(e)),
             };
-            let caps=match active_caps(&settings,requested,active==Some(true)) {Ok(c)=>c,Err(e)=>return Ok(Err(e))};
-            if let Some(caps)=caps.as_ref(){deactivate(conn,user_id,caps)?;}
-            let enabled=|cap:&str,old:bool| {
-                if active==Some(false) || provider_catalog::model(&settings,cap).is_none(){false}
-                else {caps.as_ref().map(|c|c.iter().any(|s|s==cap)).unwrap_or(old)}
+            let caps = match active_caps(&settings, requested, active == Some(true)) {
+                Ok(c) => c,
+                Err(e) => return Ok(Err(e)),
+            };
+            if let Some(caps) = caps.as_ref() {
+                deactivate(conn, user_id, caps)?;
+            }
+            let enabled = |cap: &str, old: bool| {
+                if active == Some(false) || provider_catalog::model(&settings, cap).is_none() {
+                    false
+                } else {
+                    caps.as_ref()
+                        .map(|c| c.iter().any(|s| s == cap))
+                        .unwrap_or(old)
+                }
             };
             let updated = diesel::update(user_ai_providers::table.find(id))
                 .set(UpdateUserAiProvider {
                     settings: Some(settings.clone()),
-                    is_active: Some(enabled("chat",existing.is_active)),
-                    tts_active: Some(enabled("tts",existing.tts_active)),
-                    asr_active: Some(enabled("asr",existing.asr_active)),
+                    is_active: Some(enabled("chat", existing.is_active)),
+                    tts_active: Some(enabled("tts", existing.tts_active)),
+                    asr_active: Some(enabled("asr", existing.asr_active)),
                     updated_at: Some(Utc::now()),
-                    last_tested_at: None,
-                    test_status: None,
-                    test_error: None,
+                    last_tested_at: settings_changed.then_some(None),
+                    test_status: settings_changed.then_some(None),
+                    test_error: settings_changed.then_some(None),
                 })
                 .get_result::<UserAiProvider>(conn)?;
             Ok(Ok(updated))
@@ -379,32 +439,101 @@ async fn change_provider(
 // Provider Testing Helper
 // ============================================================================
 
-async fn test_provider_connection(provider_type: &str, settings: &Value) -> Result<(), String> {
-    let provider = services::create_provider_from_user_config(provider_type,settings).ok_or("AI 配置无效")?;
-    // Test chat service with a simple message
-    if let Some(chat) = provider.chat_service() {
-        let messages = vec![services::ChatMessage {
-            role: "user".to_string(),
-            content: "Hello, please respond with 'OK' if you can hear me.".to_string(),
-        }];
-
-        tokio::time::timeout(
-            std::time::Duration::from_secs(20),
-            chat.chat(messages, Some(0.0), Some(if provider_type=="zhipu"{16}else{1024})),
-        )
-        .await
-        .map_err(|_| "连接测试超时，请检查网络与模型配置".to_string())?
-        .map_err(|_| "连接失败，请检查密钥、模型权限与网络".to_string())?;
-
-        Ok(())
-    } else {
-        if let Some(tts)=provider.tts() {
-            tokio::time::timeout(std::time::Duration::from_secs(20),tts.synthesize("Hello",None,None)).await.map_err(|_|"语音测试超时")?.map_err(|_|"语音连接失败，请检查密钥、模型与音色权限")?;
-            Ok(())
-        } else if matches!(provider_type,"openai"|"groq") {
-            services::compatible::CompatibleClient::new(provider_type,settings.clone()).probe_asr().await.map_err(|_|"ASR 连接失败，请检查密钥与模型权限".into())
-        } else {
-            Err("请在语音练习页面录音验证 ASR 配置".into())
-        }
+async fn capability_test(
+    capability: &'static str,
+    label: &'static str,
+    future: impl std::future::Future<Output = Result<(), services::AiProviderError>>,
+) -> CapabilityTest {
+    let result = tokio::time::timeout(std::time::Duration::from_secs(20), future).await;
+    let error = match result {
+        Ok(Ok(())) => None,
+        Ok(Err(_)) => Some(format!(
+            "{label}连接失败，请检查密钥、模型权限、音色、余额与服务区域"
+        )),
+        Err(_) => Some(format!("{label}连接测试超时，请检查网络与模型配置")),
+    };
+    CapabilityTest {
+        capability: capability.into(),
+        success: error.is_none(),
+        error,
     }
+}
+
+async fn test_provider_connection(provider_type: &str, settings: &Value) -> Vec<CapabilityTest> {
+    let Ok(settings) = provider_catalog::validate(provider_type, settings.clone()) else {
+        return vec![CapabilityTest {
+            capability: "configuration".into(),
+            success: false,
+            error: Some("AI 配置无效".into()),
+        }];
+    };
+    let Some(provider) = services::create_provider_from_user_config(provider_type, &settings)
+    else {
+        return vec![CapabilityTest {
+            capability: "configuration".into(),
+            success: false,
+            error: Some("AI 配置无效".into()),
+        }];
+    };
+    let chat_test = async {
+        if let Some(chat) = provider.chat_service() {
+            Some(
+                capability_test("chat", "文本", async {
+                    chat.chat(
+                        vec![services::ChatMessage {
+                            role: "user".into(),
+                            content: "Please reply with OK.".into(),
+                        }],
+                        Some(0.0),
+                        Some(if provider_type == "zhipu" { 16 } else { 1024 }),
+                    )
+                    .await
+                    .map(|_| ())
+                })
+                .await,
+            )
+        } else {
+            None
+        }
+    };
+    let tts_test = async {
+        if let Some(tts) = provider.tts() {
+            Some(
+                capability_test("tts", "TTS", async {
+                    let audio = tts.synthesize("Hello", None, None).await?;
+                    if super::sentence_audio::audio_format(&audio.audio_data, &audio.format)
+                        .is_none()
+                    {
+                        return Err(services::AiProviderError::Parse("TTS 音频无效".into()));
+                    }
+                    Ok(())
+                })
+                .await,
+            )
+        } else {
+            None
+        }
+    };
+    let asr_test = async {
+        if let Some(asr) = provider.asr() {
+            Some(
+                capability_test("asr", "ASR", async {
+                    if provider_type == "zhipu" {
+                        asr.transcribe(services::ai_provider::probe_audio(), None)
+                            .await
+                            .map(|_| ())
+                    } else {
+                        services::compatible::CompatibleClient::new(provider_type, settings.clone())
+                            .probe_asr()
+                            .await
+                    }
+                })
+                .await,
+            )
+        } else {
+            None
+        }
+    };
+    let (chat, tts, asr) = tokio::join!(chat_test, tts_test, asr_test);
+    [chat, tts, asr].into_iter().flatten().collect()
 }

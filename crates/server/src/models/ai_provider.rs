@@ -45,9 +45,9 @@ pub struct UpdateUserAiProvider {
     pub tts_active: Option<bool>,
     pub asr_active: Option<bool>,
     pub settings: Option<Value>,
-    pub last_tested_at: Option<DateTime<Utc>>,
-    pub test_status: Option<String>,
-    pub test_error: Option<String>,
+    pub last_tested_at: Option<Option<DateTime<Utc>>>,
+    pub test_status: Option<Option<String>>,
+    pub test_error: Option<Option<String>>,
     pub updated_at: Option<DateTime<Utc>>,
 }
 
@@ -76,4 +76,12 @@ pub struct TestProviderResponse {
     pub success: bool,
     pub error: Option<String>,
     pub tested_at: DateTime<Utc>,
+    pub capabilities: Vec<CapabilityTest>,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct CapabilityTest {
+    pub capability: String,
+    pub success: bool,
+    pub error: Option<String>,
 }

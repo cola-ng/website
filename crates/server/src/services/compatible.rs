@@ -33,19 +33,7 @@ impl CompatibleClient {
     pub async fn probe_asr(&self) -> Result<(), AiProviderError> {
         // Exercise the configured transcription endpoint with a short valid WAV.
         // Silence may legitimately produce an empty transcript; transport/auth/model success is enough here.
-        let mut audio = b"RIFF".to_vec();
-        audio.extend_from_slice(&32036u32.to_le_bytes());
-        audio.extend_from_slice(b"WAVEfmt ");
-        audio.extend_from_slice(&16u32.to_le_bytes());
-        audio.extend_from_slice(&1u16.to_le_bytes());
-        audio.extend_from_slice(&1u16.to_le_bytes());
-        audio.extend_from_slice(&16000u32.to_le_bytes());
-        audio.extend_from_slice(&32000u32.to_le_bytes());
-        audio.extend_from_slice(&2u16.to_le_bytes());
-        audio.extend_from_slice(&16u16.to_le_bytes());
-        audio.extend_from_slice(b"data");
-        audio.extend_from_slice(&32000u32.to_le_bytes());
-        audio.resize(32044, 0);
+        let audio = super::ai_provider::probe_audio();
         let part = reqwest::multipart::Part::bytes(audio)
             .file_name("silence.wav")
             .mime_str("audio/wav")
@@ -147,14 +135,22 @@ impl CompatibleClient {
             if self.kind == "qwen" {
                 body["enable_thinking"] = json!(false);
             }
-            if self.kind=="kimi" {
-                if model.starts_with("kimi-k3") {body["reasoning_effort"]=json!("low");body["max_tokens"]=json!(limit.unwrap_or(4000).max(4000));}
-                else if !model.contains("thinking") && !model.contains("k2.7-code"){body["thinking"]=json!({"type":"disabled"});}
+            if self.kind == "kimi" {
+                if model.starts_with("kimi-k3") {
+                    body["reasoning_effort"] = json!("low");
+                    body["max_tokens"] = json!(limit.unwrap_or(4000).max(4000));
+                } else if !model.contains("thinking") && !model.contains("k2.7-code") {
+                    body["thinking"] = json!({"type":"disabled"});
+                }
             }
-            if self.kind=="minimax" {
-                body["reasoning_split"]=json!(true);
-                if model.starts_with("MiniMax-M3.1") {body["reasoning_effort"]=json!("low");body["max_completion_tokens"]=json!(limit.unwrap_or(4000).max(4000));}
-                else if model=="MiniMax-M3" {body["thinking"]=json!({"type":"disabled"});}
+            if self.kind == "minimax" {
+                body["reasoning_split"] = json!(true);
+                if model.starts_with("MiniMax-M3.1") {
+                    body["reasoning_effort"] = json!("low");
+                    body["max_completion_tokens"] = json!(limit.unwrap_or(4000).max(4000));
+                } else if model == "MiniMax-M3" {
+                    body["thinking"] = json!({"type":"disabled"});
+                }
             }
 
             ("/chat/completions".into(), body)
@@ -525,12 +521,20 @@ mod tests {
             assert_eq!(body["model"], p.chat_models[0]);
             if p.id == "anthropic" {
                 assert!(request.contains("/messages "));
-                assert!(request.to_ascii_lowercase().contains("x-api-key: mock-private-key"));
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .contains("x-api-key: mock-private-key")
+                );
                 assert_eq!(body["system"], "test prompt");
                 assert_eq!(body["messages"].as_array().unwrap().len(), 1);
             } else {
                 assert!(request.contains("/chat/completions "));
-                assert!(request.to_ascii_lowercase().contains("authorization: bearer mock-private-key"));
+                assert!(
+                    request
+                        .to_ascii_lowercase()
+                        .contains("authorization: bearer mock-private-key")
+                );
             }
         }
     }
