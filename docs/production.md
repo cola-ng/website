@@ -11,6 +11,8 @@
 
 站内导航修复的发布目录为 `/repo/colang/releases/spa-navigation-20261110`，前端镜像为 `colang-wui:spa-navigation-20261110`，基于上一版保留旧哈希资源。此次只切换 `colang_wui`；`compose.before.yml` 保存发布前配置，失败时恢复并仅重启前端。发布记录中的源码提交和资源校验值用于核对线上 HTML/资产，`tests/navigation.cjs` 可执行生产公开导航验证。
 
+词典 React 样式恢复的发布目录为 `/repo/colang/releases/dictionary-parity-20261111`，镜像为 `colang-wui:dictionary-parity-20261111`。仅更新前端，保留旧资源和 `compose.before.yml` 用于回退；收藏继续使用原收藏接口，移除词典页额外的生词本按钮不删除已有数据。
+
 外层 Caddy 的对应路由为：
 
 ```caddyfile

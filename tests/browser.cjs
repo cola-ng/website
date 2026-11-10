@@ -56,7 +56,7 @@ async function api(method,endpoint,body,auth=fixture.learner){
   });
   await test('dictionary lookup, deep link, favorite and removal',async()=>{
     const p=await pageFor(fixture.learner);await p.goto(base+'/dict');await p.getByRole('textbox',{name:'单词或短语',exact:true}).fill(fixture.word.word);await p.getByRole('button',{name:'查询',exact:true}).click();await text(p,'回归测试单词');
-    await p.getByRole('button',{name:'收藏 / 取消收藏',exact:true}).click();await p.getByText('已收藏',{exact:true}).waitFor();await p.reload();await text(p,'回归测试单词');
+    await p.getByRole('button',{name:'收藏',exact:true}).click();await p.getByRole('button',{name:'取消收藏',exact:true}).waitFor();await p.reload();await text(p,'回归测试单词');
     await p.goto(base+'/favorites');await p.getByRole('heading',{name:fixture.word.word,exact:true}).waitFor();await p.getByRole('button',{name:'移出收藏',exact:true}).click();await text(p,'还没有收藏');await p.qaClose();
   });
   await test('latest search wins when earlier response arrives late',async()=>{

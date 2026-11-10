@@ -226,9 +226,9 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.route('**/api/sentence-audio/dict/52',route=>route.fulfill({json:{audio_url:official?'/api/test-tone.wav':null,official,can_generate:canGenerate,status:official?'approved':'missing'}}));
     await page.route('**/api/test-tone.wav',route=>route.fulfill({status:404,body:''}));
     await page.route('**/api/sentence-audio/dict/52/generate',route=>{generated++;return route.fulfill({json:{id:55,status:'pending',official:false,audio_url:'/api/test-tone.wav'}});});
-    await page.goto(base+'/dict/audio-example');await page.getByRole('tab',{name:'例句',exact:true}).click();await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).click();assert.equal(generated,0);
-    official=false;await page.reload();await page.getByRole('tab',{name:'例句',exact:true}).click();await settle(page);assert.equal(await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).count(),0);
-    canGenerate=true;await page.reload();await page.getByRole('tab',{name:'例句',exact:true}).click();await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).waitFor();assert.equal(generated,0);await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).click();await page.getByRole('status').getByText('发音已生成，可播放，已提交管理员审核。',{exact:true}).waitFor();assert.equal(generated,1);
+    await page.goto(base+'/dict/audio-example');await page.getByRole('heading',{name:'使用例句',exact:true}).waitFor();await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).click();assert.equal(generated,0);
+    official=false;await page.reload();await page.getByRole('heading',{name:'使用例句',exact:true}).waitFor();await settle(page);assert.equal(await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).count(),0);
+    canGenerate=true;await page.reload();await page.getByRole('heading',{name:'使用例句',exact:true}).waitFor();await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).waitFor();assert.equal(generated,0);await page.getByRole('button',{name:'🔊 播放例句发音',exact:true}).click();await page.getByRole('status').getByText('发音已生成，可播放，已提交管理员审核。',{exact:true}).waitFor();assert.equal(generated,1);
     await page.unroute('**/api/dict/lookup?*');await page.unroute('**/api/sentence-audio/dict/52');await page.unroute('**/api/test-tone.wav');await page.unroute('**/api/sentence-audio/dict/52/generate');
   });
   await scenario('audio review exposes the sentence and sound, and persists whitelist and review decisions',async()=>{

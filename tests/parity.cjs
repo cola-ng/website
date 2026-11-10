@@ -29,7 +29,7 @@ async function restored(page,name,width,base,requests){
   await page.getByRole('tab',{name:'个人资料',exact:true}).click();await settle(page);await page.goto(base+'/me#settings');await page.getByRole('heading',{name:'AI 服务配置',exact:true}).waitFor();verify(await page.getByRole('tab',{name:'设置',exact:true}).getAttribute('aria-selected')==='true','same-document settings deep link changes the active tab');
  }else if(name==='dictionary'){
   verify(await page.locator('.dictionary-history').isVisible(),'search history sidebar');
-  await page.getByRole('tab',{name:'例句',exact:true}).click();await settle(page);verify(await page.getByText('Hello world.',{exact:false}).isVisible(),'word section navigation');
+  await page.getByRole('heading',{name:'使用例句',exact:true}).waitFor();await settle(page);verify(await page.getByText('Hello world.',{exact:false}).isVisible(),'word section navigation');
  }else if(name==='chat'){
   const feed=await page.locator('.chat-messages').boundingBox(),compose=await page.locator('.chat-composer').boundingBox();
   verify(feed.height>100&&compose.y>=feed.y+feed.height-1,'separate message viewport and composer');
@@ -76,9 +76,9 @@ async function restored(page,name,width,base,requests){
     }
     if(version==='glory'&&width===1280){
      await page.evaluate(()=>localStorage.removeItem('colang.token'));await page.goto(base+'/dict');
-     await page.getByRole('textbox',{name:'单词或短语',exact:true}).fill('hello');await page.keyboard.press('Enter');await page.getByRole('tab',{name:'基本释义',exact:true}).waitFor();
-     await page.reload();await page.getByRole('tab',{name:'基本释义',exact:true}).waitFor();await page.locator('.dictionary-history').getByRole('link',{name:'hello',exact:true}).waitFor();checks++;results.push({page:'dictionary',width,check:'anonymous Enter lookup and persisted search history'});
-     await page.locator('.dictionary-history').getByRole('button',{name:'删除记录',exact:true}).click();await page.locator('.dictionary-history').getByRole('link',{name:'hello',exact:true}).waitFor({state:'detached'});assert.equal(await page.locator('.dictionary-history').getByRole('link',{name:'hello',exact:true}).count(),0);checks++;results.push({page:'dictionary',width,check:'anonymous history deletion'});
+     await page.getByRole('textbox',{name:'单词或短语',exact:true}).fill('hello');await page.keyboard.press('Enter');await page.getByRole('tab',{name:'中文释义',exact:true}).waitFor();
+     await page.reload();await page.getByRole('tab',{name:'中文释义',exact:true}).waitFor();await page.locator('.dictionary-history').getByRole('link',{name:'hello',exact:true}).waitFor();checks++;results.push({page:'dictionary',width,check:'anonymous Enter lookup and persisted search history'});
+     await page.locator('.dictionary-history').getByRole('button',{name:'删除',exact:true}).click();await page.locator('.dictionary-history').getByRole('link',{name:'hello',exact:true}).waitFor({state:'detached'});assert.equal(await page.locator('.dictionary-history').getByRole('link',{name:'hello',exact:true}).count(),0);checks++;results.push({page:'dictionary',width,check:'anonymous history deletion'});
     }
     await context.close();
    }

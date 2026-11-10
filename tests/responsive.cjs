@@ -51,8 +51,9 @@ async function dialogBounds(page,width,height){
     if(url==='/')verify(await page.locator('.stat-value').evaluateAll(nodes=>nodes.every(e=>e.getBoundingClientRect().height<=parseFloat(getComputedStyle(e).fontSize)*1.8)),'statistics stay on one line');
     if(url==='/chat/1')await chatBounds(page,height);
     if(url==='/dict/hello'){
-     const tabs=page.locator('.word-tabs [role=tablist]');verify(await tabs.getAttribute('aria-orientation')===(width<=950?'horizontal':'vertical'),'dictionary keyboard orientation matches layout');
-     if(width<=950){await page.getByRole('tab',{name:'基本释义',exact:true}).focus();await page.keyboard.press('End');await page.waitForFunction(()=>[...document.querySelectorAll('[role=tab]')].some(e=>e.textContent==='词典来源'&&e.getAttribute('aria-selected')==='true'));await page.getByRole('tab',{name:'词典来源',exact:true}).waitFor();verify(await page.getByRole('tab',{name:'词典来源',exact:true}).getAttribute('aria-selected')==='true','horizontal tabs support keyboard selection');}
+     const tabs=page.locator('.dictionary-section-tabs [role=tablist]');verify(await tabs.getAttribute('aria-orientation')==='horizontal','definition tabs keep horizontal keyboard navigation');
+     verify(await page.getByRole('heading',{name:'使用例句',exact:true}).isVisible(),'example sentences remain a separate section');
+     verify(await page.getByRole('button',{name:'加入 / 移出生词本',exact:true}).count()===0,'word header has one favorite action');
     }
     if(url==='/translate'&&width<=950){
      const toggle=page.getByRole('button',{name:'翻译设置',exact:true});verify(await toggle.getAttribute('aria-expanded')==='false','mobile translation options start collapsed');await toggle.click();await page.getByRole('button',{name:'商务',exact:true}).click();await toggle.click();await page.waitForFunction(()=>document.querySelector('.translation-options [aria-expanded]')?.getAttribute('aria-expanded')==='false');verify(await toggle.getAttribute('aria-expanded')==='false','translation options collapse without losing state');
@@ -75,9 +76,9 @@ async function dialogBounds(page,width,height){
   const safeBrand=await safePage.locator('.brand').boundingBox(),safeComposer=await safePage.locator('.chat-composer').boundingBox();verify(safeBrand.x>=44,'landscape navigation avoids the notch');verify(safeComposer.x>=44&&safeComposer.x+safeComposer.width<=800,'landscape composer avoids both side cutouts');verify(safeComposer.y+safeComposer.height<=374,'composer clears the bottom safe area');await safePage.screenshot({path:path.join(output,'landscape-safe-area.png')});await safe.close();
   const context=await browser.newContext({viewport:{width:1280,height:900}});await setup(context);const page=await context.newPage();current=page;
   page.on('pageerror',e=>errors.push(e.message));page.on('console',m=>{if(m.type()==='error'&&m.text().startsWith('Glory frame:'))errors.push(m.text());});
-  await loaded(page,'/dict/hello');await page.getByRole('tab',{name:'例句',exact:true}).click();await page.setViewportSize({width:390,height:844});await settle(page);
-  verify(await page.getByRole('tab',{name:'例句',exact:true}).getAttribute('aria-selected')==='true','dictionary selection survives a breakpoint change');verify(await page.locator('.word-tabs [role=tablist]').getAttribute('aria-orientation')==='horizontal','orientation updates after resize');
-  await page.setViewportSize({width:1280,height:900});await settle(page);verify(await page.locator('.word-tabs [role=tablist]').getAttribute('aria-orientation')==='vertical','desktop tab orientation returns');
+  await loaded(page,'/dict/hello');await page.getByRole('tab',{name:'中文释义',exact:true}).focus();await page.setViewportSize({width:390,height:844});await settle(page);
+  verify(await page.getByRole('tab',{name:'中文释义',exact:true}).getAttribute('aria-selected')==='true','definition selection survives a breakpoint change');verify(await page.locator('.dictionary-section-tabs [role=tablist]').getAttribute('aria-orientation')==='horizontal','definition tabs remain horizontal after resize');
+  await page.setViewportSize({width:1280,height:900});await settle(page);verify(await page.getByRole('heading',{name:'使用例句',exact:true}).isVisible(),'examples remain visible on desktop');
   await loaded(page,'/translate');await page.getByRole('button',{name:'商务',exact:true}).click();await page.setViewportSize({width:390,height:844});await settle(page);await page.getByRole('button',{name:'翻译设置',exact:true}).click();verify(await page.getByRole('button',{name:'商务',exact:true}).getAttribute('aria-pressed')==='true','translation choices survive resizing');await context.close();
   // Model an iOS-style visual viewport: layout height stays 844 while the
   // keyboard leaves 430 visible pixels. This is a simulation, not a real IME.

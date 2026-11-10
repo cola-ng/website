@@ -93,7 +93,7 @@ pub fn dictionary(initial: Option<String>) -> impl Widget {
                                 view().class("history-row").fill((
                                     nav(word.clone(), dictionary_path(&word)),
                                     danger_button()
-                                        .label("删除记录")
+                                        .label("删除")
                                         .enabled(history.busy.map(|b| !*b))
                                         .on_press(move || {
                                             history_epoch.revise(|n| *n += 1);
@@ -122,7 +122,7 @@ pub fn dictionary(initial: Option<String>) -> impl Widget {
                         empty(history, "查过的单词会保存在这里。"),
                         when(history.data.map(|v| !items(v).is_empty()), move || {
                             danger_button()
-                                .label("清空查词记录")
+                                .label("清空")
                                 .enabled(history.busy.map(|b| !*b))
                                 .on_press(move || {
                                     if confirm("清空全部查词记录？") {
@@ -165,105 +165,286 @@ fn local_history(entries: Vec<Value>, history: Resource) {
 fn word_card(data: Value) -> impl Widget {
     widget(move |scope| {
         let action = Resource::new(scope);
-        let saved = scope.cage(String::new());
+        let favorite = Resource::new(scope);
         let id = data["word"]["id"].as_i64().unwrap_or_default();
         let word = string(&data["word"], "word");
-        let spoken = word.clone();
-        let vocabulary_word = word.clone();
-        let mut sections = vec![
-            boxed(heading(&word)),
-            boxed(p(string(&data["word"], "memory"))),
-        ];
-        sections.push(boxed(
-            view().class("actions").fill((
-                action_button()
-                    .label("朗读")
-                    .variant(sapid::ButtonVariant::Outline)
-                    .on_press(move || media::speak(&spoken, action.error)),
-                when(token().is_some(), move || {
-                    view().class("actions").fill((
-                        action_button()
-                            .label("收藏 / 取消收藏")
-                            .enabled(action.busy.map(|b| !b))
-                            .on_press(move || {
-                                action.run(
-                                    "POST",
-                                    "/api/learn/favorites/toggle".into(),
-                                    Some(json!({"entity":"word","record_id":id})),
-                                    move |v| {
-                                        saved.revise(|s| {
-                                            *s = if v["is_favorited"].as_bool().unwrap_or(false) {
-                                                "已收藏"
-                                            } else {
-                                                "已取消收藏"
-                                            }
-                                            .into()
-                                        })
-                                    },
-                                )
-                            }),
-                        {
-                            let word = vocabulary_word.clone();
-                            action_button()
-                                .label("加入 / 移出生词本")
-                                .variant(sapid::ButtonVariant::Outline)
-                                .enabled(action.busy.map(|b| !b))
-                                .on_press(move || {
-                                    action.run(
-                                        "POST",
-                                        "/api/learn/vocabulary/toggle".into(),
-                                        Some(json!({"word":word})),
-                                        move |v| {
-                                            saved.revise(|s| {
-                                                *s = if v["in_vocabulary"]
-                                                    .as_bool()
-                                                    .or(v["is_added"].as_bool())
-                                                    .unwrap_or(true)
-                                                {
-                                                    "生词本已更新"
-                                                } else {
-                                                    "已移出生词本"
-                                                }
-                                                .into()
-                                            })
-                                        },
-                                    )
-                                })
-                        },
-                    ))
-                })
-                .otherwise(|| nav("登录后收藏和复习", "/login")),
-            )),
-        ));
-        for pronunciation in items(&data["pronunciations"]) {
-            let p_id = string(&pronunciation, "id");
-            sections.push(boxed(
-                view().class("pronunciation").fill((
-                    p(format!(
-                        "{} /{}/",
-                        string(&pronunciation, "dialect"),
-                        string(&pronunciation, "ipa")
-                    )),
+        if token().is_some() {
+            favorite.run(
+                "POST",
+                "/api/learn/favorites/check".into(),
+                Some(json!({"entity":"word","record_ids":[id]})),
+                move |value| {
+                    favorite
+                        .data
+                        .revise(|v| *v = json!(items(&value).contains(&json!(id))))
+                },
+            );
+        } else {
+            favorite.data.revise(|v| *v = json!(false));
+        }
+        let mut badges = Vec::new();
+        for (key, label) in [
+            ("difficulty", "难度"),
+            ("frequency", "频率"),
+            ("word_type", ""),
+        ] {
+            let value = string(&data["word"], key);
+            if !value.is_empty() {
+                badges.push(boxed(text().class("word-badge").content(
+                    if label.is_empty() {
+                        value
+                    } else {
+                        format!("{label}: {value}")
+                    },
+                )));
+            }
+        }
+        let header = view().class("panel word-card").fill((
+            view().class("word-heading-row").fill((
+                view().class("word-title").fill((
+                    heading(&word),
                     action_button()
-                        .label("播放词典发音")
+                        .class("word-favorite word-icon")
+                        .name(favorite.data.map(|v| {
+                            if v == &json!(true) {
+                                "取消收藏"
+                            } else {
+                                "收藏"
+                            }
+                            .into()
+                        }))
+                        .fill(
+                            text().class("word-icon-symbol").content(
+                                favorite
+                                    .data
+                                    .map(|v| if v == &json!(true) { "★" } else { "☆" }.into()),
+                            ),
+                        )
                         .variant(sapid::ButtonVariant::Subtle)
+                        .pressed(favorite.data.map(|v| v == &json!(true)))
+                        .enabled(favorite.busy.map(|busy| !busy))
                         .on_press(move || {
-                            media::play(
-                                format!("/api/dict/pronunciations/{p_id}/audio"),
-                                action.error,
-                            )
+                            if token().is_none() {
+                                go(&format!(
+                                    "/login?{}",
+                                    query(
+                                        "next",
+                                        &window().location().pathname().unwrap_or_default()
+                                    )
+                                ));
+                                return;
+                            }
+                            favorite.run(
+                                "POST",
+                                "/api/learn/favorites/toggle".into(),
+                                Some(json!({"entity":"word","record_id":id})),
+                                move |value| {
+                                    favorite
+                                        .data
+                                        .revise(|v| *v = json!(value["is_favorited"] == true))
+                                },
+                            );
                         }),
+                )),
+                view().class("word-badges").fill(nodes(badges)),
+            )),
+            nodes(
+                items(&data["pronunciations"])
+                    .into_iter()
+                    .map(|pronunciation| {
+                        let p_id = string(&pronunciation, "id");
+                        let dialect = string(&pronunciation, "dialect");
+                        let label = match dialect.as_str() {
+                            "UK" => "英",
+                            "US" => "美",
+                            _ => &dialect,
+                        }
+                        .to_string();
+                        boxed(
+                            view().class("pronunciation").fill((
+                                text().class("muted").content(label.clone()),
+                                text()
+                                    .class("word-ipa")
+                                    .content(format!("/{}/", string(&pronunciation, "ipa"))),
+                                action_button()
+                                    .class("word-audio word-icon")
+                                    .name(format!("播放{label}发音"))
+                                    .fill(text().class("word-icon-symbol").content("🔊"))
+                                    .variant(sapid::ButtonVariant::Subtle)
+                                    .on_press(move || {
+                                        media::play(
+                                            format!("/api/dict/pronunciations/{p_id}/audio"),
+                                            action.error,
+                                        )
+                                    }),
+                            )),
+                        )
+                    })
+                    .collect(),
+            ),
+            nodes(
+                items(&data["forms"])
+                    .into_iter()
+                    .map(|form| {
+                        boxed(text().class("word-badge").content(format!(
+                            "{}: {}",
+                            string(&form, "form_type"),
+                            string(&form, "form")
+                        )))
+                    })
+                    .collect(),
+            ),
+            when(!string(&data["word"], "memory").is_empty(), {
+                let memory = string(&data["word"], "memory");
+                move || p(memory.clone())
+            }),
+            action.status(),
+            // The star reflects persisted state directly; successful toggles need no extra banner.
+            when(favorite.error.map(|v| !v.is_empty()), move || {
+                view()
+                    .role(Role::Alert)
+                    .class("error")
+                    .fill(text().content(favorite.error))
+            }),
+        ));
+        let mut sections = vec![boxed(header)];
+        let definitions = items(&data["definitions"]);
+        if !definitions.is_empty() {
+            let selected = scope.cage(String::new());
+            let mut tabs = sapid::tabs("word-definitions")
+                .theme(theme::orange())
+                .class("dictionary-section-tabs")
+                .value(selected)
+                .on_value_change(move |v| selected.revise(|s| *s = v));
+            for (language, label) in [("zh", "中文释义"), ("dual", "双语释义"), ("en", "英文释义")]
+            {
+                let entries: Vec<_> = definitions
+                    .iter()
+                    .filter(|v| {
+                        let lang = v["language"].as_str().unwrap_or("zh");
+                        match language {
+                            "zh" => !matches!(lang, "en" | "dual" | "bilingual"),
+                            "dual" => matches!(lang, "dual" | "bilingual"),
+                            _ => lang == language,
+                        }
+                    })
+                    .cloned()
+                    .collect();
+                if entries.is_empty() {
+                    continue;
+                }
+                if selected.get().is_empty() {
+                    selected.revise(|v| *v = language.into());
+                }
+                tabs = tabs.tab(sapid::tab(language).label(label).content(move || {
+                    view().class("word-section").fill(nodes(
+                        entries
+                            .iter()
+                            .map(|entry| {
+                                boxed(
+                                    view().class("definition-entry").fill((
+                                        text()
+                                            .class("word-part-of-speech")
+                                            .content(string(entry, "part_of_speech")),
+                                        p(string(entry, "definition")),
+                                        when(!string(entry, "usage_notes").is_empty(), {
+                                            let notes = string(entry, "usage_notes");
+                                            move || p(notes.clone())
+                                        }),
+                                    )),
+                                )
+                            })
+                            .collect(),
+                    ))
+                }));
+            }
+            sections.push(boxed(view().class("panel dictionary-section").fill(tabs)));
+        }
+        for (key, label) in [
+            ("sentences", "使用例句"),
+            ("relations", "关联词"),
+            ("etymologies", "词源"),
+            ("dictionaries", "词典来源"),
+        ] {
+            let entries = items(&data[key]);
+            if entries.is_empty() {
+                continue;
+            }
+            sections.push(boxed(
+                view().class("panel dictionary-section").fill((
+                    heading(label),
+                    nodes(
+                        entries
+                            .iter()
+                            .map(|entry| {
+                                if key == "relations" {
+                                    let word = string(entry, "related_word");
+                                    return boxed(
+                                        view().class("related-word").fill((
+                                            text().class("muted").content(
+                                                match entry["relation_type"]
+                                                    .as_str()
+                                                    .unwrap_or_default()
+                                                {
+                                                    "synonym" => "同义词".to_string(),
+                                                    "antonym" => "反义词".to_string(),
+                                                    "related" => "关联词".to_string(),
+                                                    value => value.to_string(),
+                                                },
+                                            ),
+                                            nav(word.clone(), dictionary_path(&word)),
+                                        )),
+                                    );
+                                }
+                                let keys: &[&str] = match key {
+                                    "sentences" => &["sentence", "translation", "source"],
+                                    "etymologies" => {
+                                        &["etymology", "origin_word", "origin_meaning"]
+                                    }
+                                    _ => {
+                                        &["name", "name_zh", "name_en", "publisher", "license_type"]
+                                    }
+                                };
+                                let audio = if key == "sentences" {
+                                    entry["id"].as_i64().map(|id| {
+                                        boxed(super::sentence_audio::player(
+                                            "dict",
+                                            id,
+                                            None,
+                                            "播放例句发音",
+                                        ))
+                                    })
+                                } else {
+                                    None
+                                };
+                                boxed(
+                                    view().class("definition-entry").fill((
+                                        nodes(
+                                            keys.iter()
+                                                .filter_map(|key| {
+                                                    let value = string(entry, key);
+                                                    if value.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(boxed(p(value)))
+                                                    }
+                                                })
+                                                .collect(),
+                                        ),
+                                        nodes(audio.into_iter().collect()),
+                                    )),
+                                )
+                            })
+                            .collect(),
+                    ),
                 )),
             ));
         }
-        let compact = media::compact(scope);
-        let selected = scope.cage(String::new());
-        let sections_data = data.clone();
-        sections.push(boxed(
-            each(scope.bond(move || vec![compact.get()]))
-                .key(|compact| *compact)
-                .seed(move |compact| word_sections(sections_data.clone(), compact, selected)),
-        ));
+        if sections.len() == 1 {
+            sections.push(boxed(
+                view().class("panel").fill(p("此词条暂未收录详细释义。")),
+            ));
+        }
         for image_value in items(&data["images"]) {
             let src = string(&image_value, "image_url");
             if src.starts_with("https://") || src.starts_with('/') && !src.starts_with("//") {
@@ -275,93 +456,11 @@ fn word_card(data: Value) -> impl Widget {
                 ));
             }
         }
-        sections.push(boxed(success_notice(saved, action)));
-        sections.push(boxed(action.status()));
         view()
-            .class("panel word-card")
+            .class("dictionary-result")
             .fill(nodes(sections))
             .build(scope)
     })
-}
-fn word_sections(data: Value, compact: bool, selected: Cage<String>) -> Box<dyn Widget> {
-    let mut tabs = sapid::tabs("word-sections")
-        .theme(theme::orange())
-        .class("word-tabs")
-        .orientation(if compact {
-            Orientation::Horizontal
-        } else {
-            Orientation::Vertical
-        })
-        .value(selected)
-        .on_value_change(move |v| selected.revise(|s| *s = v));
-    let mut first = true;
-    for (key, label_text) in [
-        ("definitions", "基本释义"),
-        ("sentences", "例句"),
-        ("relations", "关联词"),
-        ("forms", "词形变化"),
-        ("etymologies", "词源"),
-        ("dictionaries", "词典来源"),
-    ] {
-        let entries = items(&data[key]);
-        if entries.is_empty() {
-            continue;
-        }
-        if first {
-            if selected.get().is_empty() {
-                selected.revise(|v| *v = key.into());
-            }
-            first = false;
-        }
-        tabs = tabs.tab(sapid::tab(key).label(label_text).content(move || {
-            view().class("word-section").fill((
-                heading(label_text),
-                nodes(
-                    entries
-                        .iter()
-                        .map(|entry| {
-                            let keys: &[&str] = match key {
-                                "definitions" => &["part_of_speech", "definition", "usage_notes"],
-                                "sentences" => &["sentence", "translation", "source"],
-                                "relations" => &["relation_type", "related_word"],
-                                "forms" => &["form_type", "form", "notes"],
-                                "etymologies" => &["etymology", "origin_word", "origin_meaning"],
-                                _ => &["name_zh", "name_en", "publisher", "license_type"],
-                            };
-                            let audio = if key == "sentences" {
-                                entry["id"].as_i64().map(|id| {
-                                    boxed(super::sentence_audio::player(
-                                        "dict",
-                                        id,
-                                        None,
-                                        "播放例句发音",
-                                    ))
-                                })
-                            } else {
-                                None
-                            };
-                            boxed(
-                                view().class("definition-entry").fill((
-                                    p(keys
-                                        .iter()
-                                        .map(|k| string(entry, k))
-                                        .filter(|v| !v.is_empty())
-                                        .collect::<Vec<_>>()
-                                        .join(" · ")),
-                                    nodes(audio.into_iter().collect()),
-                                )),
-                            )
-                        })
-                        .collect(),
-                ),
-            ))
-        }));
-    }
-    if first {
-        boxed(p("此词条暂未收录详细释义。"))
-    } else {
-        boxed(tabs)
-    }
 }
 fn dictionary_tabs() -> impl Widget {
     view()

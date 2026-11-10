@@ -8,6 +8,8 @@
 
 `node tests/navigation.cjs` 验证真实 WASM 中的桌面和移动导航、键盘、新标签页、浏览器前进后退、账户锚点和登录回跳；通过页面对象标记及文档请求数确认站内跳转没有整页刷新。设置 `QA_NAV_PUBLIC=1` 和 `QA_WEB=https://cola.ng` 可对生产公开页面执行同一组导航检查，不注入登录凭据。
 
+`node tests/dictionary.cjs` 对照 React 版词典布局验证标题旁的单个收藏星标、持久化状态、键盘切换、错误恢复、历史“删除 / 清空”以及桌面/手机布局，确认词典页不再请求独立生词本接口。截图和报告位于 `target/qa-dictionary`。
+
 `parity.cjs` 将迁移前 `b486031a` 的 React 参考界面与实际 WASM 界面注入同一份 `ui-fixtures.cjs` 数据，输出桌面 / 手机对照截图，并验证恢复的页面布局与交互。见 [界面对照说明](../docs/ui-parity.md)。React 参考文件只保存在忽略的构建产物目录中。
 
 `responsive.cjs` 检查 9 种手机、平板、桌面及横屏尺寸，覆盖 81 项页面检查和 318 项布局／交互检查，包括虚拟键盘可见区域模拟、长表单、卡片式表格和缩放后的状态保留。见 [响应式复检说明](../docs/responsive-ui.md)。
