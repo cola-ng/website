@@ -204,6 +204,9 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.locator('.provider-row').getByRole('button',{name:'删除配置',exact:true}).click();await page.locator('.ai-access-status').getByText('请配置自己的密钥，免费用户不能使用平台 AI。',{exact:true}).waitFor();assert.equal(rows.length,0);
     await page.unroute('**/api/ai-providers**');
   });
+  await scenario('legacy settings show default speech models and their independent active states',async()=>{
+    await page.goto(base+'/me#settings');await page.reload();await page.getByRole('button',{name:'停用TTS',exact:true}).waitFor();await page.getByRole('button',{name:'停用ASR',exact:true}).waitFor();await page.getByText('TTS：glm-tts · 使用中',{exact:true}).waitFor();await page.getByText('ASR：glm-asr-2512 · 使用中',{exact:true}).waitFor();
+  });
   await scenario('provider search filters platforms and keeps text, TTS and ASR models separate',async()=>{
     await page.goto(base+'/me#settings');await page.getByRole('button',{name:'添加 AI 配置',exact:true}).click();
     const platform=page.getByRole('combobox',{name:'AI 平台',exact:true});

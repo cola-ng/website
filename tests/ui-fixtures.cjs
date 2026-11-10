@@ -41,7 +41,7 @@ function fixture(url,method='GET') {
   if(p==='/api/ai-providers/catalog')return require('./provider-catalog.json');
   if(p.startsWith('/api/sentence-audio/'))return {audio_url:'/api/asset/read/sentences/1/audio',official:true,can_generate:false,status:'approved'};
   if(p==='/api/ai-providers/access')return {source:'personal',platform_allowed:false,active_provider_id:1,message:'当前使用你自己的 AI 服务。'};
-  if(p==='/api/ai-providers')return [{id:1,provider_type:'zhipu',is_active:true,settings:{chat_model:'example-model'}}];
+  if(p==='/api/ai-providers')return [{id:1,provider_type:'zhipu',is_active:true,tts_active:true,asr_active:true,settings:{chat_model:'example-model'}}];
   if(p==='/api/admin/users')return {users:[user],total:1};
   if(p.startsWith('/api/admin/users/'))return {...user,recent_payments:[],recent_activities:[]};
   if(p.includes('/stats'))return {total:1};

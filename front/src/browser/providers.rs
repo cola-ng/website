@@ -133,13 +133,18 @@ pub fn panel() -> impl Widget {
                     action.run(method,path,Some(body),move|_|{reset();reload();notice.revise(|s|*s="配置已保存并启用".into());});
                 }),action.status(),
             ))),
-            each(providers.data.map(items)).key(|v|v.to_string()).seed(move|row|{
-                let id=row["id"].as_i64().unwrap_or_default();let source=row.clone();let platform=string(&row,"provider_type");
-                let label=items(&catalog.data.get()).iter().find(|p|string(p,"id")==platform).map(|p|string(p,"label")).unwrap_or(platform);
+            each(providers.data.map(move|v|{
+                let definitions=items(&catalog.data.get());
+                items(v).into_iter().map(|mut row|{row["catalog_definition"]=definitions.iter().find(|p|string(p,"id")==string(&row,"provider_type")).cloned().unwrap_or(Value::Null);row}).collect::<Vec<_>>()
+            })).key(|v|v.to_string()).seed(move|row|{
+                let id=row["id"].as_i64().unwrap_or_default();let source=row.clone();let platform=string(&row,"provider_type");let definition=row["catalog_definition"].clone();
+                let label=if definition.is_null(){platform}else{string(&definition,"label")};
                 let states=[("chat","文本",row["is_active"]==true),("tts","TTS",row["tts_active"]==true),("asr","ASR",row["asr_active"]==true)];
                 let mut children=vec![boxed(heading(label)),boxed(p("个人密钥 · 费用由对应平台收取"))];
-                for (cap,label,active) in states {if row["settings"][format!("{cap}_model")].as_str().is_some_and(|s|!s.is_empty()) || cap=="chat" {
-                    children.push(boxed(view().class("provider-usage-row").fill((p(format!("{label}：{}{}",string(&row["settings"],&format!("{cap}_model")),if active{" · 使用中"}else{" · 未启用"})),action_button().label(format!("{}{label}",if active{"停用"}else{"启用"})).variant(sapid::ButtonVariant::Outline).enabled(enabled).on_press(move||{
+                for (cap,label,active) in states {
+                    let model=row["settings"].get(format!("{cap}_model")).and_then(Value::as_str).map(str::to_owned).unwrap_or_else(||names(&definition,&format!("{cap}_models")).first().cloned().unwrap_or_default());
+                    if !model.is_empty() {
+                    children.push(boxed(view().class("provider-usage-row").fill((p(format!("{label}：{model}{}",if active{" · 使用中"}else{" · 未启用"})),action_button().label(format!("{}{label}",if active{"停用"}else{"启用"})).variant(sapid::ButtonVariant::Outline).enabled(enabled).on_press(move||{
                         let selected=states.iter().filter(|(c,_,on)|if *c==cap{!active}else{*on}).map(|(c,_,_)|*c).collect::<Vec<_>>();
                         action.run("PUT",format!("/api/ai-providers/{id}"),Some(json!({"activate_for":selected})),move|_|reload());
                     })))));
