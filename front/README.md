@@ -29,6 +29,8 @@ trunk build --release --locked
 
 产物为 `front/dist`。可设置 `STATIC_DIR=front/dist` 由 API 直接托管，或使用 `front/nginx.conf` 配置的 Nginx。API 请求和音频使用同源代理；嵌套路由刷新返回 `index.html`。
 
+站内链接及程序跳转通过 `browser/routing.rs` 使用 History API，URL、页面内容和导航高亮随前进后退同步更新；登录状态在同一应用中更新。外部链接和 `/api/` OAuth 授权仍使用浏览器导航，Ctrl/Command 点击保留新标签页行为。词典查询同样经过路由，可直接分享和重新打开单词地址。
+
 ```powershell
 # 在 website 预览构建产物（API 默认 8119）
 python scripts/serve.py

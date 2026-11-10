@@ -6,12 +6,14 @@ mod dictionary;
 mod learning;
 mod media;
 mod providers;
+mod routing;
 mod sentence_audio;
 mod theme;
 mod ui;
 
 use crate::model::*;
 use glory::prelude::*;
+use routing::{go, internal_location};
 use serde_json::{Value, json};
 use std::cell::RefCell;
 use theme::{action_button, checkbox_control, danger_button, text_control};
@@ -53,6 +55,13 @@ pub fn save_auth(value: &Value) -> std::result::Result<(), String> {
     store
         .set_item("colang.token", access_token)
         .map_err(js_error)?;
+    SESSION.with(|s| {
+        if let Some(session) = *s.borrow()
+            && session.is_alive()
+        {
+            session.revise(|current| *current = user);
+        }
+    });
     Ok(())
 }
 pub fn clear_auth() {
@@ -67,9 +76,6 @@ pub fn clear_auth() {
             cage.revise(|v| *v = Value::Null);
         }
     });
-}
-pub fn go(path: &str) {
-    let _ = window().location().set_href(path);
 }
 pub fn param(name: &str) -> Option<String> {
     url::form_urlencoded::parse(
@@ -226,12 +232,12 @@ impl Resource {
 }
 pub fn start() -> std::result::Result<(), JsValue> {
     theme::install()?;
-    let route = Route::parse(&window().location().pathname()?);
     let root = document()
         .get_element_by_id("app")
         .ok_or("missing app root")?;
     root.set_text_content(None);
     let web = glory::web::launch_with(root, move |scope| {
+        let route = routing::install(scope);
         media::viewport(scope);
         let session = scope.cage(Value::Null);
         let ready = scope.cage(token().is_none());
@@ -256,9 +262,11 @@ pub fn start() -> std::result::Result<(), JsValue> {
                 ready.revise(|v| *v = true);
             });
         }
-        heartbeat(&route);
+        heartbeat(route);
         view().class("site sapid-theme-colang-light").fill((
-            header(session),
+            each(route.map(|location| vec![location.clone()]))
+                .key(|location| location.clone())
+                .seed(move |_| header(session)),
             view().role(Role::Main).class("main").fill((
                 when(ready.map(|v| !v), || text().content("正在验证登录状态…")),
                 each(scope.bond(move || {
@@ -266,7 +274,7 @@ pub fn start() -> std::result::Result<(), JsValue> {
                         return Vec::new();
                     }
                     let user = session.get();
-                    vec![if !user["session_error"].is_null() {
+                    let access = if !user["session_error"].is_null() {
                         3u8
                     } else if user.is_null() {
                         0
@@ -274,11 +282,12 @@ pub fn start() -> std::result::Result<(), JsValue> {
                         2
                     } else {
                         1
-                    }]
+                    };
+                    vec![(route.get(), access)]
                 }))
-                .key(|access| *access)
-                .seed(move |_| {
-                    let route = route.clone();
+                .key(|entry| entry.clone())
+                .seed(move |(location, _)| {
+                    let route = Route::parse(location.split(['?', '#']).next().unwrap_or("/"));
                     widget(move |scope| {
                         let logged =
                             !session.get().is_null() && session.get()["session_error"].is_null();
@@ -287,10 +296,9 @@ pub fn start() -> std::result::Result<(), JsValue> {
                                 nodes(vec![
                                     boxed(title("无法验证登录状态")),
                                     boxed(p(error)),
-                                    boxed(nav(
-                                        "重试",
-                                        &window().location().href().unwrap_or_else(|_| "/".into()),
-                                    )),
+                                    boxed(action_button().label("重试").on_press(|| {
+                                        let _ = window().location().reload();
+                                    })),
                                 ])
                             } else {
                                 nodes(vec![boxed(account::login_page(true))])
@@ -337,7 +345,7 @@ fn main_navigation() -> impl Widget {
 fn header(session: Cage<Value>) -> impl Widget {
     view().role(Role::Banner).class("header").fill(
         view().class("header-inner").fill((
-            link().target("/").class("brand").fill((
+            route_link("/").class("brand").fill((
                 image().source("/colang-logo.svg").alt("开朗英语标志"),
                 text().content("开朗英语"),
             )),
@@ -452,13 +460,18 @@ fn legal(content: &'static str, label: &'static str) -> impl Widget {
         ),
     ))
 }
-fn heartbeat(route: &Route) {
-    let Some(page_type) = route.study_type() else {
-        return;
-    };
+fn heartbeat(route: Cage<String>) {
     spawn(async move {
         loop {
-            if token().is_some() && !document().hidden() && document().has_focus().unwrap_or(false)
+            if !route.is_alive() {
+                return;
+            }
+            let location = route.get_untracked();
+            let current = Route::parse(location.split(['?', '#']).next().unwrap_or("/"));
+            if let Some(page_type) = current.study_type()
+                && token().is_some()
+                && !document().hidden()
+                && document().has_focus().unwrap_or(false)
             {
                 let _ = request(
                     "POST",

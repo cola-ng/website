@@ -29,6 +29,21 @@ pub fn nav(label: impl Into<String>, path: impl Into<String>) -> impl Widget {
 pub fn section_nav(label: impl Into<String>, path: impl Into<String>) -> impl Widget {
     navigation_link(label.into(), path.into(), true)
 }
+pub fn route_link(path: impl Into<String>) -> glory::ui::Link {
+    let path = path.into();
+    let internal = internal_location(&path).is_some();
+    let target = path.clone();
+    let link = link().target(path);
+    if internal {
+        link.semantics(Some(Box::new(Semantics {
+            link_request: true,
+            ..Default::default()
+        })))
+        .on(activate, move |_| go(&target))
+    } else {
+        link
+    }
+}
 fn navigation_link(label: String, path: String, section: bool) -> impl Widget {
     let current_path = window().location().pathname().unwrap_or_default();
     let target = path.split(['?', '#']).next().unwrap_or_default();
@@ -45,11 +60,12 @@ fn navigation_link(label: String, path: String, section: bool) -> impl Widget {
         } else {
             None
         };
-    link()
+    let internal = internal_location(&path).is_some();
+    route_link(path)
         .label(label)
-        .target(path)
         .semantics(Some(Box::new(Semantics {
             current,
+            link_request: internal,
             ..Default::default()
         })))
 }

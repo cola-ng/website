@@ -25,11 +25,15 @@ pub fn dictionary(initial: Option<String>) -> impl Widget {
                 result.error.revise(|e| *e = "请输入要查询的单词".into());
                 return;
             }
+            let target = format!("/dict/{}", query("w", &word).trim_start_matches("w="));
+            if window().location().pathname().unwrap_or_default() != target {
+                go(&target);
+                return;
+            }
             let lookup_epoch = history_epoch.get();
             result.data.revise(|v| *v = Value::Null);
             result.run("GET",format!("/api/dict/lookup?{}",query("word",&word)),None,move|value|{
                 result.data.revise(|v|*v=value);
-                let _=window().history().and_then(|h|h.replace_state_with_url(&JsValue::NULL,"",Some(&format!("/dict/{}",query("w",&word).trim_start_matches("w=")))));
                 if history_epoch.get()!=lookup_epoch{return;}
                 if token().is_some(){spawn(async move{match request("POST","/api/dict/words/searched",Some(json!({"word":word}))).await{Ok(_)=>{if history.data.is_alive(){history.load("/api/dict/words/searched?limit=30");}},Err(e)=>{if history.error.is_alive(){history.error.revise(|v|*v=e);}}}});}else{
                     let mut entries=items(&history.data.get());entries.retain(|v|!string(v,"word").eq_ignore_ascii_case(&word));entries.insert(0,json!({"word":word,"searched_at":js_sys::Date::new_0().to_iso_string().as_string()}));entries.truncate(50);local_history(entries,history);
