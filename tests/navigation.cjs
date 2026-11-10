@@ -13,7 +13,11 @@ let browser;
   page.on('request',r=>{if(r.isNavigationRequest()&&r.frame()===page.mainFrame())documents.push(r.url());});
   if(authenticated){
     assert(['localhost','127.0.0.1'].includes(new URL(base).hostname));
-    await page.route('**/api/**',r=>r.fulfill({json:fixture(new URL(r.request().url()),r.request().method())}));
+    await context.route('**/api/**',r=>{
+      const url=new URL(r.request().url()),data=fixture(url,r.request().method());
+      if(url.pathname==='/api/dict/lookup')data.word={...data.word,word:url.searchParams.get('word')};
+      return r.fulfill({json:data});
+    });
     await page.addInitScript(()=>localStorage.setItem('colang.token','navigation-fixture'));
   }
   await page.goto(base+'/dict');
@@ -55,6 +59,11 @@ let browser;
     await destination('/dict','词典翻译');
     await page.getByRole('heading',{name:'探索每一个单词',exact:true}).waitFor();
     await page.goBack();await page.waitForURL(base+'/dict/hello');await page.getByRole('heading',{name:'hello',exact:true}).waitFor();await unchanged();
+    for(const [word,path] of [['ice cream','ice%20cream'],['C++','C%2B%2B']]){
+      await page.getByRole('textbox',{name:'单词或短语',exact:true}).fill(word);await page.getByRole('button',{name:'查询',exact:true}).click();
+      await page.waitForURL(base+'/dict/'+path);await page.getByRole('heading',{name:word,exact:true}).waitFor();await unchanged();
+      const direct=await context.newPage();await direct.goto(base+'/dict/'+path);await direct.getByRole('heading',{name:word,exact:true}).waitFor();await direct.close();
+    }
     await page.getByRole('button',{name:'界面复检账户 · 我的账户',exact:true}).click();
     await page.getByRole('link',{name:'AI 服务设置',exact:true}).click();
     await page.waitForURL(base+'/me#settings');await page.getByRole('button',{name:'添加 AI 配置',exact:true}).waitFor();await unchanged();

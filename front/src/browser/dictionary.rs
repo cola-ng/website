@@ -25,9 +25,9 @@ pub fn dictionary(initial: Option<String>) -> impl Widget {
                 result.error.revise(|e| *e = "请输入要查询的单词".into());
                 return;
             }
-            let target = format!("/dict/{}", query("w", &word).trim_start_matches("w="));
-            if window().location().pathname().unwrap_or_default() != target {
-                go(&target);
+            let current = window().location().pathname().unwrap_or_default();
+            if Route::parse(&current) != Route::Dict(Some(word.clone())) {
+                go(&dictionary_path(&word));
                 return;
             }
             let lookup_epoch = history_epoch.get();
@@ -91,13 +91,7 @@ pub fn dictionary(initial: Option<String>) -> impl Widget {
                                 let remove_word = word.clone();
                                 let id = string(&v, "id");
                                 view().class("history-row").fill((
-                                    nav(
-                                        word.clone(),
-                                        format!(
-                                            "/dict/{}",
-                                            query("w", &word).trim_start_matches("w=")
-                                        ),
-                                    ),
+                                    nav(word.clone(), dictionary_path(&word)),
                                     danger_button()
                                         .label("删除记录")
                                         .enabled(history.busy.map(|b| !*b))

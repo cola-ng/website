@@ -130,6 +130,14 @@ pub fn query(key: &str, value: &str) -> String {
         .append_pair(key, value)
         .finish()
 }
+pub fn dictionary_path(word: &str) -> String {
+    format!(
+        "/dict/{}",
+        query("w", word)
+            .trim_start_matches("w=")
+            .replace('+', "%20")
+    )
+}
 pub fn safe_return(path: &str) -> &str {
     if path.starts_with('/') && !path.starts_with("//") && !path.contains(['\\', '\r', '\n']) {
         path
@@ -187,6 +195,12 @@ mod tests {
     use super::*;
     #[test]
     fn routes_and_deep_links() {
+        for word in ["ice cream", "C++", "a/b", "你好"] {
+            assert_eq!(
+                Route::parse(&dictionary_path(word)),
+                Route::Dict(Some(word.into()))
+            );
+        }
         assert_eq!(
             Route::parse("/dict/ice%20cream"),
             Route::Dict(Some("ice cream".into()))

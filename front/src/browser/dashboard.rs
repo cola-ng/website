@@ -25,10 +25,10 @@ pub fn landing(session: Cage<Value>) -> impl Widget {
                     p("今天想学点什么？从一次轻松的对话开始吧。"),
                     view().class("actions primary-actions").fill((nav("开始对话", "/chat"), nav("选择场景", "/stages"))),
                     )),
-                    view().class("welcome-search").fill((view().class("search quick-search").fill((submit_field("查找单词或短语",word,false,move||{let value=word.get();if !value.trim().is_empty(){go(&format!("/dict/{}",query("w",value.trim()).trim_start_matches("w=")));}}),action_button().label("查词").on_press(move || {
-                        let value=word.get(); if !value.trim().is_empty(){go(&format!("/dict/{}",query("w",value.trim()).trim_start_matches("w=")));}
+                    view().class("welcome-search").fill((view().class("search quick-search").fill((submit_field("查找单词或短语",word,false,move||{let value=word.get();if !value.trim().is_empty(){go(&dictionary_path(value.trim()));}}),action_button().label("查词").on_press(move || {
+                        let value=word.get(); if !value.trim().is_empty(){go(&dictionary_path(value.trim()));}
                     }))),
-                    view().class("word-chips").fill(each(history.data.map(items)).key(|v|v.to_string()).seed(|v|{let word=string(&v,"word");nav(word.clone(),format!("/dict/{}",query("w",&word).trim_start_matches("w=")))})),)),
+                    view().class("word-chips").fill(each(history.data.map(items)).key(|v|v.to_string()).seed(|v|{let word=string(&v,"word");nav(word.clone(),dictionary_path(&word))})),)),
                 )),
                 learning_data(summary),
                 view().class("panel").fill((view().class("section-heading").fill((heading("角色扮演"),nav("查看全部 →","/stages"))),stages.status(),view().class("scene-grid").fill(each(stages.data.map(items)).key(|v|v.to_string()).seed(|v|{
