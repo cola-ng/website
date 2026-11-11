@@ -524,11 +524,24 @@ fn definition_list(entries: Vec<Value>) -> impl Widget {
     ))
 }
 fn dictionary_tabs() -> impl Widget {
+    let current = Route::parse(&window().location().pathname().unwrap_or_default());
+    let tab = |label, path, selected: bool| {
+        route_link(path)
+            .label(label)
+            .semantics(Some(Box::new(Semantics {
+                current: selected.then_some(Current::Page),
+                link_request: true,
+                ..Default::default()
+            })))
+    };
     view()
         .role(Role::Navigation)
         .name("词典与翻译")
         .class("dictionary-tabs")
-        .fill((nav("英语词典", "/dict"), nav("中英翻译", "/translate")))
+        .fill((
+            tab("英语词典", "/dict", matches!(current, Route::Dict(_))),
+            tab("中英翻译", "/translate", current == Route::Translate),
+        ))
 }
 pub fn translate() -> impl Widget {
     widget(|scope| {
