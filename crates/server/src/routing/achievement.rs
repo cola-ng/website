@@ -1,5 +1,6 @@
+use std::result::Result;
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Serialize;
@@ -29,7 +30,7 @@ pub fn router() -> Router {
 /// List all active achievement definitions
 #[handler]
 pub async fn list_achievement_definitions(res: &mut Response) -> AppResult<()> {
-    let achievements: Vec<AchievementDefinition> = with_conn(move |conn| {
+    let achievements: Vec<AchievementDefinition> = with_conn!(move |conn| {
         archive_achievement_definitions::table
             .filter(archive_achievement_definitions::is_active.eq(true))
             .filter(
@@ -38,7 +39,7 @@ pub async fn list_achievement_definitions(res: &mut Response) -> AppResult<()> {
                     .or(archive_achievement_definitions::is_hidden.is_null()),
             )
             .order(archive_achievement_definitions::sort_order.asc())
-            .load::<AchievementDefinition>(conn)
+            .load::<AchievementDefinition>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list achievements"))?;
@@ -50,10 +51,10 @@ pub async fn list_achievement_definitions(res: &mut Response) -> AppResult<()> {
 /// List all rank definitions
 #[handler]
 pub async fn list_rank_definitions(res: &mut Response) -> AppResult<()> {
-    let ranks: Vec<RankDefinition> = with_conn(move |conn| {
+    let ranks: Vec<RankDefinition> = with_conn!(move |conn| {
         archive_rank_definitions::table
             .order(archive_rank_definitions::level.asc())
-            .load::<RankDefinition>(conn)
+            .load::<RankDefinition>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list ranks"))?;
@@ -71,14 +72,14 @@ pub async fn list_rank_definitions(res: &mut Response) -> AppResult<()> {
 pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let summary = with_conn(move |conn| {
+    let summary = with_conn!(move |conn| {
         // Get or create user profile
-        let profile = get_or_create_profile(conn, user_id)?;
+        let profile = get_or_create_profile(conn, user_id).await?;
 
         // Get all ranks
         let ranks: Vec<RankDefinition> = archive_rank_definitions::table
             .order(archive_rank_definitions::level.asc())
-            .load::<RankDefinition>(conn)?;
+            .load::<RankDefinition>(conn).await?;
 
         // Find current rank and next rank
         let current_rank = ranks
@@ -104,14 +105,14 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
             .filter(archive_user_achievements::is_completed.eq(true))
             .order(archive_user_achievements::completed_at.desc())
             .limit(5)
-            .load::<UserAchievementRecord>(conn)?;
+            .load::<UserAchievementRecord>(conn).await?;
 
         // Step 2: Get achievement definitions for those IDs
         let achievement_ids: Vec<i64> =
             user_achievements.iter().map(|a| a.achievement_id).collect();
         let definitions: Vec<AchievementDefinition> = archive_achievement_definitions::table
             .filter(archive_achievement_definitions::id.eq_any(&achievement_ids))
-            .load::<AchievementDefinition>(conn)?;
+            .load::<AchievementDefinition>(conn).await?;
 
         // Step 3: Combine the results, preserving the order from user_achievements
         let recent_achievements: Vec<AchievementBadge> = user_achievements
@@ -135,15 +136,15 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
         let total_achievements: i64 = archive_achievement_definitions::table
             .filter(archive_achievement_definitions::is_active.eq(true))
             .count()
-            .get_result(conn)?;
+            .get_result(conn).await?;
 
         let completed_achievements: i64 = archive_user_achievements::table
             .filter(archive_user_achievements::user_id.eq(user_id))
             .filter(archive_user_achievements::is_completed.eq(true))
             .count()
-            .get_result(conn)?;
+            .get_result(conn).await?;
 
-        Ok::<_, diesel::result::Error>(UserProfileSummary {
+        Ok::<_, horme::Error>(UserProfileSummary {
             total_xp: profile.total_xp,
             current_streak_days: profile.current_streak_days,
             rank: current_rank.map(RankInfo::from),
@@ -166,17 +167,17 @@ pub async fn get_user_profile_summary(depot: &mut Depot, res: &mut Response) -> 
 pub async fn list_user_achievements(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let achievements: Vec<AchievementWithProgress> = with_conn(move |conn| {
+    let achievements: Vec<AchievementWithProgress> = with_conn!(move |conn| {
         // Get all active achievement definitions
         let definitions: Vec<AchievementDefinition> = archive_achievement_definitions::table
             .filter(archive_achievement_definitions::is_active.eq(true))
             .order(archive_achievement_definitions::sort_order.asc())
-            .load::<AchievementDefinition>(conn)?;
+            .load::<AchievementDefinition>(conn).await?;
 
         // Get user's achievement progress
         let user_progress: Vec<UserAchievementRecord> = archive_user_achievements::table
             .filter(archive_user_achievements::user_id.eq(user_id))
-            .load::<UserAchievementRecord>(conn)?;
+            .load::<UserAchievementRecord>(conn).await?;
 
         // Combine definitions with user progress
         let result: Vec<AchievementWithProgress> = definitions
@@ -204,7 +205,7 @@ pub async fn list_user_achievements(depot: &mut Depot, res: &mut Response) -> Ap
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>(result)
+        Ok::<_, horme::Error>(result)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list user achievements"))?;
@@ -223,12 +224,12 @@ pub async fn list_xp_history(
     let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let history: Vec<UserXpHistory> = with_conn(move |conn| {
+    let history: Vec<UserXpHistory> = with_conn!(move |conn| {
         archive_user_xp_history::table
             .filter(archive_user_xp_history::user_id.eq(user_id))
             .order(archive_user_xp_history::created_at.desc())
             .limit(limit)
-            .load::<UserXpHistory>(conn)
+            .load::<UserXpHistory>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list xp history"))?;
@@ -242,14 +243,14 @@ pub async fn list_xp_history(
 // ============================================================================
 
 /// Get or create user profile
-fn get_or_create_profile(
-    conn: &mut diesel::PgConnection,
+async fn get_or_create_profile(
+    conn: &mut impl GetConnection<Connection = horme::diesel_async::AsyncPgConnection>,
     user_id: i64,
-) -> Result<UserProfile, diesel::result::Error> {
+) -> horme::Result<UserProfile> {
     // Try to find existing profile
     let existing = archive_user_profiles::table
         .filter(archive_user_profiles::user_id.eq(user_id))
-        .first::<UserProfile>(conn)
+        .first::<UserProfile>(conn).await
         .optional()?;
 
     if let Some(profile) = existing {
@@ -260,5 +261,5 @@ fn get_or_create_profile(
     let new_profile = NewUserProfile { user_id };
     diesel::insert_into(archive_user_profiles::table)
         .values(&new_profile)
-        .get_result::<UserProfile>(conn)
+        .get_result::<UserProfile>(conn).await
 }

@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -98,7 +98,7 @@ pub async fn list_favorites(
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
     let offset = req.query::<i64>("offset").unwrap_or(0);
 
-    let favorites: Vec<FavoriteWithDetails> = with_conn(move |conn| {
+    let favorites: Vec<FavoriteWithDetails> = with_conn!(move |conn| {
         let mut query = learn_favorites::table
             .filter(learn_favorites::user_id.eq(user_id))
             .into_boxed();
@@ -111,7 +111,8 @@ pub async fn list_favorites(
             .order(learn_favorites::created_at.desc())
             .limit(limit)
             .offset(offset)
-            .load::<Favorite>(conn)?;
+            .load::<Favorite>(conn)
+            .await?;
 
         // Fetch entity details based on entity type
         let mut result: Vec<FavoriteWithDetails> = Vec::with_capacity(favorites.len());
@@ -123,7 +124,8 @@ pub async fn list_favorites(
             let words: Vec<(i64, String)> = dict_words::table
                 .filter(dict_words::id.eq_any(&word_ids))
                 .select((dict_words::id, dict_words::word))
-                .load::<(i64, String)>(conn)?;
+                .load::<(i64, String)>(conn)
+                .await?;
 
             let word_map: std::collections::HashMap<i64, String> = words.into_iter().collect();
 
@@ -132,7 +134,8 @@ pub async fn list_favorites(
                 .filter(dict_definitions::word_id.eq_any(&word_ids))
                 .filter(dict_definitions::language.eq("zh"))
                 .select((dict_definitions::word_id, dict_definitions::definition))
-                .load::<(i64, String)>(conn)?;
+                .load::<(i64, String)>(conn)
+                .await?;
 
             let def_map: std::collections::HashMap<i64, String> = definitions.into_iter().collect();
 
@@ -144,7 +147,8 @@ pub async fn list_favorites(
                     dict_pronunciations::word_id,
                     dict_pronunciations::is_primary.desc(),
                 ))
-                .load::<Pronunciation>(conn)?;
+                .load::<Pronunciation>(conn)
+                .await?;
 
             // Group pronunciations by word_id
             let mut pron_map: std::collections::HashMap<i64, Vec<Pronunciation>> =
@@ -172,7 +176,8 @@ pub async fn list_favorites(
 
             let translations: Vec<Translation> = learn_translations::table
                 .filter(learn_translations::id.eq_any(&translation_ids))
-                .load::<Translation>(conn)?;
+                .load::<Translation>(conn)
+                .await?;
 
             let translation_map: std::collections::HashMap<i64, Translation> =
                 translations.into_iter().map(|t| (t.id, t)).collect();
@@ -204,7 +209,8 @@ pub async fn list_favorites(
                     learn_chat_turns::content_zh,
                     learn_chat_turns::audio_path,
                 ))
-                .load::<(i64, String, String, Option<String>)>(conn)?;
+                .load::<(i64, String, String, Option<String>)>(conn)
+                .await?;
 
             let turn_map: std::collections::HashMap<i64, (String, String, Option<String>)> = turns
                 .into_iter()
@@ -254,14 +260,16 @@ pub async fn list_favorites(
                 let words: Vec<(i64, String)> = dict_words::table
                     .filter(dict_words::id.eq_any(&word_ids))
                     .select((dict_words::id, dict_words::word))
-                    .load::<(i64, String)>(conn)?;
+                    .load::<(i64, String)>(conn)
+                    .await?;
                 word_map = words.into_iter().collect();
 
                 let definitions: Vec<(i64, String)> = dict_definitions::table
                     .filter(dict_definitions::word_id.eq_any(&word_ids))
                     .filter(dict_definitions::language.eq("zh"))
                     .select((dict_definitions::word_id, dict_definitions::definition))
-                    .load::<(i64, String)>(conn)?;
+                    .load::<(i64, String)>(conn)
+                    .await?;
                 def_map = definitions.into_iter().collect();
 
                 let pronunciations: Vec<Pronunciation> = dict_pronunciations::table
@@ -271,7 +279,8 @@ pub async fn list_favorites(
                         dict_pronunciations::word_id,
                         dict_pronunciations::is_primary.desc(),
                     ))
-                    .load::<Pronunciation>(conn)?;
+                    .load::<Pronunciation>(conn)
+                    .await?;
 
                 for pron in pronunciations {
                     pron_map.entry(pron.word_id).or_default().push(pron);
@@ -288,7 +297,8 @@ pub async fn list_favorites(
 
                 let translations: Vec<Translation> = learn_translations::table
                     .filter(learn_translations::id.eq_any(&translation_ids))
-                    .load::<Translation>(conn)?;
+                    .load::<Translation>(conn)
+                    .await?;
 
                 trans_map = translations.into_iter().map(|t| (t.id, t)).collect();
             }
@@ -308,7 +318,8 @@ pub async fn list_favorites(
                         learn_chat_turns::content_zh,
                         learn_chat_turns::audio_path,
                     ))
-                    .load::<(i64, String, String, Option<String>)>(conn)?;
+                    .load::<(i64, String, String, Option<String>)>(conn)
+                    .await?;
 
                 turn_map = turns
                     .into_iter()
@@ -398,12 +409,13 @@ pub async fn create_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult
     let record_id = input.record_id;
 
     // Check if already favorited, return existing if so
-    let favorite: Favorite = with_conn(move |conn| {
+    let favorite: Favorite = with_conn!(move |conn| {
         let existing = learn_favorites::table
             .filter(learn_favorites::user_id.eq(user_id))
             .filter(learn_favorites::entity.eq(&entity))
             .filter(learn_favorites::record_id.eq(record_id))
             .first::<Favorite>(conn)
+            .await
             .optional()?;
 
         if let Some(fav) = existing {
@@ -416,6 +428,7 @@ pub async fn create_favorite(req: &mut Request, depot: &mut Depot) -> JsonResult
                     record_id,
                 })
                 .get_result::<Favorite>(conn)
+                .await
         }
     })
     .await
@@ -439,7 +452,7 @@ pub async fn delete_favorite(
         .query::<i64>("record_id")
         .ok_or_else(|| StatusError::bad_request().brief("record_id query parameter required"))?;
 
-    let deleted = with_conn(move |conn| {
+    let deleted = with_conn!(move |conn| {
         diesel::delete(
             learn_favorites::table
                 .filter(learn_favorites::user_id.eq(user_id))
@@ -447,6 +460,7 @@ pub async fn delete_favorite(
                 .filter(learn_favorites::record_id.eq(record_id)),
         )
         .execute(conn)
+        .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete favorite"))?;
@@ -476,18 +490,20 @@ pub async fn toggle_favorite(
 
     let record_id = input.record_id;
 
-    let (is_favorited, favorite_id): (bool, Option<i64>) = with_conn(move |conn| {
+    let (is_favorited, favorite_id): (bool, Option<i64>) = with_conn!(move |conn| {
         let existing = learn_favorites::table
             .filter(learn_favorites::user_id.eq(user_id))
             .filter(learn_favorites::entity.eq(&entity))
             .filter(learn_favorites::record_id.eq(record_id))
             .first::<Favorite>(conn)
+            .await
             .optional()?;
 
         if let Some(fav) = existing {
             // Remove favorite
             diesel::delete(learn_favorites::table.filter(learn_favorites::id.eq(fav.id)))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             Ok((false, None))
         } else {
             // Add favorite
@@ -497,7 +513,8 @@ pub async fn toggle_favorite(
                     entity,
                     record_id,
                 })
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
             Ok((true, Some(new_fav.id)))
         }
     })
@@ -527,13 +544,14 @@ pub async fn check_favorites(req: &mut Request, depot: &mut Depot) -> JsonResult
         return json_ok(vec![]);
     }
 
-    let favorited_ids: Vec<i64> = with_conn(move |conn| {
+    let favorited_ids: Vec<i64> = with_conn!(move |conn| {
         learn_favorites::table
             .filter(learn_favorites::user_id.eq(user_id))
             .filter(learn_favorites::entity.eq(&entity))
             .filter(learn_favorites::record_id.eq_any(&record_ids))
             .select(learn_favorites::record_id)
             .load::<i64>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to check favorites"))?;

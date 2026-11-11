@@ -24,7 +24,7 @@ macro_rules! bulk_delete_records {
         let mut denied_ids = vec![];
         let mut nerr_ids = vec![];
         for record in &records {
-            if record.permitted(cuser, "delete", $conn)? {
+            if record.permitted(cuser, "delete", $conn).await? {
                 if $del(record.id, cuser.id, $conn).is_err() {
                     nerr_ids.push(record.id);
                 } else {
@@ -73,7 +73,7 @@ macro_rules! bulk_delete_records {
                 }
                 deps.insert(record.$cfield.clone(), dep.unwrap());
             }
-            if deps[&record.$cfield].permitted(cuser, $action, $conn)? {
+            if deps[&record.$cfield].permitted(cuser, $action, $conn).await? {
                 if $del(record.id, cuser.id, $conn).is_err() {
                     nerr_ids.push(record.id);
                 } else {

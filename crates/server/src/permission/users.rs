@@ -1,5 +1,6 @@
 use diesel::pg::Pg;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use diesel::query_builder::QueryFragment;
 use diesel::result::QueryResult;
 
@@ -10,8 +11,9 @@ use crate::permission::Accessible;
 use crate::db::schema::*;
 
 table_permit!(users::table);
+#[async_trait::async_trait]
 impl Accessible for User {
-    fn permitted(&self, visitor: &User, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
+    async fn permitted(&self, visitor: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<bool> {
         if self.is_root && !visitor.in_kernel {
             return Ok(false);
         }
@@ -26,7 +28,7 @@ impl Accessible for User {
                     if visitor.is_root || self.id < 100 {
                         true
                     } else {
-                        diesel_exists!(stewards::table.filter(stewards::user_id.eq(self.id)).select(stewards::id), conn)
+                        diesel_exists!(stewards::table.filter(stewards::user_id.eq(self.id)).select(stewards::id), conn).await
                     }
                 } else {
                     false
@@ -39,13 +41,13 @@ impl Accessible for User {
                     .filter(emails::is_verified.eq(true))
                     .select(emails::domain)
                     .distinct()
-                    .get_results::<String>(conn)?;
+                    .get_results::<String>(conn).await?;
                 let allowed = if !domains.is_empty() {
                     let query = emails::table
                         .filter(emails::user_id.eq(self.id))
                         .filter(emails::is_verified.eq(true))
                         .filter(emails::domain.eq_any(&domains));
-                    diesel_exists!(query, conn)
+                    diesel_exists!(query, conn).await
                 } else {
                     false
                 };
@@ -63,13 +65,13 @@ impl Accessible for User {
                             .filter(realm_users::realm_id.eq(realms::id))
                             .filter(realm_users::user_id.eq(visitor.id)),
                     ));
-                return Ok(diesel_exists!(query, conn));
+                return Ok(diesel_exists!(query, conn).await);
             }
         }
         record_permitted!(self, visitor, action, users, conn)
     }
 }
-pub fn permit_filter(visitor: &User, action: &str, conn: &mut PgConnection) -> AppResult<PermitFilter> {
+pub async fn permit_filter(visitor: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<PermitFilter> {
     if visitor.is_root {
         return Ok(PermitFilter::Allowed);
     }
@@ -83,7 +85,7 @@ pub fn permit_filter(visitor: &User, action: &str, conn: &mut PgConnection) -> A
                 .filter(emails::is_verified.eq(true))
                 .select(emails::domain)
                 .distinct()
-                .get_results::<String>(conn)?;
+                .get_results::<String>(conn).await?;
             if !domains.is_empty() {
                 let query = diesel::dsl::exists(
                     emails::table
@@ -129,17 +131,18 @@ pub fn permit_filter(visitor: &User, action: &str, conn: &mut PgConnection) -> A
     }
 }
 
-fn user_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
+async fn user_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut AsyncPgConnection) -> QueryResult<()> {
     use crate::models::*;
     use crate::db::schema::*;
-    use diesel::prelude::*;
+    use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
     if user.in_kernel {
         let role_ids_query = role_users::table.filter(role_users::user_id.eq(user.id)).select(role_users::role_id);
         let permissions = permissions::table
             .filter(permissions::entity.eq("user"))
             .filter(permissions::action.eq(action))
             .filter(permissions::role_id.eq_any(role_ids_query))
-            .get_results::<Permission>(conn)?;
+            .get_results::<Permission>(conn).await?;
 
         let has_all_permission = permissions.iter().any(|p| {
             p.realm_id.eq(&crate::kernel_realm_id())

@@ -4,9 +4,10 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use colang::db::pool::DieselPool;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use serde::Deserialize;
+use std::result::Result;
 
 const DEFAULT_DICT_DIR: &str = r"D:\Works\colang\endict1\dict";
 const DEFAULT_VOCAB_DIR: &str = r"D:\Works\colang\endict1\vocabulary";
@@ -64,7 +65,8 @@ struct VocabImportStats {
     associations: usize,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -139,12 +141,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("===============================================");
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = DieselPool::new(
-        &database_url,
-        &Default::default(),
-        diesel::r2d2::Pool::builder(),
-    )?;
-    let mut conn = pool.get()?;
+    let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
     let start_time = Instant::now();
 
@@ -175,7 +172,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 json_file.file_name().unwrap_or_default().to_string_lossy()
             );
 
-            match import_json_file(&mut conn, json_file, &audio_cache, batch_size) {
+            match import_json_file(&mut conn, json_file, &audio_cache, batch_size).await {
                 Ok(stats) => {
                     println!(
                         "  Entries: {}, Added: {}, Skipped: {}",
@@ -213,7 +210,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 vocab_file.file_name().unwrap_or_default().to_string_lossy()
             );
 
-            match import_vocabulary_file(&mut conn, vocab_file) {
+            match import_vocabulary_file(&mut conn, vocab_file).await {
                 Ok(stats) => {
                     println!(
                         "  Words found: {}, Associations added: {}",
@@ -320,12 +317,12 @@ fn build_audio_cache(audio_dir: &Path) -> AudioCache {
     AudioCache { uk, us }
 }
 
-fn import_json_file(
-    conn: &mut PgConnection,
+async fn import_json_file(
+    conn: &mut AsyncPgConnection,
     json_file: &Path,
     audio_cache: &AudioCache,
     batch_size: usize,
-) -> Result<ImportStats, Box<dyn std::error::Error>> {
+) -> Result<ImportStats, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::*;
 
     let file = File::open(json_file)?;
@@ -360,27 +357,29 @@ fn import_json_file(
     let mut skipped = 0;
 
     for chunk in entries.chunks(batch_size) {
-        conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
+        horme::transaction(conn, async |conn| {
             for entry in chunk {
                 let existing: Option<i64> = dict_words::table
                     .select(dict_words::id)
                     .filter(dict_words::word_lower.eq(&entry.word_lower))
                     .first(conn)
+                    .await
                     .optional()?;
 
                 if existing.is_some() {
                     skipped += 1;
                 } else {
-                    let word_id = insert_word(conn, entry)?;
-                    insert_definitions(conn, word_id, entry)?;
-                    insert_word_forms(conn, word_id, &entry.word_forms)?;
-                    insert_pronunciations(conn, word_id, entry, audio_cache)?;
-                    insert_sentences(conn, word_id, &entry.examples)?;
+                    let word_id = insert_word(conn, entry).await?;
+                    insert_definitions(conn, word_id, entry).await?;
+                    insert_word_forms(conn, word_id, &entry.word_forms).await?;
+                    insert_pronunciations(conn, word_id, entry, audio_cache).await?;
+                    insert_sentences(conn, word_id, &entry.examples).await?;
                     added += 1;
                 }
             }
-            Ok(())
-        })?;
+            Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
+        })
+        .await?;
     }
 
     Ok(ImportStats {
@@ -469,10 +468,10 @@ fn parse_exchange_forms(exchange: &[String]) -> Vec<Form> {
     forms
 }
 
-fn insert_word(
-    conn: &mut PgConnection,
+async fn insert_word(
+    conn: &mut AsyncPgConnection,
     entry: &ImportEntry,
-) -> Result<i64, Box<dyn std::error::Error>> {
+) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_words;
 
     let word_type = if entry.word.contains(' ') {
@@ -492,16 +491,17 @@ fn insert_word(
             dict_words::is_active.eq(true),
         ))
         .returning(dict_words::id)
-        .get_result(conn)?;
+        .get_result(conn)
+        .await?;
 
     Ok(word_id)
 }
 
-fn insert_definitions(
-    conn: &mut PgConnection,
+async fn insert_definitions(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &ImportEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_definitions;
 
     let mut definition_order = 1;
@@ -517,7 +517,8 @@ fn insert_definitions(
                     dict_definitions::definition_order.eq(definition_order),
                     dict_definitions::is_primary.eq(definition_order == 1),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             definition_order += 1;
         }
     }
@@ -533,7 +534,8 @@ fn insert_definitions(
                     dict_definitions::definition_order.eq(definition_order),
                     dict_definitions::is_primary.eq(false),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             definition_order += 1;
         }
     }
@@ -541,11 +543,11 @@ fn insert_definitions(
     Ok(())
 }
 
-fn insert_word_forms(
-    conn: &mut PgConnection,
+async fn insert_word_forms(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     forms: &[Form],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_forms;
 
     for word_form in forms {
@@ -556,18 +558,19 @@ fn insert_word_forms(
                 dict_forms::form.eq(&word_form.form),
                 dict_forms::is_irregular.eq(false),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
     }
 
     Ok(())
 }
 
-fn insert_pronunciations(
-    conn: &mut PgConnection,
+async fn insert_pronunciations(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &ImportEntry,
     audio_cache: &AudioCache,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_pronunciations;
 
     let mut has_primary = false;
@@ -587,7 +590,8 @@ fn insert_pronunciations(
                 dict_pronunciations::dialect.eq("uk"),
                 dict_pronunciations::is_primary.eq(!has_primary),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         has_primary = true;
     }
@@ -607,7 +611,8 @@ fn insert_pronunciations(
                 dict_pronunciations::dialect.eq("us"),
                 dict_pronunciations::is_primary.eq(!has_primary),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         has_primary = true;
     }
@@ -619,17 +624,18 @@ fn insert_pronunciations(
                 dict_pronunciations::ipa.eq(&entry.phonetic),
                 dict_pronunciations::is_primary.eq(true),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
     }
 
     Ok(())
 }
 
-fn insert_sentences(
-    conn: &mut PgConnection,
+async fn insert_sentences(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     examples: &[String],
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::*;
 
     for example in examples {
@@ -641,24 +647,26 @@ fn insert_sentences(
                     dict_sentences::is_common.eq(false),
                 ))
                 .returning(dict_sentences::id)
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
 
             diesel::insert_into(dict_word_sentences::table)
                 .values((
                     dict_word_sentences::word_id.eq(word_id),
                     dict_word_sentences::sentence_id.eq(sentence_id),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 
     Ok(())
 }
 
-fn import_vocabulary_file(
-    conn: &mut PgConnection,
+async fn import_vocabulary_file(
+    conn: &mut AsyncPgConnection,
     vocab_file: &Path,
-) -> Result<VocabImportStats, Box<dyn std::error::Error>> {
+) -> Result<VocabImportStats, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::*;
 
     let file_name = vocab_file
@@ -683,11 +691,12 @@ fn import_vocabulary_file(
     let mut words_count = 0;
     let mut associations_count = 0;
 
-    conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
+    horme::transaction(conn, async |conn| {
         let dictionary_id: Option<i64> = dict_dictionaries::table
             .select(dict_dictionaries::id)
             .filter(dict_dictionaries::name_en.eq(dictionary_name))
             .first(conn)
+            .await
             .optional()?;
 
         let dictionary_id = match dictionary_id {
@@ -704,7 +713,8 @@ fn import_vocabulary_file(
                         dict_dictionaries::priority_order.eq(1),
                     ))
                     .returning(dict_dictionaries::id)
-                    .get_result(conn)?;
+                    .get_result(conn)
+                    .await?;
                 id
             }
         };
@@ -715,6 +725,7 @@ fn import_vocabulary_file(
                 .select(dict_words::id)
                 .filter(dict_words::word_lower.eq(&word_lower))
                 .first(conn)
+                .await
                 .optional()?;
 
             if let Some(word_id) = word_id {
@@ -723,6 +734,7 @@ fn import_vocabulary_file(
                     .filter(dict_word_dictionaries::word_id.eq(word_id))
                     .filter(dict_word_dictionaries::dictionary_id.eq(dictionary_id))
                     .first(conn)
+                    .await
                     .optional()?;
 
                 if existing.is_none() {
@@ -731,14 +743,16 @@ fn import_vocabulary_file(
                             dict_word_dictionaries::word_id.eq(word_id),
                             dict_word_dictionaries::dictionary_id.eq(dictionary_id),
                         ))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
                     associations_count += 1;
                 }
             }
             words_count += 1;
         }
-        Ok(())
-    })?;
+        Ok::<_, Box<dyn std::error::Error + Send + Sync>>(())
+    })
+    .await?;
 
     Ok(VocabImportStats {
         words: words_count,

@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! filter_for_steward {
     ($fragments:expr, $user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::schema::*;
         use $edb as edb;
         if $user.in_kernel {
@@ -56,7 +56,7 @@ macro_rules! filter_for_steward {
 #[macro_export]
 macro_rules! filter_for_role {
     ($fragments:expr, $user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use std::collections::HashSet;
         use $crate::models::*;
         use $crate::schema::*;
@@ -67,7 +67,7 @@ macro_rules! filter_for_role {
             .filter(permissions::entity.eq($entity))
             .filter(permissions::action.eq($action))
             .filter(permissions::role_id.eq_any(role_ids_query))
-            .get_results::<Permission>($conn)?;
+            .get_results::<Permission>($conn).await?;
         let record_ids = permissions
             .iter()
             .filter_map(|p| {
@@ -166,7 +166,7 @@ macro_rules! filter_for_role {
 #[macro_export]
 macro_rules! kernel_entity_filter_for_role {
     ($fragments:expr, $user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::models::*;
         use $crate::schema::*;
         use $edb as edb;
@@ -177,7 +177,7 @@ macro_rules! kernel_entity_filter_for_role {
                 .filter(permissions::entity.eq($entity))
                 .filter(permissions::action.eq($action))
                 .filter(permissions::role_id.eq_any(role_ids_query))
-                .get_results::<Permission>($conn)?;
+                .get_results::<Permission>($conn).await?;
 
             let all_allowed = permissions
                 .iter()
@@ -207,7 +207,7 @@ macro_rules! kernel_entity_filter_for_role {
 #[macro_export]
 macro_rules! filter_for_realm_owner {
     ($fragments:expr, $user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::schema::*;
         use $edb as edb;
 
@@ -217,7 +217,7 @@ macro_rules! filter_for_realm_owner {
                 .filter(realm_users::user_id.eq($user.id))
                 .filter(realm_users::realm_id.eq($crate::kernel_realm_id()))
                 .filter(realm_users::is_root.eq(true));
-            if diesel_exists!(query, $conn) {
+            if diesel_exists!(query, $conn).await {
                 if scopes.contains("*") || scopes.contains("kernel") {
                     let query = edb::realm_id.eq($crate::kernel_realm_id());
                     $fragments.push(Box::new(query));
@@ -240,7 +240,7 @@ macro_rules! filter_for_realm_owner {
                     ),
                 )
                 .select(realms::id)
-                .get_results::<i64>($conn)?;
+                .get_results::<i64>($conn).await?;
             if !realm_ids.is_empty() {
                 if scopes.contains("*") {
                     let query = edb::realm_id.eq_any(realm_ids);
@@ -264,7 +264,7 @@ macro_rules! filter_for_realm_owner {
                     ),
                 )
                 .select(realms::id)
-                .get_results::<i64>($conn)?;
+                .get_results::<i64>($conn).await?;
             if !realm_ids.is_empty() {
                 if scopes.contains("*") {
                     let query = edb::realm_id.eq_any(realm_ids);
@@ -281,7 +281,7 @@ macro_rules! filter_for_realm_owner {
 #[macro_export]
 macro_rules! any_permitted_for_kernel_entity {
     ($user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::schema::*;
         use $edb as edb;
 
@@ -291,7 +291,7 @@ macro_rules! any_permitted_for_kernel_entity {
                 .filter(role_users::realm_id.eq($crate::kernel_realm_id()))
                 .filter(role_users::user_id.eq($user.id))
                 .select(role_users::role_id)
-                .get_results::<i64>($conn)?;
+                .get_results::<i64>($conn).await?;
             if !role_ids.is_empty() {
                 let query = permissions::table
                     .filter(
@@ -305,7 +305,7 @@ macro_rules! any_permitted_for_kernel_entity {
                     .filter(permissions::entity.eq($entity))
                     .filter(permissions::action.eq($action))
                     .filter(permissions::role_id.eq_any(&role_ids));
-                permitted = diesel_exists!(query, $conn);
+                permitted = diesel_exists!(query, $conn).await;
             }
 
             if !permitted {
@@ -315,13 +315,13 @@ macro_rules! any_permitted_for_kernel_entity {
                     .filter(permissions::action.eq($action))
                     .filter(permissions::role_id.eq_any(&role_ids))
                     .select(permissions::filter_int_value)
-                    .get_results::<Option<i64>>($conn)?
+                    .get_results::<Option<i64>>($conn).await?
                     .into_iter()
                     .filter_map(|id| id)
                     .collect::<Vec<_>>();
                 if !record_ids.is_empty() {
                     let query = edb::table.filter(edb::id.eq_any(&record_ids));
-                    permitted = diesel_exists!(query, $conn);
+                    permitted = diesel_exists!(query, $conn).await;
                 }
             }
         }
@@ -332,7 +332,7 @@ macro_rules! any_permitted_for_kernel_entity {
 #[macro_export]
 macro_rules! any_permitted_in_realm {
     ($user:expr, $realm:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::schema::*;
         use $edb as edb;
 
@@ -348,14 +348,14 @@ macro_rules! any_permitted_in_realm {
                     .filter(realm_users::realm_id.eq($realm.id))
                     .filter(realm_users::user_id.eq($user.id))
                     .filter(realm_users::is_root.eq(true));
-                permitted = diesel_exists!(query, $conn);
+                permitted = diesel_exists!(query, $conn).await;
             }
             if !permitted {
                 let role_ids = role_users::table
                     .filter(role_users::realm_id.eq_any(vec![$realm.id, $crate::kernel_realm_id()]))
                     .filter(role_users::user_id.eq($user.id))
                     .select(role_users::role_id)
-                    .get_results::<i64>($conn)?;
+                    .get_results::<i64>($conn).await?;
                 if !role_ids.is_empty() {
                     let query = permissions::table
                         .filter(
@@ -367,7 +367,7 @@ macro_rules! any_permitted_in_realm {
                         .filter(permissions::entity.eq($entity))
                         .filter(permissions::action.eq($action))
                         .filter(permissions::role_id.eq_any(&role_ids));
-                    permitted = diesel_exists!(query, $conn);
+                    permitted = diesel_exists!(query, $conn).await;
                 }
                 //TODO: global, campaign...
                 if !permitted {
@@ -377,13 +377,13 @@ macro_rules! any_permitted_in_realm {
                         .filter(permissions::action.eq($action))
                         .filter(permissions::role_id.eq_any(&role_ids))
                         .select(permissions::filter_int_value)
-                        .get_results::<Option<i64>>($conn)?
+                        .get_results::<Option<i64>>($conn).await?
                         .into_iter()
                         .filter_map(|id| id)
                         .collect::<Vec<_>>();
                     if !record_ids.is_empty() {
                         let query = edb::table.filter(edb::realm_id.eq($realm.id)).filter(edb::id.eq_any(&record_ids));
-                        permitted = diesel_exists!(query, $conn);
+                        permitted = diesel_exists!(query, $conn).await;
                     }
                 }
             }
@@ -395,7 +395,7 @@ macro_rules! any_permitted_in_realm {
 #[macro_export]
 macro_rules! all_permitted_in_realm {
     ($user:expr, $realm:expr, $entity:expr, $action:expr, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::schema::*;
 
         if $crate::permission::allowed_scopes($user, &$realm.kind, $entity, $action)?.is_empty() {
@@ -413,7 +413,7 @@ macro_rules! all_permitted_in_realm {
                     .filter(realm_users::realm_id.eq($realm.id))
                     .filter(realm_users::user_id.eq($user.id))
                     .filter(realm_users::is_root.eq(true));
-                permitted = diesel_exists!(query, $conn);
+                permitted = diesel_exists!(query, $conn).await;
             }
             if !permitted {
                 let query = role_users::table.filter(role_users::user_id.eq($user.id)).filter(
@@ -432,7 +432,7 @@ macro_rules! all_permitted_in_realm {
                             .select(permissions::role_id),
                     ),
                 );
-                permitted = diesel_exists!(query, $conn);
+                permitted = diesel_exists!(query, $conn).await;
             }
             Ok(permitted)
         }
@@ -442,7 +442,7 @@ macro_rules! all_permitted_in_realm {
 #[macro_export]
 macro_rules! all_permitted_in_kernel {
     ($user:expr, $entity:expr, $action:expr, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::schema::*;
         if !$user.in_kernel {
             return Ok(false);
@@ -454,7 +454,7 @@ macro_rules! all_permitted_in_kernel {
             .filter(realm_users::is_root.eq(true))
             .filter(realm_users::user_id.eq($user.id))
             .filter(realm_users::realm_id.eq($crate::kernel_realm_id()));
-        if diesel_exists!(query, $conn) {
+        if diesel_exists!(query, $conn).await {
             return Ok(true);
         }
         let query = role_users::table.filter(role_users::user_id.eq($user.id)).filter(
@@ -466,7 +466,7 @@ macro_rules! all_permitted_in_kernel {
                     .select(permissions::role_id),
             ),
         );
-        Ok(diesel_exists!(query, $conn))
+        Ok(diesel_exists!(query, $conn).await)
     }};
 }
 
@@ -495,7 +495,7 @@ macro_rules! permit_filter {
 #[macro_export]
 macro_rules! kernel_entity_permit_filter {
     ($user:expr, $model:ty, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $crate::db::PermitFilter;
         use $crate::schema::*;
         use $edb as edb;
@@ -507,7 +507,7 @@ macro_rules! kernel_entity_permit_filter {
             .filter(realm_users::is_root.eq(true))
             .filter(realm_users::user_id.eq($user.id))
             .filter(realm_users::realm_id.eq($crate::kernel_realm_id()));
-        if diesel_exists!(query, $conn) {
+        if diesel_exists!(query, $conn).await {
             return Ok(PermitFilter::Allowed);
         }
 
@@ -525,21 +525,22 @@ macro_rules! kernel_entity_permit_filter {
 #[macro_export]
 macro_rules! record_permitted {
     ($record:expr, $user:expr, $action:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $edb as edb;
         if $user.is_root {
             return Ok(true);
         }
-        let query = edb::table.permit($user, $action, $conn)?.filter(edb::id.eq($record.id)).select(edb::id);
+        let query = edb::table.permit($user, $action, $conn).await?.filter(edb::id.eq($record.id)).select(edb::id);
         // print_query!(&query);
-        Ok(diesel_exists!(query, $conn))
+        Ok(diesel_exists!(query, $conn).await)
     }};
 }
 #[macro_export]
 macro_rules! entity_accessible {
     ($model:ty, $edb:path) => {
+        #[async_trait::async_trait]
         impl $crate::permission::Accessible for $model {
-            fn permitted(&self, user: &$crate::models::User, action: &str, conn: &mut diesel::pg::PgConnection) -> $crate::AppResult<bool> {
+            async fn permitted(&self, user: &$crate::models::User, action: &str, conn: &mut horme::diesel_async::AsyncPgConnection) -> $crate::AppResult<bool> {
                 record_permitted!(self, user, action, $edb, conn)
             }
         }
@@ -549,8 +550,9 @@ macro_rules! entity_accessible {
 #[macro_export]
 macro_rules! owner_entity_accessible {
     ($model:ty) => {
+        #[async_trait::async_trait]
         impl $crate::permission::Accessible for $model {
-            fn permitted(&self, user: &$crate::models::User, _action: &str, _conn: &mut diesel::pg::PgConnection) -> $crate::AppResult<bool> {
+            async fn permitted(&self, user: &$crate::models::User, _action: &str, _conn: &mut horme::diesel_async::AsyncPgConnection) -> $crate::AppResult<bool> {
                 Ok(self.owner_id == user.id)
             }
         }
@@ -560,18 +562,18 @@ macro_rules! owner_entity_accessible {
 #[macro_export]
 macro_rules! in_realm_entity_impl {
     ($model:ty, $table:ty, $edb:path, $entity:expr) => {
-        pub fn all_permitted_in_realm(
+        pub async fn all_permitted_in_realm(
             user: &$crate::models::User,
             realm: &$crate::models::Realm,
             action: &str,
-            conn: &mut diesel::pg::PgConnection,
+            conn: &mut horme::diesel_async::AsyncPgConnection,
         ) -> $crate::AppResult<bool> {
             all_permitted_in_realm!(user, realm, $entity, action, conn)
         }
-        pub fn permit_filter(
+        pub async fn permit_filter(
             user: &$crate::models::User,
             action: &str,
-            conn: &mut diesel::pg::PgConnection,
+            conn: &mut horme::diesel_async::AsyncPgConnection,
         ) -> $crate::AppResult<$crate::db::PermitFilter> {
             permit_filter!(user, $model, $entity, action, $edb, conn)
         }
@@ -581,13 +583,13 @@ macro_rules! in_realm_entity_impl {
 #[macro_export]
 macro_rules! kernel_entity_impl {
     ($model:ty, $table:ty, $edb:path, $entity:expr) => {
-        pub fn all_permitted_in_kernel(user: &$crate::models::User, action: &str, conn: &mut diesel::pg::PgConnection) -> $crate::AppResult<bool> {
+        pub async fn all_permitted_in_kernel(user: &$crate::models::User, action: &str, conn: &mut horme::diesel_async::AsyncPgConnection) -> $crate::AppResult<bool> {
             all_permitted_in_kernel!(user, $entity, action, conn)
         }
-        pub fn permit_filter(
+        pub async fn permit_filter(
             user: &$crate::models::User,
             action: &str,
-            conn: &mut diesel::pg::PgConnection,
+            conn: &mut horme::diesel_async::AsyncPgConnection,
         ) -> $crate::AppResult<$crate::db::PermitFilter> {
             kernel_entity_permit_filter!(user, $model, $entity, action, $edb, conn)
         }
@@ -598,14 +600,14 @@ macro_rules! kernel_entity_impl {
 macro_rules! table_permit {
     ($table:ty) => {
         impl $table {
-            pub fn permit(
+            pub async fn permit(
                 self,
                 user: &$crate::models::User,
                 action: &str,
-                conn: &mut diesel::pg::PgConnection,
+                conn: &mut horme::diesel_async::AsyncPgConnection,
             ) -> $crate::AppResult<diesel::helper_types::Filter<Self, $crate::db::PermitFilter>> {
-                use diesel::prelude::*;
-                let filter = permit_filter(user, action, conn)?;
+                use horme::prelude::*;
+                let filter = permit_filter(user, action, conn).await?;
                 Ok(self.filter(filter))
             }
         }
@@ -633,7 +635,7 @@ macro_rules! kernel_entity_impls {
 macro_rules! require_all_permitted_in_kernel {
     ($res:expr, $user:expr, $action:expr, $pimp:path, $conn:expr) => {{
         use $pimp as pimp;
-        if !pimp::all_permitted_in_kernel($user, $action, $conn)? {
+        if !pimp::all_permitted_in_kernel($user, $action, $conn).await? {
             return Err(salvo::http::StatusError::forbidden().into());
         }
     }};
@@ -643,7 +645,7 @@ macro_rules! require_all_permitted_in_kernel {
 macro_rules! require_all_permitted_in_realm {
     ($res:expr, $user:expr, $realm:expr, $action:expr, $pimp:path, $conn:expr) => {{
         use $pimp as pimp;
-        if !pimp::all_permitted_in_realm($user, $realm, $action, $conn)? {
+        if !pimp::all_permitted_in_realm($user, $realm, $action, $conn).await? {
             return Err(salvo::http::StatusError::forbidden().into());
         }
     }};
@@ -661,14 +663,14 @@ macro_rules! require_all_permitted_in_campaign {
 #[macro_export]
 macro_rules! filter_entity_record_ids {
     ($user:expr, $action:expr, $record_ids:expr, $edb:path, $conn:expr) => {{
-        use diesel::prelude::*;
+        use horme::prelude::*;
         use $edb as edb;
         // print_query!(&edb::table.permit($user, $action)?.filter(edb::id.eq_any($record_ids)).select(edb::id));
         edb::table
-            .permit($user, $action, $conn)?
+            .permit($user, $action, $conn).await?
             .filter(edb::id.eq_any($record_ids))
             .select(edb::id)
-            .get_results::<i64>($conn)?
+            .get_results::<i64>($conn).await?
     }};
 }
 #[macro_export]

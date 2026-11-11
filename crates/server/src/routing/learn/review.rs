@@ -1,5 +1,5 @@
 use chrono::{Duration, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -84,7 +84,7 @@ pub async fn get_review_items(
 
     let now = Utc::now();
 
-    let items: Vec<ReviewItem> = with_conn(move |conn| {
+    let items: Vec<ReviewItem> = with_conn!(move |conn| {
         let mut result = Vec::new();
 
         match review_type.as_str() {
@@ -100,7 +100,8 @@ pub async fn get_review_items(
                     )
                     .order(learn_issue_words::next_review_at.asc().nulls_first())
                     .limit(limit)
-                    .load::<IssueWord>(conn)?;
+                    .load::<IssueWord>(conn)
+                    .await?;
 
                 for iw in issue_words {
                     result.push(ReviewItem {
@@ -129,7 +130,7 @@ pub async fn get_review_items(
                     .filter(learn_vocabularies::mastery_level.lt(4)) // Not mastered
                     .order(learn_vocabularies::next_review_at.asc().nulls_first())
                     .limit(limit)
-                    .load::<UserVocabulary>(conn)?;
+                    .load::<UserVocabulary>(conn).await?;
 
                 for v in vocabs {
                     result.push(ReviewItem {
@@ -158,7 +159,8 @@ pub async fn get_review_items(
                     )
                     .order(learn_issue_words::next_review_at.asc().nulls_first())
                     .limit(limit)
-                    .load::<IssueWord>(conn)?;
+                    .load::<IssueWord>(conn)
+                    .await?;
 
                 for iw in issue_words {
                     result.push(ReviewItem {
@@ -190,7 +192,8 @@ pub async fn get_review_items(
                     )
                     .order(learn_issue_words::next_review_at.asc().nulls_first())
                     .limit(items_per_type)
-                    .load::<IssueWord>(conn)?;
+                    .load::<IssueWord>(conn)
+                    .await?;
 
                 for iw in pronunciation_issues {
                     result.push(ReviewItem {
@@ -218,7 +221,8 @@ pub async fn get_review_items(
                     )
                     .order(learn_issue_words::next_review_at.asc().nulls_first())
                     .limit(items_per_type)
-                    .load::<IssueWord>(conn)?;
+                    .load::<IssueWord>(conn)
+                    .await?;
 
                 for iw in phrase_issues {
                     result.push(ReviewItem {
@@ -247,7 +251,8 @@ pub async fn get_review_items(
                     .filter(learn_vocabularies::mastery_level.lt(4))
                     .order(learn_vocabularies::next_review_at.asc().nulls_first())
                     .limit(remaining_slots as i64)
-                    .load::<UserVocabulary>(conn)?;
+                    .load::<UserVocabulary>(conn)
+                    .await?;
 
                 // Rotate through review types for vocabulary
                 let vocab_types = ["meaning", "spelling", "recognition"];
@@ -269,7 +274,7 @@ pub async fn get_review_items(
             }
         }
 
-        Ok::<_, diesel::result::Error>(result)
+        Ok::<_, horme::Error>(result)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to get review items"))?;
@@ -285,7 +290,7 @@ pub async fn get_review_stats(depot: &mut Depot) -> JsonResult<ReviewStats> {
     let user_id = depot.user_id()?;
     let now = Utc::now();
 
-    let stats = with_conn(move |conn| {
+    let stats = with_conn!(move |conn| {
         // Count pronunciation issues
         let pronunciation: i64 = learn_issue_words::table
             .filter(learn_issue_words::user_id.eq(user_id))
@@ -296,7 +301,8 @@ pub async fn get_review_stats(depot: &mut Depot) -> JsonResult<ReviewStats> {
                     .or(learn_issue_words::next_review_at.le(now)),
             )
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // Count phrase (usage) issues
         let phrase: i64 = learn_issue_words::table
@@ -308,7 +314,8 @@ pub async fn get_review_stats(depot: &mut Depot) -> JsonResult<ReviewStats> {
                     .or(learn_issue_words::next_review_at.le(now)),
             )
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // Count vocabulary due for review (not mastered)
         let vocab_due: i64 = learn_vocabularies::table
@@ -320,13 +327,14 @@ pub async fn get_review_stats(depot: &mut Depot) -> JsonResult<ReviewStats> {
             )
             .filter(learn_vocabularies::mastery_level.lt(4))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // Distribute vocab count across meaning, spelling, recognition
         let per_type = vocab_due / 3;
         let remainder = vocab_due % 3;
 
-        Ok::<_, diesel::result::Error>(ReviewStats {
+        Ok::<_, horme::Error>(ReviewStats {
             pronunciation,
             meaning: per_type + if remainder > 0 { 1 } else { 0 },
             spelling: per_type + if remainder > 1 { 1 } else { 0 },
@@ -386,7 +394,7 @@ pub async fn submit_review(
         "incorrect" | _ => -1,
     };
 
-    let response = with_conn(move |conn| {
+    let response = with_conn!(move |conn| {
         match input.source.as_str() {
             "vocabulary" => {
                 // Update vocabulary
@@ -394,6 +402,7 @@ pub async fn submit_review(
                     .filter(learn_vocabularies::id.eq(input.source_id))
                     .filter(learn_vocabularies::user_id.eq(user_id))
                     .first::<UserVocabulary>(conn)
+                    .await
                     .optional()?;
 
                 if let Some(v) = vocab {
@@ -411,9 +420,10 @@ pub async fn submit_review(
                             learn_vocabularies::last_practiced_at.eq(now),
                             learn_vocabularies::next_review_at.eq(next_review_at),
                         ))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
-                    Ok::<_, diesel::result::Error>(SubmitReviewResponse {
+                    Ok::<_, horme::Error>(SubmitReviewResponse {
                         success: true,
                         new_mastery_level: Some(new_mastery),
                         next_review_at: next_review_at.map(|t| t.to_rfc3339()),
@@ -432,6 +442,7 @@ pub async fn submit_review(
                     .filter(learn_issue_words::id.eq(input.source_id))
                     .filter(learn_issue_words::user_id.eq(user_id))
                     .first::<IssueWord>(conn)
+                    .await
                     .optional()?;
 
                 if let Some(iw) = issue {
@@ -447,7 +458,8 @@ pub async fn submit_review(
                             learn_issue_words::next_review_at.eq(next_review_at),
                             learn_issue_words::review_interval_days.eq(interval_days as i32),
                         ))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     Ok(SubmitReviewResponse {
                         success: true,

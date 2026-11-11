@@ -1,4 +1,5 @@
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -25,11 +26,11 @@ pub async fn has_partial_permissions(
 ) -> JsonResult<Vec<HasPartialPermissionsItem>> {
     let mut pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
     let realm_ids = pdata
@@ -40,7 +41,7 @@ pub async fn has_partial_permissions(
         .collect::<Vec<i64>>();
     let realms = realms::table
         .filter(realms::id.eq_any(&realm_ids))
-        .get_results::<Realm>(conn)?
+        .get_results::<Realm>(conn).await?
         .into_iter()
         .map(|realm| (realm.id, realm))
         .collect::<HashMap<i64, Realm>>();
@@ -77,11 +78,11 @@ pub async fn has_record_permissions(
 ) -> JsonResult<Vec<HasRecordPermissionsOkItem>> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
     let mut responsed_data = vec![];

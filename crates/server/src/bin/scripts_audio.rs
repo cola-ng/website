@@ -9,8 +9,9 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::time::Instant;
 
-use colang::db::pool::DieselPool;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
+use std::result::Result;
 
 const DEFAULT_OUTPUT_DIR: &str = r"D:\Works\cola-ng\space\script_turns";
 
@@ -31,7 +32,7 @@ struct Stats {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -118,16 +119,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to database
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = DieselPool::new(
-        &database_url,
-        &Default::default(),
-        diesel::r2d2::Pool::builder(),
-    )?;
-    let mut conn = pool.get()?;
+    let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
     // Load script turns
     println!("Loading script turns from database...");
-    let turns = load_script_turns(&mut conn, script_id_filter, force, limit)?;
+    let turns = load_script_turns(&mut conn, script_id_filter, force, limit).await?;
     println!("Found {} turns to process", turns.len());
 
     if turns.is_empty() {
@@ -187,7 +183,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 // Update database if audio_path is not set
                 if turn.audio_path.is_none() {
-                    if let Err(e) = update_audio_path(&mut conn, turn.id, &relative_path) {
+                    if let Err(e) = update_audio_path(&mut conn, turn.id, &relative_path).await {
                         eprintln!("  Error updating database for turn {}: {}", turn.id, e);
                     }
                 }
@@ -267,7 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 // Update database
-                if let Err(e) = update_audio_path(&mut conn, turn.id, &relative_path) {
+                if let Err(e) = update_audio_path(&mut conn, turn.id, &relative_path).await {
                     eprintln!("  Error updating database for turn {}: {}", turn.id, e);
                     stats.errors += 1;
                     continue;
@@ -301,12 +297,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_script_turns(
-    conn: &mut PgConnection,
+async fn load_script_turns(
+    conn: &mut AsyncPgConnection,
     script_id_filter: Option<i64>,
     _force: bool,
     limit: Option<usize>,
-) -> Result<Vec<ScriptTurn>, Box<dyn std::error::Error>> {
+) -> Result<Vec<ScriptTurn>, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::asset_script_turns;
 
     let mut query = asset_script_turns::table
@@ -336,20 +332,21 @@ fn load_script_turns(
         query = query.limit(l as i64);
     }
 
-    let turns = query.load::<ScriptTurn>(conn)?;
+    let turns = query.load::<ScriptTurn>(conn).await?;
     Ok(turns)
 }
 
-fn update_audio_path(
-    conn: &mut PgConnection,
+async fn update_audio_path(
+    conn: &mut AsyncPgConnection,
     turn_id: i64,
     audio_path: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::asset_script_turns;
 
     diesel::update(asset_script_turns::table.find(turn_id))
         .set(asset_script_turns::audio_path.eq(audio_path))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
     Ok(())
 }

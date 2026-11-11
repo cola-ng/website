@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use crate::AppResult;
 use crate::db::connect;
@@ -25,26 +26,26 @@ pub struct NewUserExternalId {
 }
 
 /// Get user_id by external auth provider and external_id
-pub fn get_user_by_external_id(auth_provider: &str, external_id: &str) -> AppResult<Option<i64>> {
+pub async fn get_user_by_external_id(auth_provider: &str, external_id: &str) -> AppResult<Option<i64>> {
     user_external_ids::table
         .filter(user_external_ids::auth_provider.eq(auth_provider))
         .filter(user_external_ids::external_id.eq(external_id))
         .select(user_external_ids::user_id)
-        .first::<i64>(&mut conn()?)
+        .first::<i64>(&mut conn().await?).await
         .optional()
         .map_err(Into::into)
 }
 
 /// Get all external IDs for a user
-pub fn get_external_ids_by_user(user_id: i64) -> AppResult<Vec<UserExternalId>> {
+pub async fn get_external_ids_by_user(user_id: i64) -> AppResult<Vec<UserExternalId>> {
     user_external_ids::table
         .filter(user_external_ids::user_id.eq(user_id))
-        .load::<UserExternalId>(&mut conn()?)
+        .load::<UserExternalId>(&mut conn().await?).await
         .map_err(Into::into)
 }
 
 /// Record a new external ID for a user
-pub fn record_external_id(auth_provider: &str, external_id: &str, user_id: i64) -> AppResult<()> {
+pub async fn record_external_id(auth_provider: &str, external_id: &str, user_id: i64) -> AppResult<()> {
     diesel::insert_into(user_external_ids::table)
         .values(NewUserExternalId {
             auth_provider: auth_provider.to_owned(),
@@ -52,20 +53,20 @@ pub fn record_external_id(auth_provider: &str, external_id: &str, user_id: i64) 
             user_id: user_id.to_owned(),
             created_at: Utc::now(),
         })
-        .execute(&mut conn()?)?;
+        .execute(&mut conn().await?).await?;
     Ok(())
 }
 
 /// Replace all external IDs for a user
-pub fn replace_external_ids(
+pub async fn replace_external_ids(
     user_id: i64,
     new_external_ids: &[(String, String)], // (auth_provider, external_id)
 ) -> AppResult<()> {
-    let mut conn = conn()?;
+    let mut conn = conn().await?;
 
     // Delete existing external IDs for this user
     diesel::delete(user_external_ids::table.filter(user_external_ids::user_id.eq(user_id)))
-        .execute(&mut conn)?;
+        .execute(&mut conn).await?;
 
     // Insert new external IDs
     let now = Utc::now();
@@ -77,19 +78,19 @@ pub fn replace_external_ids(
                 user_id: user_id.to_owned(),
                 created_at: now,
             })
-            .execute(&mut conn)?;
+            .execute(&mut conn).await?;
     }
 
     Ok(())
 }
 
 /// Delete a specific external ID
-pub fn delete_external_id(auth_provider: &str, external_id: &str) -> AppResult<()> {
+pub async fn delete_external_id(auth_provider: &str, external_id: &str) -> AppResult<()> {
     diesel::delete(
         user_external_ids::table
             .filter(user_external_ids::auth_provider.eq(auth_provider))
             .filter(user_external_ids::external_id.eq(external_id)),
     )
-    .execute(&mut conn()?)?;
+    .execute(&mut conn().await?).await?;
     Ok(())
 }

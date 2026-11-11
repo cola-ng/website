@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Serialize;
 
@@ -22,9 +22,10 @@ pub struct ResetAllResponse {
 pub async fn reset_issue_words(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(learn_issue_words::table.filter(learn_issue_words::user_id.eq(user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset issue words"))?;
@@ -40,8 +41,10 @@ pub async fn reset_issue_words(depot: &mut Depot, res: &mut Response) -> AppResu
 pub async fn reset_chats(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
-        diesel::delete(learn_chats::table.filter(learn_chats::user_id.eq(user_id))).execute(conn)
+    let deleted_count = with_conn!(move |conn| {
+        diesel::delete(learn_chats::table.filter(learn_chats::user_id.eq(user_id)))
+            .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset chats"))?;
@@ -57,11 +60,12 @@ pub async fn reset_chats(depot: &mut Depot, res: &mut Response) -> AppResult<()>
 pub async fn reset_write_practices(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(
             learn_write_practices::table.filter(learn_write_practices::user_id.eq(user_id)),
         )
         .execute(conn)
+        .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset write practices"))?;
@@ -77,11 +81,12 @@ pub async fn reset_write_practices(depot: &mut Depot, res: &mut Response) -> App
 pub async fn reset_read_practices(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(
             learn_read_practices::table.filter(learn_read_practices::user_id.eq(user_id)),
         )
         .execute(conn)
+        .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset read practices"))?;
@@ -97,9 +102,10 @@ pub async fn reset_read_practices(depot: &mut Depot, res: &mut Response) -> AppR
 pub async fn reset_vocabulary(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(learn_vocabularies::table.filter(learn_vocabularies::user_id.eq(user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset vocabulary"))?;
@@ -115,9 +121,10 @@ pub async fn reset_vocabulary(depot: &mut Depot, res: &mut Response) -> AppResul
 pub async fn reset_daily_stats(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(learn_daily_stats::table.filter(learn_daily_stats::user_id.eq(user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset daily stats"))?;
@@ -133,9 +140,10 @@ pub async fn reset_daily_stats(depot: &mut Depot, res: &mut Response) -> AppResu
 pub async fn reset_achievements(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(learn_achievements::table.filter(learn_achievements::user_id.eq(user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset achievements"))?;
@@ -151,9 +159,10 @@ pub async fn reset_achievements(depot: &mut Depot, res: &mut Response) -> AppRes
 pub async fn reset_suggestions(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let deleted_count = with_conn(move |conn| {
+    let deleted_count = with_conn!(move |conn| {
         diesel::delete(learn_suggestions::table.filter(learn_suggestions::user_id.eq(user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset suggestions"))?;

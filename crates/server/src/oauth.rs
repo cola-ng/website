@@ -260,7 +260,7 @@ pub async fn get_me(access_token: &str, platform: &str) -> AppResult<OauthMe> {
     }
 }
 #[allow(clippy::too_many_arguments)]
-pub fn upsert_oauth_user(
+pub async fn upsert_oauth_user(
     user_id: Option<i64>,
     platform: &str,
     me: &OauthMe,
@@ -269,7 +269,7 @@ pub fn upsert_oauth_user(
     expires_at: DateTime<Utc>,
     refresh_token: Option<&str>,
     shopify_shop: Option<&str>,
-    conn: &mut PgConnection,
+    conn: &mut horme::diesel_async::AsyncPgConnection,
 ) -> Result<OauthUser, diesel::result::Error> {
     let ouser = NewOauthUser {
         user_id,
@@ -290,5 +290,5 @@ pub fn upsert_oauth_user(
         .on_conflict((oauth_users::me_id, oauth_users::platform))
         .do_update()
         .set(&ouser)
-        .get_result(conn)
+        .get_result(conn).await
 }

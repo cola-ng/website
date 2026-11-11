@@ -1,6 +1,7 @@
 use std::fs::create_dir_all;
 
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::http::form::FilePart;
 
 use crate::models::*;
@@ -33,10 +34,10 @@ pub async fn upload(user_id: i64, file: &FilePart) -> AppResult<User> {
             tracing::error!(store_dir =  %store_dir, error = ?e, "move avatar to s3 error");
         }
     }
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = diesel::update(users::table.find(user_id))
         .set(users::avatar.eq(&*uuid_name))
-        .get_result::<User>(conn)?;
+        .get_result::<User>(conn).await?;
 
     Ok(user)
 }

@@ -1,6 +1,6 @@
 use chrono::Datelike;
 use diesel::dsl::count;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
@@ -87,18 +87,21 @@ pub struct DashboardStats {
 /// Get admin dashboard statistics
 #[endpoint(tags("Admin"))]
 pub async fn dashboard_stats() -> JsonResult<DashboardStats> {
-    let stats = with_conn(move |conn| {
+    let stats = with_conn!(move |conn| {
         let total_users: i64 = base_users::table
             .select(count(base_users::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         let total_admins: i64 = base_admins::table
             .select(count(base_admins::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         let total_words: i64 = dict_words::table
             .select(count(dict_words::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         let today = chrono::Utc::now().date_naive();
         let users_today: i64 = base_users::table
@@ -107,9 +110,10 @@ pub async fn dashboard_stats() -> JsonResult<DashboardStats> {
                 today
             )))
             .select(count(base_users::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>(DashboardStats {
+        Ok::<_, horme::Error>(DashboardStats {
             total_users,
             total_admins,
             total_words,
@@ -165,7 +169,7 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
     let offset = (page - 1) * per_page;
     let search = query.search.clone();
 
-    let (users, total) = with_conn(move |conn| {
+    let (users, total) = with_conn!(move |conn| {
         // Count query
         let total: i64 = if let Some(ref search_term) = search {
             let pattern = format!("%{}%", search_term.to_lowercase());
@@ -177,11 +181,13 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
                         .or(base_users::handle.ilike(&pattern)),
                 )
                 .select(count(base_users::id))
-                .first(conn)?
+                .first(conn)
+                .await?
         } else {
             base_users::table
                 .select(count(base_users::id))
-                .first(conn)?
+                .first(conn)
+                .await?
         };
 
         // Data query
@@ -197,13 +203,15 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
                 .order(base_users::created_at.desc())
                 .offset(offset)
                 .limit(per_page)
-                .load(conn)?
+                .load(conn)
+                .await?
         } else {
             base_users::table
                 .order(base_users::created_at.desc())
                 .offset(offset)
                 .limit(per_page)
-                .load(conn)?
+                .load(conn)
+                .await?
         };
 
         // Get admin status for these users
@@ -211,7 +219,8 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
         let admin_user_ids: Vec<i64> = base_admins::table
             .filter(base_admins::user_id.eq_any(&user_ids))
             .select(base_admins::user_id)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         let user_items: Vec<UserListItem> = users
             .into_iter()
@@ -226,7 +235,7 @@ pub async fn list_users(req: &mut Request) -> JsonResult<UserListResponse> {
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>((user_items, total))
+        Ok::<_, horme::Error>((user_items, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list users"))?;
@@ -272,14 +281,16 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
         .param::<i64>("user_id")
         .ok_or_else(|| StatusError::bad_request().brief("user_id is required"))?;
 
-    let result = with_conn(move |conn| {
+    let result = with_conn!(move |conn| {
         let user: User = base_users::table
             .filter(base_users::id.eq(user_id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         let admin: Option<Admin> = base_admins::table
             .filter(base_admins::user_id.eq(user_id))
             .first(conn)
+            .await
             .optional()?;
 
         // Get current subscription
@@ -292,12 +303,14 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
             )
             .order(user_subscriptions::created_at.desc())
             .first(conn)
+            .await
             .optional()?;
 
         let subscription_info = if let Some(ref sub) = subscription {
             let plan: SubscriptionPlan = subscription_plans::table
                 .filter(subscription_plans::id.eq(sub.plan_id))
-                .first(conn)?;
+                .first(conn)
+                .await?;
             Some(SubscriptionInfo {
                 subscription: sub.clone(),
                 plan,
@@ -310,6 +323,7 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
         let wallet: Option<WalletAccount> = wallet_accounts::table
             .filter(wallet_accounts::user_id.eq(user_id))
             .first(conn)
+            .await
             .optional()?;
 
         // Get recent payments
@@ -317,16 +331,18 @@ pub async fn get_user(req: &mut Request) -> JsonResult<UserDetailResponse> {
             .filter(payment_orders::user_id.eq(user_id))
             .order(payment_orders::created_at.desc())
             .limit(10)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         // Get recent activities
         let recent_activities: Vec<UserActivity> = user_activities::table
             .filter(user_activities::user_id.eq(user_id))
             .order(user_activities::created_at.desc())
             .limit(50)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>((
+        Ok::<_, horme::Error>((
             user,
             admin,
             subscription_info,
@@ -371,15 +387,17 @@ pub struct AdminListItem {
 /// List all admins
 #[endpoint(tags("Admin"))]
 pub async fn list_admins() -> JsonResult<Vec<AdminListItem>> {
-    let admins = with_conn(move |conn| {
+    let admins = with_conn!(move |conn| {
         let admins: Vec<Admin> = base_admins::table
             .order(base_admins::granted_at.desc())
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         let user_ids: Vec<i64> = admins.iter().map(|a| a.user_id).collect();
         let users: Vec<User> = base_users::table
             .filter(base_users::id.eq_any(&user_ids))
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         let admin_items: Vec<AdminListItem> = admins
             .into_iter()
@@ -397,7 +415,7 @@ pub async fn list_admins() -> JsonResult<Vec<AdminListItem>> {
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>(admin_items)
+        Ok::<_, horme::Error>(admin_items)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list admins"))?;
@@ -423,11 +441,12 @@ pub async fn grant_admin(
     let target_user_id = input.user_id;
     let notes = input.notes.clone();
 
-    let admin = with_conn(move |conn| {
+    let admin = with_conn!(move |conn| {
         // Check if user exists
         let _user: User = base_users::table
             .filter(base_users::id.eq(target_user_id))
             .first(conn)
+            .await
             .map_err(|_| {
                 diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::NotNullViolation,
@@ -439,6 +458,7 @@ pub async fn grant_admin(
         let existing: Option<Admin> = base_admins::table
             .filter(base_admins::user_id.eq(target_user_id))
             .first(conn)
+            .await
             .optional()?;
 
         if let Some(admin) = existing {
@@ -455,6 +475,7 @@ pub async fn grant_admin(
         diesel::insert_into(base_admins::table)
             .values(&new_admin)
             .get_result::<Admin>(conn)
+            .await
     })
     .await
     .map_err(|e| {
@@ -490,9 +511,10 @@ pub async fn revoke_admin(
             .into());
     }
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::delete(base_admins::table.filter(base_admins::user_id.eq(target_user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to revoke admin"))?;
@@ -526,7 +548,7 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
     let query: UserStatsQuery = req.parse_queries().unwrap_or(UserStatsQuery { days: None });
     let days = query.days.unwrap_or(30).clamp(1, 365);
 
-    let stats = with_conn(move |conn| {
+    let stats = with_conn!(move |conn| {
         // Get daily registration counts for the last N days
         let results: Vec<DailyCount> = diesel::sql_query(format!(
             r#"
@@ -540,7 +562,8 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
             "#,
             days
         ))
-        .load::<DailyCount>(conn)?;
+        .load::<DailyCount>(conn)
+        .await?;
 
         // Get total users before the period
         let start_date = chrono::Utc::now().date_naive() - chrono::Duration::days(days as i64);
@@ -550,7 +573,8 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
                 start_date
             )))
             .select(count(base_users::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         // Build cumulative stats
         let mut cumulative = users_before;
@@ -566,7 +590,7 @@ pub async fn user_stats_daily(req: &mut Request) -> JsonResult<Vec<DailyUserStat
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>(stats)
+        Ok::<_, horme::Error>(stats)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to get user stats"))?;
@@ -619,7 +643,7 @@ pub struct TodayAiUsage {
 /// Get today's AI usage statistics
 #[endpoint(tags("Admin"))]
 pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
-    let stats = with_conn(move |conn| {
+    let stats = with_conn!(move |conn| {
         let today = chrono::Utc::now().date_naive();
 
         // Get totals for today
@@ -635,7 +659,7 @@ pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
             "#,
             today
         ))
-        .get_result::<AiTotals>(conn)?;
+        .get_result::<AiTotals>(conn).await?;
 
         // Get breakdown by service type
         let by_service: Vec<ServiceUsage> = diesel::sql_query(format!(
@@ -651,7 +675,7 @@ pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
             "#,
             today
         ))
-        .load::<ServiceUsageRow>(conn)?
+        .load::<ServiceUsageRow>(conn).await?
         .into_iter()
         .map(|r| ServiceUsage {
             service_type: r.service_type,
@@ -674,7 +698,7 @@ pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
             "#,
             today
         ))
-        .load::<HourlyUsageRow>(conn)?
+        .load::<HourlyUsageRow>(conn).await?
         .into_iter()
         .map(|r| HourlyUsage {
             hour: r.hour,
@@ -683,7 +707,7 @@ pub async fn ai_usage_today() -> JsonResult<TodayAiUsage> {
         })
         .collect();
 
-        Ok::<_, diesel::result::Error>(TodayAiUsage {
+        Ok::<_, horme::Error>(TodayAiUsage {
             total_requests: totals.total_requests,
             total_tokens: totals.total_tokens,
             total_asr_seconds: totals.total_asr_seconds,
@@ -753,7 +777,7 @@ pub async fn ai_top_users(req: &mut Request) -> JsonResult<Vec<TopAiUser>> {
     let query: TopUsersQuery = req.parse_queries().unwrap_or(TopUsersQuery { limit: None });
     let limit = query.limit.unwrap_or(10).clamp(1, 50);
 
-    let users = with_conn(move |conn| {
+    let users = with_conn!(move |conn| {
         let today = chrono::Utc::now().date_naive();
 
         // Get top users by token usage
@@ -776,7 +800,8 @@ pub async fn ai_top_users(req: &mut Request) -> JsonResult<Vec<TopAiUser>> {
             "#,
             today, limit
         ))
-        .load::<TopAiUserRow>(conn)?;
+        .load::<TopAiUserRow>(conn)
+        .await?;
 
         let users: Vec<TopAiUser> = top_users
             .into_iter()
@@ -791,7 +816,7 @@ pub async fn ai_top_users(req: &mut Request) -> JsonResult<Vec<TopAiUser>> {
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>(users)
+        Ok::<_, horme::Error>(users)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to get top AI users"))?;
@@ -852,7 +877,7 @@ pub struct OrderStatusCount {
 /// Get financial statistics
 #[endpoint(tags("Admin"))]
 pub async fn finance_stats() -> JsonResult<FinanceStats> {
-    let stats = with_conn(move |conn| {
+    let stats = with_conn!(move |conn| {
         let today = chrono::Utc::now().date_naive();
         let month_start = today.with_day(1).unwrap_or(today);
 
@@ -870,7 +895,7 @@ pub async fn finance_stats() -> JsonResult<FinanceStats> {
             "#,
             today, today, month_start, month_start
         ))
-        .get_result(conn)?;
+        .get_result(conn).await?;
 
         // Orders by status
         let orders_by_status: Vec<OrderStatusCount> = diesel::sql_query(
@@ -881,7 +906,7 @@ pub async fn finance_stats() -> JsonResult<FinanceStats> {
             ORDER BY count DESC
             "#
         )
-        .load::<OrderStatusCountRow>(conn)?
+        .load::<OrderStatusCountRow>(conn).await?
         .into_iter()
         .map(|r| OrderStatusCount {
             status: r.status,
@@ -898,9 +923,9 @@ pub async fn finance_stats() -> JsonResult<FinanceStats> {
             FROM user_subscriptions
             "#
         )
-        .get_result(conn)?;
+        .get_result(conn).await?;
 
-        Ok::<_, diesel::result::Error>(FinanceStats {
+        Ok::<_, horme::Error>(FinanceStats {
             total_revenue_cents: main_stats.total_revenue_cents,
             total_orders: main_stats.total_orders,
             orders_by_status,
@@ -1011,7 +1036,7 @@ pub async fn list_orders(req: &mut Request) -> JsonResult<OrderListResponse> {
     let provider = query.provider.clone();
     let search = query.search.clone();
 
-    let (orders, total) = with_conn(move |conn| {
+    let (orders, total) = with_conn!(move |conn| {
         // Build WHERE conditions
         let mut conditions: Vec<String> = vec!["1=1".to_string()];
 
@@ -1041,7 +1066,8 @@ pub async fn list_orders(req: &mut Request) -> JsonResult<OrderListResponse> {
             "SELECT COUNT(*)::bigint as count FROM payment_orders WHERE {}",
             where_clause
         ))
-        .get_result(conn)?;
+        .get_result(conn)
+        .await?;
 
         let total = count_result.count;
 
@@ -1061,7 +1087,8 @@ pub async fn list_orders(req: &mut Request) -> JsonResult<OrderListResponse> {
             "#,
             where_clause, per_page, offset
         ))
-        .load(conn)?;
+        .load(conn)
+        .await?;
 
         let order_items: Vec<OrderListItem> = rows
             .into_iter()
@@ -1082,7 +1109,7 @@ pub async fn list_orders(req: &mut Request) -> JsonResult<OrderListResponse> {
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>((order_items, total))
+        Ok::<_, horme::Error>((order_items, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list orders"))?;
@@ -1182,7 +1209,7 @@ pub async fn list_subscriptions(req: &mut Request) -> JsonResult<SubscriptionLis
     let status = query.status.clone();
     let search = query.search.clone();
 
-    let (subscriptions, total) = with_conn(move |conn| {
+    let (subscriptions, total) = with_conn!(move |conn| {
         // Build WHERE conditions
         let mut conditions: Vec<String> = vec!["1=1".to_string()];
 
@@ -1210,7 +1237,8 @@ pub async fn list_subscriptions(req: &mut Request) -> JsonResult<SubscriptionLis
             "#,
             where_clause
         ))
-        .get_result(conn)?;
+        .get_result(conn)
+        .await?;
 
         let total = count_result.count;
 
@@ -1231,7 +1259,8 @@ pub async fn list_subscriptions(req: &mut Request) -> JsonResult<SubscriptionLis
             "#,
             where_clause, per_page, offset
         ))
-        .load(conn)?;
+        .load(conn)
+        .await?;
 
         let items: Vec<SubscriptionListItem> = rows
             .into_iter()
@@ -1250,7 +1279,7 @@ pub async fn list_subscriptions(req: &mut Request) -> JsonResult<SubscriptionLis
             })
             .collect();
 
-        Ok::<_, diesel::result::Error>((items, total))
+        Ok::<_, horme::Error>((items, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list subscriptions"))?;
@@ -1334,7 +1363,7 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
     let offset = (page - 1) * per_page;
     let search = query.search.clone();
 
-    let (stages, total) = with_conn(move |conn| {
+    let (stages, total) = with_conn!(move |conn| {
         let total: i64 = if let Some(ref search_term) = search {
             let pattern = format!("%{}%", search_term.to_lowercase());
             asset_stages::table
@@ -1345,11 +1374,13 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
                         .or(asset_stages::code.ilike(&pattern)),
                 )
                 .select(count(asset_stages::id))
-                .first(conn)?
+                .first(conn)
+                .await?
         } else {
             asset_stages::table
                 .select(count(asset_stages::id))
-                .first(conn)?
+                .first(conn)
+                .await?
         };
 
         let stages: Vec<Stage> = if let Some(ref search_term) = search {
@@ -1364,16 +1395,18 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
                 .order(asset_stages::display_order.asc().nulls_last())
                 .offset(offset)
                 .limit(per_page)
-                .load(conn)?
+                .load(conn)
+                .await?
         } else {
             asset_stages::table
                 .order(asset_stages::display_order.asc().nulls_last())
                 .offset(offset)
                 .limit(per_page)
-                .load(conn)?
+                .load(conn)
+                .await?
         };
 
-        Ok::<_, diesel::result::Error>((stages, total))
+        Ok::<_, horme::Error>((stages, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list stages"))?;
@@ -1390,10 +1423,11 @@ pub async fn list_stages(req: &mut Request) -> JsonResult<StageListResponse> {
 #[endpoint(tags("Admin"))]
 pub async fn get_stage(id: PathParam<i64>) -> JsonResult<Stage> {
     let stage_id = id.into_inner();
-    let stage = with_conn(move |conn| {
+    let stage = with_conn!(move |conn| {
         asset_stages::table
             .filter(asset_stages::id.eq(stage_id))
             .first::<Stage>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("stage not found"))?;
@@ -1405,10 +1439,11 @@ pub async fn get_stage(id: PathParam<i64>) -> JsonResult<Stage> {
 #[endpoint(tags("Admin"))]
 pub async fn create_stage(input: JsonBody<NewStage>) -> JsonResult<Stage> {
     let new_stage = input.into_inner();
-    let stage = with_conn(move |conn| {
+    let stage = with_conn!(move |conn| {
         diesel::insert_into(asset_stages::table)
             .values(&new_stage)
             .get_result::<Stage>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create stage"))?;
@@ -1422,10 +1457,11 @@ pub async fn update_stage(id: PathParam<i64>, input: JsonBody<UpdateStage>) -> J
     let stage_id = id.into_inner();
     let update_data = input.into_inner();
 
-    let stage = with_conn(move |conn| {
+    let stage = with_conn!(move |conn| {
         diesel::update(asset_stages::table.filter(asset_stages::id.eq(stage_id)))
             .set(&update_data)
             .get_result::<Stage>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update stage"))?;
@@ -1438,8 +1474,10 @@ pub async fn update_stage(id: PathParam<i64>, input: JsonBody<UpdateStage>) -> J
 pub async fn delete_stage(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
     let stage_id = id.into_inner();
 
-    with_conn(move |conn| {
-        diesel::delete(asset_stages::table.filter(asset_stages::id.eq(stage_id))).execute(conn)
+    with_conn!(move |conn| {
+        diesel::delete(asset_stages::table.filter(asset_stages::id.eq(stage_id)))
+            .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete stage"))?;
@@ -1487,7 +1525,7 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
     let search = query.search.clone();
     let subject_type = query.subject_type.clone();
 
-    let (subjects, total) = with_conn(move |conn| {
+    let (subjects, total) = with_conn!(move |conn| {
         let pattern = search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
         let mut base_query = asset_read_subjects::table.into_boxed();
         let mut count_query = asset_read_subjects::table.into_boxed();
@@ -1514,15 +1552,17 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
 
         let total: i64 = count_query
             .select(count(asset_read_subjects::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         let subjects: Vec<ReadSubject> = base_query
             .order(asset_read_subjects::id.asc())
             .offset(offset)
             .limit(per_page)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>((subjects, total))
+        Ok::<_, horme::Error>((subjects, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read subjects"))?;
@@ -1539,10 +1579,11 @@ pub async fn list_read_subjects(req: &mut Request) -> JsonResult<ReadSubjectList
 #[endpoint(tags("Admin"))]
 pub async fn get_read_subject(id: PathParam<i64>) -> JsonResult<ReadSubject> {
     let subject_id = id.into_inner();
-    let subject = with_conn(move |conn| {
+    let subject = with_conn!(move |conn| {
         asset_read_subjects::table
             .filter(asset_read_subjects::id.eq(subject_id))
             .first::<ReadSubject>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("read subject not found"))?;
@@ -1554,10 +1595,11 @@ pub async fn get_read_subject(id: PathParam<i64>) -> JsonResult<ReadSubject> {
 #[endpoint(tags("Admin"))]
 pub async fn create_read_subject(input: JsonBody<NewReadSubject>) -> JsonResult<ReadSubject> {
     let new_subject = input.into_inner();
-    let subject = with_conn(move |conn| {
+    let subject = with_conn!(move |conn| {
         diesel::insert_into(asset_read_subjects::table)
             .values(&new_subject)
             .get_result::<ReadSubject>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create read subject"))?;
@@ -1574,10 +1616,11 @@ pub async fn update_read_subject(
     let subject_id = id.into_inner();
     let update_data = input.into_inner();
 
-    let subject = with_conn(move |conn| {
+    let subject = with_conn!(move |conn| {
         diesel::update(asset_read_subjects::table.filter(asset_read_subjects::id.eq(subject_id)))
             .set(&update_data)
             .get_result::<ReadSubject>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update read subject"))?;
@@ -1590,9 +1633,10 @@ pub async fn update_read_subject(
 pub async fn delete_read_subject(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
     let subject_id = id.into_inner();
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::delete(asset_read_subjects::table.filter(asset_read_subjects::id.eq(subject_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete read subject"))?;
@@ -1640,7 +1684,7 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
     let subject_id = query.subject_id;
     let search = query.search.clone();
 
-    let (sentences, total) = with_conn(move |conn| {
+    let (sentences, total) = with_conn!(move |conn| {
         let pattern = search.as_ref().map(|s| format!("%{}%", s.to_lowercase()));
         let mut base_query = asset_read_sentences::table.into_boxed();
         let mut count_query = asset_read_sentences::table.into_boxed();
@@ -1665,7 +1709,8 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
 
         let total: i64 = count_query
             .select(count(asset_read_sentences::id))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         let sentences: Vec<ReadSentence> = base_query
             .order((
@@ -1674,9 +1719,10 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
             ))
             .offset(offset)
             .limit(per_page)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>((sentences, total))
+        Ok::<_, horme::Error>((sentences, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read sentences"))?;
@@ -1693,10 +1739,11 @@ pub async fn list_read_sentences(req: &mut Request) -> JsonResult<ReadSentenceLi
 #[endpoint(tags("Admin"))]
 pub async fn get_read_sentence(id: PathParam<i64>) -> JsonResult<ReadSentence> {
     let sentence_id = id.into_inner();
-    let sentence = with_conn(move |conn| {
+    let sentence = with_conn!(move |conn| {
         asset_read_sentences::table
             .filter(asset_read_sentences::id.eq(sentence_id))
             .first::<ReadSentence>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("read sentence not found"))?;
@@ -1708,10 +1755,11 @@ pub async fn get_read_sentence(id: PathParam<i64>) -> JsonResult<ReadSentence> {
 #[endpoint(tags("Admin"))]
 pub async fn create_read_sentence(input: JsonBody<NewReadSentence>) -> JsonResult<ReadSentence> {
     let new_sentence = input.into_inner();
-    let sentence = with_conn(move |conn| {
+    let sentence = with_conn!(move |conn| {
         diesel::insert_into(asset_read_sentences::table)
             .values(&new_sentence)
             .get_result::<ReadSentence>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create read sentence"))?;
@@ -1728,10 +1776,11 @@ pub async fn update_read_sentence(
     let sentence_id = id.into_inner();
     let update_data = input.into_inner();
 
-    let sentence = with_conn(move |conn| {
+    let sentence = with_conn!(move |conn| {
         diesel::update(asset_read_sentences::table.filter(asset_read_sentences::id.eq(sentence_id)))
             .set(&update_data)
             .get_result::<ReadSentence>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update read sentence"))?;
@@ -1744,9 +1793,10 @@ pub async fn update_read_sentence(
 pub async fn delete_read_sentence(id: PathParam<i64>) -> JsonResult<serde_json::Value> {
     let sentence_id = id.into_inner();
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::delete(asset_read_sentences::table.filter(asset_read_sentences::id.eq(sentence_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete read sentence"))?;

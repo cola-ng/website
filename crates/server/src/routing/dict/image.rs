@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -10,10 +10,11 @@ use crate::{JsonResult, json_ok};
 #[handler]
 pub async fn list_images(req: &mut Request) -> JsonResult<Vec<Image>> {
     let word_id = super::get_path_id(req, "id")?;
-    let images: Vec<Image> = with_conn(move |conn| {
+    let images: Vec<Image> = with_conn!(move |conn| {
         dict_images::table
             .filter(dict_images::word_id.eq(word_id))
             .load::<Image>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch images"))?;
@@ -53,7 +54,7 @@ pub async fn create_image(req: &mut Request) -> JsonResult<Image> {
             .into());
     }
 
-    let created: Image = with_conn(move |conn| {
+    let created: Image = with_conn!(move |conn| {
         diesel::insert_into(dict_images::table)
             .values(&NewImage {
                 word_id,
@@ -72,6 +73,7 @@ pub async fn create_image(req: &mut Request) -> JsonResult<Image> {
                 created_by: None,
             })
             .get_result::<Image>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create image"))?;
@@ -81,8 +83,10 @@ pub async fn create_image(req: &mut Request) -> JsonResult<Image> {
 #[handler]
 pub async fn delete_image(req: &mut Request) -> JsonResult<()> {
     let image_id = super::get_path_id(req, "image_id")?;
-    with_conn(move |conn| {
-        diesel::delete(dict_images::table.filter(dict_images::id.eq(image_id))).execute(conn)
+    with_conn!(move |conn| {
+        diesel::delete(dict_images::table.filter(dict_images::id.eq(image_id)))
+            .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete image"))?;

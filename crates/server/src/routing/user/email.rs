@@ -1,5 +1,6 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -14,13 +15,13 @@ use crate::{AppError, DepotExt, JsonResult, db};
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "view", conn)?;
 
-    let uemails = emails::table.filter(emails::user_id.eq(user.id)).get_results::<Email>(conn)?;
+    let uemails = emails::table.filter(emails::user_id.eq(user.id)).get_results::<Email>(conn).await?;
     Ok(Json(uemails))
 }
 
@@ -31,7 +32,7 @@ struct CreateInData {
     value: String,
 }
 #[endpoint(tags("user"))]
-pub fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Email> {
+pub async fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Email> {
     let pdata = pdata.into_inner();
     if let Err(msg) = validator::validate_email(&pdata.value) {
         return Err(StatusError::bad_request().brief(msg).into());
@@ -40,13 +41,13 @@ pub fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depot: &mu
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
-    let email = conn.transaction::<Email, AppError, _>(|conn| {
+    let email = horme::transaction(&mut conn, async |conn| {
         check_email_other_taken!(None, &pdata.value, conn);
         let has_master = diesel_exists!(emails::table.filter(emails::user_id.eq(user.id)).filter(emails::is_master.eq(true)), conn);
         let new_email = NewEmail {
@@ -58,9 +59,9 @@ pub fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depot: &mu
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let email = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn)?;
+        let email = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn).await?;
         Ok(email)
-    })?;
+    }).await?;
 
     user.send_verification_email(&email.value, conn)?;
     Ok(Json(email))
@@ -73,19 +74,19 @@ struct TakeInData {
     value: String,
 }
 #[endpoint(tags("user"))]
-pub fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &mut Depot) -> JsonResult<Email> {
+pub async fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &mut Depot) -> JsonResult<Email> {
     let pdata = pdata.into_inner();
     if let Err(msg) = validator::validate_email(&pdata.value) {
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
-    let email = conn.transaction::<Email, AppError, _>(|conn| {
+    let email = horme::transaction(&mut conn, async |conn| {
         check_email_other_taken!(None, &pdata.value, conn);
         let new_email = NewEmail {
             user_id: user.id,
@@ -96,9 +97,9 @@ pub fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &mut De
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let cemail = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn)?;
+        let cemail = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn).await?;
         Ok(cemail)
-    })?;
+    }).await?;
 
     user.send_verification_email(&email.value, conn)?;
     Ok(Json(email))
@@ -106,12 +107,12 @@ pub fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &mut De
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
-    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
+    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn).await?;
     if email.user_id != user.id {
         return Err(StatusError::bad_request().into());
     }
@@ -119,8 +120,8 @@ pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &m
     if email.is_master {
         return Err(StatusError::bad_request().brief("master email can not be deleted").into());
     }
-    diesel::delete(&email).execute(conn)?;
-    let emails = emails::table.filter(emails::user_id.eq(cuser.id)).get_results::<Email>(conn)?;
+    diesel::delete(&email).execute(conn).await?;
+    let emails = emails::table.filter(emails::user_id.eq(cuser.id)).get_results::<Email>(conn).await?;
     Ok(Json(emails))
 }
 // #[endpoint(tags("user"))]
@@ -139,12 +140,12 @@ pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &m
 //         return Err(StatusError::bad_request().brief(&msg).into());
 //     }
 //     let cuser = depot.current_user()?;
-//     let conn = &mut db::conn()?;
-//     let user =  users::table.find(user_id.into_inner()).first::< User>(conn)?;
+//     let conn = &mut db::conn().await?;
+//     let user =  users::table.find(user_id.into_inner()).first::< User>(conn).await?;
 
 //     user.assign_to(cuser, "edit", conn);
 
-//     let uemail = emails::table.find(email_id).first::<Email>(conn);
+//     let uemail = emails::table.find(email_id).first::<Email>(conn).await;
 //     if uemail.is_err() {
 //         return Err(StatusError::bad_request().brief("Error happened when parse posted data.").into());
 //     }
@@ -152,7 +153,7 @@ pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &m
 //         let exist_email = emails::table
 //             .filter(emails::value.eq(&pdata.value))
 //             .filter(emails::id.ne(email_id))
-//             .first::<Email>(conn)
+//             .first::<Email>(conn).await
 //             .ok();
 //         if let Some(exist_email) = exist_email {
 //             if exist_email.user_id == cuser.id {
@@ -168,21 +169,21 @@ pub async fn delete(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &m
 //                 emails::updated_by.eq(cuser.id),
 //                 emails::updated_at.eq(Utc::now()),
 //             ))
-//             .get_result::<Email>(conn)?;
+//             .get_result::<Email>(conn).await?;
 //         res.render(Json(uemail));
 //         Ok(())
-//     })?;
+//     }).await?;
 //     Ok(())
 // }
 #[endpoint(tags("user"))]
 pub async fn set_master(user_id: PathParam<i64>, email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Email> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
-    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
+    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn).await?;
 
     if email.user_id != user.id {
         return Err(StatusError::bad_request().into());
@@ -191,22 +192,22 @@ pub async fn set_master(user_id: PathParam<i64>, email_id: PathParam<i64>, depot
         return Ok(Json(email));
     }
 
-    let email = conn.transaction::<_, AppError, _>(|conn| {
+    let email = horme::transaction(&mut conn, async |conn| {
         diesel::update(emails::table.filter(emails::id.ne(email.id).and(emails::is_master.eq(true))))
             .set((
                 emails::is_master.eq(false),
                 emails::updated_by.eq(cuser.id),
                 emails::updated_at.eq(Utc::now()),
             ))
-            .execute(conn)?;
+            .execute(conn).await?;
         let uemail = diesel::update(emails::table.find(email.id))
             .set((
                 emails::is_master.eq(true),
                 emails::updated_by.eq(cuser.id),
                 emails::updated_at.eq(Utc::now()),
             ))
-            .get_result::<Email>(conn)?;
+            .get_result::<Email>(conn).await?;
         Ok(uemail)
-    })?;
+    }).await?;
     Ok(Json(email))
 }

@@ -1,10 +1,11 @@
+use std::result::Result;
 use std::path::PathBuf;
 use std::time::Duration;
 
 use base64::Engine;
 use base64::engine::general_purpose::STANDARD as BASE64;
 use chrono::{Utc, format};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -19,7 +20,10 @@ use crate::services::{
 };
 use crate::{AppResult, DepotExt, JsonResult, OkResponse, json_ok};
 
+mod cancellation;
 mod streaming;
+mod speech;
+pub(super) use cancellation::cancel_turn;
 pub(super) use streaming::send_stream;
 
 // Type aliases for backward compatibility
@@ -74,7 +78,7 @@ pub async fn list_chats(req: &mut Request, depot: &mut Depot, res: &mut Response
     let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let chats: Vec<ChatWithIcon> = with_conn(move |conn| {
+    let chats: Vec<ChatWithIcon> = with_conn!(move |conn| {
         learn_chats::table
             .left_join(
                 asset_contexts::table.on(learn_chats::context_id.eq(asset_contexts::id.nullable())),
@@ -101,7 +105,7 @@ pub async fn list_chats(req: &mut Request, depot: &mut Depot, res: &mut Response
                 Option<i32>,
                 Option<i32>,
                 chrono::DateTime<chrono::Utc>,
-            )>(conn)
+            )>(conn).await
             .map(|rows| {
                 rows.into_iter()
                     .map(
@@ -161,10 +165,10 @@ pub async fn create_chat(
         issues_count: input.issues_count,
     };
 
-    let chat: Chat = with_conn(move |conn| {
+    let chat: Chat = with_conn!(move |conn| {
         diesel::insert_into(learn_chats::table)
             .values(&new_chat)
-            .get_result::<Chat>(conn)
+            .get_result::<Chat>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create chat"))?;
@@ -198,18 +202,18 @@ pub async fn update_chat(
         }
     }
 
-    let chat: Chat = with_conn(move |conn| {
+    let chat: Chat = with_conn!(move |conn| {
         // First verify ownership
         let existing = learn_chats::table
             .filter(learn_chats::id.eq(chat_id))
             .filter(learn_chats::user_id.eq(user_id))
-            .first::<Chat>(conn)?;
+            .first::<Chat>(conn).await?;
 
         // Update if title provided
         if let Some(title) = input.title {
             diesel::update(learn_chats::table.find(existing.id))
                 .set(learn_chats::title.eq(title))
-                .get_result::<Chat>(conn)
+                .get_result::<Chat>(conn).await
         } else {
             Ok(existing)
         }
@@ -229,12 +233,12 @@ pub async fn reset_chat(req: &mut Request, depot: &mut Depot, res: &mut Response
         .ok_or_else(|| StatusError::bad_request().brief("missing chat id"))?;
 
     // Verify ownership and delete all turns and issues for this chat
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         // First verify ownership
         let _existing = learn_chats::table
             .filter(learn_chats::id.eq(chat_id))
             .filter(learn_chats::user_id.eq(user_id))
-            .first::<Chat>(conn)?;
+            .first::<Chat>(conn).await?;
 
         // Delete all issues for this chat
         diesel::delete(
@@ -242,7 +246,7 @@ pub async fn reset_chat(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .filter(learn_chat_issues::chat_id.eq(chat_id))
                 .filter(learn_chat_issues::user_id.eq(user_id)),
         )
-        .execute(conn)?;
+        .execute(conn).await?;
 
         // Delete all turns for this chat
         diesel::delete(
@@ -250,9 +254,9 @@ pub async fn reset_chat(req: &mut Request, depot: &mut Depot, res: &mut Response
                 .filter(learn_chat_turns::chat_id.eq(chat_id))
                 .filter(learn_chat_turns::user_id.eq(user_id)),
         )
-        .execute(conn)?;
+        .execute(conn).await?;
 
-        Ok::<_, diesel::result::Error>(())
+        Ok::<_, horme::Error>(())
     })
     .await
     .map_err(|e| {
@@ -387,14 +391,14 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
     let from_latest = req.query::<bool>("from_latest").unwrap_or(false);
 
     // Get total count for this query
-    let total: i64 = with_conn({
+    let total: i64 = with_conn!({
         move |conn| {
             let mut query = learn_chat_turns::table
                 .filter(learn_chat_turns::user_id.eq(user_id))
                 .into_boxed();
 
             query = query.filter(learn_chat_turns::chat_id.eq(chat_id));
-            query.count().get_result::<i64>(conn)
+            query.count().get_result::<i64>(conn).await
         }
     })
     .await
@@ -403,7 +407,7 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
     // Get turns with cursor-based pagination
     // When from_latest is true, order by DESC to get newest first, then reverse for display
     // When from_latest is false, order by ASC (oldest first) for normal pagination
-    let mut turns: Vec<ChatTurn> = with_conn({
+    let mut turns: Vec<ChatTurn> = with_conn!({
         move |conn| {
             let mut query = learn_chat_turns::table
                 .filter(learn_chat_turns::user_id.eq(user_id))
@@ -425,13 +429,13 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
                 query
                     .order(learn_chat_turns::created_at.desc())
                     .limit(limit)
-                    .load::<ChatTurn>(conn)
+                    .load::<ChatTurn>(conn).await
             } else {
                 // Normal chronological order (for loading older messages)
                 query
                     .order(learn_chat_turns::created_at.asc())
                     .limit(limit)
-                    .load::<ChatTurn>(conn)
+                    .load::<ChatTurn>(conn).await
             }
         }
     })
@@ -449,14 +453,14 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     // Check if there are items before the first item
     let has_prev: bool = if let Some(fid) = first_id {
-        with_conn({
+        with_conn!({
             move |conn| {
                 learn_chat_turns::table
                     .filter(learn_chat_turns::user_id.eq(user_id))
                     .filter(learn_chat_turns::id.lt(fid))
                     .filter(learn_chat_turns::chat_id.eq(chat_id))
                     .count()
-                    .get_result::<i64>(conn)
+                    .get_result::<i64>(conn).await
                     .map(|c| c > 0)
             }
         })
@@ -468,14 +472,14 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
 
     // Check if there are items after the last item
     let has_next: bool = if let Some(lid) = last_id {
-        with_conn({
+        with_conn!({
             move |conn| {
                 learn_chat_turns::table
                     .filter(learn_chat_turns::user_id.eq(user_id))
                     .filter(learn_chat_turns::id.gt(lid))
                     .filter(learn_chat_turns::chat_id.eq(chat_id))
                     .count()
-                    .get_result::<i64>(conn)
+                    .get_result::<i64>(conn).await
                     .map(|c| c > 0)
             }
         })
@@ -496,13 +500,13 @@ pub async fn list_turns(req: &mut Request, depot: &mut Depot, res: &mut Response
         if turn_ids_with_issues.is_empty() {
             std::collections::HashMap::new()
         } else {
-            let all_issues: Vec<ChatIssue> = with_conn({
+            let all_issues: Vec<ChatIssue> = with_conn!({
                 let turn_ids = turn_ids_with_issues.clone();
                 move |conn| {
                     learn_chat_issues::table
                         .filter(learn_chat_issues::user_id.eq(user_id))
                         .filter(learn_chat_issues::chat_turn_id.eq_any(turn_ids))
-                        .load::<ChatIssue>(conn)
+                        .load::<ChatIssue>(conn).await
                 }
             })
             .await
@@ -555,12 +559,12 @@ pub async fn delete_turn(
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
 
     // Delete the turn and its associated issues
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         // First verify ownership
         let _existing = learn_chat_turns::table
             .filter(learn_chat_turns::id.eq(turn_id))
             .filter(learn_chat_turns::user_id.eq(user_id))
-            .first::<ChatTurn>(conn)?;
+            .first::<ChatTurn>(conn).await?;
 
         // Delete associated issues first
         diesel::delete(
@@ -568,7 +572,7 @@ pub async fn delete_turn(
                 .filter(learn_chat_issues::chat_turn_id.eq(turn_id))
                 .filter(learn_chat_issues::user_id.eq(user_id)),
         )
-        .execute(conn)?;
+        .execute(conn).await?;
 
         // Delete the turn
         diesel::delete(
@@ -576,9 +580,9 @@ pub async fn delete_turn(
                 .filter(learn_chat_turns::id.eq(turn_id))
                 .filter(learn_chat_turns::user_id.eq(user_id)),
         )
-        .execute(conn)?;
+        .execute(conn).await?;
 
-        Ok::<_, diesel::result::Error>(())
+        Ok::<_, horme::Error>(())
     })
     .await
     .map_err(|e| {
@@ -599,11 +603,11 @@ pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTu
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
 
     // Fetch the turn from database
-    let turn: ChatTurn = with_conn(move |conn| {
+    let turn: ChatTurn = with_conn!(move |conn| {
         learn_chat_turns::table
             .filter(learn_chat_turns::id.eq(turn_id))
             .filter(learn_chat_turns::user_id.eq(user_id))
-            .first::<ChatTurn>(conn)
+            .first::<ChatTurn>(conn).await
     })
     .await
     .map_err(|e| {
@@ -613,11 +617,11 @@ pub async fn get_turn(req: &mut Request, depot: &mut Depot) -> JsonResult<ChatTu
 
     // Fetch issues if this turn has any
     let issues: Vec<ChatIssue> = if turn.issues_count > 0 {
-        with_conn(move |conn| {
+        with_conn!(move |conn| {
             learn_chat_issues::table
                 .filter(learn_chat_issues::chat_turn_id.eq(turn_id))
                 .filter(learn_chat_issues::user_id.eq(user_id))
-                .load::<ChatIssue>(conn)
+                .load::<ChatIssue>(conn).await
         })
         .await
         .unwrap_or_default()
@@ -689,7 +693,7 @@ async fn get_chat_latest_turns(
     before: i64,
     max_count: i64,
 ) -> Result<Vec<ChatMessage>, StatusError> {
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         let mut turns = learn_chat_turns::table
             .filter(learn_chat_turns::chat_id.eq(chat_id))
             .filter(learn_chat_turns::user_id.eq(user_id))
@@ -697,7 +701,7 @@ async fn get_chat_latest_turns(
             .filter(learn_chat_turns::status.eq("completed"))
             .order(learn_chat_turns::id.desc())
             .limit(max_count)
-            .load::<ChatTurn>(conn)?;
+            .load::<ChatTurn>(conn).await?;
         turns.reverse();
         let mut messages: Vec<HistoryMessage> = turns.into_iter().map(Into::into).collect();
         while messages.len() > 1 && messages.iter().map(|m| m.content.len()).sum::<usize>() > 24000
@@ -757,14 +761,14 @@ async fn save_audio_file(
 
 /// Clear session (delete all messages for this user's active chat)
 async fn clear_user_session(user_id: i64) -> Result<(), StatusError> {
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         // Delete all chat turns for this user
         diesel::delete(learn_chat_turns::table.filter(learn_chat_turns::user_id.eq(user_id)))
-            .execute(conn)?;
+            .execute(conn).await?;
 
         // Delete all chat sessions for this user
         diesel::delete(learn_chats::table.filter(learn_chats::user_id.eq(user_id)))
-            .execute(conn)?;
+            .execute(conn).await?;
 
         Ok(())
     })
@@ -786,14 +790,14 @@ async fn update_ai_turn(
     status: String,
     error: Option<String>,
 ) -> Result<(), StatusError> {
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::update(learn_chat_turns::table.find(turn_id))
             .set((
                 learn_chat_turns::audio_path.eq(audio_path),
                 learn_chat_turns::status.eq(status),
                 learn_chat_turns::error.eq(error),
             ))
-            .execute(conn)?;
+            .execute(conn).await?;
         Ok(())
     })
     .await
@@ -821,7 +825,8 @@ pub async fn send_chat(
     let user = depot.user_id()?;
     let chat = id.into_inner();
     let (input, provider) = streaming::prepare(req, user, chat).await?;
-    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let (tx, rx) = tokio::sync::mpsc::channel(16);
+    drop(rx);
     json_ok(streaming::conversation(user, chat, input, provider, &tx).await?)
 }
 
@@ -880,12 +885,12 @@ pub async fn list_chat_issues(
         .ok_or_else(|| StatusError::bad_request().brief("missing chat id"))?;
 
     // Verify the chat belongs to this user
-    let chat_exists: bool = with_conn(move |conn| {
+    let chat_exists: bool = with_conn!(move |conn| {
         learn_chats::table
             .filter(learn_chats::id.eq(chat_id))
             .filter(learn_chats::user_id.eq(user_id))
             .count()
-            .get_result::<i64>(conn)
+            .get_result::<i64>(conn).await
             .map(|c| c > 0)
     })
     .await
@@ -896,12 +901,12 @@ pub async fn list_chat_issues(
     }
 
     // Get all issues for this chat
-    let issues: Vec<ChatIssue> = with_conn(move |conn| {
+    let issues: Vec<ChatIssue> = with_conn!(move |conn| {
         learn_chat_issues::table
             .filter(learn_chat_issues::chat_id.eq(chat_id))
             .filter(learn_chat_issues::user_id.eq(user_id))
             .order(learn_chat_issues::created_at.asc())
-            .load::<ChatIssue>(conn)
+            .load::<ChatIssue>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list issues"))?;
@@ -925,12 +930,12 @@ pub async fn list_turn_issues(
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
 
     // Verify the turn belongs to this user
-    let turn_exists: bool = with_conn(move |conn| {
+    let turn_exists: bool = with_conn!(move |conn| {
         learn_chat_turns::table
             .filter(learn_chat_turns::id.eq(turn_id))
             .filter(learn_chat_turns::user_id.eq(user_id))
             .count()
-            .get_result::<i64>(conn)
+            .get_result::<i64>(conn).await
             .map(|c| c > 0)
     })
     .await
@@ -941,12 +946,12 @@ pub async fn list_turn_issues(
     }
 
     // Get issues for this turn
-    let issues: Vec<ChatIssue> = with_conn(move |conn| {
+    let issues: Vec<ChatIssue> = with_conn!(move |conn| {
         learn_chat_issues::table
             .filter(learn_chat_issues::chat_turn_id.eq(turn_id))
             .filter(learn_chat_issues::user_id.eq(user_id))
             .order(learn_chat_issues::created_at.asc())
-            .load::<ChatIssue>(conn)
+            .load::<ChatIssue>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list issues"))?;
@@ -974,11 +979,11 @@ pub async fn serve_turn_audio(
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
 
     // Get the turn from database to find audio_path
-    let turn: ChatTurn = with_conn(move |conn| {
+    let turn: ChatTurn = with_conn!(move |conn| {
         learn_chat_turns::table
             .find(turn_id)
             .filter(learn_chat_turns::user_id.eq(user_id))
-            .first::<ChatTurn>(conn)
+            .first::<ChatTurn>(conn).await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("turn not found"))?;

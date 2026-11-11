@@ -1,5 +1,5 @@
 use chrono::{Datelike, Duration, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Serialize;
 
@@ -46,7 +46,7 @@ pub struct LearnSummary {
 pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let user_id = depot.user_id()?;
 
-    let summary = with_conn(move |conn| {
+    let summary = with_conn!(move |conn| {
         let now = Utc::now();
         let today = now.date_naive();
 
@@ -60,7 +60,8 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .filter(learn_daily_stats::user_id.eq(user_id))
             .filter(learn_daily_stats::stat_date.ge(week_start))
             .filter(learn_daily_stats::stat_date.le(week_end))
-            .load::<DailyStat>(conn)?;
+            .load::<DailyStat>(conn)
+            .await?;
 
         let weekly_chat_minutes: i32 = weekly_stats
             .iter()
@@ -88,7 +89,8 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
             .filter(learn_vocabularies::user_id.eq(user_id))
             .filter(learn_vocabularies::mastery_level.ge(4))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // 3. Count pending review words (mastery_level < 4 or due for review)
         let pending_review_count: i64 = learn_vocabularies::table
@@ -101,38 +103,44 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
                         .or(learn_vocabularies::next_review_at.le(now))),
             )
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // 4. Count issue words
         let issue_words_count: i64 = learn_issue_words::table
             .filter(learn_issue_words::user_id.eq(user_id))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // 5. Total vocabulary count
         let total_vocabulary_count: i64 = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // 6. Learning days (days with stats)
         let learning_days: i64 = learn_daily_stats::table
             .filter(learn_daily_stats::user_id.eq(user_id))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         // 7. Total review times (sum of practice_count from vocabularies)
         let total_review_times: i64 = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .select(diesel::dsl::sum(learn_vocabularies::practice_count))
-            .first::<Option<i64>>(conn)?
+            .first::<Option<i64>>(conn)
+            .await?
             .unwrap_or(0);
 
         // 8. Average mastery level (as percentage)
         let mastery_levels: Vec<Option<i32>> = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .select(learn_vocabularies::mastery_level)
-            .load::<Option<i32>>(conn)?;
+            .load::<Option<i32>>(conn)
+            .await?;
         let average_mastery = if mastery_levels.is_empty() {
             0
         } else {
@@ -149,11 +157,12 @@ pub async fn get_learn_summary(depot: &mut Depot, res: &mut Response) -> AppResu
         let has_chats: i64 = learn_chats::table
             .filter(learn_chats::user_id.eq(user_id))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         let has_data = has_chats > 0 || total_vocabulary_count > 0 || weekly_chat_minutes > 0;
 
-        Ok::<_, diesel::result::Error>(LearnSummary {
+        Ok::<_, horme::Error>(LearnSummary {
             has_data,
             weekly_chat_minutes,
             mastered_vocabulary_count,

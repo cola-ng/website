@@ -1,5 +1,6 @@
 use chrono::{TimeDelta, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -16,16 +17,16 @@ use crate::{AppError, AppResult, DepotExt, ErrorItem, JsonResult, StatusInfo};
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
 
-    let token = access_tokens::table.find(user_id.into_inner()).first::<AccessToken>(conn)?;
-    let _ = users::table.find(token.user_id).first::<User>(conn)?.assign_to(cuser, "edit", conn)?;
+    let token = access_tokens::table.find(user_id.into_inner()).first::<AccessToken>(conn).await?;
+    let _ = users::table.find(token.user_id).first::<User>(conn).await?.assign_to(cuser, "edit", conn)?;
     db::delete_access_token(token.id, cuser.id, conn)?;
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("user"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let info = bulk_delete_records!(
         req,
         depot,
@@ -45,16 +46,16 @@ pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<Stat
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<AccessToken>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
-        .permit(cuser, "edit", conn)?
+        .permit(cuser, "edit", conn).await?
         .filter(users::id.eq(user_id.into_inner()))
-        .get_result::<User>(conn)?;
+        .get_result::<User>(conn).await?;
 
     let tokens = access_tokens::table
         .filter(access_tokens::user_id.eq(user.id))
         .filter(access_tokens::kind.eq("api"))
-        .get_results::<AccessToken>(conn)?;
+        .get_results::<AccessToken>(conn).await?;
     Ok(Json(tokens))
 }
 
@@ -84,7 +85,7 @@ pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonRes
         return Err(StatusError::bad_request().brief(e).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     if !cuser.is_root {
         return Err(StatusError::forbidden().into());
     }
@@ -95,7 +96,7 @@ pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonRes
         return Err(StatusError::internal_server_error().brief("create jwt token error").into());
     }
     let jwt_token = jwt_token.unwrap();
-    let output = conn.transaction::<_, AppError, _>(|conn| {
+    let output = horme::transaction(&mut conn, async |conn| {
         let query = access_tokens::table
             .filter(access_tokens::user_id.eq(cuser.id))
             .filter(access_tokens::name.eq(&pdata.name));
@@ -112,11 +113,11 @@ pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonRes
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        diesel::insert_into(access_tokens::table).values(&token).execute(conn)?;
+        diesel::insert_into(access_tokens::table).values(&token).execute(conn).await?;
         Ok(CreateOkData {
             value: token.value.to_owned(),
         })
-    })?;
+    }).await?;
     Ok(Json(output))
 }
 
@@ -132,15 +133,15 @@ struct UpdateInData {
 pub async fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<AccessToken> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
     let exist_token = access_tokens::table
         .filter(access_tokens::user_id.eq(user.id))
-        .first::<AccessToken>(conn)?;
+        .first::<AccessToken>(conn).await?;
     if exist_token.user_id != cuser.id {
         return Err(StatusError::bad_request().brief("access token is not correct").into());
     }
@@ -150,7 +151,7 @@ pub async fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depo
         }
     }
 
-    conn.transaction::<_, AppError, _>(|conn| {
+    horme::transaction(&mut conn, async |conn| {
         let query = access_tokens::table
             .filter(access_tokens::user_id.eq(cuser.id))
             .filter(access_tokens::id.ne(exist_token.id))
@@ -167,7 +168,8 @@ pub async fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depo
                 access_tokens::updated_by.eq(pdata.user_id),
                 access_tokens::updated_at.eq(Utc::now()),
             ))
-            .get_result::<AccessToken>(conn)?;
+            .get_result::<AccessToken>(conn).await?;
         Ok(Json(token))
     })
+    .await
 }

@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -10,11 +10,12 @@ use crate::{JsonResult, json_ok};
 #[handler]
 pub async fn list_definitions(req: &mut Request) -> JsonResult<Vec<Definition>> {
     let word_id = super::get_path_id(req, "id")?;
-    let definitions: Vec<Definition> = with_conn(move |conn| {
+    let definitions: Vec<Definition> = with_conn!(move |conn| {
         dict_definitions::table
             .filter(dict_definitions::word_id.eq(word_id))
             .order(dict_definitions::definition_order.asc())
             .load::<Definition>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch definitions"))?;
@@ -47,7 +48,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<Definition> {
             .into());
     }
 
-    let created: Definition = with_conn(move |conn| {
+    let created: Definition = with_conn!(move |conn| {
         diesel::insert_into(dict_definitions::table)
             .values(&NewDefinition {
                 word_id,
@@ -62,6 +63,7 @@ pub async fn create_definition(req: &mut Request) -> JsonResult<Definition> {
                 is_primary: input.is_primary,
             })
             .get_result::<Definition>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create definition"))?;
@@ -110,10 +112,11 @@ pub async fn update_definition(req: &mut Request) -> JsonResult<Definition> {
         is_primary: input.is_primary,
     };
 
-    let updated: Definition = with_conn(move |conn| {
+    let updated: Definition = with_conn!(move |conn| {
         diesel::update(dict_definitions::table.filter(dict_definitions::id.eq(definition_id)))
             .set(changes)
             .get_result::<Definition>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update definition"))?;
@@ -124,9 +127,10 @@ pub async fn update_definition(req: &mut Request) -> JsonResult<Definition> {
 #[handler]
 pub async fn delete_definition(req: &mut Request) -> JsonResult<serde_json::Value> {
     let definition_id = super::get_path_id(req, "definition_id")?;
-    let _ = with_conn(move |conn| {
+    let _ = with_conn!(move |conn| {
         diesel::delete(dict_definitions::table.filter(dict_definitions::id.eq(definition_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete definition"))?;

@@ -10,10 +10,11 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use colang::db::pool::DieselPool;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use serde::Deserialize;
 use serde_json::Value;
+use std::result::Result;
 
 const DEFAULT_STAGES_FILE: &str = r"D:\Works\cola-ng\space-raw\stages.json";
 const DEFAULT_SCRIPTS_FILE: &str = r"D:\Works\cola-ng\space-raw\scripts.json";
@@ -85,7 +86,8 @@ struct ImportStats {
     errors: usize,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -198,12 +200,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to database
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = DieselPool::new(
-        &database_url,
-        &Default::default(),
-        diesel::r2d2::Pool::builder(),
-    )?;
-    let mut conn = pool.get()?;
+    let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
     let start_time = Instant::now();
     let mut stats = ImportStats::default();
@@ -211,17 +208,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Import stages
     let stage_map = if skip_stages {
         println!("\nSkipping stages import, loading existing stages...");
-        load_existing_stages(&mut conn)?
+        load_existing_stages(&mut conn).await?
     } else {
         println!("\nImporting stages...");
-        import_stages(&mut conn, &stages_data.stages, &mut stats)?
+        import_stages(&mut conn, &stages_data.stages, &mut stats).await?
     };
 
     println!("Stage code -> ID mapping: {} entries", stage_map.len());
 
     // Import scripts and turns
     println!("\nImporting scripts and turns...");
-    import_scripts(&mut conn, &scripts_data.scripts, &stage_map, &mut stats)?;
+    import_scripts(&mut conn, &scripts_data.scripts, &stage_map, &mut stats).await?;
 
     let elapsed = start_time.elapsed();
 
@@ -239,25 +236,26 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_existing_stages(
-    conn: &mut PgConnection,
-) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
+async fn load_existing_stages(
+    conn: &mut AsyncPgConnection,
+) -> Result<HashMap<String, i64>, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::asset_stages;
 
     let stages: Vec<(i64, String)> = asset_stages::table
         .select((asset_stages::id, asset_stages::code))
-        .load(conn)?;
+        .load(conn)
+        .await?;
 
     let map: HashMap<String, i64> = stages.into_iter().map(|(id, code)| (code, id)).collect();
 
     Ok(map)
 }
 
-fn import_stages(
-    conn: &mut PgConnection,
+async fn import_stages(
+    conn: &mut AsyncPgConnection,
     stages: &[RawStage],
     stats: &mut ImportStats,
-) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
+) -> Result<HashMap<String, i64>, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::asset_stages;
 
     let mut stage_map: HashMap<String, i64> = HashMap::new();
@@ -268,6 +266,7 @@ fn import_stages(
             .filter(asset_stages::code.eq(&stage.code))
             .select(asset_stages::id)
             .first(conn)
+            .await
             .optional()?;
 
         if let Some(id) = existing {
@@ -294,7 +293,8 @@ fn import_stages(
                 asset_stages::is_active.eq(stage.is_active.unwrap_or(true)),
             ))
             .returning(asset_stages::id)
-            .get_result::<i64>(conn);
+            .get_result::<i64>(conn)
+            .await;
 
         match result {
             Ok(id) => {
@@ -312,12 +312,12 @@ fn import_stages(
     Ok(stage_map)
 }
 
-fn import_scripts(
-    conn: &mut PgConnection,
+async fn import_scripts(
+    conn: &mut AsyncPgConnection,
     scripts: &[RawScript],
     stage_map: &HashMap<String, i64>,
     stats: &mut ImportStats,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::{asset_script_turns, asset_scripts};
 
     let total = scripts.len();
@@ -345,6 +345,7 @@ fn import_scripts(
             .filter(asset_scripts::code.eq(&script.code))
             .select(asset_scripts::id)
             .first(conn)
+            .await
             .optional()?;
 
         if existing.is_some() {
@@ -368,6 +369,7 @@ fn import_scripts(
             ))
             .returning(asset_scripts::id)
             .get_result::<i64>(conn)
+            .await
         {
             Ok(id) => {
                 stats.scripts_added += 1;
@@ -399,7 +401,8 @@ fn import_scripts(
                     asset_script_turns::asset_phrases.eq(phrases_json),
                     asset_script_turns::notes.eq(&turn.notes),
                 ))
-                .execute(conn);
+                .execute(conn)
+                .await;
 
             match result {
                 Ok(_) => {

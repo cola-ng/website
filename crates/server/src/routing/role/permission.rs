@@ -1,5 +1,6 @@
 use cruet::Inflector;
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use diesel::sql_types::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -12,18 +13,18 @@ use crate::db::schema::*;
 use crate::{AppError, AppResult, DepotExt, data, db};
 
 #[endpoint(tags("role"))]
-pub fn list(role_id: PathParam<i64>, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
+pub async fn list(role_id: PathParam<i64>, depot: &mut Depot, res: &mut Response) -> AppResult<()> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "permissions.view", conn)?;
 
     let permissions = permissions::table
         .filter(permissions::role_id.eq(role.id))
         .distinct()
-        .get_results::<Permission>(conn)?;
+        .get_results::<Permission>(conn).await?;
     res.render(salvo::writing::Json(permissions));
     Ok(())
 }
@@ -54,16 +55,16 @@ pub async fn update(
 
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let mut conn = db::conn()?;
+    let mut conn = db::conn().await?;
     let role = roles::table
         .find(role_id.into_inner())
         .first::<Role>(&mut conn)?
         .assign_to(cuser, "permissions.assign", &mut conn)?;
 
-    // let realm = realms::table.find(role.realm_id).first::<Realm>(conn)?;
+    // let realm = realms::table.find(role.realm_id).first::<Realm>(conn).await?;
     let is_kernel_role = crate::is_kernel_realm_id(role.realm_id);
-    conn.transaction::<_, AppError, _>(|conn| {
-        diesel::delete(permissions::table.filter(permissions::role_id.eq(role.id))).execute(conn)?;
+    horme::transaction(&mut conn, async |conn| {
+        diesel::delete(permissions::table.filter(permissions::role_id.eq(role.id))).execute(conn).await?;
         for cperm in &pdata {
             if cperm.filter_int_value.is_some() && cperm.filter_text_value.is_some() {
                 tracing::error!(permission = ?cperm, "permission filter_int_value and filter_text_value not set at the same time");
@@ -119,7 +120,7 @@ pub async fn update(
                             cperm.entity.to_plural(),
                             record_id
                         ))
-                        .get_result::<RecordExists>(conn)?
+                        .get_result::<RecordExists>(conn).await?
                         .exists
                     } else {
                         false
@@ -131,7 +132,7 @@ pub async fn update(
                         record_id,
                         role.realm_id
                     ))
-                    .get_result::<RecordExists>(conn)?
+                    .get_result::<RecordExists>(conn).await?
                     .exists
                 } else {
                     false
@@ -176,10 +177,10 @@ pub async fn update(
                 filter_int_value: cperm.filter_int_value,
                 filter_text_value: cperm.filter_text_value.as_deref(),
             };
-            diesel::insert_into(permissions::table).values(&new_permission).execute(conn)?;
+            diesel::insert_into(permissions::table).values(&new_permission).execute(conn).await?;
         }
         Ok(())
-    })?;
+    }).await?;
     drop(conn);
 
     list.handle(req, depot, res, ctrl).await;

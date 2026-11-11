@@ -3,8 +3,9 @@ use std::io::BufReader;
 use std::path::{Path, PathBuf};
 use std::time::Instant;
 
-use colang::db::pool::DieselPool;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
+use std::result::Result;
 
 const DEFAULT_WORDS_DIR: &str = "D:/Works/cola-ng/dict/final-en-dict";
 
@@ -15,7 +16,8 @@ struct UpdateStats {
     words_not_found: usize,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -64,12 +66,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = DieselPool::new(
-        &database_url,
-        &Default::default(),
-        diesel::r2d2::Pool::builder(),
-    )?;
-    let mut conn = pool.get()?;
+    let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
     let start_time = Instant::now();
 
@@ -81,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     println!("Found {} JSON files to process", json_files.len());
 
-    let stats = update_memory_from_json(&mut conn, &json_files)?;
+    let stats = update_memory_from_json(&mut conn, &json_files).await?;
 
     let elapsed = start_time.elapsed();
 
@@ -116,10 +113,10 @@ fn discover_json_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-fn update_memory_from_json(
-    conn: &mut PgConnection,
+async fn update_memory_from_json(
+    conn: &mut AsyncPgConnection,
     json_files: &[PathBuf],
-) -> Result<UpdateStats, Box<dyn std::error::Error>> {
+) -> Result<UpdateStats, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_words;
 
     let mut stats = UpdateStats {
@@ -169,7 +166,8 @@ fn update_memory_from_json(
             let updated =
                 diesel::update(dict_words::table.filter(dict_words::word_lower.eq(&word_lower)))
                     .set(dict_words::memory.eq(Some(&memory)))
-                    .execute(conn)?;
+                    .execute(conn)
+                    .await?;
 
             if updated > 0 {
                 stats.words_updated += 1;

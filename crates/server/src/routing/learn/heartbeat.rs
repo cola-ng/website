@@ -1,7 +1,7 @@
 //! Heartbeat-based study time tracking endpoints
 
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -84,12 +84,13 @@ pub async fn get_study_time_stats(
     let days = req.query::<i64>("days").unwrap_or(7).clamp(1, 365);
 
     // Get historical stats from database
-    let daily_stats: Vec<StudyTimeDaily> = with_conn(move |conn| {
+    let daily_stats: Vec<StudyTimeDaily> = with_conn!(move |conn| {
         learn_study_time_daily::table
             .filter(learn_study_time_daily::user_id.eq(user_id))
             .order(learn_study_time_daily::stat_date.desc())
             .limit(days)
             .load::<StudyTimeDaily>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch study time stats"))?;

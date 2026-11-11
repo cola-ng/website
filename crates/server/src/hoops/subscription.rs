@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 
 use crate::AppResult;
@@ -37,7 +37,7 @@ pub async fn require_subscribed(depot: &mut Depot) -> AppResult<()> {
 
 /// Helper function to check if a user has an active subscription
 pub async fn has_active_subscription(user_id: i64) -> bool {
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         user_subscriptions::table
             .filter(user_subscriptions::user_id.eq(user_id))
             .filter(
@@ -47,6 +47,7 @@ pub async fn has_active_subscription(user_id: i64) -> bool {
             )
             .select(user_subscriptions::id)
             .first::<i64>(conn)
+            .await
             .optional()
     })
     .await

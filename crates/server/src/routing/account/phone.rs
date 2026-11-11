@@ -1,5 +1,6 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -12,9 +13,9 @@ use crate::utils::validator;
 use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo};
 
 #[endpoint(tags("account"))]
-pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Phone> {
+pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Phone> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let query = phones::table.filter(phones::user_id.eq(cuser.id));
     let data = query_pagation_data!(
         req,
@@ -37,14 +38,14 @@ struct CreateInData {
     value: String,
 }
 #[endpoint(tags("account"))]
-pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Phone> {
+pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Phone> {
     let pdata = pdata.into_inner();
     if let Err(msg) = validator::validate_email(&pdata.value) {
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let phone = conn.transaction::<Phone, AppError, _>(|conn| {
+    let conn = &mut db::conn().await?;
+    let phone = horme::transaction(&mut conn, async |conn| {
         // check_phone_other_taken!(Some(cuser.id), &pdata.value, conn);
         let new_phone = NewPhone {
             user_id: cuser.id,
@@ -55,25 +56,25 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Ph
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let phone = diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn)?;
+        let phone = diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn).await?;
         Ok(phone)
-    })?;
+    }).await?;
 
     cuser.send_security_code_phone_sms(&phone.value, conn)?;
     Ok(Json(phone))
 }
 #[endpoint(tags("account"))]
-pub fn set_master(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn set_master(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
+    let conn = &mut db::conn().await?;
+    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn).await?;
     if phone.user_id != cuser.id {
         return Err(StatusError::forbidden().into());
     }
     if phone.is_master {
         return Ok(StatusInfo::done());
     }
-    conn.transaction::<_, AppError, _>(|conn| {
+    horme::transaction(&mut conn, async |conn| {
         diesel::update(
             phones::table
                 .filter(phones::user_id.eq(cuser.id))
@@ -85,24 +86,24 @@ pub fn set_master(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<Stat
             phones::updated_by.eq(cuser.id),
             phones::updated_at.eq(Utc::now()),
         ))
-        .execute(conn)?;
+        .execute(conn).await?;
         diesel::update(&phone)
             .set((
                 phones::is_master.eq(true),
                 phones::updated_by.eq(cuser.id),
                 phones::updated_at.eq(Utc::now()),
             ))
-            .execute(conn)?;
+            .execute(conn).await?;
         Ok(())
-    })?;
+    }).await?;
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("account"))]
-pub fn resend_verification(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn resend_verification(phone_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
-    let user = users::table.find(phone.user_id).first::<User>(conn)?;
+    let conn = &mut db::conn().await?;
+    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn).await?;
+    let user = users::table.find(phone.user_id).first::<User>(conn).await?;
     if phone.user_id != cuser.id {
         return Err(StatusError::forbidden().into());
     }
@@ -114,18 +115,18 @@ pub fn resend_verification(phone_id: PathParam<i64>, depot: &mut Depot) -> AppRe
     Ok(StatusInfo::done().brief("Security code sent."))
 }
 #[endpoint(tags("account"))]
-pub fn delete(phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
+pub async fn delete(phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
+    let conn = &mut db::conn().await?;
+    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn).await?;
     if phone.user_id != cuser.id {
         return Err(StatusError::bad_request().into());
     }
     if phone.is_master {
         return Err(StatusError::bad_request().brief("master phone can not be deleted").into());
     }
-    diesel::delete(&phone).execute(conn)?;
-    let phones = phones::table.filter(phones::user_id.eq(cuser.id)).get_results::<Phone>(conn)?;
+    diesel::delete(&phone).execute(conn).await?;
+    let phones = phones::table.filter(phones::user_id.eq(cuser.id)).get_results::<Phone>(conn).await?;
     Ok(Json(phones))
 }
 
@@ -142,11 +143,11 @@ pub async fn update(phone_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, dep
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
-    let phone = conn.transaction::<_, AppError, _>(|conn| {
+    let conn = &mut db::conn().await?;
+    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn).await?;
+    let phone = horme::transaction(&mut conn, async |conn| {
         // let exist_phone = phones::table.filter(phones::value.eq(&pdata.value))
-        //     .filter(phones::id.ne(phone_id)).first::<Phone>(conn).ok();
+        //     .filter(phones::id.ne(phone_id)).first::<Phone>(conn).await.ok();
         // if let Some(exist_phone) = exist_phone {
         //     if exist_phone.user_id == cuser.id {
         //         return Err(AppError::HttpStatus(Box::new(Conflict("phone conflict", "this phone exist in your account"))));
@@ -161,8 +162,8 @@ pub async fn update(phone_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, dep
                 phones::updated_by.eq(cuser.id),
                 phones::updated_at.eq(Utc::now()),
             ))
-            .get_result::<Phone>(conn)?;
+            .get_result::<Phone>(conn).await?;
         Ok(phone)
-    })?;
+    }).await?;
     Ok(Json(phone))
 }

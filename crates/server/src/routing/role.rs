@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 use serde::Deserialize;
@@ -13,7 +14,7 @@ use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo, 
 pub mod permission;
 pub mod user;
 
-pub fn authed_root(path: impl Into<String>) -> Router {
+pub async fn authed_root(path: impl Into<String>) -> Router {
     Router::with_path(path).get(list).post(create).delete(bulk_delete).push(
         Router::with_path("{role_id:u64}")
             .get(show)
@@ -27,24 +28,24 @@ pub fn authed_root(path: impl Into<String>) -> Router {
 }
 
 #[endpoint(tags("role"))]
-pub fn show(role_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Role> {
+pub async fn show(role_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Role> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "view", conn)?;
     Ok(Json(role))
 }
 #[endpoint(tags("role"))]
-pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
+pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let data = query_pagation_data!(
         req,
         res,
         Role,
-        roles::table.permit(cuser, "view", conn)?,
+        roles::table.permit(cuser, "view", conn).await?,
         "updated_at desc",
         ROLE_FILTER_FIELDS.clone(),
         ROLE_JOINED_OPTIONS.clone(),
@@ -54,20 +55,20 @@ pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
     Ok(Json(data))
 }
 #[endpoint(tags("role"))]
-pub fn delete(role_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn delete(role_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
 
     let role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "delete", conn)?;
     db::delete_role(role.id, cuser.id, conn)?;
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("role"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let mut conn = db::conn()?;
+    let mut conn = db::conn().await?;
     let info = bulk_delete_records!(req, depot, res, roles, Role, db::delete_role, &mut conn);
     Ok(info)
 }
@@ -80,17 +81,17 @@ struct CreateInData {
     description: Option<String>,
 }
 #[endpoint(tags("role"))]
-pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Role> {
+pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Role> {
     let pdata = pdata.into_inner();
     if let Err(msg) = validator::validate_generic_name(&pdata.name) {
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let realm = realms::table.find(pdata.realm_id).first::<Realm>(conn)?;
+    let conn = &mut db::conn().await?;
+    let realm = realms::table.find(pdata.realm_id).first::<Realm>(conn).await?;
     require_all_permitted_in_realm!(res, cuser, &realm, "create", crate::permission::roles, conn);
 
-    let role = conn.transaction::<_, AppError, _>(|conn| {
+    let role = horme::transaction(&mut conn, async |conn| {
         let query = roles::table
             .filter(roles::name.eq(&pdata.name))
             .filter(roles::realm_id.eq(&pdata.realm_id));
@@ -107,9 +108,9 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Ro
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let role = diesel::insert_into(roles::table).values(&new_role).get_result::<Role>(conn)?;
+        let role = diesel::insert_into(roles::table).values(&new_role).get_result::<Role>(conn).await?;
         Ok(role)
-    })?;
+    }).await?;
     Ok(Json(role))
 }
 
@@ -123,19 +124,19 @@ struct UpdateInData {
     updated_at: Option<DateTime<Utc>>,
 }
 #[endpoint(tags("role"))]
-pub fn update(role_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<Role> {
+pub async fn update(role_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<Role> {
     let mut pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let exist_role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
     pdata.updated_by = Some(cuser.id);
     pdata.updated_at = Some(Utc::now());
 
-    let role = conn.transaction::<_, AppError, _>(|conn| {
+    let role = horme::transaction(&mut conn, async |conn| {
         if let Some(name) = &pdata.name {
             let query = roles::table
                 .filter(roles::realm_id.eq(exist_role.realm_id))
@@ -145,8 +146,8 @@ pub fn update(role_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mu
                 return Err(StatusError::conflict().brief("This name is already taken, please try another.").into());
             }
         }
-        let role = diesel::update(&exist_role).set(&pdata).get_result::<Role>(conn)?;
+        let role = diesel::update(&exist_role).set(&pdata).get_result::<Role>(conn).await?;
         Ok(role)
-    })?;
+    }).await?;
     Ok(Json(role))
 }

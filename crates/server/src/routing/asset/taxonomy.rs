@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -29,7 +29,7 @@ pub async fn list_domains(req: &mut Request) -> JsonResult<DomainListResponse> {
         req.query::<String>("search").unwrap_or_default().trim()
     );
 
-    let (domains, total) = with_conn(move |conn| {
+    let (domains, total) = with_conn!(move |conn| {
         let total: i64 = taxon_domains::table
             .filter(
                 taxon_domains::code
@@ -38,7 +38,7 @@ pub async fn list_domains(req: &mut Request) -> JsonResult<DomainListResponse> {
                     .or(taxon_domains::name_zh.ilike(&pattern)),
             )
             .count()
-            .get_result(conn)?;
+            .get_result(conn).await?;
         let domains: Vec<TaxonDomain> = taxon_domains::table
             .filter(
                 taxon_domains::code
@@ -49,8 +49,8 @@ pub async fn list_domains(req: &mut Request) -> JsonResult<DomainListResponse> {
             .order(taxon_domains::id.asc())
             .limit(per_page)
             .offset(offset)
-            .load::<TaxonDomain>(conn)?;
-        Ok::<_, diesel::result::Error>((domains, total))
+            .load::<TaxonDomain>(conn).await?;
+        Ok::<_, horme::Error>((domains, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list domains"))?;
@@ -69,10 +69,10 @@ pub async fn get_domain(req: &mut Request) -> JsonResult<TaxonDomain> {
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
-    let domain: TaxonDomain = with_conn(move |conn| {
+    let domain: TaxonDomain = with_conn!(move |conn| {
         taxon_domains::table
             .filter(taxon_domains::id.eq(domain_id))
-            .first::<TaxonDomain>(conn)
+            .first::<TaxonDomain>(conn).await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("domain not found"))?;
@@ -103,14 +103,14 @@ pub async fn create_domain(req: &mut Request) -> JsonResult<TaxonDomain> {
             .into());
     }
 
-    let created: TaxonDomain = with_conn(move |conn| {
+    let created: TaxonDomain = with_conn!(move |conn| {
         diesel::insert_into(taxon_domains::table)
             .values(&NewTaxonDomain {
                 code: input.code.trim().to_string(),
                 name_en: input.name_en.trim().to_string(),
                 name_zh: input.name_zh.trim().to_string(),
             })
-            .get_result::<TaxonDomain>(conn)
+            .get_result::<TaxonDomain>(conn).await
     })
     .await
     .map_err(|e| {
@@ -157,10 +157,10 @@ pub async fn update_domain(req: &mut Request) -> JsonResult<TaxonDomain> {
         name_zh: input.name_zh.map(|n| n.trim().to_string()),
     };
 
-    let updated: TaxonDomain = with_conn(move |conn| {
+    let updated: TaxonDomain = with_conn!(move |conn| {
         diesel::update(taxon_domains::table.filter(taxon_domains::id.eq(domain_id)))
             .set(changes)
-            .get_result::<TaxonDomain>(conn)
+            .get_result::<TaxonDomain>(conn).await
     })
     .await
     .map_err(|e| {
@@ -181,12 +181,12 @@ pub async fn delete_domain(req: &mut Request) -> JsonResult<serde_json::Value> {
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
     // Check if domain has categories
-    let has_categories: bool = with_conn(move |conn| {
+    let has_categories: bool = with_conn!(move |conn| {
         use diesel::dsl::exists;
         diesel::select(exists(
             taxon_categories::table.filter(taxon_categories::domain_id.eq(domain_id)),
         ))
-        .get_result(conn)
+        .get_result(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to check categories"))?;
@@ -197,8 +197,8 @@ pub async fn delete_domain(req: &mut Request) -> JsonResult<serde_json::Value> {
             .into());
     }
 
-    with_conn(move |conn| {
-        diesel::delete(taxon_domains::table.filter(taxon_domains::id.eq(domain_id))).execute(conn)
+    with_conn!(move |conn| {
+        diesel::delete(taxon_domains::table.filter(taxon_domains::id.eq(domain_id))).execute(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete domain"))?;
@@ -233,7 +233,7 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
     let domain_id_clone = domain_id;
     let parent_id_clone = parent_id;
 
-    let (categories, total) = with_conn(move |conn| {
+    let (categories, total) = with_conn!(move |conn| {
         // Count query with same filters
         let mut count_query = taxon_categories::table.into_boxed();
         count_query = count_query.filter(
@@ -248,7 +248,7 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
         if let Some(pid) = parent_id {
             count_query = count_query.filter(taxon_categories::parent_id.eq(pid));
         }
-        let total: i64 = count_query.count().get_result(conn)?;
+        let total: i64 = count_query.count().get_result(conn).await?;
 
         // Data query with same filters
         let mut query = taxon_categories::table.into_boxed();
@@ -268,9 +268,9 @@ pub async fn list_categories(req: &mut Request) -> JsonResult<CategoryListRespon
             .order(taxon_categories::id.asc())
             .limit(per_page)
             .offset(offset)
-            .load::<TaxonCategory>(conn)?;
+            .load::<TaxonCategory>(conn).await?;
 
-        Ok::<_, diesel::result::Error>((categories, total))
+        Ok::<_, horme::Error>((categories, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list categories"))?;
@@ -289,10 +289,10 @@ pub async fn get_category(req: &mut Request) -> JsonResult<TaxonCategory> {
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
-    let category: TaxonCategory = with_conn(move |conn| {
+    let category: TaxonCategory = with_conn!(move |conn| {
         taxon_categories::table
             .filter(taxon_categories::id.eq(category_id))
-            .first::<TaxonCategory>(conn)
+            .first::<TaxonCategory>(conn).await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("category not found"))?;
@@ -306,11 +306,11 @@ pub async fn get_categories_by_domain(req: &mut Request) -> JsonResult<Vec<Taxon
         .param::<i64>("domain_id")
         .ok_or_else(|| StatusError::bad_request().brief("missing domain_id"))?;
 
-    let categories: Vec<TaxonCategory> = with_conn(move |conn| {
+    let categories: Vec<TaxonCategory> = with_conn!(move |conn| {
         taxon_categories::table
             .filter(taxon_categories::domain_id.eq(domain_id))
             .order(taxon_categories::id.asc())
-            .load::<TaxonCategory>(conn)
+            .load::<TaxonCategory>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list categories"))?;
@@ -344,14 +344,14 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
     }
 
     // Verify domain exists
-    let domain_exists: bool = with_conn({
+    let domain_exists: bool = with_conn!({
         let domain_id = input.domain_id;
         move |conn| {
             use diesel::dsl::exists;
             diesel::select(exists(
                 taxon_domains::table.filter(taxon_domains::id.eq(domain_id)),
             ))
-            .get_result(conn)
+            .get_result(conn).await
         }
     })
     .await
@@ -363,10 +363,10 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
 
     // Verify parent exists and domain matches if provided
     if let Some(pid) = input.parent_id {
-        let parent_category: TaxonCategory = with_conn(move |conn| {
+        let parent_category: TaxonCategory = with_conn!(move |conn| {
             taxon_categories::table
                 .filter(taxon_categories::id.eq(pid))
-                .first::<TaxonCategory>(conn)
+                .first::<TaxonCategory>(conn).await
         })
         .await
         .map_err(|_| StatusError::bad_request().brief("parent category not found"))?;
@@ -379,7 +379,7 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
         }
     }
 
-    let created: TaxonCategory = with_conn(move |conn| {
+    let created: TaxonCategory = with_conn!(move |conn| {
         diesel::insert_into(taxon_categories::table)
             .values(&NewTaxonCategory {
                 code: input.code.trim().to_string(),
@@ -388,7 +388,7 @@ pub async fn create_category(req: &mut Request) -> JsonResult<TaxonCategory> {
                 domain_id: input.domain_id,
                 parent_id: input.parent_id,
             })
-            .get_result::<TaxonCategory>(conn)
+            .get_result::<TaxonCategory>(conn).await
     })
     .await
     .map_err(|e| {
@@ -443,10 +443,10 @@ pub async fn update_category(req: &mut Request) -> JsonResult<TaxonCategory> {
     // If parent_id is specified, validate domain consistency
     if let Some(pid) = input.parent_id {
         // Get the current category to know its domain_id
-        let current_category: TaxonCategory = with_conn(move |conn| {
+        let current_category: TaxonCategory = with_conn!(move |conn| {
             taxon_categories::table
                 .filter(taxon_categories::id.eq(category_id))
-                .first::<TaxonCategory>(conn)
+                .first::<TaxonCategory>(conn).await
         })
         .await
         .map_err(|_| StatusError::not_found().brief("category not found"))?;
@@ -455,10 +455,10 @@ pub async fn update_category(req: &mut Request) -> JsonResult<TaxonCategory> {
         let effective_domain_id = input.domain_id.unwrap_or(current_category.domain_id);
 
         // Fetch parent and check domain consistency
-        let parent_category: TaxonCategory = with_conn(move |conn| {
+        let parent_category: TaxonCategory = with_conn!(move |conn| {
             taxon_categories::table
                 .filter(taxon_categories::id.eq(pid))
-                .first::<TaxonCategory>(conn)
+                .first::<TaxonCategory>(conn).await
         })
         .await
         .map_err(|_| StatusError::bad_request().brief("parent category not found"))?;
@@ -478,10 +478,10 @@ pub async fn update_category(req: &mut Request) -> JsonResult<TaxonCategory> {
         parent_id: input.parent_id,
     };
 
-    let updated: TaxonCategory = with_conn(move |conn| {
+    let updated: TaxonCategory = with_conn!(move |conn| {
         diesel::update(taxon_categories::table.filter(taxon_categories::id.eq(category_id)))
             .set(changes)
-            .get_result::<TaxonCategory>(conn)
+            .get_result::<TaxonCategory>(conn).await
     })
     .await
     .map_err(|e| {
@@ -502,12 +502,12 @@ pub async fn delete_category(req: &mut Request) -> JsonResult<serde_json::Value>
         .ok_or_else(|| StatusError::bad_request().brief("missing id"))?;
 
     // Check if category has children
-    let has_children: bool = with_conn(move |conn| {
+    let has_children: bool = with_conn!(move |conn| {
         use diesel::dsl::exists;
         diesel::select(exists(
             taxon_categories::table.filter(taxon_categories::parent_id.eq(category_id)),
         ))
-        .get_result(conn)
+        .get_result(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to check children"))?;
@@ -519,13 +519,13 @@ pub async fn delete_category(req: &mut Request) -> JsonResult<serde_json::Value>
     }
 
     // Check if category is used by contexts
-    let has_contexts: bool = with_conn(move |conn| {
+    let has_contexts: bool = with_conn!(move |conn| {
         use diesel::dsl::exists;
         diesel::select(exists(
             asset_context_categories::table
                 .filter(asset_context_categories::category_id.eq(category_id)),
         ))
-        .get_result(conn)
+        .get_result(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to check contexts"))?;
@@ -536,9 +536,9 @@ pub async fn delete_category(req: &mut Request) -> JsonResult<serde_json::Value>
             .into());
     }
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::delete(taxon_categories::table.filter(taxon_categories::id.eq(category_id)))
-            .execute(conn)
+            .execute(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete category"))?;

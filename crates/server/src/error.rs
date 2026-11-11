@@ -30,14 +30,14 @@ pub enum AppError {
     SerdeJson(#[from] serde_json::error::Error),
     #[error("diesel: `{0}`")]
     Diesel(#[from] diesel::result::Error),
+    #[error("horme: `{0}`")]
+    Horme(#[from] horme::Error),
     #[error("pool: `{0}`")]
     Pool(#[from] crate::db::PoolError),
     #[error("http: `{0}`")]
     StatusError(#[from] salvo::http::StatusError),
     #[error("http parse: `{0}`")]
     HttpParse(#[from] salvo::http::ParseError),
-    #[error("r2d2: `{0}`")]
-    R2d2(#[from] diesel::r2d2::PoolError),
     #[error("utf8: `{0}`")]
     Utf8Error(#[from] std::str::Utf8Error),
 }
@@ -71,7 +71,8 @@ impl AppError {
 
     pub fn is_not_found(&self) -> bool {
         match self {
-            Self::Diesel(diesel::result::Error::NotFound) => true,
+            Self::Diesel(diesel::result::Error::NotFound)
+            | Self::Horme(horme::Error::Query(diesel::result::Error::NotFound)) => true,
             _ => false,
         }
     }
@@ -95,7 +96,7 @@ impl Writer for AppError {
             AppError::FrequentlyRequest => StatusError::bad_request(),
             AppError::Public(msg) => StatusError::internal_server_error().brief(msg),
             AppError::Internal(_msg) => StatusError::internal_server_error(),
-            AppError::Diesel(e) => {
+            AppError::Diesel(e) | AppError::Horme(horme::Error::Query(e)) => {
                 tracing::error!(error = ?e, "diesel db error");
                 if let diesel::result::Error::NotFound = e {
                     StatusError::not_found().brief("Resource not found.")
@@ -148,6 +149,10 @@ mod tests {
         for (error, expected) in [
             (
                 AppError::Diesel(diesel::result::Error::NotFound),
+                StatusCode::NOT_FOUND,
+            ),
+            (
+                AppError::Horme(horme::Error::Query(diesel::result::Error::NotFound)),
                 StatusCode::NOT_FOUND,
             ),
             (AppError::FrequentlyRequest, StatusCode::BAD_REQUEST),

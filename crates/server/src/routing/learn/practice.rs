@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Deserialize;
@@ -31,7 +31,7 @@ pub async fn list_write_practices(
     let practice_id_param = req.query::<String>("practice_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
-    let practices: Vec<WritePractice> = with_conn(move |conn| {
+    let practices: Vec<WritePractice> = with_conn!(move |conn| {
         let mut query = learn_write_practices::table
             .filter(learn_write_practices::user_id.eq(user_id))
             .order(learn_write_practices::updated_at.desc())
@@ -45,7 +45,7 @@ pub async fn list_write_practices(
             query = query.filter(learn_write_practices::practice_id.eq(pid));
         }
 
-        query.load::<WritePractice>(conn)
+        query.load::<WritePractice>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list write practices"))?;
@@ -74,10 +74,11 @@ pub async fn create_write_practice(
         notes: input.notes,
     };
 
-    let practice: WritePractice = with_conn(move |conn| {
+    let practice: WritePractice = with_conn!(move |conn| {
         diesel::insert_into(learn_write_practices::table)
             .values(&new_practice)
             .get_result::<WritePractice>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create write practice"))?;
@@ -117,7 +118,7 @@ pub async fn list_read_practices(
     let practice_id_param = req.query::<String>("practice_id");
     let limit = req.query::<i64>("limit").unwrap_or(100).clamp(1, 500);
 
-    let practices: Vec<ReadPractice> = with_conn(move |conn| {
+    let practices: Vec<ReadPractice> = with_conn!(move |conn| {
         let mut query = learn_read_practices::table
             .filter(learn_read_practices::user_id.eq(user_id))
             .order(learn_read_practices::created_at.desc())
@@ -131,7 +132,7 @@ pub async fn list_read_practices(
             query = query.filter(learn_read_practices::practice_id.eq(pid));
         }
 
-        query.load::<ReadPractice>(conn)
+        query.load::<ReadPractice>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list read practices"))?;
@@ -167,10 +168,11 @@ pub async fn create_read_practice(
         waveform_data: input.waveform_data,
     };
 
-    let practice: ReadPractice = with_conn(move |conn| {
+    let practice: ReadPractice = with_conn!(move |conn| {
         diesel::insert_into(learn_read_practices::table)
             .values(&new_practice)
             .get_result::<ReadPractice>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create read practice"))?;

@@ -5,9 +5,10 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use chrono::Utc;
-use colang::db::pool::DieselPool;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use serde::{Deserialize, Deserializer};
+use std::result::Result;
 
 const DEFAULT_WORDS_DIR: &str = "D:/Works/cola-ng/dict/final-en-dict";
 const DEFAULT_PRONUNCIATIONS_DIR: &str = "D:/Works/cola-ng/space/pronunciations";
@@ -251,7 +252,8 @@ struct WordError {
     error: String,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -328,12 +330,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = DieselPool::new(
-        &database_url,
-        &Default::default(),
-        diesel::r2d2::Pool::builder(),
-    )?;
-    let mut conn = pool.get()?;
+    let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
     let start_time = Instant::now();
 
@@ -346,11 +343,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Found {} JSON files to process", json_files.len());
 
     println!("\nLoading dictionaries cache...");
-    let mut dictionaries_cache = load_dictionaries_cache(&mut conn)?;
+    let mut dictionaries_cache = load_dictionaries_cache(&mut conn).await?;
     println!("Loaded {} dictionaries", dictionaries_cache.len());
 
     println!("\nLoading categories cache...");
-    let mut categories_cache = load_categories_cache(&mut conn)?;
+    let mut categories_cache = load_categories_cache(&mut conn).await?;
     println!("Loaded {} categories", categories_cache.len());
 
     let (stats, word_errors) = import_words(
@@ -361,7 +358,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         &mut dictionaries_cache,
         &mut categories_cache,
         &pronunciations_dir,
-    )?;
+    )
+    .await?;
 
     let elapsed = start_time.elapsed();
 
@@ -417,14 +415,15 @@ fn discover_json_files(dir: &Path) -> Vec<PathBuf> {
     files
 }
 
-fn load_dictionaries_cache(
-    conn: &mut PgConnection,
-) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
+async fn load_dictionaries_cache(
+    conn: &mut AsyncPgConnection,
+) -> Result<HashMap<String, i64>, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_dictionaries;
 
     let dictionaries: Vec<(i64, String)> = dict_dictionaries::table
         .select((dict_dictionaries::id, dict_dictionaries::name_zh))
-        .load(conn)?;
+        .load(conn)
+        .await?;
 
     let mut cache = HashMap::new();
     for (id, name) in dictionaries {
@@ -434,15 +433,16 @@ fn load_dictionaries_cache(
     Ok(cache)
 }
 
-fn load_categories_cache(
-    conn: &mut PgConnection,
-) -> Result<HashMap<String, i64>, Box<dyn std::error::Error>> {
+async fn load_categories_cache(
+    conn: &mut AsyncPgConnection,
+) -> Result<HashMap<String, i64>, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::{taxon_categories, taxon_domains};
 
     let domain_id: Option<i64> = taxon_domains::table
         .filter(taxon_domains::code.eq("dictionary"))
         .select(taxon_domains::id)
         .first::<i64>(conn)
+        .await
         .optional()?;
 
     let mut cache = HashMap::new();
@@ -451,7 +451,8 @@ fn load_categories_cache(
         let categories: Vec<(i64, String)> = taxon_categories::table
             .select((taxon_categories::id, taxon_categories::name_en))
             .filter(taxon_categories::domain_id.eq(did))
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         for (id, name) in categories {
             cache.insert(name, id);
@@ -461,15 +462,15 @@ fn load_categories_cache(
     Ok(cache)
 }
 
-fn import_words(
-    conn: &mut PgConnection,
+async fn import_words(
+    conn: &mut AsyncPgConnection,
     json_files: &[PathBuf],
     _batch_size: usize,
     skip_existing: bool,
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
     pronunciations_dir: &Path,
-) -> Result<(ImportStats, Vec<WordError>), Box<dyn std::error::Error>> {
+) -> Result<(ImportStats, Vec<WordError>), Box<dyn std::error::Error + Send + Sync>> {
     let mut stats = ImportStats {
         files_processed: 0,
         words_added: 0,
@@ -482,7 +483,7 @@ fn import_words(
         stats.files_processed += 1;
 
         // Each file gets its own transaction to prevent cascading failures
-        let result = conn.transaction::<_, Box<dyn std::error::Error>, _>(|conn| {
+        let result = horme::transaction(conn, async |conn| {
             process_json_file(
                 conn,
                 json_file,
@@ -492,7 +493,9 @@ fn import_words(
                 pronunciations_dir,
                 &mut word_errors,
             )
-        });
+            .await
+        })
+        .await;
 
         match result {
             Ok((added, skipped)) => {
@@ -512,15 +515,15 @@ fn import_words(
     Ok((stats, word_errors))
 }
 
-fn process_json_file(
-    conn: &mut PgConnection,
+async fn process_json_file(
+    conn: &mut AsyncPgConnection,
     json_file: &Path,
     _skip_existing: bool,
     dictionaries_cache: &mut HashMap<String, i64>,
     categories_cache: &mut HashMap<String, i64>,
     pronunciations_dir: &Path,
     word_errors: &mut Vec<WordError>,
-) -> Result<(usize, usize), Box<dyn std::error::Error>> {
+) -> Result<(usize, usize), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_words;
 
     let file = File::open(json_file)?;
@@ -560,6 +563,7 @@ fn process_json_file(
             .select(dict_words::id)
             .filter(dict_words::word_lower.eq(&word_lower))
             .first(conn)
+            .await
             .optional()?;
 
         let (word_id, is_new_word) = match existing_word_id {
@@ -569,7 +573,7 @@ fn process_json_file(
             }
             None => {
                 // Word doesn't exist, insert it
-                let new_id = insert_word(conn, &word, &word_lower, &entry)?;
+                let new_id = insert_word(conn, &word, &word_lower, &entry).await?;
                 (new_id, true)
             }
         };
@@ -580,7 +584,7 @@ fn process_json_file(
         let mut has_errors = false;
 
         if let Err(e) =
-            insert_pronunciations(conn, word_id, &word_lower, &entry, pronunciations_dir)
+            insert_pronunciations(conn, word_id, &word_lower, &entry, pronunciations_dir).await
         {
             eprintln!(
                 "  Warning: failed to insert pronunciations for '{}': {}",
@@ -588,53 +592,53 @@ fn process_json_file(
             );
             has_errors = true;
         }
-        if let Err(e) = insert_definitions(conn, word_id, &entry) {
+        if let Err(e) = insert_definitions(conn, word_id, &entry).await {
             eprintln!(
                 "  Warning: failed to insert definitions for '{}': {}",
                 word, e
             );
             has_errors = true;
         }
-        if let Err(e) = insert_forms(conn, word_id, &entry) {
+        if let Err(e) = insert_forms(conn, word_id, &entry).await {
             eprintln!("  Warning: failed to insert forms for '{}': {}", word, e);
             has_errors = true;
         }
-        if let Err(e) = insert_sentences(conn, word_id, &entry) {
+        if let Err(e) = insert_sentences(conn, word_id, &entry).await {
             eprintln!(
                 "  Warning: failed to insert sentences for '{}': {}",
                 word, e
             );
             has_errors = true;
         }
-        if let Err(e) = insert_etymologies(conn, word_id, &entry) {
+        if let Err(e) = insert_etymologies(conn, word_id, &entry).await {
             eprintln!(
                 "  Warning: failed to insert etymologies for '{}': {}",
                 word, e
             );
             has_errors = true;
         }
-        if let Err(e) = insert_categories(conn, word_id, &entry, categories_cache) {
+        if let Err(e) = insert_categories(conn, word_id, &entry, categories_cache).await {
             eprintln!(
                 "  Warning: failed to insert categories for '{}': {}",
                 word, e
             );
             has_errors = true;
         }
-        if let Err(e) = insert_relations(conn, word_id, &entry) {
+        if let Err(e) = insert_relations(conn, word_id, &entry).await {
             eprintln!(
                 "  Warning: failed to insert relations for '{}': {}",
                 word, e
             );
             has_errors = true;
         }
-        if let Err(e) = insert_frequencies(conn, word_id, &entry) {
+        if let Err(e) = insert_frequencies(conn, word_id, &entry).await {
             eprintln!(
                 "  Warning: failed to insert frequencies for '{}': {}",
                 word, e
             );
             has_errors = true;
         }
-        if let Err(e) = insert_word_dictionaries(conn, word_id, &entry, dictionaries_cache) {
+        if let Err(e) = insert_word_dictionaries(conn, word_id, &entry, dictionaries_cache).await {
             eprintln!(
                 "  Warning: failed to insert dictionaries for '{}': {}",
                 word, e
@@ -660,12 +664,12 @@ fn process_json_file(
     Ok((words_added, words_skipped))
 }
 
-fn insert_word(
-    conn: &mut PgConnection,
+async fn insert_word(
+    conn: &mut AsyncPgConnection,
     word: &str,
     word_lower: &str,
     entry: &WordEntry,
-) -> Result<i64, Box<dyn std::error::Error>> {
+) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_words;
 
     let word_type = if word.contains(' ') {
@@ -708,7 +712,8 @@ fn insert_word(
             dict_words::is_active.eq(true),
         ))
         .returning(dict_words::id)
-        .get_result(conn)?;
+        .get_result(conn)
+        .await?;
 
     Ok(word_id)
 }
@@ -732,18 +737,19 @@ fn normalize_word_type(word_type: &str) -> Option<String> {
     }
 }
 
-fn insert_pronunciations(
-    conn: &mut PgConnection,
+async fn insert_pronunciations(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     word_lower: &str,
     entry: &WordEntry,
     pronunciations_dir: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_pronunciations;
 
     // Delete existing pronunciations for this word (we'll re-insert fresh data)
     diesel::delete(dict_pronunciations::table.filter(dict_pronunciations::word_id.eq(word_id)))
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
     // Check for pronunciation MP3 files
     let mp3_filename = format!("{}.mp3", word_lower);
@@ -786,7 +792,8 @@ fn insert_pronunciations(
                     dict_pronunciations::audio_path.eq(&audio_path),
                     dict_pronunciations::is_primary.eq(is_first),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             is_first = false;
         }
     }
@@ -808,7 +815,8 @@ fn insert_pronunciations(
                     dict_pronunciations::audio_path.eq(Some(format!("uk/{}", mp3_filename))),
                     dict_pronunciations::is_primary.eq(true),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
         if has_us_audio {
             diesel::insert_into(dict_pronunciations::table)
@@ -819,24 +827,26 @@ fn insert_pronunciations(
                     dict_pronunciations::audio_path.eq(Some(format!("us/{}", mp3_filename))),
                     dict_pronunciations::is_primary.eq(!has_uk_audio),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 
     Ok(())
 }
 
-fn insert_definitions(
-    conn: &mut PgConnection,
+async fn insert_definitions(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_definitions;
 
     if let Some(definitions) = &entry.definitions {
         // Delete existing definitions for this word
         diesel::delete(dict_definitions::table.filter(dict_definitions::word_id.eq(word_id)))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         let mut order = 1;
         for def in definitions {
@@ -858,7 +868,7 @@ fn insert_definitions(
                     dict_definitions::usage_notes.eq(&def.usage_notes),
                     dict_definitions::is_primary.eq(def.is_primary.unwrap_or(order == 1)),
                 ))
-                .execute(conn)?;
+                .execute(conn).await?;
             order += 1;
         }
     }
@@ -900,16 +910,18 @@ fn normalize_register(register: &str) -> Option<String> {
     }
 }
 
-fn insert_forms(
-    conn: &mut PgConnection,
+async fn insert_forms(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_forms;
 
     if let Some(forms) = &entry.forms {
         // Delete existing forms for this word
-        diesel::delete(dict_forms::table.filter(dict_forms::word_id.eq(word_id))).execute(conn)?;
+        diesel::delete(dict_forms::table.filter(dict_forms::word_id.eq(word_id)))
+            .execute(conn)
+            .await?;
 
         for form in forms {
             let form_type = form.form_type.as_ref().and_then(|t| normalize_form_type(t));
@@ -921,7 +933,8 @@ fn insert_forms(
                     dict_forms::form.eq(&form.form),
                     dict_forms::is_irregular.eq(form.is_irregular),
                 ))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 
@@ -946,17 +959,18 @@ fn normalize_form_type(form_type: &str) -> Option<String> {
     }
 }
 
-fn insert_sentences(
-    conn: &mut PgConnection,
+async fn insert_sentences(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::*;
 
     if let Some(sentences) = &entry.sentences {
         // Delete existing word-sentence links for this word
         diesel::delete(dict_word_sentences::table.filter(dict_word_sentences::word_id.eq(word_id)))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         let mut order = 1;
         for sent in sentences {
@@ -969,7 +983,8 @@ fn insert_sentences(
                     dict_sentences::is_common.eq(false),
                 ))
                 .returning(dict_sentences::id)
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
 
             diesel::insert_into(dict_word_sentences::table)
                 .values((
@@ -978,7 +993,7 @@ fn insert_sentences(
                     dict_word_sentences::priority_order.eq(order),
                 ))
                 .on_conflict_do_nothing()
-                .execute(conn)?;
+                .execute(conn).await?;
 
             order += 1;
         }
@@ -987,11 +1002,11 @@ fn insert_sentences(
     Ok(())
 }
 
-fn insert_etymologies(
-    conn: &mut PgConnection,
+async fn insert_etymologies(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::*;
 
     if let Some(etymologies) = &entry.etymologies {
@@ -999,7 +1014,8 @@ fn insert_etymologies(
         diesel::delete(
             dict_word_etymologies::table.filter(dict_word_etymologies::word_id.eq(word_id)),
         )
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
         let mut order = 1;
         for etym in etymologies {
@@ -1020,7 +1036,8 @@ fn insert_etymologies(
                     dict_etymologies::first_attested_year.eq(etym.first_attested_year.as_ref()),
                 ))
                 .returning(dict_etymologies::id)
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
 
             diesel::insert_into(dict_word_etymologies::table)
                 .values((
@@ -1029,7 +1046,7 @@ fn insert_etymologies(
                     dict_word_etymologies::priority_order.eq(order),
                 ))
                 .on_conflict_do_nothing()
-                .execute(conn)?;
+                .execute(conn).await?;
 
             order += 1;
         }
@@ -1038,12 +1055,12 @@ fn insert_etymologies(
     Ok(())
 }
 
-fn insert_categories(
-    conn: &mut PgConnection,
+async fn insert_categories(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
     categories_cache: &mut HashMap<String, i64>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::{dict_word_categories, taxon_categories, taxon_domains};
 
     if let Some(categories) = &entry.categories {
@@ -1051,7 +1068,8 @@ fn insert_categories(
         diesel::delete(
             dict_word_categories::table.filter(dict_word_categories::word_id.eq(word_id)),
         )
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
         for cat in categories {
             let category_id = if let Some(&id) = categories_cache.get(&cat.name) {
@@ -1061,7 +1079,8 @@ fn insert_categories(
                 let domain_id: i64 = taxon_domains::table
                     .filter(taxon_domains::code.eq("dictionary"))
                     .select(taxon_domains::id)
-                    .first::<i64>(conn)?;
+                    .first::<i64>(conn)
+                    .await?;
 
                 let id: i64 = diesel::insert_into(taxon_categories::table)
                     .values((
@@ -1071,7 +1090,8 @@ fn insert_categories(
                         taxon_categories::domain_id.eq(domain_id),
                     ))
                     .returning(taxon_categories::id)
-                    .get_result(conn)?;
+                    .get_result(conn)
+                    .await?;
                 categories_cache.insert(cat.name.clone(), id);
                 id
             };
@@ -1083,40 +1103,42 @@ fn insert_categories(
                     dict_word_categories::confidence.eq(cat.confidence.unwrap_or(50)),
                 ))
                 .on_conflict_do_nothing()
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 
     Ok(())
 }
 
-fn insert_relations(
-    conn: &mut PgConnection,
+async fn insert_relations(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_relations;
 
     if let Some(relations) = &entry.relations {
         // Delete existing relations for this word
         diesel::delete(dict_relations::table.filter(dict_relations::word_id.eq(word_id)))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
-        insert_relation_type(conn, word_id, "synonym", &relations.synonyms)?;
-        insert_relation_type(conn, word_id, "antonym", &relations.antonyms)?;
-        insert_relation_type(conn, word_id, "related", &relations.related)?;
-        insert_relation_type(conn, word_id, "broader", &relations.broader)?;
+        insert_relation_type(conn, word_id, "synonym", &relations.synonyms).await?;
+        insert_relation_type(conn, word_id, "antonym", &relations.antonyms).await?;
+        insert_relation_type(conn, word_id, "related", &relations.related).await?;
+        insert_relation_type(conn, word_id, "broader", &relations.broader).await?;
     }
 
     Ok(())
 }
 
-fn insert_relation_type(
-    conn: &mut PgConnection,
+async fn insert_relation_type(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     relation_type: &str,
     related_words: &Option<Vec<RelatedWord>>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::{dict_relations, dict_words};
 
     if let Some(words) = related_words {
@@ -1133,6 +1155,7 @@ fn insert_relation_type(
                 .select(dict_words::id)
                 .filter(dict_words::word_lower.eq(&related_word_lower))
                 .first(conn)
+                .await
                 .optional()?;
 
             let related_id = if let Some(id) = related_word_id {
@@ -1148,7 +1171,8 @@ fn insert_relation_type(
                         dict_words::word_count.eq(word.split_whitespace().count() as i32),
                     ))
                     .returning(dict_words::id)
-                    .get_result(conn)?
+                    .get_result(conn)
+                    .await?
             };
 
             diesel::insert_into(dict_relations::table)
@@ -1159,24 +1183,26 @@ fn insert_relation_type(
                     dict_relations::relation_strength.eq(related.strength),
                 ))
                 .on_conflict_do_nothing()
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 
     Ok(())
 }
 
-fn insert_frequencies(
-    conn: &mut PgConnection,
+async fn insert_frequencies(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::dict_frequencies;
 
     if let Some(frequencies) = &entry.frequencies {
         // Delete existing frequencies for this word
         diesel::delete(dict_frequencies::table.filter(dict_frequencies::word_id.eq(word_id)))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         for freq in frequencies {
             let corpus_type = freq
@@ -1195,7 +1221,8 @@ fn insert_frequencies(
                     dict_frequencies::per_million.eq(freq.per_million),
                 ))
                 .on_conflict_do_nothing()
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 
@@ -1229,12 +1256,12 @@ fn normalize_band(band: &str) -> Option<String> {
     }
 }
 
-fn insert_word_dictionaries(
-    conn: &mut PgConnection,
+async fn insert_word_dictionaries(
+    conn: &mut AsyncPgConnection,
     word_id: i64,
     entry: &WordEntry,
     dictionaries_cache: &mut HashMap<String, i64>,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::{dict_dictionaries, dict_word_dictionaries};
 
     if let Some(dictionaries) = &entry.dictionaries {
@@ -1242,7 +1269,8 @@ fn insert_word_dictionaries(
         diesel::delete(
             dict_word_dictionaries::table.filter(dict_word_dictionaries::word_id.eq(word_id)),
         )
-        .execute(conn)?;
+        .execute(conn)
+        .await?;
 
         for dict_ref in dictionaries {
             // Handle dictionary ID directly
@@ -1262,6 +1290,7 @@ fn insert_word_dictionaries(
                                 .or(dict_dictionaries::short_en.eq(dict_name)),
                         )
                         .first(conn)
+                        .await
                         .optional()?;
 
                     let id = if let Some(id) = existing_id {
@@ -1279,6 +1308,7 @@ fn insert_word_dictionaries(
                             .on_conflict_do_nothing()
                             .returning(dict_dictionaries::id)
                             .get_result::<i64>(conn)
+                            .await
                             .optional()?;
 
                         match insert_result {
@@ -1293,7 +1323,8 @@ fn insert_word_dictionaries(
                                             .or(dict_dictionaries::name_en.eq(dict_name))
                                             .or(dict_dictionaries::short_en.eq(dict_name)),
                                     )
-                                    .first(conn)?
+                                    .first(conn)
+                                    .await?
                             }
                         }
                     };
@@ -1311,7 +1342,8 @@ fn insert_word_dictionaries(
                     dict_word_dictionaries::priority_order.eq(dict_ref.priority_order()),
                 ))
                 .on_conflict_do_nothing()
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
         }
     }
 

@@ -1,7 +1,8 @@
 use std::collections::HashMap;
 
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -16,7 +17,7 @@ use crate::{AppError, AppResult, DepotExt, ErrorItem, JsonResult, PagedResult, S
 #[endpoint(tags("wallet"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<ObtainedCoupon> {
     let _cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let data = query_pagation_data!(
         req,
         res,
@@ -34,33 +35,33 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<ObtainedC
 #[endpoint(tags("wallet"))]
 pub async fn show(obtained_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<ObtainedCoupon> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let obtained_coupon = wallet_obtained_coupons::table
         .find(obtained_id.into_inner())
-        .first::<ObtainedCoupon>(conn)?;
+        .first::<ObtainedCoupon>(conn).await?;
     realms::table
         .find(obtained_coupon.realm_id)
-        .get_result::<Realm>(conn)?
+        .get_result::<Realm>(conn).await?
         .assign_to(cuser, "wallet.view", conn)?;
     Ok(Json(obtained_coupon))
 }
 #[endpoint(tags("wallet"))]
 pub async fn delete(obtained_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let obtained_coupon = wallet_obtained_coupons::table
         .find(obtained_id.into_inner())
-        .first::<ObtainedCoupon>(conn)?;
+        .first::<ObtainedCoupon>(conn).await?;
     realms::table
         .find(obtained_coupon.realm_id)
-        .get_result::<Realm>(conn)?
+        .get_result::<Realm>(conn).await?
         .assign_to(cuser, "wallet.edit", conn)?;
     db::delete_wallet_obtained_coupon(obtained_coupon.id, cuser.id, conn)?;
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("wallet"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let info = bulk_delete_records!(
         req,
         depot,
@@ -95,15 +96,15 @@ pub async fn obtain(pdata: JsonBody<ObtainInData>, depot: &mut Depot) -> JsonRes
         description,
     } = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let realm = realms::table.find(realm_id).first::<Realm>(conn)?.assign_to(cuser, "wallet.edit", conn)?;
+    let conn = &mut db::conn().await?;
+    let realm = realms::table.find(realm_id).first::<Realm>(conn).await?.assign_to(cuser, "wallet.edit", conn)?;
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
     let coupon = trade_coupons::table
         .filter(trade_coupons::id.eq(coupon_id))
         .filter(trade_coupons::obtained_mode.eq("realm"))
-        .get_result::<Coupon>(conn)?;
+        .get_result::<Coupon>(conn).await?;
     if coupon.is_delisted {
         return Err(StatusError::bad_request().brief("coupon is delisted").into());
     }
@@ -130,22 +131,23 @@ struct UpdateInData {
 pub async fn update(obtained_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<ObtainedCoupon> {
     let mut pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let obtained_coupon = wallet_obtained_coupons::table
         .find(obtained_id.into_inner())
-        .first::<ObtainedCoupon>(conn)?;
+        .first::<ObtainedCoupon>(conn).await?;
     realms::table
         .find(obtained_coupon.realm_id)
-        .get_result::<Realm>(conn)?
+        .get_result::<Realm>(conn).await?
         .assign_to(cuser, "wallet.edit", conn)?;
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
     pdata.updated_by = Some(cuser.id);
     pdata.updated_at = Some(Utc::now());
-    let obtained_coupon = conn.transaction::<ObtainedCoupon, AppError, _>(|conn| {
-        let obtained_coupon = diesel::update(&obtained_coupon).set(&pdata).get_result::<ObtainedCoupon>(conn)?;
+    let obtained_coupon = horme::transaction(&mut conn, async |conn| {
+        let obtained_coupon = diesel::update(&obtained_coupon).set(&pdata).get_result::<ObtainedCoupon>(conn).await?;
         Ok(obtained_coupon)
-    })?;
+    })
+    .await?;
     Ok(Json(obtained_coupon))
 }

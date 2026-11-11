@@ -1,5 +1,5 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
@@ -44,7 +44,7 @@ pub async fn list_issue_words(
     let per_page = req.query::<i64>("per_page").unwrap_or(50).clamp(1, 200);
     let offset = (page - 1) * per_page;
 
-    let (items, total): (Vec<IssueWord>, i64) = with_conn(move |conn| {
+    let (items, total): (Vec<IssueWord>, i64) = with_conn!(move |conn| {
         let mut query = learn_issue_words::table
             .filter(learn_issue_words::user_id.eq(user_id))
             .into_boxed();
@@ -67,13 +67,14 @@ pub async fn list_issue_words(
             );
         }
 
-        let total: i64 = count_query.count().get_result(conn)?;
+        let total: i64 = count_query.count().get_result(conn).await?;
 
         let items = query
             .order(learn_issue_words::created_at.desc())
             .offset(offset)
             .limit(per_page)
-            .load::<IssueWord>(conn)?;
+            .load::<IssueWord>(conn)
+            .await?;
 
         Ok((items, total))
     })
@@ -111,10 +112,11 @@ pub async fn create_issue_word(
         context: input.context.clone(),
     };
 
-    let word: IssueWord = with_conn(move |conn| {
+    let word: IssueWord = with_conn!(move |conn| {
         diesel::insert_into(learn_issue_words::table)
             .values(&new_word)
             .get_result::<IssueWord>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create issue word"))?;

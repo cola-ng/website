@@ -1,5 +1,6 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use serde_json::Value as JsonValue;
+use std::result::Result;
 
 use crate::db::schema::user_activities;
 use crate::db::with_conn;
@@ -19,7 +20,7 @@ pub async fn record_activity(
     let ip_address = ip_address.map(|s| s.to_string());
     let user_agent = user_agent.map(|s| s.to_string());
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::insert_into(user_activities::table)
             .values(&NewUserActivity {
                 user_id,
@@ -30,6 +31,7 @@ pub async fn record_activity(
                 user_agent,
             })
             .get_result::<UserActivity>(conn)
+            .await
     })
     .await
     .map_err(|e| format!("failed to record activity: {}", e))

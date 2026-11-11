@@ -1,6 +1,6 @@
 use chrono::{DateTime, Utc};
 use diesel::dsl;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::http::StatusError;
 use serde::Deserialize;
 
@@ -15,7 +15,7 @@ pub struct JwtClaims {
     pub sub: String,
 }
 
-// pub fn validate_jwt_token(config: &JwtConfig, token: &str) -> AppResult<JwtClaims> {
+// pub async fn validate_jwt_token(config: &JwtConfig, token: &str) -> AppResult<JwtClaims> {
 //     let verifier = init_jwt_verifier(config)?;
 //     let validator = init_jwt_validator(config)?;
 //     jsonwebtoken::decode::<JwtClaims>(token, &verifier, &validator)
@@ -85,12 +85,12 @@ pub struct JwtClaims {
 //     Ok(validator)
 // }
 
-pub fn is_username_available(name: &str) -> AppResult<bool> {
-    let available = !user_exists(name)?;
+pub async fn is_username_available(name: &str) -> AppResult<bool> {
+    let available = !user_exists(name).await?;
     Ok(available)
 }
 
-pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult<User> {
+pub async fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult<User> {
     let new_user = NewUser {
         name: name.into(),
         email: None,
@@ -105,7 +105,8 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
         .on_conflict(base_users::id)
         .do_update()
         .set(&new_user)
-        .get_result::<User>(&mut conn()?)?;
+        .get_result::<User>(&mut conn().await?)
+        .await?;
     if let Some(password) = password {
         let hash = crate::auth::hash_password(password)?;
         diesel::insert_into(base_passwords::table)
@@ -114,18 +115,19 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
                 hash,
                 created_at: Utc::now(),
             })
-            .execute(&mut conn()?)?;
+            .execute(&mut conn().await?)
+            .await?;
     }
     Ok(user)
 }
 
-// pub fn valid_refresh_token(user_id: i64, device_id: i64, token: &str) -> AppResult<()> {
+// pub async fn valid_refresh_token(user_id: i64, device_id: i64, token: &str) -> AppResult<()> {
 //     let Ok(expires_at) = user_refresh_tokens::table
 //         .filter(user_refresh_tokens::user_id.eq(user_id))
 //         .filter(user_refresh_tokens::device_id.eq(device_id))
 //         .filter(user_refresh_tokens::token.eq(token))
 //         .select(user_refresh_tokens::expires_at)
-//         .first::<DateTime<Utc>>(&mut conn()?)
+//         .first::<DateTime<Utc>>(&mut conn().await?).await
 //     else {
 //         return Err(StatusError::unauthorized()
 //             .brief("invalid refresh token")
@@ -139,152 +141,162 @@ pub fn create_user(name: impl Into<String>, password: Option<&str>) -> AppResult
 //     Ok(())
 // }
 
-// pub fn make_user_admin(user_id: i64) -> AppResult<()> {
+// pub async fn make_user_admin(user_id: i64) -> AppResult<()> {
 //     let user_id = user_id.to_owned();
 //     diesel::update(users::table.filter(users::id.eq(&user_id)))
 //         .set(users::is_admin.eq(true))
-//         .execute(&mut conn()?)?;
+//         .execute(&mut conn().await?).await?;
 //     Ok(())
 // }
 
 // pub async fn deactivate_account(user_id: i64) -> AppResult<()> {
 //     diesel::update(users::table.find(user_id))
 //         .set(users::deactivated_at.eq(Utc::now()))
-//         .execute(&mut conn()?)?;
+//         .execute(&mut conn().await?).await?;
 //     Ok(())
 // }
 
-// pub fn is_admin(user_id: i64) -> AppResult<bool> {
+// pub async fn is_admin(user_id: i64) -> AppResult<bool> {
 //     users::table
 //         .filter(users::id.eq(user_id))
 //         .select(users::is_admin)
-//         .first::<bool>(&mut conn()?)
+//         .first::<bool>(&mut conn().await?).await
 //         .map_err(Into::into)
 // }
 
 /// Check if a user has an account on this homeserver.
-pub fn user_exists(username: &str) -> AppResult<bool> {
+pub async fn user_exists(username: &str) -> AppResult<bool> {
     let query = base_users::table.filter(base_users::name.eq(username));
-    diesel_exists!(query, &mut conn()?).map_err(Into::into)
+    let mut conn = conn().await?;
+    diesel_exists!(query, &mut conn).await.map_err(Into::into)
 }
 
-pub fn get_user(user_id: i64) -> AppResult<User> {
+pub async fn get_user(user_id: i64) -> AppResult<User> {
     base_users::table
         .find(user_id)
-        .first::<User>(&mut conn()?)
+        .first::<User>(&mut conn().await?)
+        .await
         .map_err(Into::into)
 }
 
 /// Returns the number of users registered on this server.
-pub fn count() -> AppResult<u64> {
+pub async fn count() -> AppResult<u64> {
     let count = base_passwords::table
         .select(dsl::count(base_passwords::user_id).aggregate_distinct())
-        .first::<i64>(&mut conn()?)?;
+        .first::<i64>(&mut conn().await?)
+        .await?;
     Ok(count as u64)
 }
 
 /// Returns the display_name of a user on this homeserver.
-pub fn display_name(user_id: i64) -> AppResult<Option<String>> {
+pub async fn display_name(user_id: i64) -> AppResult<Option<String>> {
     base_users::table
         .filter(base_users::id.eq(user_id))
         .select(base_users::display_name)
-        .first::<Option<String>>(&mut conn()?)
+        .first::<Option<String>>(&mut conn().await?)
+        .await
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
 }
-pub fn set_display_name(user_id: i64, display_name: &str) -> AppResult<()> {
+pub async fn set_display_name(user_id: i64, display_name: &str) -> AppResult<()> {
     diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
         .set(base_users::display_name.eq(display_name))
-        .execute(&mut conn()?)
+        .execute(&mut conn().await?)
+        .await
         .map(|_| ())
         .map_err(Into::into)
 }
-pub fn remove_display_name(user_id: i64) -> AppResult<()> {
+pub async fn remove_display_name(user_id: i64) -> AppResult<()> {
     diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
         .set(base_users::display_name.eq::<Option<String>>(None))
-        .execute(&mut conn()?)
+        .execute(&mut conn().await?)
+        .await
         .map(|_| ())
         .map_err(Into::into)
 }
 
 /// Get the avatar_url of a user.
-pub fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
+pub async fn avatar_url(user_id: i64) -> AppResult<Option<String>> {
     base_users::table
         .filter(base_users::id.eq(user_id))
         .select(base_users::avatar)
-        .first::<Option<String>>(&mut conn()?)
+        .first::<Option<String>>(&mut conn().await?)
+        .await
         .optional()
         .map(Option::flatten)
         .map_err(Into::into)
 }
-pub fn set_avatar_url(user_id: i64, avatar_url: &str) -> AppResult<()> {
+pub async fn set_avatar_url(user_id: i64, avatar_url: &str) -> AppResult<()> {
     diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
         .set(base_users::avatar.eq(avatar_url))
-        .execute(&mut conn()?)?;
+        .execute(&mut conn().await?)
+        .await?;
     Ok(())
 }
 
-// pub fn is_deactivated(user_id: i64) -> AppResult<bool> {
+// pub async fn is_deactivated(user_id: i64) -> AppResult<bool> {
 //     let deactivated_at = users::table
 //         .filter(users::id.eq(user_id))
 //         .select(users::deactivated_at)
-//         .first::<Option<DateTime<Utc>>>(&mut conn()?)
+//         .first::<Option<DateTime<Utc>>>(&mut conn().await?).await
 //         .optional()?
 //         .flatten();
 //     Ok(deactivated_at.is_some())
 // }
 
-// pub fn all_device_ids(user_id: i64) -> AppResult<Vec<i64>> {
+// pub async fn all_device_ids(user_id: i64) -> AppResult<Vec<i64>> {
 //     user_devices::table
 //         .filter(user_devices::user_id.eq(user_id))
 //         .select(user_devices::id)
-//         .load::<i64>(&mut conn()?)
+//         .load::<i64>(&mut conn().await?).await
 //         .map_err(Into::into)
 // }
 
-// pub fn delete_access_tokens(user_id: i64) -> AppResult<()> {
+// pub async fn delete_access_tokens(user_id: i64) -> AppResult<()> {
 //     diesel::delete(user_access_tokens::table.filter(user_access_tokens::user_id.eq(user_id)))
-//         .execute(&mut conn()?)?;
+//         .execute(&mut conn().await?).await?;
 //     Ok(())
 // }
 
-// pub fn delete_refresh_tokens(user_id: i64) -> AppResult<()> {
+// pub async fn delete_refresh_tokens(user_id: i64) -> AppResult<()> {
 //     diesel::delete(user_refresh_tokens::table.filter(user_refresh_tokens::user_id.eq(user_id)))
-//         .execute(&mut conn()?)?;
+//         .execute(&mut conn().await?).await?;
 //     Ok(())
 // }
 
-// pub fn remove_all_devices(user_id: i64) -> AppResult<()> {
+// pub async fn remove_all_devices(user_id: i64) -> AppResult<()> {
 //     delete_access_tokens(user_id)?;
 //     delete_refresh_tokens(user_id)?;
 //     Ok(())
 // }
 
-// pub fn deactivate(user_id: i64) -> AppResult<()> {
+// pub async fn deactivate(user_id: i64) -> AppResult<()> {
 //     diesel::update(users::table.find(user_id))
 //         .set((users::deactivated_at.eq(Utc::now()),))
-//         .execute(&mut conn()?)?;
+//         .execute(&mut conn().await?).await?;
 
 //     Ok(())
 // }
 
 /// Set locked status for a user
-pub fn set_locked(user_id: i64, locked: bool, locker_id: Option<i64>) -> AppResult<()> {
+pub async fn set_locked(user_id: i64, locked: bool, locker_id: Option<i64>) -> AppResult<()> {
     if locked {
         diesel::update(base_users::table.find(user_id))
             .set((
                 base_users::locked_at.eq(Some(Utc::now())),
                 base_users::locked_by.eq(locker_id.map(|u| u.to_owned())),
             ))
-            .execute(&mut conn()?)?;
+            .execute(&mut conn().await?)
+            .await?;
     } else {
         diesel::update(base_users::table.find(user_id))
             .set((
                 base_users::locked_at.eq::<Option<DateTime<Utc>>>(None),
                 base_users::locked_by.eq::<Option<i64>>(None),
             ))
-            .execute(&mut conn()?)?;
+            .execute(&mut conn().await?)
+            .await?;
     }
     Ok(())
 }
@@ -303,7 +315,7 @@ pub struct ListUsersFilter {
     pub dir: Option<String>,
 }
 
-pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
+pub async fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     let mut query = base_users::table.into_boxed();
 
     // // Filter by deactivated
@@ -316,7 +328,10 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     // }
 
     // Get total count before pagination
-    let _total: i64 = base_users::table.count().get_result(&mut conn()?)?;
+    let _total: i64 = base_users::table
+        .count()
+        .get_result(&mut conn().await?)
+        .await?;
 
     // Apply ordering
     let dir_asc = filter.dir.as_ref().map(|d| d == "f").unwrap_or(true);
@@ -352,7 +367,7 @@ pub fn list_users(filter: &ListUsersFilter) -> AppResult<Vec<User>> {
     let limit = filter.limit.unwrap_or(100).min(1000);
     query = query.limit(limit);
 
-    let users = query.load::<User>(&mut conn()?)?;
+    let users = query.load::<User>(&mut conn().await?).await?;
 
     Ok(users)
 }
@@ -362,11 +377,12 @@ pub async fn get_password_hash(user_id: i64) -> AppResult<String> {
         .filter(base_passwords::user_id.eq(user_id))
         .order_by(base_passwords::id.desc())
         .select(base_passwords::hash)
-        .first::<String>(&mut conn()?)
+        .first::<String>(&mut conn().await?)
+        .await
         .map_err(Into::into)
 }
 
-pub fn set_password(user_id: i64, password: &str) -> AppResult<()> {
+pub async fn set_password(user_id: i64, password: &str) -> AppResult<()> {
     if let Ok(hash) = crate::auth::hash_password(password) {
         diesel::insert_into(base_passwords::table)
             .values(NewPassword {
@@ -374,7 +390,8 @@ pub fn set_password(user_id: i64, password: &str) -> AppResult<()> {
                 hash,
                 created_at: Utc::now(),
             })
-            .execute(&mut conn()?)?;
+            .execute(&mut conn().await?)
+            .await?;
         Ok(())
     } else {
         Err(StatusError::internal_server_error()

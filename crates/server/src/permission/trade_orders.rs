@@ -1,5 +1,6 @@
 use diesel::pg::Pg;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use diesel::query_builder::QueryFragment;
 use diesel::result::QueryResult;
 use std::collections::HashSet;
@@ -11,11 +12,11 @@ use crate::db::schema::*;
 
 table_permit!(trade_orders::table);
 
-pub fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
+pub async fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut AsyncPgConnection) -> AppResult<bool> {
     all_permitted_in_realm!(user, realm, "trade_order", action, conn)
 }
 
-pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppResult<PermitFilter> {
+pub async fn permit_filter(user: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<PermitFilter> {
     if user.is_root {
         return Ok(PermitFilter::Allowed);
     }
@@ -33,11 +34,11 @@ pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppR
     }
 }
 
-fn order_filter_for_realm_owner(
+async fn order_filter_for_realm_owner(
     fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>,
     user: &User,
     action: &str,
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
 ) -> QueryResult<()> {
     let scopes = crate::permission::allowed_scopes_for_realm_root_user(user, "user", "trade_order", action);
     if !scopes.is_empty() {
@@ -52,7 +53,7 @@ fn order_filter_for_realm_owner(
                 ),
             )
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             if scopes.contains("*") || scopes.contains("realm") {
                 if !user.in_kernel {
@@ -103,7 +104,7 @@ fn order_filter_for_realm_owner(
                 ),
             )
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             if scopes.contains("*") || scopes.contains("realm") {
                 if !user.in_kernel {
@@ -144,13 +145,13 @@ fn order_filter_for_realm_owner(
     Ok(())
 }
 
-fn order_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
+async fn order_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut AsyncPgConnection) -> QueryResult<()> {
     let role_ids_query = role_users::table.filter(role_users::user_id.eq(user.id)).select(role_users::role_id);
     let permissions = permissions::table
         .filter(permissions::entity.eq("trade_order"))
         .filter(permissions::action.eq(action))
         .filter(permissions::role_id.eq_any(role_ids_query))
-        .get_results::<Permission>(conn)?;
+        .get_results::<Permission>(conn).await?;
 
     let record_ids = permissions
         .iter()

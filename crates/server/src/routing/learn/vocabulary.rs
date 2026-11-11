@@ -1,5 +1,5 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -34,7 +34,7 @@ pub async fn list_vocabulary(
     let per_page = req.query::<i64>("per_page").unwrap_or(50).clamp(1, 200);
     let offset = (page - 1) * per_page;
 
-    let (items, total): (Vec<UserVocabulary>, i64) = with_conn(move |conn| {
+    let (items, total): (Vec<UserVocabulary>, i64) = with_conn!(move |conn| {
         let mut query = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .into_boxed();
@@ -57,13 +57,14 @@ pub async fn list_vocabulary(
             );
         }
 
-        let total: i64 = count_query.count().get_result(conn)?;
+        let total: i64 = count_query.count().get_result(conn).await?;
 
         let items = query
             .order(learn_vocabularies::first_seen_at.desc())
             .offset(offset)
             .limit(per_page)
-            .load::<UserVocabulary>(conn)?;
+            .load::<UserVocabulary>(conn)
+            .await?;
 
         Ok((items, total))
     })
@@ -104,18 +105,20 @@ pub async fn create_vocabulary(
     };
 
     // Use upsert pattern: if word already exists for this user, just return the existing one
-    let vocab: UserVocabulary = with_conn(move |conn| {
+    let vocab: UserVocabulary = with_conn!(move |conn| {
         diesel::insert_into(learn_vocabularies::table)
             .values(&new_vocab)
             .on_conflict((learn_vocabularies::user_id, learn_vocabularies::word))
             .do_nothing()
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         // Fetch the vocabulary (either newly created or existing)
         learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .filter(learn_vocabularies::word.eq(&word))
             .first::<UserVocabulary>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create vocabulary"))?;
@@ -150,12 +153,13 @@ pub async fn toggle_vocabulary(
 
     let word = input.word.trim().to_lowercase();
 
-    let (added, _) = with_conn(move |conn| {
+    let (added, _) = with_conn!(move |conn| {
         // Check if word already exists
         let existing: Option<UserVocabulary> = learn_vocabularies::table
             .filter(learn_vocabularies::user_id.eq(user_id))
             .filter(learn_vocabularies::word.eq(&word))
             .first::<UserVocabulary>(conn)
+            .await
             .optional()?;
 
         if existing.is_some() {
@@ -165,8 +169,9 @@ pub async fn toggle_vocabulary(
                     .filter(learn_vocabularies::user_id.eq(user_id))
                     .filter(learn_vocabularies::word.eq(&word)),
             )
-            .execute(conn)?;
-            Ok::<_, diesel::result::Error>((false, word))
+            .execute(conn)
+            .await?;
+            Ok::<_, horme::Error>((false, word))
         } else {
             // Word doesn't exist, add it
             let new_vocab = NewUserVocabulary {
@@ -176,7 +181,8 @@ pub async fn toggle_vocabulary(
             };
             diesel::insert_into(learn_vocabularies::table)
                 .values(&new_vocab)
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             Ok((true, word))
         }
     })
@@ -233,12 +239,13 @@ pub async fn check_vocabulary(
         return json_ok(CheckVocabularyResponse { favorites: vec![] });
     }
 
-    let favorites: Vec<String> = with_conn(move |conn| {
+    let favorites: Vec<String> = with_conn!(move |conn| {
         learn_vocabularies::table
             .select(learn_vocabularies::word)
             .filter(learn_vocabularies::user_id.eq(user_id))
             .filter(learn_vocabularies::word.eq_any(&words))
             .load::<String>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to check vocabulary"))?;

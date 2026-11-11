@@ -1,5 +1,6 @@
+use std::result::Result;
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde_json::Value;
 
@@ -91,26 +92,26 @@ fn active_caps(
     }
     Ok(requested)
 }
-fn deactivate(
-    conn: &mut diesel::PgConnection,
+async fn deactivate(
+    conn: &mut horme::diesel_async::AsyncPgConnection,
     user: i64,
     caps: &[String],
-) -> diesel::QueryResult<()> {
+) -> horme::Result<()> {
     let rows = user_ai_providers::table.filter(user_ai_providers::user_id.eq(user));
     if caps.iter().any(|c| c == "chat") {
         diesel::update(rows)
             .set(user_ai_providers::is_active.eq(false))
-            .execute(conn)?;
+            .execute(conn).await?;
     }
     if caps.iter().any(|c| c == "tts") {
         diesel::update(rows)
             .set(user_ai_providers::tts_active.eq(false))
-            .execute(conn)?;
+            .execute(conn).await?;
     }
     if caps.iter().any(|c| c == "asr") {
         diesel::update(rows)
             .set(user_ai_providers::asr_active.eq(false))
-            .execute(conn)?;
+            .execute(conn).await?;
     }
     Ok(())
 }
@@ -141,11 +142,11 @@ fn to_response(provider: UserAiProvider) -> UserAiProvider {
 pub async fn list_providers(depot: &mut Depot) -> JsonResult<Vec<UserAiProvider>> {
     let user_id = depot.user_id()?;
 
-    let providers: Vec<UserAiProvider> = with_conn(move |conn| {
+    let providers: Vec<UserAiProvider> = with_conn!(move |conn| {
         user_ai_providers::table
             .filter(user_ai_providers::user_id.eq(user_id))
             .order(user_ai_providers::created_at.desc())
-            .load::<UserAiProvider>(conn)
+            .load::<UserAiProvider>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list providers"))?;
@@ -169,14 +170,14 @@ pub async fn create_provider(
     let provider_type = input.provider_type.to_lowercase();
     let settings = validated_settings(&provider_type, input.settings)?;
     let caps = active_caps(&settings, input.activate_for, input.set_active)?.unwrap_or_default();
-    let provider: UserAiProvider = with_conn(move |conn| {
-        conn.transaction(|conn| {
+    let provider: UserAiProvider = with_conn!(move |conn| {
+        horme::transaction(conn, async |conn| {
             base_users::table
                 .find(user_id)
                 .for_update()
                 .select(base_users::id)
-                .first::<i64>(conn)?;
-            deactivate(conn, user_id, &caps)?;
+                .first::<i64>(conn).await?;
+            deactivate(conn, user_id, &caps).await?;
             let new_provider = NewUserAiProvider {
                 user_id,
                 provider_type,
@@ -188,8 +189,8 @@ pub async fn create_provider(
 
             diesel::insert_into(user_ai_providers::table)
                 .values(&new_provider)
-                .get_result::<UserAiProvider>(conn)
-        })
+                .get_result::<UserAiProvider>(conn).await
+        }).await
     })
     .await
     .map_err(|e| {
@@ -211,11 +212,11 @@ pub async fn get_provider(req: &mut Request, depot: &mut Depot) -> JsonResult<Us
     let user_id = depot.user_id()?;
     let provider_id = get_provider_id(req)?;
 
-    let provider: UserAiProvider = with_conn(move |conn| {
+    let provider: UserAiProvider = with_conn!(move |conn| {
         user_ai_providers::table
             .filter(user_ai_providers::id.eq(provider_id))
             .filter(user_ai_providers::user_id.eq(user_id))
-            .first::<UserAiProvider>(conn)
+            .first::<UserAiProvider>(conn).await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("provider not found"))?;
@@ -254,20 +255,20 @@ pub async fn delete_provider(
     let user_id = depot.user_id()?;
     let provider_id = get_provider_id(req)?;
 
-    let deleted = with_conn(move |conn| {
-        conn.transaction(|conn| {
+    let deleted = with_conn!(move |conn| {
+        horme::transaction(conn, async |conn| {
             base_users::table
                 .find(user_id)
                 .for_update()
                 .select(base_users::id)
-                .first::<i64>(conn)?;
+                .first::<i64>(conn).await?;
             diesel::delete(
                 user_ai_providers::table
                     .filter(user_ai_providers::id.eq(provider_id))
                     .filter(user_ai_providers::user_id.eq(user_id)),
             )
-            .execute(conn)
-        })
+            .execute(conn).await
+        }).await
     })
     .await
     .map_err(|_| provider_error())?;
@@ -292,11 +293,11 @@ pub async fn test_provider(
     let provider_id = get_provider_id(req)?;
 
     // Get the provider config
-    let provider: UserAiProvider = with_conn(move |conn| {
+    let provider: UserAiProvider = with_conn!(move |conn| {
         user_ai_providers::table
             .filter(user_ai_providers::id.eq(provider_id))
             .filter(user_ai_providers::user_id.eq(user_id))
-            .first::<UserAiProvider>(conn)
+            .first::<UserAiProvider>(conn).await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("provider not found"))?;
@@ -317,7 +318,7 @@ pub async fn test_provider(
     let now = Utc::now();
     let saved_error = error.clone();
     // A concurrent settings edit invalidates this result; do not mark new credentials as tested.
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::update(
             user_ai_providers::table
                 .filter(user_ai_providers::id.eq(provider_id))
@@ -330,7 +331,7 @@ pub async fn test_provider(
             user_ai_providers::test_error.eq(saved_error),
             user_ai_providers::updated_at.eq(now),
         ))
-        .execute(conn)
+        .execute(conn).await
     })
     .await
     .map_err(|_| provider_error())?;
@@ -363,17 +364,17 @@ async fn change_provider(
     if active == Some(false) && requested.as_ref().is_some_and(|c| !c.is_empty()) {
         return Err(StatusError::bad_request().brief("停用配置时不能同时启用能力"));
     }
-    with_conn(move |conn| {
-        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+    with_conn!(move |conn| {
+        horme::transaction(conn, async |conn| {
             base_users::table
                 .find(user_id)
                 .for_update()
                 .select(base_users::id)
-                .first::<i64>(conn)?;
+                .first::<i64>(conn).await?;
             let Some(existing) = user_ai_providers::table
                 .find(id)
                 .filter(user_ai_providers::user_id.eq(user_id))
-                .first::<UserAiProvider>(conn)
+                .first::<UserAiProvider>(conn).await
                 .optional()?
             else {
                 return Ok(Err(StatusError::not_found().brief("AI 配置不存在")));
@@ -405,7 +406,7 @@ async fn change_provider(
                 Err(e) => return Ok(Err(e)),
             };
             if let Some(caps) = caps.as_ref() {
-                deactivate(conn, user_id, caps)?;
+                deactivate(conn, user_id, caps).await?;
             }
             let enabled = |cap: &str, old: bool| {
                 if active == Some(false) || provider_catalog::model(&settings, cap).is_none() {
@@ -427,9 +428,9 @@ async fn change_provider(
                     test_status: settings_changed.then_some(None),
                     test_error: settings_changed.then_some(None),
                 })
-                .get_result::<UserAiProvider>(conn)?;
+                .get_result::<UserAiProvider>(conn).await?;
             Ok(Ok(updated))
-        })
+        }).await
     })
     .await
     .map_err(|_| provider_error())?

@@ -42,12 +42,16 @@ class Handler(BaseHTTPRequestHandler):
             return self.answer(401, {'error': {'message': 'Invalid test credentials', 'code': 'invalid_api_key'}})
         if self.path.endswith('/audio/transcriptions'):
             assert b'glm-asr-2512' in payload and b'RIFF' in payload
-            return self.answer(200, {'id':'qa-asr','created':1,'model':'glm-asr-2512','text':''})
+            if actor == 'slow-test': time.sleep(1)
+            return self.answer(200, {'id':'qa-asr','created':1,'model':'glm-asr-2512','text':'Hello' if actor == 'slow-test' else ''})
         if self.path.endswith('/audio/speech'):
             if actor == 'voice-denied':
                 return self.answer(403, {'error': {'message':'Voice model permission denied','code':'permission_denied'}})
 
             body = json.loads(payload)
+            with lock:
+                calls[f"{actor}:tts:{body['voice']}:{body['model']}"] += 1
+                calls[f"{actor}:tts-input:{body['input']}"] += 1
             assert body['model'] == 'glm-tts' and body['voice'] in ['tongtong','chuichui','xiaochen','jam','kazi','douji','luodo']
             if body['input'] == 'Slow audio generation.': time.sleep(0.5)
             output = io.BytesIO()
@@ -60,17 +64,20 @@ class Handler(BaseHTTPRequestHandler):
         body = json.loads(payload)
         if actor == 'slow-test': time.sleep(0.5)
         structured = {'use_lang': 'en', 'original_en': body['messages'][-1]['content'], 'original_zh': '测试输入', 'reply_en': 'Hello from your own provider.', 'reply_zh': '来自个人服务的回复。', 'issues': []}
+        if body['messages'][-1]['content'] == 'Voice ordered test':
+            structured = {'reply_en':'First sentence. Second sentence.','reply_zh':'分段语音测试','use_lang':'en','original_en':'Voice ordered test','original_zh':'语音测试','issues':[]}
         content = json.dumps(structured, ensure_ascii=False) if body.get('response_format') else f'{actor} translation'
         if body.get('stream'):
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')
             self.send_header('Connection', 'close')
             self.end_headers()
-            for chunk in [content[:30], content[30:]]:
+            chunks = [content[:content.index('Second')],content[content.index('Second'):]] if body['messages'][-1]['content'] == 'Voice ordered test' else [content[:30],content[30:]]
+            for chunk in chunks:
                 response = {'id': 'qa', 'object': 'chat.completion.chunk', 'created': 1, 'model': 'qa', 'choices': [{'index': 0, 'delta': {'content': chunk}, 'finish_reason': None}]}
                 self.wfile.write(('data: ' + json.dumps(response) + '\n\n').encode())
                 self.wfile.flush()
-                time.sleep(0.03)
+                time.sleep(0.25 if body['messages'][-1]['content']=='Voice ordered test' else 0.03)
             response = {'id': 'qa', 'object': 'chat.completion.chunk', 'created': 1, 'model': 'qa', 'choices': [{'index': 0, 'delta': {}, 'finish_reason': 'stop'}]}
             self.wfile.write(('data: ' + json.dumps(response) + '\n\ndata: [DONE]\n\n').encode())
             self.close_connection = True

@@ -43,7 +43,7 @@ async fn main() {
     let app_config = AppConfig::get();
     let bind_addr = app_config.bind_addr.clone();
 
-    db::init(&app_config.database);
+    db::init(&app_config.database).await;
 
     // Start background tasks
     tasks::start_all();

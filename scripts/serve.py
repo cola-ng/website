@@ -28,21 +28,36 @@ class Handler(SimpleHTTPRequestHandler):
     def proxy(self):
         cls = http.client.HTTPSConnection if upstream.scheme == 'https' else http.client.HTTPConnection
         conn = cls(upstream.hostname, upstream.port, timeout=95)
+        headers_sent = False
         try:
             body = self.rfile.read(int(self.headers.get('Content-Length', '0')))
             headers = {k: v for k, v in self.headers.items() if k.lower() not in ('host', 'connection')}
             conn.request(self.command, self.path, body, headers)
             response = conn.getresponse()
-            data = response.read()
+            streaming = response.getheader('Content-Type', '').startswith('text/event-stream')
+            data = None if streaming else response.read()
             self.send_response(response.status)
             for k, v in response.getheaders():
                 if k.lower() not in ('transfer-encoding', 'connection', 'content-length'):
                     self.send_header(k, v)
-            self.send_header('Content-Length', str(len(data)))
+            if streaming:
+                # HTTP/1.0 close-delimited stream: never buffer a complete reply.
+                self.send_header('Connection', 'close')
+                self.close_connection = True
+            else:
+                self.send_header('Content-Length', str(len(data)))
             self.end_headers()
-            self.wfile.write(data)
+            headers_sent = True
+            if streaming:
+                while chunk := response.read1(64 * 1024):
+                    self.wfile.write(chunk)
+                    self.wfile.flush()
+            else:
+                self.wfile.write(data)
         except (OSError, http.client.HTTPException):
-            self.send_error(502, 'API upstream unavailable')
+            if not headers_sent:
+                self.send_error(502, 'API upstream unavailable')
+            self.close_connection = True
         finally:
             conn.close()
 

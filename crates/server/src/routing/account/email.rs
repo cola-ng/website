@@ -1,5 +1,6 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -12,9 +13,9 @@ use crate::utils::validator;
 use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo};
 
 #[endpoint(tags("account"))]
-pub fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Email> {
+pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Email> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let query = emails::table.filter(emails::user_id.eq(cuser.id));
     let data = query_pagation_data!(
         req,
@@ -37,15 +38,15 @@ struct CreateInData {
     value: String,
 }
 #[endpoint(tags("account"))]
-pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Email> {
+pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Email> {
     let pdata = pdata.into_inner();
     let value = pdata.value.to_lowercase();
     if let Err(msg) = validator::validate_email(&pdata.value) {
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let email = conn.transaction::<Email, AppError, _>(|conn| {
+    let conn = &mut db::conn().await?;
+    let email = horme::transaction(&mut conn, async |conn| {
         check_email_other_taken!(None, &value, conn);
         let new_email = NewEmail {
             user_id: cuser.id,
@@ -56,25 +57,25 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Em
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let email = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn)?;
+        let email = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn).await?;
         Ok(email)
-    })?;
+    }).await?;
 
     cuser.send_verification_email(&email.value, conn)?;
     Ok(Json(email))
 }
 #[endpoint(tags("account"))]
-pub fn set_master(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn set_master(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
+    let conn = &mut db::conn().await?;
+    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn).await?;
     if email.user_id != cuser.id {
         return Err(StatusError::forbidden().into());
     }
     if email.is_master {
         return Ok(StatusInfo::done());
     }
-    conn.transaction::<_, AppError, _>(|conn| {
+    horme::transaction(&mut conn, async |conn| {
         diesel::update(
             emails::table
                 .filter(emails::user_id.eq(cuser.id))
@@ -86,25 +87,25 @@ pub fn set_master(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<Stat
             emails::updated_by.eq(cuser.id),
             emails::updated_at.eq(Utc::now()),
         ))
-        .execute(conn)?;
+        .execute(conn).await?;
         diesel::update(&email)
             .set((
                 emails::is_master.eq(true),
                 emails::updated_by.eq(cuser.id),
                 emails::updated_at.eq(Utc::now()),
             ))
-            .execute(conn)?;
+            .execute(conn).await?;
         Ok(())
-    })?;
+    }).await?;
     Ok(StatusInfo::done())
 }
 
 #[endpoint(tags("account"))]
-pub fn resend_verification(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn resend_verification(email_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
-    let user = users::table.find(email.user_id).first::<User>(conn)?;
+    let conn = &mut db::conn().await?;
+    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn).await?;
+    let user = users::table.find(email.user_id).first::<User>(conn).await?;
 
     if email.user_id != cuser.id && !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -118,18 +119,18 @@ pub fn resend_verification(email_id: PathParam<i64>, depot: &mut Depot) -> AppRe
 }
 
 #[endpoint(tags("account"))]
-pub fn delete(email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
+pub async fn delete(email_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Email>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
+    let conn = &mut db::conn().await?;
+    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn).await?;
     if email.user_id != cuser.id {
         return Err(StatusError::bad_request().into());
     }
     if email.is_master {
         return Err(StatusError::bad_request().brief("master email can not be deleted").into());
     }
-    diesel::delete(&email).execute(conn)?;
-    let emails = emails::table.filter(emails::user_id.eq(cuser.id)).get_results::<Email>(conn)?;
+    diesel::delete(&email).execute(conn).await?;
+    let emails = emails::table.filter(emails::user_id.eq(cuser.id)).get_results::<Email>(conn).await?;
     Ok(Json(emails))
 }
 
@@ -140,20 +141,20 @@ struct UpdateInData {
     value: String,
 }
 #[endpoint(tags("account"))]
-pub fn update(email_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<Email> {
+pub async fn update(email_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<Email> {
     let UpdateInData { value } = pdata.into_inner();
     let value = value.to_lowercase();
     if let Err(msg) = validator::validate_email(&value) {
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn)?;
-    let email = conn.transaction::<_, AppError, _>(|conn| {
+    let conn = &mut db::conn().await?;
+    let email = emails::table.find(email_id.into_inner()).first::<Email>(conn).await?;
+    let email = horme::transaction(&mut conn, async |conn| {
         let exist_email = emails::table
             .filter(lower(emails::value).eq(&value))
             .filter(emails::id.ne(email.id))
-            .first::<Email>(conn)
+            .first::<Email>(conn).await
             .ok();
         if let Some(exist_email) = exist_email {
             if exist_email.user_id == cuser.id {
@@ -175,8 +176,8 @@ pub fn update(email_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &m
                 emails::updated_by.eq(cuser.id),
                 emails::updated_at.eq(Utc::now()),
             ))
-            .get_result::<Email>(conn)?;
+            .get_result::<Email>(conn).await?;
         Ok(email)
-    })?;
+    }).await?;
     Ok(Json(email))
 }

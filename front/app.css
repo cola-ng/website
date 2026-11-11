@@ -524,3 +524,19 @@ body:has(.chat-page) .footer { display: none; }
 .definition-group .word-part-of-speech:empty { display: none; }
 .definition-group .definition-entry { padding: 2px 0; }
 .site .definition-expand { align-self: start; background: transparent !important; color: var(--muted) !important; border: none !important; padding: 4px 0 !important; }
+
+.chat-voice-controls { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.chat-voice-controls > .muted { flex-basis:100%; font-size:13px; }
+.chat-voice-controls [role=status] { font-size:14px; color:var(--muted); }
+
+.short-viewport .chat-voice-controls > .muted { display:none; }
+@media(max-height:500px) { .chat-voice-controls > .muted { display:none; } }
+
+.short-viewport .chat-composer { display:grid; grid-template-columns:max-content minmax(0,1fr); align-items:center; }
+.short-viewport .chat-composer .compose-text { grid-column:1 / -1; }
+.short-viewport .chat-voice-controls { min-width:0; }
+@media(max-height:500px) {
+ .chat-composer { display:grid; grid-template-columns:max-content minmax(0,1fr); align-items:center; }
+ .chat-composer .compose-text { grid-column:1 / -1; }
+ .chat-voice-controls { min-width:0; }
+}

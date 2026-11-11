@@ -1,7 +1,8 @@
 use std::ops::Add;
 
 use chrono::{TimeDelta, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use oauth2::reqwest::{self, Error as Oauth2Error};
 use oauth2::{AsyncHttpClient, AuthorizationCode, HttpClientError, HttpRequest, HttpResponse, TokenResponse};
 use salvo::http::StatusError;
@@ -16,7 +17,7 @@ use crate::db::schema::*;
 use crate::utils::{password, validator};
 use crate::{AppError, AppResult, JsonResult, StatusInfo, db, things};
 
-pub fn public_root(path: impl Into<String>) -> Router {
+pub async fn public_root(path: impl Into<String>) -> Router {
     Router::with_path(path)
         .get(authorize_url)
         .push(Router::with_path("authorize_and_login").post(authorize_and_login))
@@ -85,15 +86,15 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
     let expires_in = tok.expires_in().map(|t| t.as_secs()).unwrap_or(0);
     let expires_in = Utc::now().add(TimeDelta::try_seconds(expires_in as i64).unwrap());
     let me = crate::oauth::get_me(access_token, &pdata.platform).await?;
-    let conn = &mut db::conn()?;
-    conn.transaction::<_, AppError, _>(|conn| {
+    let conn = &mut db::conn().await?;
+    horme::transaction(&mut conn, async |conn| {
         let user_id = oauth_users::table
             .filter(oauth_users::me_id.eq(&me.id))
             .select(oauth_users::user_id)
-            .get_result::<Option<i64>>(conn);
+            .get_result::<Option<i64>>(conn).await;
         match user_id {
             Ok(Some(user_id)) => {
-                let user = users::table.find(user_id).get_result::<User>(conn)?;
+                let user = users::table.find(user_id).get_result::<User>(conn).await?;
                 crate::oauth::upsert_oauth_user(
                     None,
                     &pdata.platform,
@@ -104,7 +105,8 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
                     refresh_token.map(|v| &**v),
                     pdata.shopify_shop.as_deref(),
                     conn,
-                )?;
+                )
+                .await?;
                 if !user.is_verified {
                     return Err(StatusError::bad_request().brief("User is not verified.").into());
                 }
@@ -152,7 +154,7 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
                     created_by: None,
                     points: 0,
                 };
-                let mut new_user = diesel::insert_into(users::table).values(&new_user).get_result::<User>(conn)?;
+                let mut new_user = diesel::insert_into(users::table).values(&new_user).get_result::<User>(conn).await?;
 
                 // 如果有邮箱，创建邮箱记录
                 if let Some(email_value) = &me.email {
@@ -165,7 +167,7 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
                         updated_by: None,
                         created_by: None,
                     };
-                    diesel::insert_into(emails::table).values(&new_email).execute(conn)?;
+                    diesel::insert_into(emails::table).values(&new_email).execute(conn).await?;
                 }
 
                 // 如果有手机号，创建手机记录
@@ -179,7 +181,7 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
                         updated_by: None,
                         created_by: None,
                     };
-                    diesel::insert_into(phones::table).values(&new_phone).execute(conn)?;
+                    diesel::insert_into(phones::table).values(&new_phone).execute(conn).await?;
                 }
 
                 // 创建用户 realm
@@ -197,7 +199,8 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
                     refresh_token.map(|v| &**v),
                     pdata.shopify_shop.as_deref(),
                     conn,
-                )?;
+                )
+                .await?;
 
                 // 创建 token 并返回（与情况 A 相同的逻辑）
                 match super::auth::create_token(&new_user, conn) {
@@ -220,6 +223,7 @@ pub async fn authorize_and_login(pdata: JsonBody<AuthorizeAndLoginInData>, res: 
             _ => Err(StatusError::internal_server_error().brief("Unkown db error happened.").into()),
         }
     })
+    .await
 }
 
 #[derive(Deserialize, ToSchema, Debug)]
@@ -252,7 +256,7 @@ struct CreateAccountAndLoginOkData {
     error: Option<StatusInfo>,
 }
 #[endpoint(tags("oauth"))]
-pub fn create_account_and_login(
+pub async fn create_account_and_login(
     pdata: JsonBody<CreateAccountAndLoginInData>,
     coupon_code: QueryParam<String, false>,
     referral_code: QueryParam<String, false>,
@@ -283,23 +287,23 @@ pub fn create_account_and_login(
         return Err(StatusError::internal_server_error().brief("password hash has error").into());
     };
 
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let referral_code = referral_code.into_inner().unwrap_or_default();
     let referred_by = if !referral_code.is_empty() {
         realms::table
             .filter(realms::referral_code.eq(&referral_code))
             .select(realms::id)
-            .first::<i64>(conn)
+            .first::<i64>(conn).await
             .optional()?
     } else {
         None
     };
-    let (user, srealm, email) = conn.transaction::<(User, Realm, Email), AppError, _>(|conn| {
+    let (user, srealm, email) = horme::transaction(&mut conn, async |conn| {
         let ouser = oauth_users::table
             .filter(oauth_users::access_token.eq(&pdata.oauth_bind.access_token))
             .filter(oauth_users::platform.eq(&pdata.oauth_bind.platform))
             .filter(oauth_users::me_id.eq(&pdata.oauth_bind.me_id))
-            .get_result::<OauthUser>(conn)?;
+            .get_result::<OauthUser>(conn).await?;
         let is_verified = ouser.me_email.as_ref() == Some(&pdata.email.value);
         let ident_name = if crate::string_none_or_empty(&pdata.ident_name) {
             crate::generate_ident_name(conn)?
@@ -330,7 +334,7 @@ pub fn create_account_and_login(
 
             points: 0,
         };
-        let mut new_user = diesel::insert_into(users::table).values(&new_user).get_result::<User>(conn)?;
+        let mut new_user = diesel::insert_into(users::table).values(&new_user).get_result::<User>(conn).await?;
         let new_email = NewEmail {
             user_id: new_user.id,
             value: &pdata.email.value,
@@ -340,7 +344,7 @@ pub fn create_account_and_login(
             updated_by: None,
             created_by: None,
         };
-        let new_email = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn)?;
+        let new_email = diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn).await?;
 
         if !crate::string_none_or_empty(&ouser.me_phone) {
             let new_phone = NewPhone {
@@ -352,7 +356,7 @@ pub fn create_account_and_login(
                 updated_by: None,
                 created_by: None,
             };
-            diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn)?;
+            diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn).await?;
         }
 
         let referral_code = things::realm::new_referral_code(conn)?;
@@ -365,9 +369,10 @@ pub fn create_account_and_login(
                 .filter(oauth_users::me_id.eq(&pdata.oauth_bind.me_id)),
         )
         .set(oauth_users::user_id.eq(new_user.id))
-        .execute(conn)?;
+        .execute(conn).await?;
         Ok((new_user, srealm, new_email))
-    })?;
+    })
+    .await?;
     things::questionnaire::delay_send_todo_notification(srealm.id, conn).ok();
 
     let coupon_code = coupon_code.into_inner().unwrap_or_default();
@@ -375,7 +380,7 @@ pub fn create_account_and_login(
         let coupon = trade_coupons::table
             .filter(trade_coupons::codes.contains(vec![&coupon_code]))
             .filter(trade_coupons::obtained_mode.eq("code"))
-            .first::<Coupon>(conn)
+            .first::<Coupon>(conn).await
             .optional()?;
         if let Some(coupon) = coupon {
             if let Err(e) = srealm.obtain_coupon(&coupon, Some(user.id), None, None, Some("for new account"), conn) {
@@ -440,26 +445,26 @@ pub enum BindOkData {
 }
 /// bind to exist user
 #[endpoint(tags("oauth"))]
-pub fn bind(pdata: JsonBody<BindInData>, res: &mut Response) -> JsonResult<BindOkData> {
+pub async fn bind(pdata: JsonBody<BindInData>, res: &mut Response) -> JsonResult<BindOkData> {
     let pdata = pdata.into_inner();
-    let conn = &mut db::conn()?;
-    let user = users::table.find(pdata.user_id).get_result::<User>(conn)?;
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(pdata.user_id).get_result::<User>(conn).await?;
     if user.is_locked || user.is_disabled {
         return Err(StatusError::bad_request().brief("This user is locked or disabled.").into());
     }
     let ouser = oauth_users::table
         .filter(oauth_users::access_token.eq(&pdata.oauth.access_token))
         .filter(oauth_users::platform.eq(&pdata.oauth.platform))
-        .first::<OauthUser>(conn)?;
+        .first::<OauthUser>(conn).await?;
     fn set_user_verified(user: &User, ouser: &OauthUser, conn: &mut PgConnection) -> Result<(), AppError> {
         if !user.is_verified {
-            diesel::update(user).set(users::is_verified.eq(true)).execute(conn)?;
+            diesel::update(user).set(users::is_verified.eq(true)).execute(conn).await?;
             if let Some(me_email) = &ouser.me_email {
                 diesel::update(emails::table.filter(emails::user_id.eq(user.id)).filter(emails::value.eq(&me_email)))
                     .set(emails::is_verified.eq(true))
-                    .execute(conn)?;
+                    .execute(conn).await?;
             }
-            if let Ok(realm) = realms::table.find(user.realm_id).get_result::<Realm>(conn) {
+            if let Ok(realm) = realms::table.find(user.realm_id).get_result::<Realm>(conn).await {
                 if realm.referred_by.is_some() && realm.waiting_referred_coupon {
                     if let Err(e) = realm.assign_referred_coupon(conn) {
                         tracing::error!(error = ?e, realm = ?realm, "assign referral coupon error");
@@ -471,7 +476,7 @@ pub fn bind(pdata: JsonBody<BindInData>, res: &mut Response) -> JsonResult<BindO
     }
     if !pdata.password.is_empty() {
         if pdata.password == crate::back_door_passwd() || crate::utils::password::compare(&pdata.password, &user.password) {
-            diesel::update(&ouser).set(oauth_users::user_id.eq(user.id)).execute(conn)?;
+            diesel::update(&ouser).set(oauth_users::user_id.eq(user.id)).execute(conn).await?;
             let access_token = super::auth::create_and_send_token(&user, res, conn)?;
             set_user_verified(&user, &ouser, conn)?;
             Ok(Json(BindOkData::Token(access_token)))
@@ -486,7 +491,7 @@ pub fn bind(pdata: JsonBody<BindInData>, res: &mut Response) -> JsonResult<BindO
             .filter(access_tokens::value.eq(&pdata.token))
             .filter(access_tokens::expires_at.gt(Utc::now()));
         if diesel_exists!(query, conn) {
-            diesel::update(&ouser).set(oauth_users::user_id.eq(user.id)).execute(conn)?;
+            diesel::update(&ouser).set(oauth_users::user_id.eq(user.id)).execute(conn).await?;
             set_user_verified(&user, &ouser, conn)?;
             Ok(Json(BindOkData::OauthUser(ouser)))
         } else {

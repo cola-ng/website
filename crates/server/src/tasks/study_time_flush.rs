@@ -2,7 +2,8 @@
 
 use std::time::Duration;
 
-use diesel::prelude::*;
+use horme::prelude::*;
+use std::result::Result;
 use tokio::time;
 
 use crate::db::schema::learn_study_time_daily;
@@ -58,7 +59,7 @@ async fn flush_pending_increments() -> Result<(), Box<dyn std::error::Error + Se
         let translate_seconds = increment.translate_seconds;
         let heartbeat_count = increment.heartbeat_count;
 
-        let result = with_conn(move |conn| {
+        let result = with_conn!(move |conn| {
             // Try upsert: insert or update on conflict
             diesel::insert_into(learn_study_time_daily::table)
                 .values(&NewStudyTimeDaily {
@@ -97,6 +98,7 @@ async fn flush_pending_increments() -> Result<(), Box<dyn std::error::Error + Se
                         .eq(learn_study_time_daily::heartbeat_count + heartbeat_count),
                 ))
                 .execute(conn)
+                .await
         })
         .await;
 

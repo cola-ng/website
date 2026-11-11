@@ -1,5 +1,6 @@
+use std::result::Result;
 use chrono::{NaiveDate, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -34,13 +35,13 @@ pub async fn get_daily_data(depot: &mut Depot) -> JsonResult<DailyDataResponse> 
     let today = Utc::now().date_naive();
 
     // Check if we already have data for today
-    let existing_log = with_conn({
+    let existing_log = with_conn!({
         let today = today;
         move |conn| {
             learn_daily_generation_log::table
                 .filter(learn_daily_generation_log::user_id.eq(user_id))
                 .filter(learn_daily_generation_log::generation_date.eq(today))
-                .first::<DailyGenerationLog>(conn)
+                .first::<DailyGenerationLog>(conn).await
                 .optional()
         }
     })
@@ -53,27 +54,27 @@ pub async fn get_daily_data(depot: &mut Depot) -> JsonResult<DailyDataResponse> 
     }
 
     // Fetch tasks and insights
-    let tasks = with_conn({
+    let tasks = with_conn!({
         let today = today;
         move |conn| {
             learn_daily_tasks::table
                 .filter(learn_daily_tasks::user_id.eq(user_id))
                 .filter(learn_daily_tasks::task_date.eq(today))
                 .order(learn_daily_tasks::display_order.asc())
-                .load::<DailyTask>(conn)
+                .load::<DailyTask>(conn).await
         }
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch tasks"))?;
 
-    let insights = with_conn({
+    let insights = with_conn!({
         let today = today;
         move |conn| {
             learn_daily_insights::table
                 .filter(learn_daily_insights::user_id.eq(user_id))
                 .filter(learn_daily_insights::insight_date.eq(today))
                 .order(learn_daily_insights::display_order.asc())
-                .load::<DailyInsight>(conn)
+                .load::<DailyInsight>(conn).await
         }
     })
     .await
@@ -114,7 +115,7 @@ pub async fn update_task(
         None
     };
 
-    let updated = with_conn(move |conn| {
+    let updated = with_conn!(move |conn| {
         diesel::update(
             learn_daily_tasks::table
                 .filter(learn_daily_tasks::id.eq(task_id))
@@ -130,7 +131,7 @@ pub async fn update_task(
                 .map(|s| learn_daily_tasks::status.eq(s)),
             learn_daily_tasks::completed_at.eq(completed_at),
         ))
-        .get_result::<DailyTask>(conn)
+        .get_result::<DailyTask>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update task"))?;
@@ -144,7 +145,7 @@ pub async fn update_task(
 
 async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), StatusError> {
     // Fetch user's learning data to generate personalized tasks
-    let (issue_count, in_progress_stage, pending_read_count) = with_conn(move |conn| {
+    let (issue_count, in_progress_stage, pending_read_count) = with_conn!(move |conn| {
         // Count issue words due for review
         let issue_count: i64 = learn_issue_words::table
             .filter(learn_issue_words::user_id.eq(user_id))
@@ -154,14 +155,14 @@ async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), Statu
                     .or(learn_issue_words::next_review_at.le(Utc::now())),
             )
             .count()
-            .get_result(conn)?;
+            .get_result(conn).await?;
 
         // Find an in-progress stage
         let in_progress_stage: Option<ScriptProgress> = learn_script_progress::table
             .filter(learn_script_progress::user_id.eq(user_id))
             .filter(learn_script_progress::completed_at.is_null())
             .order(learn_script_progress::last_practiced_at.desc().nulls_last())
-            .first(conn)
+            .first(conn).await
             .optional()?;
 
         // Count reading exercises not completed
@@ -169,7 +170,7 @@ async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), Statu
             .filter(learn_read_progress::user_id.eq(user_id))
             .filter(learn_read_progress::completed_at.is_null())
             .count()
-            .get_result(conn)?;
+            .get_result(conn).await?;
 
         Ok((issue_count, in_progress_stage, pending_read_count))
     })
@@ -248,11 +249,11 @@ async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), Statu
 
     // Insert tasks
     let tasks_count = tasks.len() as i32;
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::insert_into(learn_daily_tasks::table)
             .values(&tasks)
             .on_conflict_do_nothing()
-            .execute(conn)
+            .execute(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to insert tasks"))?;
@@ -261,17 +262,17 @@ async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), Statu
     let insights = generate_insights(user_id, today).await?;
     let insights_count = insights.len() as i32;
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::insert_into(learn_daily_insights::table)
             .values(&insights)
             .on_conflict_do_nothing()
-            .execute(conn)
+            .execute(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to insert insights"))?;
 
     // Log the generation
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::insert_into(learn_daily_generation_log::table)
             .values(&NewDailyGenerationLog {
                 user_id,
@@ -281,7 +282,7 @@ async fn generate_daily_data(user_id: i64, today: NaiveDate) -> Result<(), Statu
                 generation_source: Some("auto".to_string()),
             })
             .on_conflict_do_nothing()
-            .execute(conn)
+            .execute(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to log generation"))?;
@@ -296,13 +297,13 @@ async fn generate_insights(
     let mut insights: Vec<NewDailyInsight> = vec![];
 
     // Fetch recent chat issues (last 7 days)
-    let recent_issues = with_conn(move |conn| {
+    let recent_issues = with_conn!(move |conn| {
         learn_chat_issues::table
             .filter(learn_chat_issues::user_id.eq(user_id))
             .filter(learn_chat_issues::created_at.gt(Utc::now() - chrono::Duration::days(7)))
             .order(learn_chat_issues::created_at.desc())
             .limit(50)
-            .load::<ChatIssue>(conn)
+            .load::<ChatIssue>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch recent issues"))?;
@@ -317,13 +318,13 @@ async fn generate_insights(
     }
 
     // Fetch weekly stats for comparison
-    let weekly_stats = with_conn(move |conn| {
+    let weekly_stats = with_conn!(move |conn| {
         learn_daily_stats::table
             .filter(learn_daily_stats::user_id.eq(user_id))
             .filter(learn_daily_stats::stat_date.gt(today - chrono::Duration::days(14)))
             .order(learn_daily_stats::stat_date.desc())
             .limit(14)
-            .load::<DailyStat>(conn)
+            .load::<DailyStat>(conn).await
     })
     .await
     .unwrap_or_default();

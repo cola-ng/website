@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -42,7 +42,7 @@ pub async fn create_searched_word(
     }
 
     let searched_at = input.searched_at.unwrap_or_else(Utc::now);
-    let result: SearchedWord = with_conn(move |conn| {
+    let result: SearchedWord = with_conn!(move |conn| {
         diesel::insert_into(dict_searched_words::table)
             .values((
                 dict_searched_words::user_id.eq(user_id),
@@ -53,6 +53,7 @@ pub async fn create_searched_word(
             .do_update()
             .set(dict_searched_words::searched_at.eq(Some(searched_at)))
             .get_result::<SearchedWord>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to save searched word"))?;
@@ -79,7 +80,7 @@ pub async fn batch_create_searched_words(
         return json_ok(vec![]);
     }
 
-    let results: Vec<SearchedWord> = with_conn(move |conn| {
+    let results: Vec<SearchedWord> = with_conn!(move |conn| {
         let mut saved = Vec::new();
 
         for item in input.words {
@@ -98,7 +99,8 @@ pub async fn batch_create_searched_words(
                 .on_conflict((dict_searched_words::user_id, dict_searched_words::word))
                 .do_update()
                 .set(dict_searched_words::searched_at.eq(Some(searched_at)))
-                .get_result::<SearchedWord>(conn)?;
+                .get_result::<SearchedWord>(conn)
+                .await?;
 
             saved.push(record);
         }
@@ -127,13 +129,14 @@ pub async fn list_searched_words(
         Err(_) => return json_ok(vec![]),
     };
 
-    let words: Vec<SearchedWord> = with_conn(move |conn| {
+    let words: Vec<SearchedWord> = with_conn!(move |conn| {
         dict_searched_words::table
             .filter(dict_searched_words::user_id.eq(user_id))
             .order(dict_searched_words::searched_at.desc())
             .order(dict_searched_words::id.desc())
             .limit(limit)
             .load::<SearchedWord>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch searched words"))?;
@@ -154,13 +157,14 @@ pub async fn delete_searched_word(
         .param::<i64>("id")
         .ok_or_else(|| StatusError::bad_request().brief("missing id parameter"))?;
 
-    let deleted = with_conn(move |conn| {
+    let deleted = with_conn!(move |conn| {
         diesel::delete(
             dict_searched_words::table
                 .filter(dict_searched_words::id.eq(id))
                 .filter(dict_searched_words::user_id.eq(user_id)),
         )
         .execute(conn)
+        .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete searched word"))?;
@@ -174,9 +178,10 @@ pub async fn delete_searched_word(
 pub async fn clear_searched_words(depot: &mut Depot) -> JsonResult<serde_json::Value> {
     let user_id = depot.user_id()?;
 
-    let deleted = with_conn(move |conn| {
+    let deleted = with_conn!(move |conn| {
         diesel::delete(dict_searched_words::table.filter(dict_searched_words::user_id.eq(user_id)))
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to clear searched words"))?;

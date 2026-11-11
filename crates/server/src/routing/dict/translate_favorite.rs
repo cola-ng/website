@@ -1,6 +1,6 @@
 //! Translation favorite endpoints: save translation + toggle favorite
 
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -61,7 +61,7 @@ pub async fn toggle_translation_favorite(
     let target_lang = input.target_lang.trim().to_lowercase();
     let tone = input.tone.trim().to_lowercase();
 
-    let result: ToggleTranslationFavoriteResponse = with_conn(move |conn| {
+    let result: ToggleTranslationFavoriteResponse = with_conn!(move |conn| {
         // Upsert translation record
         let translation = learn_translations::table
             .filter(learn_translations::user_id.eq(user_id))
@@ -69,6 +69,7 @@ pub async fn toggle_translation_favorite(
             .filter(learn_translations::target_lang.eq(&target_lang))
             .filter(learn_translations::tone.eq(&tone))
             .first::<Translation>(conn)
+            .await
             .optional()?;
 
         let translation = if let Some(t) = translation {
@@ -83,7 +84,8 @@ pub async fn toggle_translation_favorite(
                     target_lang,
                     tone,
                 })
-                .get_result::<Translation>(conn)?
+                .get_result::<Translation>(conn)
+                .await?
         };
 
         let translation_id = translation.id;
@@ -94,12 +96,14 @@ pub async fn toggle_translation_favorite(
             .filter(learn_favorites::entity.eq("translation"))
             .filter(learn_favorites::record_id.eq(translation_id))
             .first::<Favorite>(conn)
+            .await
             .optional()?;
 
         if let Some(fav) = existing_fav {
             // Remove favorite
             diesel::delete(learn_favorites::table.filter(learn_favorites::id.eq(fav.id)))
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
             Ok(ToggleTranslationFavoriteResponse {
                 is_favorited: false,
                 translation_id: Some(translation_id),
@@ -113,7 +117,8 @@ pub async fn toggle_translation_favorite(
                     entity: "translation".to_string(),
                     record_id: translation_id,
                 })
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
             Ok(ToggleTranslationFavoriteResponse {
                 is_favorited: true,
                 translation_id: Some(translation_id),
@@ -160,7 +165,7 @@ pub async fn check_translation_favorite(
         .query::<String>("tone")
         .unwrap_or_else(|| "original".to_string());
 
-    let is_favorited: bool = with_conn(move |conn| {
+    let is_favorited: bool = with_conn!(move |conn| {
         // Find translation record
         let translation = learn_translations::table
             .filter(learn_translations::user_id.eq(user_id))
@@ -168,6 +173,7 @@ pub async fn check_translation_favorite(
             .filter(learn_translations::target_lang.eq(&target_lang))
             .filter(learn_translations::tone.eq(&tone))
             .first::<Translation>(conn)
+            .await
             .optional()?;
 
         if let Some(t) = translation {
@@ -177,6 +183,7 @@ pub async fn check_translation_favorite(
                 .filter(learn_favorites::entity.eq("translation"))
                 .filter(learn_favorites::record_id.eq(t.id))
                 .first::<Favorite>(conn)
+                .await
                 .optional()?;
             Ok(fav.is_some())
         } else {

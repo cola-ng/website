@@ -8,10 +8,11 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
-use colang::db::pool::DieselPool;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use rand::prelude::IndexedRandom;
 use serde::{Deserialize, Serialize};
+use std::result::Result;
 
 const DEFAULT_INPUT_FILE: &str = r"D:\Works\cola-ng\space\read-sentences.json";
 const DEFAULT_OUTPUT_FILE: &str = r"D:\Works\cola-ng\space\read-sentences-full.json";
@@ -58,7 +59,8 @@ struct ExistingSubject {
     max_order: i32,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -171,16 +173,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Connect to database
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    let pool = DieselPool::new(
-        &database_url,
-        &Default::default(),
-        diesel::r2d2::Pool::builder(),
-    )?;
-    let mut conn = pool.get()?;
+    let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
     // Load existing subjects
     println!("\nLoading existing subjects from database...");
-    let subjects = load_existing_subjects(&mut conn)?;
+    let subjects = load_existing_subjects(&mut conn).await?;
     if subjects.is_empty() {
         eprintln!("Error: No existing subjects found in database. Please create subjects first.");
         std::process::exit(1);
@@ -220,7 +217,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let start_time = Instant::now();
 
     // Import sentences randomly into existing subjects
-    let stats = import_sentences(&mut conn, &sentences, &subjects)?;
+    let stats = import_sentences(&mut conn, &sentences, &subjects).await?;
 
     let elapsed = start_time.elapsed();
 
@@ -235,15 +232,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_existing_subjects(
-    conn: &mut PgConnection,
-) -> Result<Vec<ExistingSubject>, Box<dyn std::error::Error>> {
+async fn load_existing_subjects(
+    conn: &mut AsyncPgConnection,
+) -> Result<Vec<ExistingSubject>, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::{asset_read_sentences, asset_read_subjects};
 
     // Get all subjects
     let subjects: Vec<(i64, String)> = asset_read_subjects::table
         .select((asset_read_subjects::id, asset_read_subjects::code))
-        .load(conn)?;
+        .load(conn)
+        .await?;
 
     // Get max sentence_order for each subject
     let mut result = Vec::new();
@@ -251,7 +249,8 @@ fn load_existing_subjects(
         let max_order: Option<i32> = asset_read_sentences::table
             .filter(asset_read_sentences::subject_id.eq(id))
             .select(diesel::dsl::max(asset_read_sentences::sentence_order))
-            .first(conn)?;
+            .first(conn)
+            .await?;
 
         result.push(ExistingSubject {
             id,
@@ -263,11 +262,11 @@ fn load_existing_subjects(
     Ok(result)
 }
 
-fn import_sentences(
-    conn: &mut PgConnection,
+async fn import_sentences(
+    conn: &mut AsyncPgConnection,
     sentences: &[(String, SentenceEntry)],
     subjects: &[ExistingSubject],
-) -> Result<ImportStats, Box<dyn std::error::Error>> {
+) -> Result<ImportStats, Box<dyn std::error::Error + Send + Sync>> {
     use colang::db::schema::asset_read_sentences;
 
     let mut stats = ImportStats {
@@ -309,7 +308,8 @@ fn import_sentences(
                 asset_read_sentences::content_zh.eq(&sentence.content_zh),
                 asset_read_sentences::difficulty.eq(sentence.difficulty),
             ))
-            .execute(conn);
+            .execute(conn)
+            .await;
 
         match result {
             Ok(_) => {
@@ -329,7 +329,7 @@ fn import_sentences(
 fn export_to_json(
     sentences: &[(String, SentenceEntry)],
     output_file: &PathBuf,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let export_sentences: Vec<ExportSentence> = sentences
         .iter()
         .map(|(word, sent)| ExportSentence {

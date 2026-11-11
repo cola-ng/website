@@ -1,5 +1,6 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 use serde::Deserialize;
@@ -14,13 +15,13 @@ use crate::{AppError, DepotExt, JsonResult};
 #[endpoint(tags("user"))]
 pub async fn list(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "view", conn)?;
 
-    let uphones = phones::table.filter(phones::user_id.eq(user.id)).get_results::<Phone>(conn)?;
+    let uphones = phones::table.filter(phones::user_id.eq(user.id)).get_results::<Phone>(conn).await?;
     Ok(Json(uphones))
 }
 
@@ -37,14 +38,14 @@ pub async fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depo
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
-    let phone = conn.transaction::<_, AppError, _>(|conn| {
+    let phone = horme::transaction(&mut conn, async |conn| {
         // check_phone_other_taken!(Some(cuser.id), &pdata.value, conn);
         let has_master = diesel_exists!(phones::table.filter(phones::user_id.eq(user.id)).filter(phones::is_master.eq(true)), conn);
         let new_phone = NewPhone {
@@ -56,9 +57,9 @@ pub async fn create(user_id: PathParam<i64>, pdata: JsonBody<CreateInData>, depo
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let phone = diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn)?;
+        let phone = diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn).await?;
         Ok(phone)
-    })?;
+    }).await?;
     Ok(Json(phone))
 }
 
@@ -75,14 +76,14 @@ pub async fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &
         return Err(StatusError::bad_request().brief(msg).into());
     }
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
 
-    conn.transaction::<_, AppError, _>(|conn| {
+    horme::transaction(&mut conn, async |conn| {
         let query = phones::table.filter(phones::value.eq(&pdata.value));
         if diesel_exists!(query, conn) {
             return Err(StatusError::conflict().brief("phone conflict").brief("This phone already exist").into());
@@ -96,19 +97,20 @@ pub async fn take(user_id: PathParam<i64>, pdata: JsonBody<TakeInData>, depot: &
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        let phone = diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn)?;
+        let phone = diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn).await?;
         Ok(Json(phone))
     })
+    .await
 }
 #[endpoint(tags("user"))]
 pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Vec<Phone>> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
-    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
+    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn).await?;
     if phone.user_id != user.id {
         return Err(StatusError::bad_request().into());
     }
@@ -116,8 +118,8 @@ pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &m
     if phone.is_master {
         return Err(StatusError::bad_request().brief("master phone can not be deleted").into());
     }
-    diesel::delete(&phone).execute(conn)?;
-    let phones = phones::table.filter(phones::user_id.eq(cuser.id)).get_results::<Phone>(conn)?;
+    diesel::delete(&phone).execute(conn).await?;
+    let phones = phones::table.filter(phones::user_id.eq(cuser.id)).get_results::<Phone>(conn).await?;
     Ok(Json(phones))
 }
 
@@ -137,12 +139,12 @@ pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &m
 //         return Err(StatusError::bad_request().brief( &msg).into());
 //     }
 //     let cuser = depot.current_user()?;
-//     let conn = &mut db::conn()?;
-//     let user =  users::table.find(phone_id.into_inner()).first::< User>(conn)?;
+//     let conn = &mut db::conn().await?;
+//     let user =  users::table.find(phone_id.into_inner()).first::< User>(conn).await?;
 
 //     user.assign_to(cuser, "edit", conn);
 
-//     let uphone = phones::table.find(phone_id).first::<Phone>(conn)?;
+//     let uphone = phones::table.find(phone_id).first::<Phone>(conn).await?;
 //     if uphone.is_err() {
 //         return Err(StatusError::bad_request().brief("phone is not exist").into());
 //     }
@@ -150,7 +152,7 @@ pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &m
 //         let exist_phone = phones::table
 //             .filter(phones::value.eq(&pdata.value))
 //             .filter(phones::id.ne(phone_id))
-//             .first::<Phone>(conn)?;
+//             .first::<Phone>(conn).await?;
 //         if exist_phone.user_id == cuser.id {
 //             return Err(StatusError::conflict().into());
 //         }
@@ -161,22 +163,22 @@ pub async fn delete(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &m
 //                 phones::updated_by.eq(cuser.id),
 //                 phones::updated_at.eq(Utc::now()),
 //             ))
-//             .get_result::<Phone>(conn)?;
+//             .get_result::<Phone>(conn).await?;
 //         res.render();
 //         Ok(uphone)
-//     })?;
+//     }).await?;
 //     Ok(Json(phone))
 // }
 #[endpoint(tags("user"))]
 pub async fn set_master(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Phone> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .filter(users::id.eq(user_id.into_inner()))
         .filter(users::is_disabled.eq(false))
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
-    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn)?;
+    let phone = phones::table.find(phone_id.into_inner()).first::<Phone>(conn).await?;
 
     if phone.user_id != user.id {
         return Err(StatusError::bad_request().into());
@@ -185,7 +187,7 @@ pub async fn set_master(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot
         return Ok(Json(phone));
     }
 
-    conn.transaction::<_, AppError, _>(|conn| {
+    horme::transaction(&mut conn, async |conn| {
         diesel::update(
             phones::table.filter(
                 phones::id
@@ -199,14 +201,15 @@ pub async fn set_master(user_id: PathParam<i64>, phone_id: PathParam<i64>, depot
             phones::updated_by.eq(cuser.id),
             phones::updated_at.eq(Utc::now()),
         ))
-        .execute(conn)?;
+        .execute(conn).await?;
         let phone = diesel::update(phones::table.find(phone.id))
             .set((
                 phones::is_master.eq(true),
                 phones::updated_by.eq(cuser.id),
                 phones::updated_at.eq(Utc::now()),
             ))
-            .get_result::<Phone>(conn)?;
+            .get_result::<Phone>(conn).await?;
         Ok(Json(phone))
     })
+    .await
 }

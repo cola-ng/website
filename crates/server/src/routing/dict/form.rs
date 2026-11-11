@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -10,10 +10,11 @@ use crate::{JsonResult, json_ok};
 #[handler]
 pub async fn list_forms(req: &mut Request) -> JsonResult<Vec<Form>> {
     let word_id = super::get_path_id(req, "id")?;
-    let forms: Vec<Form> = with_conn(move |conn| {
+    let forms: Vec<Form> = with_conn!(move |conn| {
         dict_forms::table
             .filter(dict_forms::word_id.eq(word_id))
             .load::<Form>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch forms"))?;
@@ -38,7 +39,7 @@ pub async fn create_form(req: &mut Request) -> JsonResult<Form> {
     if input.form.trim().is_empty() {
         return Err(StatusError::bad_request().brief("form is required").into());
     }
-    let created: Form = with_conn(move |conn| {
+    let created: Form = with_conn!(move |conn| {
         diesel::insert_into(dict_forms::table)
             .values(&NewForm {
                 word_id,
@@ -48,6 +49,7 @@ pub async fn create_form(req: &mut Request) -> JsonResult<Form> {
                 notes: input.notes,
             })
             .get_result::<Form>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create form"))?;

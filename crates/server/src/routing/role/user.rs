@@ -1,4 +1,5 @@
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 
@@ -8,12 +9,12 @@ use crate::db::schema::*;
 use crate::{AppResult, DepotExt, PagedResult, StatusInfo, db};
 
 #[endpoint(tags("role"))]
-pub fn list(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
+pub async fn list(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "users.view", conn)?;
 
     let query = users::table
@@ -38,10 +39,10 @@ pub fn list(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> Pa
 pub async fn add(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let ids = crate::parse_ids_from_request(req, "id", "ids").await;
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "users.add", conn)?;
     if crate::is_kernel_realm_id(role.realm_id) && !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -54,13 +55,13 @@ pub async fn add(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) 
             .filter(users::in_kernel.eq(true))
             .filter(users::is_disabled.eq(false))
             .select(users::id)
-            .get_results::<i64>(conn)?
+            .get_results::<i64>(conn).await?
     } else {
         users::table
             .filter(users::id.eq_any(ids))
             .filter(users::is_disabled.eq(false))
             .select(users::id)
-            .get_results::<i64>(conn)?
+            .get_results::<i64>(conn).await?
     };
     for id in &user_ids {
         let ruser = crate::models::RoleUser {
@@ -74,18 +75,18 @@ pub async fn add(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) 
         diesel::insert_into(role_users::table)
             .values(&rusers)
             .on_conflict_do_nothing()
-            .execute(conn)?;
+            .execute(conn).await?;
     }
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("user"))]
 pub async fn remove(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let ids = crate::parse_ids_from_request(req, "id", "ids").await;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let cuser = depot.current_user()?.must_in_kernel()?;
     let role = roles::table
         .find(role_id.into_inner())
-        .first::<Role>(conn)?
+        .first::<Role>(conn).await?
         .assign_to(cuser, "users.remove", conn)?;
     if crate::is_kernel_realm_id(role.realm_id) && !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -95,6 +96,6 @@ pub async fn remove(role_id: PathParam<i64>, req: &mut Request, depot: &mut Depo
             .filter(role_users::role_id.eq(role.id))
             .filter(role_users::user_id.eq_any(ids)),
     )
-    .execute(conn)?;
+    .execute(conn).await?;
     Ok(StatusInfo::done())
 }

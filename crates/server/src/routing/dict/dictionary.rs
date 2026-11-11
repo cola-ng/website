@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -14,7 +14,7 @@ pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<Dictionary>>
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
     let offset = req.query::<i64>("offset").unwrap_or(0).max(0);
 
-    let dictionaries: Vec<Dictionary> = with_conn(move |conn| {
+    let dictionaries: Vec<Dictionary> = with_conn!(move |conn| {
         let mut query = dict_dictionaries::table
             .order(dict_dictionaries::priority_order.asc())
             .then_order_by(dict_dictionaries::name_en.asc())
@@ -30,7 +30,7 @@ pub async fn list_dictionaries(req: &mut Request) -> JsonResult<Vec<Dictionary>>
             query = query.filter(dict_dictionaries::is_official.eq(official));
         }
 
-        query.load::<Dictionary>(conn)
+        query.load::<Dictionary>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch dictionaries"))?;
@@ -71,7 +71,7 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
             .into());
     }
 
-    let created: Dictionary = with_conn(move |conn| {
+    let created: Dictionary = with_conn!(move |conn| {
         diesel::insert_into(dict_dictionaries::table)
             .values(&NewDictionary {
                 name_en,
@@ -93,6 +93,7 @@ pub async fn create_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
                 updated_by: None,
             })
             .get_result::<Dictionary>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create dictionary"))?;
@@ -127,7 +128,7 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
         .await
         .map_err(|_| StatusError::bad_request().brief("invalid json"))?;
 
-    let updated: Dictionary = with_conn(move |conn| {
+    let updated: Dictionary = with_conn!(move |conn| {
         diesel::update(dict_dictionaries::table.find(id))
             .set(&UpdateDictionary {
                 name_en: input.name_en.map(|n| n.trim().to_string()),
@@ -148,6 +149,7 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
                 updated_by: None,
             })
             .get_result::<Dictionary>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update dictionary"))?;
@@ -159,10 +161,12 @@ pub async fn update_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
 pub async fn get_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
     let id = super::get_path_id(req, "id")?;
 
-    let dictionary: Dictionary =
-        with_conn(move |conn| dict_dictionaries::table.find(id).first::<Dictionary>(conn))
-            .await
-            .map_err(|_| StatusError::not_found().brief("dictionary not found"))?;
+    let dictionary: Dictionary = with_conn!(move |conn| dict_dictionaries::table
+        .find(id)
+        .first::<Dictionary>(conn)
+        .await)
+    .await
+    .map_err(|_| StatusError::not_found().brief("dictionary not found"))?;
 
     json_ok(dictionary)
 }
@@ -171,9 +175,13 @@ pub async fn get_dictionary(req: &mut Request) -> JsonResult<Dictionary> {
 pub async fn delete_dictionary(req: &mut Request) -> JsonResult<serde_json::Value> {
     let id = super::get_path_id(req, "id")?;
 
-    with_conn(move |conn| diesel::delete(dict_dictionaries::table.find(id)).execute(conn))
-        .await
-        .map_err(|_| StatusError::internal_server_error().brief("failed to delete dictionary"))?;
+    with_conn!(
+        move |conn| diesel::delete(dict_dictionaries::table.find(id))
+            .execute(conn)
+            .await
+    )
+    .await
+    .map_err(|_| StatusError::internal_server_error().brief("failed to delete dictionary"))?;
 
     json_ok(serde_json::json!({ "message": "dictionary deleted" }))
 }

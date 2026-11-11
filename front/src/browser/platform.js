@@ -1,3 +1,4 @@
+import {VoiceSession} from '/voice/session.js';
 // Browser platform adapters only. Application state and UI live in Rust.
 export function watchMedia(query, callback) {
   const media=matchMedia(query), update=()=>callback(media.matches);
@@ -55,6 +56,7 @@ function release() {
 export async function startRecording() {
   if (recorder || starting || pending) throw new Error('请先停止并提交正在进行的录音');
   if (!navigator.mediaDevices?.getUserMedia || !globalThis.MediaRecorder) throw new Error('当前浏览器不支持录音，请使用 HTTPS 或 localhost');
+  stopAudio();
   starting = true;
   const owner=++recordingSequence;
   recordingOwner=owner;
@@ -122,7 +124,7 @@ export function cancelRecording(owner) {
 }
 export function stopAudio() {
   audioGeneration++;
-  audio?.pause(); audio = undefined;
+  if (audio) { audio.onended=null; audio.pause(); } audio = undefined;
   if (objectUrl) URL.revokeObjectURL(objectUrl);
   objectUrl = undefined;
   globalThis.speechSynthesis?.cancel();
@@ -136,7 +138,7 @@ export async function playAudio(path, token) {
   if (generation!==audioGeneration) return;
   objectUrl = URL.createObjectURL(blob);
   audio = new Audio(objectUrl);
-  audio.onended = stopAudio;
+  audio.onended = () => { if(generation===audioGeneration)stopAudio(); };
   await audio.play();
 }
 export function speakText(text) {
@@ -173,3 +175,11 @@ export async function avatarData(token) {
   return await new Promise((resolve,reject) => { const reader=new FileReader(); reader.onload=()=>resolve(reader.result); reader.onerror=reject; reader.readAsDataURL(blob); });
 }
 addEventListener('pagehide', () => { cancelRecording(recordingOwner); release(); stopAudio(); });
+
+export function openVoice(callback,output) { const session=new VoiceSession(callback,output);void session.open();return session; }
+export function closeVoice(session) { session?.close(); }
+export function voiceReply(session,text,done) { session?.reply(text,done); }
+export function voiceWaiting(session) { session?.waiting(); }
+export function voiceReset(session) { session?.interrupt();session?.awaitReply(); }
+
+export function voiceAudio(session,frame) { session?.audioEvent(JSON.parse(frame)); }

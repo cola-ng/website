@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Deserialize;
@@ -25,7 +25,7 @@ pub async fn list_suggestions(
     let suggestion_type_param = req.query::<String>("type");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let suggestions: Vec<Suggestion> = with_conn(move |conn| {
+    let suggestions: Vec<Suggestion> = with_conn!(move |conn| {
         let mut query = learn_suggestions::table
             .filter(learn_suggestions::user_id.eq(user_id))
             .order(learn_suggestions::created_at.desc())
@@ -36,7 +36,7 @@ pub async fn list_suggestions(
             query = query.filter(learn_suggestions::suggestion_type.eq(st));
         }
 
-        query.load::<Suggestion>(conn)
+        query.load::<Suggestion>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list suggestions"))?;
@@ -70,10 +70,11 @@ pub async fn create_suggestion(
         was_accepted: input.was_accepted,
     };
 
-    let suggestion: Suggestion = with_conn(move |conn| {
+    let suggestion: Suggestion = with_conn!(move |conn| {
         diesel::insert_into(learn_suggestions::table)
             .values(&new_suggestion)
             .get_result::<Suggestion>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create suggestion"))?;

@@ -86,7 +86,7 @@ pub fn chat(id: Option<i64>) -> impl Widget {
                 )),
                 view().class(scope.bond(move||format!("conversation{}{}{}{}",if !display[0].get(){" hide-ai-en"}else{""},if !display[1].get(){" hide-ai-zh"}else{""},if !display[2].get(){" hide-user-en"}else{""},if !display[3].get(){" hide-user-zh"}else{""}))).fill((
                     when(id.is_some(),move||{
-                        let id=id.unwrap();let stream=stream.clone();let audio_stream=stream.clone();let send=send.clone();let keyboard_send=keyboard_send.clone();
+                        let id=id.unwrap();let stream=stream.clone();let audio_stream=stream.clone();let record_stream=stream.clone();let voice_stream=stream.clone();let send=send.clone();let keyboard_send=keyboard_send.clone();
                         view().class("chat-content").fill((
                             view().class("chat-toolbar").fill((chat_navigation(chats,picker,new_chat),
                                 text().class("chat-title").content(chats.data.map(move|v|items(v).iter().find(|c|c["id"].as_i64()==Some(id)).map(|c|string(c,"title")).unwrap_or_else(||"英语对话".into()))),
@@ -106,7 +106,8 @@ pub fn chat(id: Option<i64>) -> impl Widget {
                             )),
                             view().class("chat-composer").fill((
                                 view().class("compose-text").fill((submit_field("输入消息",message,true,move||keyboard_send()),action_button().label("发送消息").enabled(action.busy.map(|b|!*b)).on_press(move||send()))),
-                                media::recorder(move|audio|audio_stream.clone().send(id,json!({"type":"audio","audio_base64":audio}),turns,action,None),action),
+                                media::chat_recorder(move|audio|audio_stream.clone().send(id,json!({"type":"audio","audio_base64":audio}),turns,action,None),action,record_stream,id,turns),
+                                voice_stream.voice_controls(id,turns,action),
                                 text().class("muted").content("Enter 发送 · Shift + Enter 换行"),
                             )),
                         ))
@@ -189,6 +190,9 @@ fn chat_turn(v: Value, chat_id: i64, turns: Resource, action: Resource) -> impl 
                 .content(string(&v, "content_zh")),
             when(v["status"] == "processing", move || {
                 chat_stream::pending_turn(pending_id.clone(), chat_id, turns)
+            }),
+            when(v["status"] == "cancelled", || {
+                text().class("muted").content("已打断")
             }),
             when(v["status"] == "error", {
                 let error = string(&v, "error");

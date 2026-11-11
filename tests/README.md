@@ -4,6 +4,10 @@
 
 `browser.cjs` 在实际发布的 WASM 页面执行浏览器回归。登录、资料保存、收藏、复习、内容管理及成绩保存使用真实 API/数据库。AI 翻译、回复及评分使用 Playwright 测试替身，校验请求参数、流式响应、错误提示、文本安全和录音生成的单声道 16 kHz PCM WAV；它不验证外部 AI 服务的可用性或付费凭据。
 
+浏览器回归包含 `voice.cjs`（显式浏览器音源）和 `voice-provider.cjs`（默认用户 TTS）：实际 AudioWorklet 与本地 WebRTC VAD 处理合成语音，检查连续接话、播放打断、短句提前朗读、开口缓存、旧轮次隔离、后台与离页清理。`run.ps1` 自动用 Windows System.Speech 生成测试 WAV；单独运行 `browser.cjs` 前，先执行 `powershell -NoProfile -File tests/voice-fixture.ps1 -OutputPath <cargo metadata 返回的 target_directory>/qa-voice-speech.wav`。不采集个人麦克风，不调用真实付费 AI。用户 TTS 专项包含真实 WebAudio 解码/播放、顺序、合成与音频失败、无自动回退，以及实际本机 API/SDK/流式预览代理验证；所需专用测试账户由 `voice.py` 写入 target 下的 `qa-provider-voice-fixture.json`。真实房间内的回声、音量和设备差异需另作声学体验。
+
+`voice.py` 使用隔离数据库和本机上游，验证显式取消的登录、归属、先取消后发送、ASR 中取消、生成中取消、下一轮立即发送，以及迟到取消不影响新轮次；同时验证用户凭据/模型/音色、首段早于文字完成、无重复整段合成、显式浏览器选择不调用 TTS、服务拒绝和 TTS 未启用。
+
 `ui.cjs` 使用确定性接口数据检查全部 39 个页面入口的桌面与移动端显示，检查主题、字号、导航高亮和横向溢出，并覆盖表单错误、处理中锁定、分页恢复、录音评分和键盘焦点状态。登录卡片标题为桌面 26px / 移动端 24px，普通页面标题为 32px / 26px，正文和输入内容为 16px，标签与辅助文字分别为 15px / 14px。
 
 `node tests/navigation.cjs` 验证真实 WASM 中的桌面和移动导航、键盘、新标签页、浏览器前进后退、账户锚点和登录回跳；通过页面对象标记及文档请求数确认站内跳转没有整页刷新。设置 `QA_NAV_PUBLIC=1` 和 `QA_WEB=https://cola.ng` 可对生产公开页面执行同一组导航检查，不注入登录凭据。

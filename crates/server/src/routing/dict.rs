@@ -1,4 +1,5 @@
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use itertools::Itertools;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
@@ -169,7 +170,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
             .into());
     }
 
-    let result: WordQueryResponse = with_conn(move |conn| {
+    let result: WordQueryResponse = with_conn!(move |conn| {
         // Only return active words (is_active is true or null)
         let word_record = dict_words::table
             .filter(dict_words::word_lower.eq(&word_lower_value))
@@ -178,7 +179,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
                     .eq(true)
                     .or(dict_words::is_active.is_null()),
             )
-            .first::<Word>(conn)
+            .first::<Word>(conn).await
             .optional()?;
 
         let word_record = if let Some(word_record) = word_record {
@@ -205,7 +206,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
                         .eq(true)
                         .or(dict_words::is_active.is_null()),
                 )
-                .first::<Word>(conn)?
+                .first::<Word>(conn).await?
         };
 
         println!("word_record: {:?}", word_record);
@@ -214,20 +215,20 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         let definitions = dict_definitions::table
             .filter(dict_definitions::word_id.eq(word_id))
             .order(dict_definitions::definition_order.asc())
-            .load::<Definition>(conn)?;
+            .load::<Definition>(conn).await?;
 
         let sentence_ids = dict_word_sentences::table
             .filter(dict_word_sentences::word_id.eq(word_id))
             .select(dict_word_sentences::sentence_id)
             .order(dict_word_sentences::priority_order.desc())
-            .load::<i64>(conn)?;
+            .load::<i64>(conn).await?;
 
         let sentences = if sentence_ids.is_empty() {
             Vec::new()
         } else {
             dict_sentences::table
                 .filter(dict_sentences::id.eq_any(&sentence_ids))
-                .load::<Sentence>(conn)?
+                .load::<Sentence>(conn).await?
                 .into_iter()
                 .sorted_by_key(|s| {
                     sentence_ids
@@ -241,21 +242,21 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         let pronunciations = dict_pronunciations::table
             .filter(dict_pronunciations::word_id.eq(word_id))
             .order(dict_pronunciations::is_primary.desc())
-            .load::<Pronunciation>(conn)?;
+            .load::<Pronunciation>(conn).await?;
 
         let forms = dict_forms::table
             .filter(dict_forms::word_id.eq(word_id))
-            .load::<Form>(conn)?;
+            .load::<Form>(conn).await?;
 
         let images = dict_images::table
             .filter(dict_images::word_id.eq(word_id))
-            .load::<Image>(conn)?;
+            .load::<Image>(conn).await?;
 
         let relations_raw: Vec<(Relation, String)> = dict_relations::table
             .inner_join(dict_words::table.on(dict_words::id.eq(dict_relations::related_word_id)))
             .filter(dict_relations::word_id.eq(word_id))
             .select((dict_relations::all_columns, dict_words::word))
-            .load::<(Relation, String)>(conn)?;
+            .load::<(Relation, String)>(conn).await?;
 
         let relations: Vec<RelationWithWord> = relations_raw
             .into_iter()
@@ -273,14 +274,14 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
         let etymology_ids = dict_word_etymologies::table
             .filter(dict_word_etymologies::word_id.eq(word_id))
             .select(dict_word_etymologies::etymology_id)
-            .load::<i64>(conn)?;
+            .load::<i64>(conn).await?;
 
         let etymologies = if etymology_ids.is_empty() {
             Vec::new()
         } else {
             dict_etymologies::table
                 .filter(dict_etymologies::id.eq_any(&etymology_ids))
-                .load::<Etymology>(conn)?
+                .load::<Etymology>(conn).await?
         };
 
         let dictionaries = dict_dictionaries::table
@@ -291,7 +292,7 @@ pub async fn lookup(req: &mut Request) -> JsonResult<WordQueryResponse> {
                         .select(dict_word_dictionaries::dictionary_id),
                 ),
             )
-            .load::<Dictionary>(conn)?;
+            .load::<Dictionary>(conn).await?;
 
         Ok(WordQueryResponse {
             word: word_record,

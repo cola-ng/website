@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use image::{GenericImageView, ImageFormat};
 use salvo::prelude::*;
 
@@ -103,11 +103,12 @@ pub async fn show(req: &mut Request, depot: &mut Depot, res: &mut Response) -> A
     let user_id = depot.user_id()?;
 
     // Get user's avatar from database
-    let avatar: Option<String> = with_conn(move |conn| {
+    let avatar: Option<String> = with_conn!(move |conn| {
         base_users::table
             .filter(base_users::id.eq(user_id))
             .select(base_users::avatar)
             .first::<Option<String>>(conn)
+            .await
     })
     .await
     .ok()
@@ -195,10 +196,11 @@ pub async fn upload_avatar(req: &mut Request, depot: &mut Depot) -> JsonResult<U
 
     // Update user avatar in database (store the relative path)
     let avatar_value = avatar_rel_path;
-    let updated: User = with_conn(move |conn| {
+    let updated: User = with_conn!(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
             .set(base_users::avatar.eq(&avatar_value))
             .get_result::<User>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update avatar"))?;
@@ -212,11 +214,12 @@ pub async fn delete_avatar(depot: &mut Depot) -> JsonResult<User> {
     let user_id = depot.user_id()?;
 
     // Get current avatar path to delete
-    let avatar: Option<String> = with_conn(move |conn| {
+    let avatar: Option<String> = with_conn!(move |conn| {
         base_users::table
             .filter(base_users::id.eq(user_id))
             .select(base_users::avatar)
             .first::<Option<String>>(conn)
+            .await
     })
     .await
     .ok()
@@ -229,10 +232,11 @@ pub async fn delete_avatar(depot: &mut Depot) -> JsonResult<User> {
     }
 
     // Clear avatar in database
-    let updated: User = with_conn(move |conn| {
+    let updated: User = with_conn!(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
             .set(base_users::avatar.eq::<Option<String>>(None))
             .get_result::<User>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete avatar"))?;

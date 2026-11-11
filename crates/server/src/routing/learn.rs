@@ -45,6 +45,7 @@ pub fn router() -> Router {
                                 .post(chat::send_chat)
                                 .push(Router::with_path("stream").post(chat::send_stream)),
                         )
+                        .push(Router::with_path("cancel").post(chat::cancel_turn))
                         .push(Router::with_path("reset").post(chat::reset_chat))
                         .push(Router::with_path("issues").get(chat::list_chat_issues))
                         .push(Router::with_path("turns").get(chat::list_turns)),

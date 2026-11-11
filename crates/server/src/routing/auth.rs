@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
@@ -73,10 +73,10 @@ pub async fn create_code(
         expires_at,
     };
 
-    let _saved: AuthCode = with_conn(move |conn| {
+    let _saved: AuthCode = with_conn!(move |conn| {
         diesel::insert_into(auth_codes::table)
             .values(&record)
-            .get_result::<AuthCode>(conn)
+            .get_result::<AuthCode>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create code"))?;
@@ -117,7 +117,7 @@ pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<Con
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
 
-    let user_id: i64 = with_conn(move |conn| {
+    let user_id: i64 = with_conn!(move |conn| {
         // Claim and return the code in one statement so concurrent exchanges
         // cannot both consume the same authorization code.
         diesel::update(
@@ -129,7 +129,7 @@ pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<Con
         )
         .set(auth_codes::used_at.eq(now))
         .returning(auth_codes::user_id)
-        .get_result::<i64>(conn)
+        .get_result::<i64>(conn).await
     })
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid or expired code"))?;

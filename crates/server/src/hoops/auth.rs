@@ -1,4 +1,5 @@
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::http::header;
 use salvo::prelude::*;
 
@@ -48,13 +49,13 @@ pub async fn require_auth(depot: &mut Depot, _res: &mut Response) -> AppResult<(
     // Check if user_id is present (auth succeeded)
     if let Ok(user_id) = depot.get::<i64>("user_id").copied() {
         use crate::db::schema::base_users;
-        let active = crate::db::with_conn(move |conn| {
+        let active = crate::db::with_conn!(move |conn| {
             base_users::table
                 .find(user_id)
                 .filter(base_users::disabled_at.is_null())
                 .filter(base_users::locked_at.is_null())
                 .select(base_users::id)
-                .first::<i64>(conn)
+                .first::<i64>(conn).await
                 .optional()
         })
         .await

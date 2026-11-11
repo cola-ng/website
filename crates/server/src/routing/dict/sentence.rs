@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::Deserialize;
 
@@ -10,11 +10,12 @@ use crate::{JsonResult, json_ok};
 #[handler]
 pub async fn list_sentences(req: &mut Request) -> JsonResult<Vec<WordSentence>> {
     let word_id = super::get_path_id(req, "id")?;
-    let examples: Vec<WordSentence> = with_conn(move |conn| {
+    let examples: Vec<WordSentence> = with_conn!(move |conn| {
         dict_word_sentences::table
             .filter(dict_word_sentences::word_id.eq(word_id))
             .order(dict_word_sentences::priority_order.asc())
             .load::<WordSentence>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch examples"))?;
@@ -45,7 +46,7 @@ pub async fn create_sentence(req: &mut Request) -> JsonResult<Sentence> {
             .brief("sentence is required")
             .into());
     }
-    let created = with_conn(move |conn| {
+    let created = with_conn!(move |conn| {
         let created = diesel::insert_into(dict_sentences::table)
             .values(&NewSentence {
                 language: input.language.trim().to_string(),
@@ -55,7 +56,8 @@ pub async fn create_sentence(req: &mut Request) -> JsonResult<Sentence> {
                 difficulty: input.difficulty,
                 is_common: input.is_common,
             })
-            .get_result::<Sentence>(conn)?;
+            .get_result::<Sentence>(conn)
+            .await?;
         diesel::insert_into(dict_word_sentences::table)
             .values(&NewWordSentence {
                 word_id,
@@ -63,7 +65,8 @@ pub async fn create_sentence(req: &mut Request) -> JsonResult<Sentence> {
                 sentence_id: created.id,
                 priority_order: input.priority_order,
             })
-            .get_result::<WordSentence>(conn)?;
+            .get_result::<WordSentence>(conn)
+            .await?;
         Ok(created)
     })
     .await

@@ -13,11 +13,13 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
 use colang::db::schema::{asset_read_sentences, asset_read_subjects};
-use diesel::prelude::*;
+use horme::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
 use futures_util::stream::{self, StreamExt};
 use outfox_zhipu::Client as ZhipuClient;
 use outfox_zhipu::spec::tts::CreateSpeechRequest;
 use serde::{Deserialize, Serialize};
+use std::result::Result;
 
 const DEFAULT_INPUT_FILE: &str = r"D:\Works\cola-ng\space-raw\read-sentences.json";
 const DEFAULT_OUTPUT_DIR: &str = r"D:\Works\cola-ng\space\read-sentences";
@@ -90,7 +92,8 @@ struct NewReadSentence {
     common_mistakes: Option<serde_json::Value>,
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     dotenvy::dotenv().ok();
 
     let args: Vec<String> = std::env::args().collect();
@@ -218,8 +221,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         if !sentences_to_process.is_empty() {
             // Run async processing
-            let rt = tokio::runtime::Runtime::new()?;
-            rt.block_on(async {
                 process_tts_concurrent(
                     &client,
                     &sentences_to_process,
@@ -227,8 +228,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     &voice,
                     concurrency,
                 )
-                .await
-            })?;
+                .await?;
         }
     }
 
@@ -237,9 +237,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("\n--- Phase 2: Database Import ---\n");
 
         let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-        let mut conn = PgConnection::establish(&database_url)?;
+        let mut conn = AsyncPgConnection::establish(&database_url).await?;
 
-        insert_to_database(&mut conn, &data, &output_dir)?;
+        insert_to_database(&mut conn, &data, &output_dir).await?;
     }
 
     println!("\n===============================================");
@@ -249,7 +249,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
-fn load_existing_files(output_dir: &Path) -> Result<HashSet<String>, Box<dyn std::error::Error>> {
+fn load_existing_files(
+    output_dir: &Path,
+) -> Result<HashSet<String>, Box<dyn std::error::Error + Send + Sync>> {
     let mut existing = HashSet::new();
 
     if output_dir.exists() {
@@ -282,7 +284,7 @@ async fn process_tts_concurrent(
     output_dir: &Path,
     voice: &str,
     concurrency: usize,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let total = sentences.len();
     let processed = Arc::new(AtomicUsize::new(0));
     let success_count = Arc::new(AtomicUsize::new(0));
@@ -402,11 +404,11 @@ async fn generate_tts_with_retry(
         .into())
 }
 
-fn insert_to_database(
-    conn: &mut PgConnection,
+async fn insert_to_database(
+    conn: &mut AsyncPgConnection,
     data: &ReadSentencesData,
     output_dir: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     for subject_data in &data.subjects {
         println!("Processing subject: {} ...", subject_data.code);
 
@@ -419,7 +421,8 @@ fn insert_to_database(
                     .or(asset_read_subjects::title_zh.eq(&subject_data.title_zh)),
             )
             .select(asset_read_subjects::id)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
         // Delete related sentences first (foreign key constraint)
         if !conflicting_ids.is_empty() {
@@ -427,13 +430,15 @@ fn insert_to_database(
                 asset_read_sentences::table
                     .filter(asset_read_sentences::subject_id.eq_any(&conflicting_ids)),
             )
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
             // Delete conflicting subjects
             let deleted_subjects = diesel::delete(
                 asset_read_subjects::table.filter(asset_read_subjects::id.eq_any(&conflicting_ids)),
             )
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
             println!(
                 "  Deleted {} existing subject(s) and {} sentence(s)",
@@ -456,7 +461,8 @@ fn insert_to_database(
         let subject_id: i64 = diesel::insert_into(asset_read_subjects::table)
             .values(&new_subject)
             .returning(asset_read_subjects::id)
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         println!("  Created subject (id={})", subject_id);
 
@@ -482,7 +488,8 @@ fn insert_to_database(
 
             diesel::insert_into(asset_read_sentences::table)
                 .values(&new_sentence)
-                .execute(conn)?;
+                .execute(conn)
+                .await?;
 
             inserted_count += 1;
         }

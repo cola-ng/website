@@ -1,5 +1,5 @@
 use chrono::NaiveDate;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::Deserialize;
@@ -29,12 +29,13 @@ pub async fn list_daily_stats(
     let user_id = depot.user_id()?;
     let limit = req.query::<i64>("limit").unwrap_or(30).clamp(1, 365);
 
-    let stats: Vec<DailyStat> = with_conn(move |conn| {
+    let stats: Vec<DailyStat> = with_conn!(move |conn| {
         learn_daily_stats::table
             .filter(learn_daily_stats::user_id.eq(user_id))
             .order(learn_daily_stats::stat_date.desc())
             .limit(limit)
             .load::<DailyStat>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list daily stats"))?;
@@ -69,7 +70,7 @@ pub async fn upsert_daily_stat(
         review_words_count: input.review_words_count,
     };
 
-    let stat: DailyStat = with_conn(move |conn| {
+    let stat: DailyStat = with_conn!(move |conn| {
         diesel::insert_into(learn_daily_stats::table)
             .values(&new_stat)
             .on_conflict((learn_daily_stats::user_id, learn_daily_stats::stat_date))
@@ -83,6 +84,7 @@ pub async fn upsert_daily_stat(
                 review_words_count: input.review_words_count,
             })
             .get_result::<DailyStat>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to upsert daily stat"))?;

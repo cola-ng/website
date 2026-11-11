@@ -21,6 +21,20 @@ extern "C" {
     async fn stop_recording() -> std::result::Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = playAudio)]
     async fn play_audio(path: &str, token: &str) -> std::result::Result<JsValue, JsValue>;
+    #[wasm_bindgen(js_name = stopAudio)]
+    pub fn stop_audio();
+    #[wasm_bindgen(js_name = openVoice)]
+    pub fn open_voice(callback: &js_sys::Function, output: &str) -> JsValue;
+    #[wasm_bindgen(js_name = closeVoice)]
+    pub fn close_voice(session: &JsValue);
+    #[wasm_bindgen(js_name = voiceReply)]
+    pub fn voice_reply(session: &JsValue, text: &str, done: bool);
+    #[wasm_bindgen(js_name = voiceAudio)]
+    pub fn voice_audio(session: &JsValue, frame: &str);
+    #[wasm_bindgen(js_name = voiceWaiting)]
+    pub fn voice_waiting(session: &JsValue);
+    #[wasm_bindgen(js_name = voiceReset)]
+    pub fn voice_reset(session: &JsValue);
     #[wasm_bindgen(catch, js_name = speakText)]
     fn speak_text(text: &str) -> std::result::Result<(), JsValue>;
     #[wasm_bindgen(catch, js_name = uploadAvatar)]
@@ -122,6 +136,22 @@ pub fn play(path: String, error: Cage<String>) {
     });
 }
 pub fn recorder(on_complete: impl Fn(String) + 'static, resource: Resource) -> impl Widget {
+    recorder_inner(on_complete, resource, None)
+}
+pub fn chat_recorder(
+    on_complete: impl Fn(String) + 'static,
+    resource: Resource,
+    stream: chat_stream::ConversationStream,
+    chat: i64,
+    turns: Resource,
+) -> impl Widget {
+    recorder_inner(on_complete, resource, Some((stream, chat, turns)))
+}
+fn recorder_inner(
+    on_complete: impl Fn(String) + 'static,
+    resource: Resource,
+    interrupt: Option<(chat_stream::ConversationStream, i64, Resource)>,
+) -> impl Widget {
     let error = resource.error;
     let complete = std::rc::Rc::new(on_complete);
     widget(move |scope| {
@@ -140,6 +170,8 @@ pub fn recorder(on_complete: impl Fn(String) + 'static, resource: Resource) -> i
             })
             .map_err(|_| glory::ui::Error::Gone)?;
         let complete = complete.clone();
+        let interrupt = interrupt.clone();
+        let can_interrupt = interrupt.as_ref().map(|(stream, _, _)| stream.running);
         view()
             .class("recorder")
             .fill((
@@ -153,15 +185,24 @@ pub fn recorder(on_complete: impl Fn(String) + 'static, resource: Resource) -> i
                         .to_string()
                     }))
                     .loading(busy)
-                    .enabled(busy.map(move |v| !*v && (recording.get() || !resource.busy.get())))
+                    .enabled(busy.map(move |v| {
+                        !*v && (recording.get()
+                            || !resource.busy.get()
+                            || can_interrupt.is_some_and(|v| v.get()))
+                    }))
                     .on_press(move || {
-                        if busy.get() || (!recording.get() && resource.busy.get()) {
+                        if busy.get()
+                            || (!recording.get()
+                                && resource.busy.get()
+                                && !can_interrupt.is_some_and(|v| v.get()))
+                        {
                             return;
                         }
                         busy.revise(|b| *b = true);
                         error.revise(String::clear);
                         let complete = complete.clone();
                         let owner = owner.clone();
+                        let interrupt = interrupt.clone();
                         spawn(async move {
                             if recording.get() {
                                 let result = stop_recording().await;
@@ -177,6 +218,19 @@ pub fn recorder(on_complete: impl Fn(String) + 'static, resource: Resource) -> i
                                     Err(e) => error.revise(|v| *v = message(e)),
                                 }
                             } else {
+                                if let Some((stream, chat, turns)) = interrupt {
+                                    stream.close_voice();
+                                    if let Err(e) = stream.cancel(chat, turns, resource).await {
+                                        if busy.is_alive() {
+                                            busy.revise(|b| *b = false);
+                                            error.revise(|v| *v = e);
+                                        }
+                                        return;
+                                    }
+                                }
+                                if !busy.is_alive() {
+                                    return;
+                                }
                                 resource.data.revise(|v| *v = Value::Null);
                                 resource.busy.revise(|b| *b = true);
                                 let result = start_recording().await;

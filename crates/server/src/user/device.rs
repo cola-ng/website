@@ -1,4 +1,5 @@
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use diesel::result::Error as DieselError;
 
 use chrono::{DateTime, Utc};
@@ -47,7 +48,7 @@ pub struct NewUserDevice {
     pub created_at: DateTime<Utc>,
 }
 
-pub fn create_device(
+pub async fn create_device(
     user_id: i64,
     token: &str,
     initial_name: Option<String>,
@@ -63,7 +64,7 @@ pub fn create_device(
             last_seen_at: Utc::now(),
             created_at: Utc::now(),
         })
-        .get_result::<UserDevice>(&mut conn()?)?;
+        .get_result::<UserDevice>(&mut conn().await?).await?;
 
     diesel::insert_into(user_access_tokens::table)
         .values(NewAccessToken::new(
@@ -72,36 +73,37 @@ pub fn create_device(
             token.to_owned(),
             None,
         ))
-        .execute(&mut conn()?)?;
+        .execute(&mut conn().await?).await?;
     Ok(device)
 }
 
-pub fn get_device(device_id: i64) -> AppResult<UserDevice> {
+pub async fn get_device(device_id: i64) -> AppResult<UserDevice> {
     user_devices::table
         .find(device_id)
-        .first::<UserDevice>(&mut conn()?)
+        .first::<UserDevice>(&mut conn().await?).await
         .map_err(Into::into)
 }
 
-pub fn is_device_exists(device_id: i64) -> AppResult<bool> {
+pub async fn is_device_exists(device_id: i64) -> AppResult<bool> {
     let query = user_devices::table.filter(user_devices::id.eq(device_id));
-    diesel_exists!(query, &mut conn()?).map_err(Into::into)
+    let mut conn = conn().await?;
+    diesel_exists!(query, &mut conn).await.map_err(Into::into)
 }
 
-pub fn set_refresh_token(
+pub async fn set_refresh_token(
     user_id: i64,
     device_id: i64,
     token: &str,
     expires_at: DateTime<Utc>,
     ultimate_session_expires_at: DateTime<Utc>,
 ) -> AppResult<i64> {
-    let id = conn()?.transaction::<_, DieselError, _>(|conn| {
+    let id = horme::transaction(&mut conn().await?, async |conn| {
         diesel::delete(
             user_refresh_tokens::table
                 .filter(user_refresh_tokens::user_id.eq(user_id))
                 .filter(user_refresh_tokens::device_id.eq(device_id)),
         )
-        .execute(conn)?;
+        .execute(conn).await?;
         diesel::insert_into(user_refresh_tokens::table)
             .values(NewRefreshToken::new(
                 user_id.to_owned(),
@@ -111,13 +113,14 @@ pub fn set_refresh_token(
                 ultimate_session_expires_at,
             ))
             .returning(user_refresh_tokens::id)
-            .get_result::<i64>(conn)
-    })?;
+            .get_result::<i64>(conn).await
+    })
+    .await?;
 
     Ok(id)
 }
 
-pub fn set_access_token(
+pub async fn set_access_token(
     user_id: i64,
     device_id: i64,
     token: &str,
@@ -133,26 +136,26 @@ pub fn set_access_token(
         .on_conflict((user_access_tokens::user_id, user_access_tokens::device_id))
         .do_update()
         .set(user_access_tokens::token.eq(token))
-        .execute(&mut conn()?)?;
+        .execute(&mut conn().await?).await?;
     Ok(())
 }
 
-pub fn delete_access_tokens(user_id: i64, device_id: i64) -> AppResult<()> {
+pub async fn delete_access_tokens(user_id: i64, device_id: i64) -> AppResult<()> {
     diesel::delete(
         user_access_tokens::table
             .filter(user_access_tokens::user_id.eq(user_id))
             .filter(user_access_tokens::device_id.eq(device_id)),
     )
-    .execute(&mut conn()?)?;
+    .execute(&mut conn().await?).await?;
     Ok(())
 }
 
-pub fn delete_refresh_tokens(user_id: i64, device_id: i64) -> AppResult<()> {
+pub async fn delete_refresh_tokens(user_id: i64, device_id: i64) -> AppResult<()> {
     diesel::delete(
         user_refresh_tokens::table
             .filter(user_refresh_tokens::user_id.eq(user_id))
             .filter(user_refresh_tokens::device_id.eq(device_id)),
     )
-    .execute(&mut conn()?)?;
+    .execute(&mut conn().await?).await?;
     Ok(())
 }

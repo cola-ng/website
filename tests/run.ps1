@@ -67,6 +67,7 @@ try {
     Checked { python tests/api.py }
     Checked { python tests/providers.py }
     Checked { python tests/sentence_audio.py }
+    Checked { python tests/voice.py }
     Checked { cargo test --locked --jobs 2 -p colang --lib }
     Checked { cargo test --locked --jobs 2 -p colang --lib oauth_database_flow -- --ignored }
     Checked { cargo test --locked --jobs 2 -p colang --lib chat_stream_database_flow -- --ignored }
@@ -76,6 +77,7 @@ try {
         if ($webProcess.HasExited) { throw 'QA preview exited during startup' }
         try { Invoke-WebRequest $env:QA_WEB | Out-Null; break } catch { Start-Sleep -Milliseconds 250 }
     }
+    Checked { powershell -NoProfile -File tests/voice-fixture.ps1 -OutputPath (Join-Path $artifacts 'qa-voice-speech.wav') }
     Checked { node tests/browser.cjs }
     Checked { node tests/ui.cjs }
     Checked { node tests/responsive.cjs }

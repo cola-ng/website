@@ -1,7 +1,8 @@
 use diesel::dsl;
 use diesel::helper_types::Filter;
 use diesel::pg::Pg;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use diesel::query_builder::QueryFragment;
 use diesel::result::QueryResult;
 use std::collections::HashSet;
@@ -16,7 +17,8 @@ macro_rules! all_entity_permit_realms_filter {
         use crate::db::PermitFilter;
         use crate::models::*;
         use crate::db::schema::*;
-        use diesel::prelude::*;
+        use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
         use std::collections::HashSet;
 
         let filter = if $user.is_root {
@@ -35,7 +37,7 @@ macro_rules! all_entity_permit_realms_filter {
                 let query = realm_stewards::table
                     .filter(realm_stewards::user_id.eq($user.id))
                     .select(realm_stewards::realm_id)
-                    .get_results::<i64>($conn)?;
+                    .get_results::<i64>($conn).await?;
                 fragments.push(Box::new(realms::id.eq_any(query)));
             }
             let query = realm_users::table
@@ -53,7 +55,7 @@ macro_rules! all_entity_permit_realms_filter {
                 .filter(permissions::action.eq($action))
                 .filter(permissions::role_id.eq_any(role_ids_query))
                 .filter(permissions::realm_id.eq_any(realm_ids_query))
-                .get_results::<Permission>($conn)?;
+                .get_results::<Permission>($conn).await?;
             let realm_kinds = permissions
                 .iter()
                 .filter_map(|p| {
@@ -86,87 +88,87 @@ macro_rules! all_entity_permit_realms_filter {
             }
             PermitFilter::Query(fragments)
         };
-        Ok(realms::table.permit($user, "view", $conn)?.filter(filter))
+        Ok(realms::table.permit($user, "view", $conn).await?.filter(filter))
     }};
 }
 
 table_permit!(realms::table);
 impl realms::table {
-    pub fn for_stock_blueprint_permit(
+    pub async fn for_stock_blueprint_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Blueprint, "stock_blueprint", action, conn)
     }
-    pub fn for_stock_mold_permit(
+    pub async fn for_stock_mold_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Mold, "stock_mold", action, conn)
     }
-    pub fn for_campaign_permit(
+    pub async fn for_campaign_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Campaign, "campaign", action, conn)
     }
-    pub fn for_creative_permit(
+    pub async fn for_creative_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Creative, "creative", action, conn)
     }
-    pub fn for_interflow_stream_permit(
+    pub async fn for_interflow_stream_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Stream, "interflow_stream", action, conn)
     }
-    pub fn for_interflow_thread_permit(
+    pub async fn for_interflow_thread_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Thread, "interflow_thread", action, conn)
     }
-    pub fn for_deploy_deployment_permit(
+    pub async fn for_deploy_deployment_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Deployment, "deploy_deployment", action, conn)
     }
-    pub fn for_stock_font_permit(
+    pub async fn for_stock_font_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, Font, "stock_font", action, conn)
     }
-    pub fn for_user_permit(
+    pub async fn for_user_permit(
         self,
         user: &User,
         action: &str,
-        conn: &mut PgConnection,
+        conn: &mut AsyncPgConnection,
     ) -> AppResult<Filter<Self, dsl::And<PermitFilter, PermitFilter>>> {
         all_entity_permit_realms_filter!(user, User, "user", action, conn)
     }
 }
 
-pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppResult<PermitFilter> {
+pub async fn permit_filter(user: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<PermitFilter> {
     if user.is_root {
         return Ok(PermitFilter::Allowed);
     }
@@ -175,7 +177,7 @@ pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppR
         let realm_ids = realm_users::table
             .filter(realm_users::user_id.eq(user.id))
             .select(realm_users::realm_id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             let query = realms::id.eq_any(realm_ids);
             fragments.push(Box::new(query));
@@ -193,13 +195,13 @@ pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppR
         Ok(PermitFilter::Denied)
     }
 }
-fn realm_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
+async fn realm_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut AsyncPgConnection) -> QueryResult<()> {
     let role_ids_query = role_users::table.filter(role_users::user_id.eq(user.id)).select(role_users::role_id);
     let permissions = permissions::table
         .filter(permissions::entity.eq("realm"))
         .filter(permissions::action.eq(action))
         .filter(permissions::role_id.eq_any(role_ids_query))
-        .get_results::<Permission>(conn)?;
+        .get_results::<Permission>(conn).await?;
 
     let realm_kinds = permissions
         .iter()
@@ -234,7 +236,7 @@ fn realm_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: 
     Ok(())
 }
 
-fn realm_filter_for_steward(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
+async fn realm_filter_for_steward(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut AsyncPgConnection) -> QueryResult<()> {
     if user.in_kernel {
         if !super::allowed_scopes_for_steward(user, "user", "realm", action).is_empty() {
             let realm_ids = realms::table
@@ -247,7 +249,7 @@ fn realm_filter_for_steward(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, use
                     ),
                 )
                 .select(realms::id)
-                .get_results::<i64>(conn)?;
+                .get_results::<i64>(conn).await?;
 
             if !realm_ids.is_empty() {
                 let query = realms::id.eq_any(realm_ids);
@@ -266,7 +268,7 @@ fn realm_filter_for_steward(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, use
                     ),
                 )
                 .select(realms::id)
-                .get_results::<i64>(conn)?;
+                .get_results::<i64>(conn).await?;
             if !realm_ids.is_empty() {
                 let query = realms::id.eq_any(realm_ids);
                 // tracing::info!(entity = "realm", action, fragment = %debug_query!(&query), "realm_filter_for_steward");
@@ -277,18 +279,18 @@ fn realm_filter_for_steward(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, use
     Ok(())
 }
 
-fn realm_filter_for_realm_owner(
+async fn realm_filter_for_realm_owner(
     fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>,
     user: &User,
     action: &str,
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
 ) -> QueryResult<()> {
     if !super::allowed_scopes_for_realm_root_user(user, "kernel", "realm", action).is_empty() {
         let query = realm_users::table
             .filter(realm_users::user_id.eq(user.id))
             .filter(realm_users::realm_id.eq(crate::kernel_realm_id()))
             .filter(realm_users::is_root.eq(true));
-        if diesel_exists!(query, conn) {
+        if diesel_exists!(query, conn).await {
             let query = realms::kind.eq("kernel");
             fragments.push(Box::new(query));
         }
@@ -305,7 +307,7 @@ fn realm_filter_for_realm_owner(
                 ),
             )
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             let query = realms::id.eq_any(realm_ids);
             fragments.push(Box::new(query));
@@ -323,7 +325,7 @@ fn realm_filter_for_realm_owner(
                 ),
             )
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             let query = realms::id.eq_any(realm_ids);
             fragments.push(Box::new(query));

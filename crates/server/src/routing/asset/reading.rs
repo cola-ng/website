@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -38,7 +38,7 @@ pub async fn list_read_subjects(req: &mut Request, res: &mut Response) -> AppRes
 
     let offset = (page - 1) * per_page;
 
-    let (subjects, total): (Vec<ReadSubject>, i64) = with_conn(move |conn| {
+    let (subjects, total): (Vec<ReadSubject>, i64) = with_conn!(move |conn| {
         let mut query = asset_read_subjects::table.into_boxed();
         let mut count_query = asset_read_subjects::table.into_boxed();
 
@@ -51,13 +51,14 @@ pub async fn list_read_subjects(req: &mut Request, res: &mut Response) -> AppRes
             count_query = count_query.filter(asset_read_subjects::subject_type.eq(st.clone()));
         }
 
-        let total: i64 = count_query.count().get_result(conn)?;
+        let total: i64 = count_query.count().get_result(conn).await?;
 
         let items = query
             .order(asset_read_subjects::id.asc())
             .offset(offset)
             .limit(per_page)
-            .load::<ReadSubject>(conn)?;
+            .load::<ReadSubject>(conn)
+            .await?;
 
         Ok((items, total))
     })
@@ -83,18 +84,20 @@ pub async fn get_read_sentences(req: &mut Request, res: &mut Response) -> AppRes
     let per_page = req.query::<i64>("per_page").unwrap_or(50).clamp(1, 200);
     let offset = (page - 1) * per_page;
 
-    let (sentences, total): (Vec<ReadSentence>, i64) = with_conn(move |conn| {
+    let (sentences, total): (Vec<ReadSentence>, i64) = with_conn!(move |conn| {
         let total: i64 = asset_read_sentences::table
             .filter(asset_read_sentences::subject_id.eq(subject_id))
             .count()
-            .get_result(conn)?;
+            .get_result(conn)
+            .await?;
 
         let items = asset_read_sentences::table
             .filter(asset_read_sentences::subject_id.eq(subject_id))
             .order(asset_read_sentences::sentence_order.asc())
             .offset(offset)
             .limit(per_page)
-            .load::<ReadSentence>(conn)?;
+            .load::<ReadSentence>(conn)
+            .await?;
 
         Ok((items, total))
     })
@@ -117,7 +120,7 @@ pub async fn list_read_sentences(req: &mut Request, res: &mut Response) -> AppRe
     let per_page = req.query::<i64>("per_page").unwrap_or(50).clamp(1, 200);
     let offset = (page - 1) * per_page;
 
-    let (sentences, total): (Vec<ReadSentence>, i64) = with_conn(move |conn| {
+    let (sentences, total): (Vec<ReadSentence>, i64) = with_conn!(move |conn| {
         let mut query = asset_read_sentences::table.into_boxed();
         let mut count_query = asset_read_sentences::table.into_boxed();
 
@@ -126,13 +129,14 @@ pub async fn list_read_sentences(req: &mut Request, res: &mut Response) -> AppRe
             count_query = count_query.filter(asset_read_sentences::subject_id.eq(sid));
         }
 
-        let total: i64 = count_query.count().get_result(conn)?;
+        let total: i64 = count_query.count().get_result(conn).await?;
 
         let items = query
             .order(asset_read_sentences::sentence_order.asc())
             .offset(offset)
             .limit(per_page)
-            .load::<ReadSentence>(conn)?;
+            .load::<ReadSentence>(conn)
+            .await?;
 
         Ok((items, total))
     })
@@ -163,10 +167,11 @@ pub async fn serve_sentence_audio(req: &mut Request, res: &mut Response) -> AppR
         .ok_or_else(|| StatusError::bad_request().brief("missing sentence id"))?;
 
     // Get the sentence from database to find audio_path
-    let sentence: ReadSentence = with_conn(move |conn| {
+    let sentence: ReadSentence = with_conn!(move |conn| {
         asset_read_sentences::table
             .find(sentence_id)
             .first::<ReadSentence>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("sentence not found"))?;
@@ -373,13 +378,14 @@ pub async fn get_recommended_sentences(
     let limit = req.query::<i64>("limit").unwrap_or(10).clamp(1, 20);
     let subject_id = req.query::<i64>("subject_id");
 
-    let result = with_conn(move |conn| {
+    let result = with_conn!(move |conn| {
         // Get user's pronunciation level (default to 5)
         let user_level: i32 = learn_levels::table
             .filter(learn_levels::user_id.eq(user_id))
             .filter(learn_levels::skill_type.eq("pronunciation"))
             .select(learn_levels::level)
             .first::<i32>(conn)
+            .await
             .unwrap_or(1);
 
         // Minimum difficulty threshold (user_level - 1, but at least 1)
@@ -391,7 +397,8 @@ pub async fn get_recommended_sentences(
             .filter(learn_read_practices::overall_score.ge(90))
             .select(learn_read_practices::sentence_id)
             .distinct()
-            .load::<Option<i64>>(conn)?
+            .load::<Option<i64>>(conn)
+            .await?
             .into_iter()
             .flatten()
             .collect();
@@ -415,7 +422,7 @@ pub async fn get_recommended_sentences(
                 count_query.filter(asset_read_sentences::id.ne_all(mastered_sentence_ids.clone()));
         }
 
-        let total_available: i64 = count_query.count().get_result(conn)?;
+        let total_available: i64 = count_query.count().get_result(conn).await?;
 
         // Get recommended sentences
         let mut query = asset_read_sentences::table
@@ -438,7 +445,8 @@ pub async fn get_recommended_sentences(
         let items = query
             .order(asset_read_sentences::difficulty.asc().nulls_last())
             .limit(limit)
-            .load::<ReadSentence>(conn)?;
+            .load::<ReadSentence>(conn)
+            .await?;
 
         // Check if all sentences in the subject at current level are completed
         let subject_completed = if let Some(sid) = subject_id {
@@ -451,7 +459,8 @@ pub async fn get_recommended_sentences(
                         .or(asset_read_sentences::difficulty.ge(min_difficulty)),
                 )
                 .select(asset_read_sentences::id)
-                .load::<i64>(conn)?;
+                .load::<i64>(conn)
+                .await?;
 
             // Check if all are mastered
             !subject_sentences.is_empty()
@@ -462,7 +471,7 @@ pub async fn get_recommended_sentences(
             false
         };
 
-        Ok::<_, diesel::result::Error>((
+        Ok::<_, horme::Error>((
             items,
             user_level,
             total_available,
@@ -525,7 +534,7 @@ pub async fn submit_read_practice(
     let overall_score = input.overall_score;
     let sentence_id = input.sentence_id;
 
-    let (practice_id, leveled_up, new_level) = with_conn(move |conn| {
+    let (practice_id, leveled_up, new_level) = with_conn!(move |conn| {
         // Save the practice record
         let new_practice = NewReadPractice {
             user_id,
@@ -545,7 +554,8 @@ pub async fn submit_read_practice(
         let practice_id = diesel::insert_into(learn_read_practices::table)
             .values(&new_practice)
             .returning(learn_read_practices::id)
-            .get_result::<i64>(conn)?;
+            .get_result::<i64>(conn)
+            .await?;
 
         // Check if we should level up (only if score > 90)
         let mut leveled_up = false;
@@ -558,6 +568,7 @@ pub async fn submit_read_practice(
                 .filter(learn_levels::skill_type.eq("pronunciation"))
                 .select(learn_levels::level)
                 .first::<i32>(conn)
+                .await
                 .unwrap_or(1);
 
             // Get the difficulty of all sentences at the current user level
@@ -569,7 +580,8 @@ pub async fn submit_read_practice(
             let sentences_at_level: Vec<i64> = asset_read_sentences::table
                 .filter(asset_read_sentences::difficulty.eq(current_level_difficulty))
                 .select(asset_read_sentences::id)
-                .load::<i64>(conn)?;
+                .load::<i64>(conn)
+                .await?;
 
             if !sentences_at_level.is_empty() {
                 // Get sentence IDs where user scored >= 90
@@ -579,7 +591,8 @@ pub async fn submit_read_practice(
                     .filter(learn_read_practices::overall_score.ge(90))
                     .select(learn_read_practices::sentence_id)
                     .distinct()
-                    .load::<Option<i64>>(conn)?
+                    .load::<Option<i64>>(conn)
+                    .await?
                     .into_iter()
                     .flatten()
                     .collect();
@@ -606,7 +619,8 @@ pub async fn submit_read_practice(
                             learn_levels::level.eq(next_level),
                             learn_levels::updated_at.eq(now),
                         ))
-                        .execute(conn)?;
+                        .execute(conn)
+                        .await?;
 
                     leveled_up = true;
                     new_level = Some(next_level);
@@ -620,7 +634,7 @@ pub async fn submit_read_practice(
             }
         }
 
-        Ok::<_, diesel::result::Error>((practice_id, leveled_up, new_level))
+        Ok::<_, horme::Error>((practice_id, leveled_up, new_level))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to save practice"))?;
@@ -666,7 +680,7 @@ pub async fn reset_pronunciation_level(
     let now = Utc::now();
 
     let skill_type_clone = skill_type.clone();
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         // Upsert user level
         diesel::insert_into(learn_levels::table)
             .values(&NewUserLevel {
@@ -680,7 +694,8 @@ pub async fn reset_pronunciation_level(
                 learn_levels::level.eq(new_level),
                 learn_levels::updated_at.eq(now),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
         // Delete all practice records with score >= 90 to "reset" progress
         // Only for pronunciation skill type (reading practices)
@@ -690,10 +705,11 @@ pub async fn reset_pronunciation_level(
                     .filter(learn_read_practices::user_id.eq(user_id))
                     .filter(learn_read_practices::overall_score.ge(90)),
             )
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         }
 
-        Ok::<_, diesel::result::Error>(())
+        Ok::<_, horme::Error>(())
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to reset level"))?;
@@ -729,13 +745,14 @@ pub async fn advance_pronunciation_level(
     let now = Utc::now();
 
     let skill_type_clone = skill_type.clone();
-    let new_level = with_conn(move |conn| {
+    let new_level = with_conn!(move |conn| {
         // Get current level
         let current_level: i32 = learn_levels::table
             .filter(learn_levels::user_id.eq(user_id))
             .filter(learn_levels::skill_type.eq(&skill_type_clone))
             .select(learn_levels::level)
             .first::<i32>(conn)
+            .await
             .unwrap_or(1);
 
         // Cap at level 10
@@ -754,9 +771,10 @@ pub async fn advance_pronunciation_level(
                 learn_levels::level.eq(next_level),
                 learn_levels::updated_at.eq(now),
             ))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>(next_level)
+        Ok::<_, horme::Error>(next_level)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to advance level"))?;

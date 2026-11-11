@@ -1,6 +1,7 @@
 use bigdecimal::{BigDecimal, Zero};
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 
@@ -13,7 +14,7 @@ use crate::{AppError, AppResult, DepotExt, PagedResult, StatusInfo, db};
 #[endpoint(tags("wallet"))]
 pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Balance> {
     let _cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let data = query_pagation_data!(
         req,
         res,
@@ -53,20 +54,20 @@ pub async fn create(pdata: JsonBody<CreateBalanceInData>, depot: &mut Depot) -> 
     if pdata.current_amount <= 0.into() {
         return Err(StatusError::bad_request().brief("The current_amount must be greater than 0.").into());
     }
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     realms::table
         .find(pdata.realm_id)
-        .get_result::<Realm>(conn)?
+        .get_result::<Realm>(conn).await?
         .assign_to(cuser, "wallet.balance_manage", conn)?;
     let stripe_intent_id = if let Some(payment_intent_id) = pdata.payment_intent_id {
         trade_payment_intents::table
             .find(payment_intent_id)
             .select(trade_payment_intents::stripe_intent_id)
-            .first::<Option<String>>(conn)?
+            .first::<Option<String>>(conn).await?
     } else {
         None
     };
-    conn.transaction::<_, AppError, _>(|conn| {
+    horme::transaction(&mut conn, async |conn| {
         let balance = diesel::insert_into(wallet_balances::table)
             .values(&NewBalance {
                 realm_id: pdata.realm_id,
@@ -85,7 +86,7 @@ pub async fn create(pdata: JsonBody<CreateBalanceInData>, depot: &mut Depot) -> 
                 updated_by: Some(cuser.id),
                 created_by: Some(cuser.id),
             })
-            .get_result::<Balance>(conn)?;
+            .get_result::<Balance>(conn).await?;
 
         let _ = diesel::insert_into(action_histories::table)
             .values(NewActionHistory {
@@ -98,7 +99,7 @@ pub async fn create(pdata: JsonBody<CreateBalanceInData>, depot: &mut Depot) -> 
                 keywords: vec![],
                 description: Some("kernel user create balance"),
             })
-            .execute(conn);
+            .execute(conn).await;
 
         diesel::insert_into(wallet_histories::table)
             .values(&NewHistory {
@@ -114,7 +115,7 @@ pub async fn create(pdata: JsonBody<CreateBalanceInData>, depot: &mut Depot) -> 
                 created_by: Some(cuser.id),
                 description: Some(&*pdata.description),
             })
-            .execute(conn)?;
+            .execute(conn).await?;
         // diesel::insert_into(wallet_balance_changes::table)
         //     .values(&NewBalanceChange {
         //         realm_id: pdata.realm_id,
@@ -126,9 +127,9 @@ pub async fn create(pdata: JsonBody<CreateBalanceInData>, depot: &mut Depot) -> 
         //         changed_amount: change_amount.clone(),
         //         currency: &change.currency,
         //     })
-        //     .execute(conn)?;
+        //     .execute(conn).await?;
         Ok(())
-    })?;
+    }).await?;
 
     Ok(StatusInfo::done())
 }
@@ -167,14 +168,14 @@ pub async fn update(balance_id: PathParam<i64>, pdata: JsonBody<UpdateBalanceInD
             return Err(StatusError::bad_request().brief("The current_amount must be greater than 0.").into());
         }
     }
-    let conn = &mut db::conn()?;
-    let balance = wallet_balances::table.find(balance_id.into_inner()).first::<Balance>(conn)?;
+    let conn = &mut db::conn().await?;
+    let balance = wallet_balances::table.find(balance_id.into_inner()).first::<Balance>(conn).await?;
     let _realm = realms::table
         .find(balance.realm_id)
-        .get_result::<Realm>(conn)?
+        .get_result::<Realm>(conn).await?
         .assign_to(cuser, "wallet.balance_manage", conn)?;
-    conn.transaction::<_, AppError, _>(|conn| {
-        let updated = diesel::update(&balance).set(&pdata).get_result::<Balance>(conn)?;
+    horme::transaction(&mut conn, async |conn| {
+        let updated = diesel::update(&balance).set(&pdata).get_result::<Balance>(conn).await?;
         let _ = diesel::insert_into(action_histories::table)
             .values(NewActionHistory {
                 entity: "wallet_balance",
@@ -186,7 +187,7 @@ pub async fn update(balance_id: PathParam<i64>, pdata: JsonBody<UpdateBalanceInD
                 keywords: vec![],
                 description: Some("kernel user update balance"),
             })
-            .execute(conn);
+            .execute(conn).await;
         // diesel::insert_into(wallet_histories::table)
         //     .values(&NewHistory {
         //         realm_id,
@@ -201,9 +202,9 @@ pub async fn update(balance_id: PathParam<i64>, pdata: JsonBody<UpdateBalanceInD
         //         created_by: Some(cuser.id),
         //         description: Some(&*pdata.description),
         //     })
-        //     .execute(conn)?;
+        //     .execute(conn).await?;
         Ok(())
-    })?;
+    }).await?;
 
     Ok(StatusInfo::done())
 }

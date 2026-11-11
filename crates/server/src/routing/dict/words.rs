@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -18,7 +18,7 @@ pub struct WordListResponse {
 #[handler]
 pub async fn get_word(req: &mut Request) -> JsonResult<Word> {
     let id = super::get_path_id(req, "id")?;
-    let word = with_conn(move |conn| dict_words::table.find(id).first::<Word>(conn))
+    let word = with_conn!(move |conn| dict_words::table.find(id).first::<Word>(conn).await)
         .await
         .map_err(|_| StatusError::not_found().brief("word not found"))?;
     json_ok(word)
@@ -40,7 +40,7 @@ pub async fn list_words(req: &mut Request) -> JsonResult<WordListResponse> {
     let min_diff_clone = min_diff;
     let max_diff_clone = max_diff;
 
-    let (words, total) = with_conn(move |conn| {
+    let (words, total) = with_conn!(move |conn| {
         // Build base query for filtering
         let mut base_query = dict_words::table.into_boxed();
 
@@ -71,16 +71,17 @@ pub async fn list_words(req: &mut Request) -> JsonResult<WordListResponse> {
             count_query = count_query.filter(dict_words::difficulty.le(max_d));
         }
 
-        let total: i64 = count_query.count().get_result(conn)?;
+        let total: i64 = count_query.count().get_result(conn).await?;
 
         // Get paginated results
         let words: Vec<Word> = base_query
             .order(dict_words::word.asc())
             .limit(per_page)
             .offset(offset)
-            .load::<Word>(conn)?;
+            .load::<Word>(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>((words, total))
+        Ok::<_, horme::Error>((words, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch words"))?;
@@ -121,7 +122,7 @@ pub async fn create_word(req: &mut Request) -> JsonResult<Word> {
     }
     let word_lower = word.to_lowercase();
 
-    let created_word: Word = with_conn(move |conn| {
+    let created_word: Word = with_conn!(move |conn| {
         diesel::insert_into(dict_words::table)
             .values(&NewWord {
                 word,
@@ -140,6 +141,7 @@ pub async fn create_word(req: &mut Request) -> JsonResult<Word> {
                 updated_by: None,
             })
             .get_result::<Word>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create word"))?;
@@ -165,10 +167,11 @@ pub async fn update_word(req: &mut Request) -> JsonResult<Word> {
         changes.word_lower = Some(trimmed.to_lowercase());
     }
 
-    let updated: Word = with_conn(move |conn| {
+    let updated: Word = with_conn!(move |conn| {
         diesel::update(dict_words::table.filter(dict_words::id.eq(id)))
             .set(changes)
             .get_result::<Word>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update word"))?;
@@ -179,8 +182,10 @@ pub async fn update_word(req: &mut Request) -> JsonResult<Word> {
 #[handler]
 pub async fn delete_word(req: &mut Request) -> JsonResult<serde_json::Value> {
     let id = super::get_path_id(req, "id")?;
-    let _ = with_conn(move |conn| {
-        diesel::delete(dict_words::table.filter(dict_words::id.eq(id))).execute(conn)
+    let _ = with_conn!(move |conn| {
+        diesel::delete(dict_words::table.filter(dict_words::id.eq(id)))
+            .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to delete word"))?;

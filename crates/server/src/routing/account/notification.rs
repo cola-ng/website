@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 
@@ -9,30 +10,30 @@ use crate::db::schema::*;
 use crate::{AppResult, DepotExt, JsonResult, PagedData, PagedResult, StatusInfo, db};
 
 #[endpoint(tags("account"))]
-pub fn show(notification_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Notification> {
+pub async fn show(notification_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<Notification> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let notification = notifications::table
         .find(notification_id.into_inner())
-        .first::<Notification>(conn)?
+        .first::<Notification>(conn).await?
         .assign_to(cuser, "view", conn)?;
     Ok(Json(notification))
 }
 #[endpoint(tags("account"))]
-pub fn delete(notification_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn delete(notification_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
 
     let notification = notifications::table
         .find(notification_id.into_inner())
-        .first::<Notification>(conn)?
+        .first::<Notification>(conn).await?
         .assign_to(cuser, "delete", conn)?;
     db::delete_notification(notification.id, cuser.id, conn)?;
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("account"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let info = bulk_delete_records!(req, depot, res, notifications, Notification, db::delete_notification, conn);
     Ok(info)
 }
@@ -44,7 +45,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<Notificat
     if let Some(stream_id) = req.query::<i64>("stream_id") {
         query = query.filter(notifications::stream_id.eq(stream_id));
     }
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let data = query_pagation_data!(
         req,
         res,
@@ -76,10 +77,10 @@ struct NotificationOutGroup {
     latest_notification: Option<Notification>,
 }
 #[endpoint(tags("account"))]
-pub fn list_groups(req: &mut Request, depot: &mut Depot) -> PagedResult<NotificationOutGroup> {
+pub async fn list_groups(req: &mut Request, depot: &mut Depot) -> PagedResult<NotificationOutGroup> {
     let cuser = depot.current_user()?;
     let query = notification_groups::table.filter(notification_groups::owner_id.eq(cuser.id)).into_boxed();
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let mut data = query_pagation_data!(
         req,
         res,
@@ -106,7 +107,7 @@ pub fn list_groups(req: &mut Request, depot: &mut Depot) -> PagedResult<Notifica
     } in std::mem::take(&mut data.records)
     {
         records.push(NotificationOutGroup {
-            latest_notification: notifications::table.find(latest_id).first(conn).ok(),
+            latest_notification: notifications::table.find(latest_id).first(conn).await.ok(),
             id,
             realm_id,
             owner_id,
@@ -129,12 +130,12 @@ pub fn list_groups(req: &mut Request, depot: &mut Depot) -> PagedResult<Notifica
 }
 
 #[endpoint(tags("account"))]
-pub fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
     let notification_id: i64 = req.query("id").or_else(|| req.query("notification_id")).unwrap_or(0);
     let stream_id: i64 = req.query("stream_id").unwrap_or(0);
     let thread_id: i64 = req.query("thread_id").unwrap_or(0);
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     if notification_id > 0 {
         diesel::update(
             notifications::table
@@ -142,7 +143,7 @@ pub fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> 
                 .filter(notifications::owner_id.eq(cuser.id)),
         )
         .set((notifications::is_read.eq(true), notifications::read_at.eq(Utc::now())))
-        .execute(conn)?;
+        .execute(conn).await?;
     }
     if stream_id > 0 {
         diesel::update(
@@ -154,7 +155,7 @@ pub fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> 
                 ))),
         )
         .set((notifications::is_read.eq(true), notifications::read_at.eq(Utc::now())))
-        .execute(conn)?;
+        .execute(conn).await?;
     }
     if thread_id > 0 {
         diesel::update(
@@ -166,17 +167,17 @@ pub fn mark_read(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> 
                 ))),
         )
         .set((notifications::is_read.eq(true), notifications::read_at.eq(Utc::now())))
-        .execute(conn)?;
+        .execute(conn).await?;
     }
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("account"))]
-pub fn mark_all_read(_req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn mark_all_read(_req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     diesel::update(notifications::table.filter(notifications::owner_id.eq(cuser.id)))
         .filter(notifications::is_read.eq(false))
         .set((notifications::is_read.eq(true), notifications::read_at.eq(Utc::now())))
-        .execute(conn)?;
+        .execute(conn).await?;
     Ok(StatusInfo::done())
 }

@@ -1,5 +1,5 @@
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
@@ -91,10 +91,11 @@ pub async fn login(input: JsonBody<LoginRequest>) -> JsonResult<AuthResponse> {
         return Err(StatusError::bad_request().brief("email is required").into());
     }
 
-    let user: User = with_conn(move |conn| {
+    let user: User = with_conn!(move |conn| {
         base_users::table
             .filter(base_users::email.eq(email_input))
             .first::<User>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid credentials"))?;
@@ -154,58 +155,62 @@ pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthRespon
         updated_by: None,
     };
 
-    let user: User = with_conn(move |conn| {
-        conn.transaction(|conn| {
-            // Check if email already exists
-            let email_exists = base_users::table
-                .filter(base_users::email.eq(&email_for_check))
+    let user: User = with_conn!(move |conn| horme::transaction(conn, async |conn| {
+        // Check if email already exists
+        let email_exists = base_users::table
+            .filter(base_users::email.eq(&email_for_check))
+            .select(base_users::id)
+            .first::<i64>(conn)
+            .await
+            .optional()?
+            .is_some();
+
+        if email_exists {
+            return Err(diesel::result::Error::DatabaseError(
+                diesel::result::DatabaseErrorKind::UniqueViolation,
+                Box::new(ERR_EMAIL_EXISTS.to_string()),
+            )
+            .into());
+        }
+
+        // Check if phone already exists (only if phone is provided)
+        if let Some(ref phone_val) = phone_for_check {
+            let phone_exists = base_users::table
+                .filter(base_users::phone.eq(phone_val))
                 .select(base_users::id)
                 .first::<i64>(conn)
+                .await
                 .optional()?
                 .is_some();
 
-            if email_exists {
+            if phone_exists {
                 return Err(diesel::result::Error::DatabaseError(
                     diesel::result::DatabaseErrorKind::UniqueViolation,
-                    Box::new(ERR_EMAIL_EXISTS.to_string()),
-                ));
+                    Box::new(ERR_PHONE_EXISTS.to_string()),
+                )
+                .into());
             }
+        }
 
-            // Check if phone already exists (only if phone is provided)
-            if let Some(ref phone_val) = phone_for_check {
-                let phone_exists = base_users::table
-                    .filter(base_users::phone.eq(phone_val))
-                    .select(base_users::id)
-                    .first::<i64>(conn)
-                    .optional()?
-                    .is_some();
+        // Create user
+        let user = diesel::insert_into(base_users::table)
+            .values(&new_user)
+            .get_result::<User>(conn)
+            .await?;
 
-                if phone_exists {
-                    return Err(diesel::result::Error::DatabaseError(
-                        diesel::result::DatabaseErrorKind::UniqueViolation,
-                        Box::new(ERR_PHONE_EXISTS.to_string()),
-                    ));
-                }
-            }
+        // Create password in the same transaction
+        let new_password = NewPassword {
+            user_id: user.id,
+            hash: password_hash,
+            created_at: Utc::now(),
+        };
+        diesel::insert_into(base_passwords::table)
+            .values(&new_password)
+            .execute(conn)
+            .await?;
 
-            // Create user
-            let user = diesel::insert_into(base_users::table)
-                .values(&new_user)
-                .get_result::<User>(conn)?;
-
-            // Create password in the same transaction
-            let new_password = NewPassword {
-                user_id: user.id,
-                hash: password_hash,
-                created_at: Utc::now(),
-            };
-            diesel::insert_into(base_passwords::table)
-                .values(&new_password)
-                .execute(conn)?;
-
-            Ok(user)
-        })
-    })
+        Ok(user)
+    }))
     .await
     .map_err(|e| {
         if e.contains(ERR_EMAIL_EXISTS) {
@@ -238,10 +243,11 @@ pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthRespon
 #[endpoint(tags("Account"))]
 pub async fn me(depot: &mut Depot) -> JsonResult<MeResponse> {
     let user_id = depot.user_id()?;
-    let user: User = with_conn(move |conn| {
+    let user: User = with_conn!(move |conn| {
         base_users::table
             .filter(base_users::id.eq(user_id))
             .first::<User>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("user not found"))?;
@@ -299,10 +305,11 @@ pub async fn update_me(input: JsonBody<UpdateUserProfile>, depot: &mut Depot) ->
         }
     }
 
-    let updated: User = with_conn(move |conn| {
+    let updated: User = with_conn!(move |conn| {
         diesel::update(base_users::table.filter(base_users::id.eq(user_id)))
             .set(&input_value)
             .get_result::<User>(conn)
+            .await
     })
     .await
     .map_err(|e| {
@@ -346,11 +353,12 @@ pub async fn change_password(
     }
 
     // Check if user currently has a password
-    let has_password = with_conn(move |conn| {
+    let has_password = with_conn!(move |conn| {
         base_passwords::table
             .filter(base_passwords::user_id.eq(user_id))
             .select(base_passwords::id)
             .first::<i64>(conn)
+            .await
             .optional()
     })
     .await
@@ -365,10 +373,11 @@ pub async fn change_password(
                 .brief("current password is required")
                 .into());
         }
-        let user: User = with_conn(move |conn| {
+        let user: User = with_conn!(move |conn| {
             base_users::table
                 .filter(base_users::id.eq(user_id))
                 .first(conn)
+                .await
         })
         .await
         .map_err(|_| StatusError::not_found().brief("user not found"))?;
@@ -380,10 +389,11 @@ pub async fn change_password(
     let new_hash = crate::auth::hash_password(&input.new_password)
         .map_err(|_| StatusError::internal_server_error().brief("failed to hash password"))?;
 
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         // Delete existing password entry if any
         diesel::delete(base_passwords::table.filter(base_passwords::user_id.eq(user_id)))
-            .execute(conn)?;
+            .execute(conn)
+            .await?;
         // Insert new password
         diesel::insert_into(base_passwords::table)
             .values(NewPassword {
@@ -392,6 +402,7 @@ pub async fn change_password(
                 created_at: Utc::now(),
             })
             .execute(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to update password"))?;

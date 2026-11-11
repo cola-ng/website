@@ -1,6 +1,6 @@
 use chrono::Utc;
 use diesel::dsl::count;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::JsonBody;
 use salvo::prelude::*;
@@ -50,32 +50,35 @@ pub fn router() -> Router {
 pub async fn get_wallet(depot: &mut Depot) -> JsonResult<WalletInfo> {
     let user_id = depot.user_id()?;
 
-    let (account, transactions) = with_conn(move |conn| {
+    let (account, transactions) = with_conn!(move |conn| {
         // Get or create wallet account
-        let account: WalletAccount = wallet_accounts::table
+        let account: WalletAccount = if let Some(account) = wallet_accounts::table
             .filter(wallet_accounts::user_id.eq(user_id))
             .first(conn)
+            .await
             .optional()?
-            .map(Ok)
-            .unwrap_or_else(|| {
-                // Create wallet if not exists
-                let new_wallet = NewWalletAccount {
-                    user_id,
-                    currency: "CNY".to_string(),
-                };
-                diesel::insert_into(wallet_accounts::table)
-                    .values(&new_wallet)
-                    .get_result(conn)
-            })?;
+        {
+            account
+        } else {
+            let new_wallet = NewWalletAccount {
+                user_id,
+                currency: "CNY".to_string(),
+            };
+            diesel::insert_into(wallet_accounts::table)
+                .values(&new_wallet)
+                .get_result(conn)
+                .await?
+        };
 
         // Get recent transactions
         let transactions: Vec<WalletTransaction> = wallet_transactions::table
             .filter(wallet_transactions::user_id.eq(user_id))
             .order(wallet_transactions::created_at.desc())
             .limit(10)
-            .load(conn)?;
+            .load(conn)
+            .await?;
 
-        Ok::<_, diesel::result::Error>((account, transactions))
+        Ok::<_, horme::Error>((account, transactions))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to get wallet"))?;
@@ -122,19 +125,21 @@ pub async fn list_transactions(
     let offset = (page - 1) * per_page;
     let transaction_type = query.transaction_type.clone();
 
-    let (transactions, total) = with_conn(move |conn| {
+    let (transactions, total) = with_conn!(move |conn| {
         // Count query
         let total: i64 = if let Some(ref tx_type) = transaction_type {
             wallet_transactions::table
                 .filter(wallet_transactions::user_id.eq(user_id))
                 .filter(wallet_transactions::transaction_type.eq(tx_type))
                 .select(count(wallet_transactions::id))
-                .first(conn)?
+                .first(conn)
+                .await?
         } else {
             wallet_transactions::table
                 .filter(wallet_transactions::user_id.eq(user_id))
                 .select(count(wallet_transactions::id))
-                .first(conn)?
+                .first(conn)
+                .await?
         };
 
         // Data query
@@ -145,17 +150,19 @@ pub async fn list_transactions(
                 .order(wallet_transactions::created_at.desc())
                 .offset(offset)
                 .limit(per_page)
-                .load(conn)?
+                .load(conn)
+                .await?
         } else {
             wallet_transactions::table
                 .filter(wallet_transactions::user_id.eq(user_id))
                 .order(wallet_transactions::created_at.desc())
                 .offset(offset)
                 .limit(per_page)
-                .load(conn)?
+                .load(conn)
+                .await?
         };
 
-        Ok::<_, diesel::result::Error>((transactions, total))
+        Ok::<_, horme::Error>((transactions, total))
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list transactions"))?;
@@ -175,11 +182,12 @@ pub async fn list_transactions(
 /// List available subscription plans
 #[endpoint(tags("Subscription"))]
 pub async fn list_plans() -> JsonResult<Vec<SubscriptionPlan>> {
-    let plans = with_conn(move |conn| {
+    let plans = with_conn!(move |conn| {
         subscription_plans::table
             .filter(subscription_plans::is_active.eq(true))
             .order(subscription_plans::sort_order.asc())
             .load::<SubscriptionPlan>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list plans"))?;
@@ -192,7 +200,7 @@ pub async fn list_plans() -> JsonResult<Vec<SubscriptionPlan>> {
 pub async fn get_current_subscription(depot: &mut Depot) -> JsonResult<CurrentSubscription> {
     let user_id = depot.user_id()?;
 
-    let result = with_conn(move |conn| {
+    let result = with_conn!(move |conn| {
         // Get active subscription
         let subscription: Option<UserSubscription> = user_subscriptions::table
             .filter(user_subscriptions::user_id.eq(user_id))
@@ -203,13 +211,15 @@ pub async fn get_current_subscription(depot: &mut Depot) -> JsonResult<CurrentSu
             )
             .order(user_subscriptions::created_at.desc())
             .first(conn)
+            .await
             .optional()?;
 
         let result = match subscription {
             Some(sub) => {
                 let plan: SubscriptionPlan = subscription_plans::table
                     .filter(subscription_plans::id.eq(sub.plan_id))
-                    .first(conn)?;
+                    .first(conn)
+                    .await?;
 
                 let is_trial = sub.status == "trial";
                 let days_remaining = sub.expires_at.map(|exp| {
@@ -235,7 +245,7 @@ pub async fn get_current_subscription(depot: &mut Depot) -> JsonResult<CurrentSu
             },
         };
 
-        Ok::<_, diesel::result::Error>(result)
+        Ok::<_, horme::Error>(result)
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to get subscription"))?;
@@ -271,12 +281,13 @@ pub async fn subscribe(
     let plan_code = input.plan_code.clone();
     let use_trial = input.use_trial.unwrap_or(true);
 
-    let (subscription, plan) = with_conn(move |conn| {
+    let (subscription, plan) = with_conn!(move |conn| {
         // Get the plan
         let plan: SubscriptionPlan = subscription_plans::table
             .filter(subscription_plans::code.eq(&plan_code))
             .filter(subscription_plans::is_active.eq(true))
             .first(conn)
+            .await
             .optional()?
             .ok_or_else(|| diesel::result::Error::NotFound)?;
 
@@ -289,13 +300,14 @@ pub async fn subscribe(
                     .or(user_subscriptions::status.eq("trial")),
             )
             .first(conn)
+            .await
             .optional()?;
 
         if existing.is_some() {
-            return Err(diesel::result::Error::DatabaseError(
+            return Err(horme::Error::from(diesel::result::Error::DatabaseError(
                 diesel::result::DatabaseErrorKind::UniqueViolation,
                 Box::new("already subscribed".to_string()),
-            ));
+            )));
         }
 
         // For free tier, create subscription immediately
@@ -312,7 +324,8 @@ pub async fn subscribe(
 
             let subscription: UserSubscription = diesel::insert_into(user_subscriptions::table)
                 .values(&new_sub)
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
 
             return Ok((subscription, plan));
         }
@@ -333,17 +346,18 @@ pub async fn subscribe(
 
             let subscription: UserSubscription = diesel::insert_into(user_subscriptions::table)
                 .values(&new_sub)
-                .get_result(conn)?;
+                .get_result(conn)
+                .await?;
 
             return Ok((subscription, plan));
         }
 
         // For paid plans without trial, need payment
         // For now, just return error - actual payment flow would create order
-        Err(diesel::result::Error::DatabaseError(
+        Err(horme::Error::from(diesel::result::Error::DatabaseError(
             diesel::result::DatabaseErrorKind::NotNullViolation,
             Box::new("payment_required".to_string()),
-        ))
+        )))
     })
     .await
     .map_err(|e| {
@@ -381,7 +395,7 @@ pub async fn cancel_subscription(
     let user_id = depot.user_id()?;
     let reason = input.reason.clone();
 
-    let subscription = with_conn(move |conn| {
+    let subscription = with_conn!(move |conn| {
         // Get active subscription
         let subscription: UserSubscription = user_subscriptions::table
             .filter(user_subscriptions::user_id.eq(user_id))
@@ -391,6 +405,7 @@ pub async fn cancel_subscription(
                     .or(user_subscriptions::status.eq("trial")),
             )
             .first(conn)
+            .await
             .optional()?
             .ok_or_else(|| diesel::result::Error::NotFound)?;
 
@@ -410,9 +425,10 @@ pub async fn cancel_subscription(
             user_subscriptions::table.filter(user_subscriptions::id.eq(subscription.id)),
         )
         .set(&update)
-        .get_result(conn)?;
+        .get_result(conn)
+        .await?;
 
-        Ok::<_, diesel::result::Error>(updated)
+        Ok::<_, horme::Error>(updated)
     })
     .await
     .map_err(|e| {

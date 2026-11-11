@@ -1,7 +1,8 @@
 macro_rules! stock_entity_impl {
     ($model:ty, $table:ty, $edb:path, $entity:expr) => {
         use diesel::pg::Pg;
-        use diesel::prelude::*;
+        use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
         use diesel::query_builder::QueryFragment;
 
         use crate::AppResult;
@@ -10,10 +11,10 @@ macro_rules! stock_entity_impl {
 
         use $edb as edb;
         table_permit!($table);
-        pub fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut diesel::pg::PgConnection) -> AppResult<bool> {
+        pub async fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut horme::diesel_async::AsyncPgConnection) -> AppResult<bool> {
             all_permitted_in_realm!(user, realm, $entity, action, conn)
         }
-        pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> crate::AppResult<PermitFilter> {
+        pub async fn permit_filter(user: &User, action: &str, conn: &mut AsyncPgConnection) -> crate::AppResult<PermitFilter> {
             if user.is_root {
                 return Ok(PermitFilter::Allowed);
             }
@@ -42,7 +43,8 @@ macro_rules! stock_entity_impl {
 // macro_rules! stock_entity_impl_without_public {
 //     ($model:ty, $table:ty, $edb:path, $entity:expr) => {
 //         use diesel::pg::Pg;
-//         use diesel::prelude::*;
+//         use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 //         use diesel::query_builder::QueryFragment;
 
 //         use crate::db::PermitFilter;
@@ -51,10 +53,10 @@ macro_rules! stock_entity_impl {
 
 //         use $edb as edb;
 //         table_permit!($table);
-//         pub fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut diesel::pg::PgConnection) -> AppResult<bool> {
+//         pub async fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut horme::diesel_async::AsyncPgConnection) -> AppResult<bool> {
 //             all_permitted_in_realm!(user, realm, $entity, action, conn)
 //         }
-//         pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> crate::AppResult<PermitFilter> {
+//         pub async fn permit_filter(user: &User, action: &str, conn: &mut AsyncPgConnection) -> crate::AppResult<PermitFilter> {
 //             if user.is_root {
 //                 return Ok(PermitFilter::Allowed);
 //             }
@@ -81,7 +83,8 @@ macro_rules! stock_entity_impl {
 macro_rules! filter_for_realm_owner {
     ($fragments:expr, $user:expr, $entity:expr, $action:expr, $edb:path, $conn:expr) => {{
         use crate::db::schema::*;
-        use diesel::prelude::*;
+        use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
         use $edb as edb;
 
         let scopes = crate::permission::allowed_scopes_for_realm_root_user($user, "kernel", $entity, $action);
@@ -90,7 +93,7 @@ macro_rules! filter_for_realm_owner {
                 .filter(realm_users::user_id.eq($user.id))
                 .filter(realm_users::realm_id.eq(crate::kernel_realm_id()))
                 .filter(realm_users::is_root.eq(true));
-            if diesel_exists!(query, $conn) {
+            if diesel_exists!(query, $conn).await {
                 if scopes.contains("*") || scopes.contains("kernel") {
                     let query = edb::realm_id.eq(crate::kernel_realm_id());
                     $fragments.push(Box::new(query));

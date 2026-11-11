@@ -1,4 +1,5 @@
 //! AI services provided by the supported model clients.
+use std::result::Result;
 
 pub mod activity;
 pub mod provider_catalog;
@@ -15,7 +16,7 @@ pub use ai_provider::{
     AiProvider, AiProviderError, AsrService, ChatMessage, ChatService, ProviderConfig,
     StructuredChatResponse, TextIssue, TtsService,
 };
-use diesel::prelude::*;
+use horme::prelude::*;
 use serde_json::Value;
 pub use zhipu::ZhipuClient;
 
@@ -93,12 +94,12 @@ pub struct AiAccess {
 async fn provider_selection(
     user_id: i64,
 ) -> Result<(Vec<UserAiProvider>, bool), salvo::http::StatusError> {
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         let personal = user_ai_providers::table
             .filter(user_ai_providers::user_id.eq(user_id))
             .filter(user_ai_providers::is_active.eq(true).or(user_ai_providers::tts_active.eq(true)).or(user_ai_providers::asr_active.eq(true)))
             .order(user_ai_providers::id.desc())
-            .load::<UserAiProvider>(conn)?;
+            .load::<UserAiProvider>(conn).await?;
         #[derive(diesel::QueryableByName)]
         struct Paid {
             #[diesel(sql_type = diesel::sql_types::Bool)]
@@ -117,7 +118,7 @@ async fn provider_selection(
         ) AS allowed",
         )
         .bind::<diesel::sql_types::BigInt, _>(user_id)
-        .get_result::<Paid>(conn)?
+        .get_result::<Paid>(conn).await?
         .allowed;
         Ok((personal, paid))
     })
@@ -200,7 +201,7 @@ impl AiProvider for SelectedProvider {
 }
 
 pub async fn personal_tts(user:i64)->Result<(String,Value,Arc<dyn TtsService>),salvo::http::StatusError>{
-    let row=with_conn(move|conn|user_ai_providers::table.filter(user_ai_providers::user_id.eq(user)).filter(user_ai_providers::tts_active.eq(true)).first::<UserAiProvider>(conn).optional()).await.map_err(|_|salvo::http::StatusError::service_unavailable().brief("无法读取个人 TTS 配置"))?.ok_or_else(||salvo::http::StatusError::bad_request().brief("请先添加并启用自己的语音合成 TTS 配置"))?;
+    let row=with_conn!(move|conn|user_ai_providers::table.filter(user_ai_providers::user_id.eq(user)).filter(user_ai_providers::tts_active.eq(true)).first::<UserAiProvider>(conn).await.optional()).await.map_err(|_|salvo::http::StatusError::service_unavailable().brief("无法读取个人 TTS 配置"))?.ok_or_else(||salvo::http::StatusError::bad_request().brief("请先添加并启用自己的语音合成 TTS 配置"))?;
     // Use the same normalized settings for the request and its audit record.
     // Legacy rows omitted model/voice fields, but their actual SDK request used defaults.
     let settings=provider_catalog::validate(&row.provider_type,row.settings).map_err(|_|salvo::http::StatusError::bad_request().brief("个人 TTS 配置无效"))?;

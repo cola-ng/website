@@ -1,4 +1,5 @@
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -13,7 +14,7 @@ use crate::{AppError, DepotExt, JsonResult, PagedResult};
 pub async fn list(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<EmailSubscription> {
     let user_id = user_id.into_inner();
     let _cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let query = email_subscriptions::table.filter(email_subscriptions::user_id.eq(user_id));
     let data = query_pagation_data!(
         req,
@@ -42,9 +43,9 @@ pub async fn upsert(user_id: PathParam<i64>, pdata: JsonBody<Vec<UpsertInItem>>,
     let user_id = user_id.into_inner();
 
     let cuser = depot.current_user()?.must_in_kernel()?;
-    let mut conn = db::conn()?;
-    let subscriptions = conn.transaction::<Vec<EmailSubscription>, AppError, _>(|conn| {
-        diesel::delete(email_subscriptions::table.filter(email_subscriptions::user_id.eq(user_id))).execute(conn)?;
+    let mut conn = db::conn().await?;
+    let subscriptions = horme::transaction(&mut conn, async |conn| {
+        diesel::delete(email_subscriptions::table.filter(email_subscriptions::user_id.eq(user_id))).execute(conn).await?;
 
         let new_subscriptions = pdata
             .iter()
@@ -59,9 +60,9 @@ pub async fn upsert(user_id: PathParam<i64>, pdata: JsonBody<Vec<UpsertInItem>>,
             .collect::<Vec<_>>();
         let subscriptions = diesel::insert_into(email_subscriptions::table)
             .values(&new_subscriptions)
-            .get_results::<EmailSubscription>(conn)?;
+            .get_results::<EmailSubscription>(conn).await?;
         Ok(subscriptions)
-    })?;
+    }).await?;
     drop(conn);
 
     Ok(Json(subscriptions))

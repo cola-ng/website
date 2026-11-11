@@ -1,5 +1,6 @@
 use chrono::{TimeDelta, Utc};
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use serde::Serialize;
 use serde_json::Value;
 use ulid::Ulid;
@@ -34,7 +35,7 @@ pub async fn supervise_job() {
     }
 }
 pub async fn supervise() -> AppResult<()> {
-    let mut conn = db::conn()?;
+    let mut conn = db::conn().await?;
 
     let obtained_coupons = if crate::deploy_stage() != DeployStage::Prod {
         wallet_obtained_coupons::table
@@ -42,43 +43,43 @@ pub async fn supervise() -> AppResult<()> {
             .filter(wallet_obtained_coupons::expires_at.lt(Utc::now() + TimeDelta::try_days(15).unwrap()))
             .filter(wallet_obtained_coupons::expires_at.gt(Utc::now() + TimeDelta::try_days(14).unwrap()))
             .order_by(wallet_obtained_coupons::id.asc())
-            .get_results::<ObtainedCoupon>(&mut conn)?
+            .get_results::<ObtainedCoupon>(&mut conn).await?
     } else {
         wallet_obtained_coupons::table
             .filter(wallet_obtained_coupons::is_used.eq(false))
             .filter(wallet_obtained_coupons::expires_at.lt(Utc::now() + TimeDelta::try_days(15).unwrap()))
             .filter(wallet_obtained_coupons::expires_at.gt(Utc::now() + TimeDelta::try_days(14).unwrap()))
             .order_by(wallet_obtained_coupons::id.asc())
-            .get_results::<ObtainedCoupon>(&mut conn)?
+            .get_results::<ObtainedCoupon>(&mut conn).await?
     };
 
     for obtained_coupon in obtained_coupons {
-        let Ok(coupon) = trade_coupons::table.find(obtained_coupon.coupon_id).first::<Coupon>(&mut conn) else {
+        let Ok(coupon) = trade_coupons::table.find(obtained_coupon.coupon_id).first::<Coupon>(&mut conn).await else {
             continue;
         };
         let Ok(recipient_ids) = realm_users::table
             .filter(realm_users::realm_id.eq(obtained_coupon.realm_id))
             .filter(realm_users::is_root.eq(true))
             .select(realm_users::user_id)
-            .load::<i64>(&mut conn)
+            .load::<i64>(&mut conn).await
         else {
             continue;
         };
         let recipients = users::table
             .filter(users::id.eq_any(&recipient_ids))
             .filter(users::is_disabled.eq(false))
-            .load::<User>(&mut conn)?;
+            .load::<User>(&mut conn).await?;
         for recipient in recipients {
             let email_kind = format!("obtained_coupon:{}:expire_notify:{}", obtained_coupon.id, recipient.id);
             let query = email_messages::table.filter(email_messages::kind.eq(&email_kind));
-            if diesel_exists!(query, &mut conn) {
+            if diesel_exists!(query, &mut conn).await? {
                 continue;
             }
 
             let Ok(email) = emails::table
                 .filter(emails::user_id.eq(recipient.id))
                 .filter(emails::is_master.eq(true))
-                .first::<Email>(&mut conn)
+                .first::<Email>(&mut conn).await
             else {
                 continue;
             };
@@ -120,7 +121,7 @@ pub async fn supervise() -> AppResult<()> {
                 sent_status: "delay",
                 sent_error: None,
             };
-            diesel::insert_into(email_messages::table).values(&new_msg).execute(&mut conn)?;
+            diesel::insert_into(email_messages::table).values(&new_msg).execute(&mut conn).await?;
         }
     }
     drop(conn);

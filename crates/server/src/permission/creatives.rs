@@ -1,5 +1,6 @@
 use diesel::pg::Pg;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use diesel::query_builder::QueryFragment;
 use diesel::result::QueryResult;
 use std::collections::HashSet;
@@ -10,11 +11,11 @@ use crate::models::*;
 use crate::db::schema::*;
 
 table_permit!(creatives::table);
-pub fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
+pub async fn all_permitted_in_realm(user: &User, realm: &Realm, action: &str, conn: &mut AsyncPgConnection) -> AppResult<bool> {
     all_permitted_in_realm!(user, realm, "creative", action, conn)
 }
-pub fn all_permitted_in_campaign(user: &User, campaign: &Campaign, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
-    let realm = realms::table.find(campaign.realm_id).get_result::<Realm>(conn)?;
+pub async fn all_permitted_in_campaign(user: &User, campaign: &Campaign, action: &str, conn: &mut AsyncPgConnection) -> AppResult<bool> {
+    let realm = realms::table.find(campaign.realm_id).get_result::<Realm>(conn).await?;
     if user.is_root || campaign.realm_id == user.realm_id {
         return Ok(true);
     }
@@ -36,10 +37,10 @@ pub fn all_permitted_in_campaign(user: &User, campaign: &Campaign, action: &str,
         ),
     );
     // print_query!(&query);
-    Ok(diesel_exists!(query, conn))
+    Ok(diesel_exists!(query, conn).await)
 }
 
-pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppResult<PermitFilter> {
+pub async fn permit_filter(user: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<PermitFilter> {
     if user.is_root {
         return Ok(PermitFilter::Allowed);
     }
@@ -60,11 +61,11 @@ pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppR
         Ok(PermitFilter::Denied)
     }
 }
-fn creative_filter_for_realm_owner(
+async fn creative_filter_for_realm_owner(
     fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>,
     user: &User,
     action: &str,
-    conn: &mut PgConnection,
+    conn: &mut AsyncPgConnection,
 ) -> QueryResult<()> {
     let scopes = crate::permission::allowed_scopes_for_realm_root_user(user, "user", "creative", action);
     if !scopes.is_empty() {
@@ -79,7 +80,7 @@ fn creative_filter_for_realm_owner(
                 ),
             )
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             if scopes.contains("*") {
                 if !user.in_kernel && (action == "edit" || action == "delete") {
@@ -120,7 +121,7 @@ fn creative_filter_for_realm_owner(
                 ),
             )
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             if scopes.contains("*") {
                 if !user.in_kernel && (action == "edit" || action == "delete") {
@@ -151,13 +152,13 @@ fn creative_filter_for_realm_owner(
     Ok(())
 }
 
-fn creative_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
+async fn creative_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut AsyncPgConnection) -> QueryResult<()> {
     let role_ids_query = role_users::table.filter(role_users::user_id.eq(user.id)).select(role_users::role_id);
     let permissions = permissions::table
         .filter(permissions::entity.eq("creative"))
         .filter(permissions::action.eq(action))
         .filter(permissions::role_id.eq_any(role_ids_query))
-        .get_results::<Permission>(conn)?;
+        .get_results::<Permission>(conn).await?;
 
     // print_query!(&role_ids_query);
 

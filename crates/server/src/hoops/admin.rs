@@ -1,4 +1,4 @@
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 
 use crate::AppResult;
@@ -31,7 +31,7 @@ pub async fn require_admin(depot: &mut Depot) -> AppResult<()> {
 
 /// Helper function to check if a user is admin (for use in handlers)
 pub async fn is_user_admin(user_id: i64) -> bool {
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         base_admins::table
             .filter(base_admins::user_id.eq(user_id))
             .filter(
@@ -45,6 +45,7 @@ pub async fn is_user_admin(user_id: i64) -> bool {
             )
             .select(base_admins::id)
             .first::<i64>(conn)
+            .await
             .optional()
     })
     .await

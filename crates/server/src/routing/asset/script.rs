@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::prelude::*;
 
 use crate::AppResult;
@@ -15,7 +15,7 @@ pub async fn list_scripts(req: &mut Request, res: &mut Response) -> AppResult<()
     let difficulty = req.query::<i16>("difficulty");
     let limit = req.query::<i64>("limit").unwrap_or(50).clamp(1, 200);
 
-    let scripts: Vec<Script> = with_conn(move |conn| {
+    let scripts: Vec<Script> = with_conn!(move |conn| {
         let mut query = asset_scripts::table.limit(limit).into_boxed();
 
         if let Some(sid) = stage_id {
@@ -25,7 +25,7 @@ pub async fn list_scripts(req: &mut Request, res: &mut Response) -> AppResult<()
             query = query.filter(asset_scripts::difficulty.eq(diff));
         }
 
-        query.load::<Script>(conn)
+        query.load::<Script>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list scripts"))?;
@@ -40,11 +40,12 @@ pub async fn get_script_turns(req: &mut Request, res: &mut Response) -> AppResul
         .param::<i64>("script_id")
         .ok_or_else(|| StatusError::bad_request().brief("missing script_id"))?;
 
-    let turns: Vec<ScriptTurn> = with_conn(move |conn| {
+    let turns: Vec<ScriptTurn> = with_conn!(move |conn| {
         asset_script_turns::table
             .filter(asset_script_turns::script_id.eq(script_id))
             .order(asset_script_turns::turn_number.asc())
             .load::<ScriptTurn>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list turns"))?;
@@ -63,10 +64,11 @@ pub async fn serve_turn_audio(req: &mut Request, res: &mut Response) -> AppResul
         .ok_or_else(|| StatusError::bad_request().brief("missing turn id"))?;
 
     // Get the turn from database to find audio_path
-    let turn: ScriptTurn = with_conn(move |conn| {
+    let turn: ScriptTurn = with_conn!(move |conn| {
         asset_script_turns::table
             .find(turn_id)
             .first::<ScriptTurn>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("turn not found"))?;

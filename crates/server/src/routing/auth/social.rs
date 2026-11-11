@@ -1,7 +1,8 @@
 //! Server-side social sign-in. Provider tokens and client secrets never reach the browser.
+use std::result::Result;
 use base64::Engine;
 use chrono::Utc;
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::http::cookie::{Cookie, SameSite};
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -127,14 +128,14 @@ async fn store_session(
         redirect_uri: serde_json::to_string(&session)?,
         expires_at: Utc::now() + chrono::Duration::seconds(seconds),
     };
-    with_conn(move |conn| {
+    with_conn!(move |conn| {
         diesel::delete(
             oauth_login_sessions::table.filter(oauth_login_sessions::expires_at.lt(Utc::now())),
         )
-        .execute(conn)?;
+        .execute(conn).await?;
         diesel::insert_into(oauth_login_sessions::table)
             .values(record)
-            .execute(conn)
+            .execute(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("无法创建登录会话，请重试"))?;
@@ -155,12 +156,12 @@ async fn claim_session(
         .ok_or("invalid_state")?;
     let hashed = hash_code(state);
     let provider = provider.to_string();
-    let record = with_conn(move |conn| {
+    let record = with_conn!(move |conn| {
         oauth_login_sessions::table
             .filter(oauth_login_sessions::state.eq(hashed))
             .filter(oauth_login_sessions::provider.eq(provider))
             .filter(oauth_login_sessions::expires_at.gt(Utc::now()))
-            .first::<OauthLoginSession>(conn)
+            .first::<OauthLoginSession>(conn).await
     })
     .await
     .map_err(|_| "invalid_state")?;
@@ -169,9 +170,9 @@ async fn claim_session(
     if session.browser_hash != hash_code(browser) {
         return Err("invalid_state");
     }
-    let count = with_conn(move |conn| {
+    let count = with_conn!(move |conn| {
         diesel::delete(oauth_login_sessions::table.filter(oauth_login_sessions::id.eq(record.id)))
-            .execute(conn)
+            .execute(conn).await
     })
     .await
     .map_err(|_| "invalid_state")?;
@@ -395,14 +396,14 @@ async fn resolve_user(
     link_user: Option<i64>,
 ) -> Result<i64, &'static str> {
     // Serialize identity/account resolution so simultaneous first logins cannot create orphan users.
-    let result = with_conn(move |conn| {
-        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+    let result = with_conn!(move |conn| {
+        horme::transaction(conn, async |conn| {
             diesel::sql_query("LOCK TABLE oauth_identities IN SHARE ROW EXCLUSIVE MODE")
-                .execute(conn)?;
+                .execute(conn).await?;
             let existing = oauth_identities::table
                 .filter(oauth_identities::provider.eq(&provider))
                 .filter(oauth_identities::provider_user_id.eq(&identity.subject))
-                .first::<OauthIdentity>(conn)
+                .first::<OauthIdentity>(conn).await
                 .optional()?;
             if let Some(id) = existing
                 .as_ref()
@@ -412,14 +413,14 @@ async fn resolve_user(
                 if link_user.is_some_and(|user| user != id) {
                     return Ok(Err("already_linked"));
                 }
-                let user = base_users::table.find(id).first::<User>(conn)?;
+                let user = base_users::table.find(id).first::<User>(conn).await?;
                 if user.disabled_at.is_some() || user.locked_at.is_some() {
                     return Ok(Err("account_disabled"));
                 }
                 return Ok(Ok(id));
             }
             let user_id = if let Some(id) = link_user {
-                let user = base_users::table.find(id).first::<User>(conn)?;
+                let user = base_users::table.find(id).first::<User>(conn).await?;
                 if user.disabled_at.is_some() || user.locked_at.is_some() {
                     return Ok(Err("account_disabled"));
                 }
@@ -428,7 +429,7 @@ async fn resolve_user(
                     .filter(oauth_identities::user_id.eq(id))
                     .filter(oauth_identities::verified_at.is_not_null())
                     .count()
-                    .get_result::<i64>(conn)?
+                    .get_result::<i64>(conn).await?
                     > 0
                 {
                     return Ok(Err("provider_already_linked"));
@@ -442,7 +443,7 @@ async fn resolve_user(
                 if base_users::table
                     .filter(base_users::email.eq(email))
                     .count()
-                    .get_result::<i64>(conn)?
+                    .get_result::<i64>(conn).await?
                     > 0
                 {
                     return Ok(Err("account_exists"));
@@ -458,10 +459,10 @@ async fn resolve_user(
                 };
                 let user = diesel::insert_into(base_users::table)
                     .values(new)
-                    .get_result::<User>(conn)?;
+                    .get_result::<User>(conn).await?;
                 diesel::update(base_users::table.find(user.id))
                     .set(base_users::verified_at.eq(Some(Utc::now())))
-                    .execute(conn)?;
+                    .execute(conn).await?;
                 user.id
             };
             if let Some(existing) = existing {
@@ -472,7 +473,7 @@ async fn resolve_user(
                         oauth_identities::updated_at.eq(Utc::now()),
                         oauth_identities::verified_at.eq(Some(Utc::now())),
                     ))
-                    .execute(conn)?;
+                    .execute(conn).await?;
             } else {
                 diesel::insert_into(oauth_identities::table)
                     .values(NewOauthIdentity {
@@ -482,10 +483,10 @@ async fn resolve_user(
                         user_id: Some(user_id),
                         verified_at: Some(Utc::now()),
                     })
-                    .execute(conn)?;
+                    .execute(conn).await?;
             }
             Ok(Ok(user_id))
-        })
+        }).await
     })
     .await;
     result.map_err(|_| "account_conflict")?
@@ -554,7 +555,7 @@ async fn complete(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let user_id = session
         .complete_user
         .ok_or_else(|| StatusError::unauthorized().brief("登录结果无效"))?;
-    let user = with_conn(move |conn| base_users::table.find(user_id).first::<User>(conn))
+    let user = with_conn!(move |conn| base_users::table.find(user_id).first::<User>(conn).await)
         .await
         .map_err(|_| StatusError::unauthorized().brief("账户不存在"))?;
     if user.disabled_at.is_some() || user.locked_at.is_some() {
@@ -757,7 +758,7 @@ mod tests {
         );
         let legacy_subject = format!("legacy-{suffix}");
         let legacy_insert = legacy_subject.clone();
-        with_conn(move |conn| {
+        with_conn!(move |conn| {
             diesel::insert_into(oauth_identities::table)
                 .values(NewOauthIdentity {
                     provider: "github".into(),
@@ -766,7 +767,7 @@ mod tests {
                     user_id: Some(other),
                     verified_at: None,
                 })
-                .execute(conn)
+                .execute(conn).await
         })
         .await
         .unwrap();
@@ -785,10 +786,10 @@ mod tests {
             real_owner, other,
             "An unverified legacy binding must never select the login account"
         );
-        with_conn(move |conn| {
+        with_conn!(move |conn| {
             diesel::update(base_users::table.find(first))
                 .set(base_users::disabled_at.eq(Some(Utc::now())))
-                .execute(conn)
+                .execute(conn).await
         })
         .await
         .unwrap();

@@ -7,7 +7,8 @@ mod phone;
 mod share_link;
 
 use chrono::Utc;
-use diesel::prelude::*;
+use std::result::Result;
+use horme::prelude::*;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
 use serde::{Deserialize, Serialize};
@@ -22,7 +23,7 @@ use crate::things::realm::create_user_realm;
 use crate::utils::{password, validator};
 use crate::{AppError, AppResult, DepotExt, JsonResult, PagedResult, StatusInfo, things};
 
-pub fn authed_root(path: impl Into<String>) -> Router {
+pub async fn authed_root(path: impl Into<String>) -> Router {
     Router::with_path(path)
         .get(list)
         .then(|root| if full_routed() { root.post(create).delete(bulk_delete) } else { root })
@@ -61,26 +62,26 @@ pub fn authed_root(path: impl Into<String>) -> Router {
         )
 }
 
-pub fn public_root(path: impl Into<String>) -> Router {
+pub async fn public_root(path: impl Into<String>) -> Router {
     Router::with_path(path).push(Router::with_path("is_other_taken").get(is_other_taken))
 }
 
 #[endpoint(tags("user"))]
-pub fn show(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn show(user_id: PathParam<i64>, depot: &mut Depot) -> JsonResult<User> {
     // 防止在模拟用户形式下无法拿到自己原本的用户信息。前端界面需要。
     let cuser = depot.jwt_user()?;
     // let jwt_user = depot.jwt_user();
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = if cuser.in_kernel {
         users::table
             .find(user_id.into_inner())
-            .first::<User>(conn)?
+            .first::<User>(conn).await?
             .assign_to(cuser, "view", conn)?
     } else {
         users::table
             .filter(users::id.eq(user_id.into_inner()))
             .filter(users::is_disabled.eq(false))
-            .first::<User>(conn)?
+            .first::<User>(conn).await?
             .assign_to(cuser, "view", conn)?
     };
     Ok(Json(user))
@@ -91,10 +92,10 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
     // 防止在模拟用户形式下无法拿到自己原本的用户信息。前端界面需要。
     let cuser = depot.jwt_user()?;
     // let jwt_user = depot.jwt_user();
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let users = if !cuser.in_kernel {
         let query = users::table
-            .permit(cuser, "view", conn)?
+            .permit(cuser, "view", conn).await?
             .filter(users::is_root.eq(false))
             .filter(users::is_disabled.eq(false));
         query_pagation_data!(
@@ -109,7 +110,7 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
             conn
         )
     } else {
-        let query = users::table.permit(cuser, "view", conn)?.filter(users::is_root.eq(false));
+        let query = users::table.permit(cuser, "view", conn).await?.filter(users::is_root.eq(false));
         query_pagation_data!(
             req,
             res,
@@ -125,9 +126,9 @@ pub async fn list(req: &mut Request, depot: &mut Depot) -> PagedResult<User> {
     Ok(Json(users))
 }
 #[endpoint(tags("user"))]
-pub fn reject(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::conn()?;
-    let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
+pub async fn reject(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(user_id.into_inner()).first::<User>(conn).await?;
     let cuser = depot.current_user()?;
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
@@ -137,20 +138,20 @@ pub fn reject(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInf
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("user"))]
-pub fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
+pub async fn delete(user_id: PathParam<i64>, depot: &mut Depot) -> AppResult<StatusInfo> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
 
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "delete", conn)?;
     db::delete_user(user.id, cuser.id, conn)?;
     Ok(StatusInfo::done())
 }
 #[endpoint(tags("user"))]
 pub async fn bulk_delete(req: &mut Request, depot: &mut Depot) -> AppResult<StatusInfo> {
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let info = bulk_delete_records!(req, depot, res, users, User, db::delete_user, conn);
     Ok(info)
 }
@@ -178,7 +179,7 @@ struct CreateInData {
     profile: Value,
 }
 #[endpoint(tags("user"))]
-pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     if let Err(msg) = validator::validate_email(&pdata.email.value) {
         return Err(StatusError::bad_request().brief(msg).into());
@@ -187,7 +188,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
     if !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
 
     if let Err(msg) = validator::validate_password(&pdata.password) {
         return Err(StatusError::bad_request().brief(msg).into());
@@ -197,7 +198,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
         return Err(StatusError::internal_server_error().brief("password hash has error").into());
     }
     let pwd = pwd.unwrap();
-    let user = conn.transaction::<User, AppError, _>(|conn| {
+    let user = horme::transaction(&mut conn, async |conn| {
         let ident_name = if pdata.ident_name.is_empty() {
             crate::generate_ident_name(conn)?
         } else {
@@ -227,7 +228,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
 
             points: 0,
         };
-        let mut new_user = diesel::insert_into(users::table).values(&new_user).get_result::<User>(conn)?;
+        let mut new_user = diesel::insert_into(users::table).values(&new_user).get_result::<User>(conn).await?;
         let new_email = NewEmail {
             user_id: new_user.id,
             value: &pdata.email.value,
@@ -237,7 +238,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
             updated_by: Some(cuser.id),
             created_by: Some(cuser.id),
         };
-        diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn)?;
+        diesel::insert_into(emails::table).values(&new_email).get_result::<Email>(conn).await?;
         if !pdata.phone.value.is_empty() {
             let new_phone = NewPhone {
                 user_id: new_user.id,
@@ -248,7 +249,7 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
                 updated_by: None,
                 created_by: None,
             };
-            diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn)?;
+            diesel::insert_into(phones::table).values(&new_phone).get_result::<Phone>(conn).await?;
         }
 
         if let Some(obind) = pdata.oauth_bind {
@@ -258,11 +259,11 @@ pub fn create(pdata: JsonBody<CreateInData>, depot: &mut Depot) -> JsonResult<Us
                     .filter(oauth_users::platform.eq(&obind.platform)),
             )
             .set(oauth_users::user_id.eq(new_user.id))
-            .execute(conn)
+            .execute(conn).await
             .ok();
         }
         Ok(new_user)
-    })?;
+    }).await?;
     Ok(Json(user))
 }
 
@@ -274,15 +275,15 @@ struct UpdateInData {
     profile: Option<Value>,
 }
 #[endpoint(tags("user"))]
-pub fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn update(user_id: PathParam<i64>, pdata: JsonBody<UpdateInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?.must_in_kernel()?;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     let user = users::table
         .find(user_id.into_inner())
-        .first::<User>(conn)?
+        .first::<User>(conn).await?
         .assign_to(cuser, "edit", conn)?;
-    let user = diesel::update(&user).set(&pdata).get_result::<User>(conn)?;
+    let user = diesel::update(&user).set(&pdata).get_result::<User>(conn).await?;
     Ok(Json(user))
 }
 
@@ -292,15 +293,15 @@ struct SetPointsInData {
     points: i64,
 }
 #[endpoint(tags("user"))]
-pub fn set_points(user_id: PathParam<i64>, pdata: JsonBody<SetPointsInData>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn set_points(user_id: PathParam<i64>, pdata: JsonBody<SetPointsInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
-    if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(user_id.into_inner()).first::<User>(conn).await?;
+    if user.id == cuser.id || !user.permitted(cuser, "edit", conn).await? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
-    let user = diesel::update(&user).set(users::points.eq(pdata.points)).get_result::<User>(conn)?;
+    let user = diesel::update(&user).set(users::points.eq(pdata.points)).get_result::<User>(conn).await?;
     Ok(Json(user))
 }
 
@@ -310,20 +311,20 @@ struct SetLimitedInData {
     value: bool,
 }
 #[endpoint(tags("user"))]
-pub fn set_limited(user_id: PathParam<i64>, pdata: JsonBody<SetLimitedInData>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn set_limited(user_id: PathParam<i64>, pdata: JsonBody<SetLimitedInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
-    if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(user_id.into_inner()).first::<User>(conn).await?;
+    if user.id == cuser.id || !user.permitted(cuser, "edit", conn).await? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
     let user = if pdata.value {
         diesel::update(&user)
             .set((users::is_limited.eq(pdata.value), users::limited_at.eq(Utc::now())))
-            .get_result::<User>(conn)?
+            .get_result::<User>(conn).await?
     } else {
-        diesel::update(&user).set(users::is_limited.eq(pdata.value)).get_result::<User>(conn)?
+        diesel::update(&user).set(users::is_limited.eq(pdata.value)).get_result::<User>(conn).await?
     };
     Ok(Json(user))
 }
@@ -334,20 +335,20 @@ struct SetLockedInData {
     value: bool,
 }
 #[endpoint(tags("user"))]
-pub fn set_locked(user_id: PathParam<i64>, pdata: JsonBody<SetLockedInData>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn set_locked(user_id: PathParam<i64>, pdata: JsonBody<SetLockedInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
-    if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(user_id.into_inner()).first::<User>(conn).await?;
+    if user.id == cuser.id || !user.permitted(cuser, "edit", conn).await? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
     let user = if pdata.value {
         diesel::update(&user)
             .set((users::is_locked.eq(pdata.value), users::locked_at.eq(Utc::now())))
-            .get_result::<User>(conn)?
+            .get_result::<User>(conn).await?
     } else {
-        diesel::update(&user).set(users::is_locked.eq(pdata.value)).get_result::<User>(conn)?
+        diesel::update(&user).set(users::is_locked.eq(pdata.value)).get_result::<User>(conn).await?
     };
     Ok(Json(user))
 }
@@ -358,12 +359,12 @@ struct SetDisabledInData {
     value: bool,
 }
 #[endpoint(tags("user"))]
-pub fn set_disabled(user_id: PathParam<i64>, pdata: JsonBody<SetDisabledInData>, depot: &mut Depot) -> JsonResult<User> {
+pub async fn set_disabled(user_id: PathParam<i64>, pdata: JsonBody<SetDisabledInData>, depot: &mut Depot) -> JsonResult<User> {
     let pdata = pdata.into_inner();
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
-    if user.id == cuser.id || !user.permitted(cuser, "edit", conn)? || !cuser.in_kernel {
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(user_id.into_inner()).first::<User>(conn).await?;
+    if user.id == cuser.id || !user.permitted(cuser, "edit", conn).await? || !cuser.in_kernel {
         return Err(StatusError::forbidden().into());
     }
     let user = if pdata.value {
@@ -373,9 +374,9 @@ pub fn set_disabled(user_id: PathParam<i64>, pdata: JsonBody<SetDisabledInData>,
                 users::disabled_at.eq(Utc::now()),
                 users::disabled_by.eq(cuser.id),
             ))
-            .get_result::<User>(conn)?
+            .get_result::<User>(conn).await?
     } else {
-        diesel::update(&user).set(users::is_disabled.eq(pdata.value)).get_result::<User>(conn)?
+        diesel::update(&user).set(users::is_disabled.eq(pdata.value)).get_result::<User>(conn).await?
     };
     Ok(Json(user))
 }
@@ -394,13 +395,13 @@ struct InviteInData {
 }
 
 #[endpoint(tags("user"))]
-pub fn is_other_taken(req: &mut Request, res: &mut Response) -> AppResult<()> {
+pub async fn is_other_taken(req: &mut Request, res: &mut Response) -> AppResult<()> {
     let user_id = req.query::<i64>("user_id");
     let ident_name: String = req.query("ident_name").unwrap_or_default();
     let email_value: String = req.query("email").unwrap_or_default();
     let phone_value: String = req.query("phone").unwrap_or_default();
     let mut taken = false;
-    let conn = &mut db::conn()?;
+    let conn = &mut db::conn().await?;
     if !ident_name.is_empty() {
         taken = validator::is_ident_name_other_taken(user_id, &ident_name, conn)?;
     }
@@ -421,8 +422,8 @@ pub fn is_other_taken(req: &mut Request, res: &mut Response) -> AppResult<()> {
 #[endpoint(tags("user"))]
 pub async fn list_roles(user_id: PathParam<i64>, req: &mut Request, depot: &mut Depot) -> PagedResult<Role> {
     let cuser = depot.current_user()?;
-    let conn = &mut db::conn()?;
-    let user = users::table.find(user_id.into_inner()).first::<User>(conn)?;
+    let conn = &mut db::conn().await?;
+    let user = users::table.find(user_id.into_inner()).first::<User>(conn).await?;
 
     let query = if cuser.in_kernel || cuser.id == user.id {
         roles::table
@@ -430,9 +431,9 @@ pub async fn list_roles(user_id: PathParam<i64>, req: &mut Request, depot: &mut 
             .into_boxed()
     } else {
         let realm_ids = realms::table
-            .permit(cuser, "users.roles.view", conn)?
+            .permit(cuser, "users.roles.view", conn).await?
             .select(realms::id)
-            .get_results::<i64>(conn)?;
+            .get_results::<i64>(conn).await?;
         if !realm_ids.is_empty() {
             roles::table
                 .filter(

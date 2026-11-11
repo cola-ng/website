@@ -1,5 +1,6 @@
 use diesel::pg::Pg;
-use diesel::prelude::*;
+use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
 use diesel::query_builder::QueryFragment;
 use diesel::result::QueryResult;
 
@@ -10,11 +11,12 @@ use crate::permission::Accessible;
 use crate::db::schema::*;
 
 table_permit!(stewards::table);
-pub fn all_permitted_in_kernel(user: &User, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
+pub async fn all_permitted_in_kernel(user: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<bool> {
     all_permitted_in_kernel!(user, "steward", action, conn)
 }
+#[async_trait::async_trait]
 impl Accessible for Steward {
-    fn permitted(&self, user: &User, action: &str, conn: &mut PgConnection) -> AppResult<bool> {
+    async fn permitted(&self, user: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<bool> {
         if !user.in_kernel {
             return Ok(false);
         }
@@ -24,7 +26,7 @@ impl Accessible for Steward {
         record_permitted!(self, user, action, stewards, conn)
     }
 }
-pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppResult<PermitFilter> {
+pub async fn permit_filter(user: &User, action: &str, conn: &mut AsyncPgConnection) -> AppResult<PermitFilter> {
     if !user.in_kernel {
         return Ok(PermitFilter::Denied);
     }
@@ -45,10 +47,11 @@ pub fn permit_filter(user: &User, action: &str, conn: &mut PgConnection) -> AppR
     }
 }
 
-fn steward_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut PgConnection) -> QueryResult<()> {
+async fn steward_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user: &User, action: &str, conn: &mut AsyncPgConnection) -> QueryResult<()> {
     use crate::models::*;
     use crate::db::schema::*;
-    use diesel::prelude::*;
+    use horme::diesel_async::AsyncPgConnection;
+use horme::prelude::*;
     if user.in_kernel {
         let role_ids_query = role_users::table.filter(role_users::user_id.eq(user.id)).select(role_users::role_id);
 
@@ -56,7 +59,7 @@ fn steward_filter_for_role(fragments: &mut Vec<Box<dyn QueryFragment<Pg>>>, user
             .filter(permissions::entity.eq("steward"))
             .filter(permissions::action.eq(action))
             .filter(permissions::role_id.eq_any(role_ids_query))
-            .get_results::<Permission>(conn)?;
+            .get_results::<Permission>(conn).await?;
 
         let has_all_permission = permissions.iter().any(|p| {
             p.realm_id.eq(&crate::kernel_realm_id())

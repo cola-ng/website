@@ -117,5 +117,7 @@ async function api(method,endpoint,body,auth=fixture.learner){
   await test('ordinary user cannot view admin and expired token is cleared',async()=>{
     const p=await pageFor(fixture.learner);await p.goto(base+'/admin');await text(p,'没有管理权限');await p.evaluate(()=>localStorage.setItem('colang.token','expired.invalid.token'));await p.goto(base+'/me');await text(p,'登录后继续学习');assert.equal(await p.evaluate(()=>localStorage.getItem('colang.token')),null);await p.qaClose();
   });
-  console.log(`${count} browser regression scenarios passed.`);
+  await require('./voice.cjs').run({browser,fixture,base,artifacts});
+  await require('./voice-provider.cjs').run({browser,fixture,base,artifacts});
+  console.log(`${count} browser regression scenarios passed, plus continuous voice regression.`);
 })().catch(error=>{console.error(error);process.exitCode=1;}).finally(async()=>{await browser?.close();});

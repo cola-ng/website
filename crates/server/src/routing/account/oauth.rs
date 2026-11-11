@@ -1,5 +1,5 @@
 use chrono::{DateTime, Utc};
-use diesel::prelude::*;
+use horme::prelude::*;
 use salvo::oapi::ToSchema;
 use salvo::oapi::extract::*;
 use salvo::prelude::*;
@@ -38,11 +38,11 @@ pub struct AccountStatusResponse {
 pub async fn list_identities(depot: &mut Depot) -> JsonResult<Vec<LinkedOauthIdentity>> {
     let user_id = depot.user_id()?;
 
-    let identities: Vec<OauthIdentity> = with_conn(move |conn| {
+    let identities: Vec<OauthIdentity> = with_conn!(move |conn| {
         oauth_identities::table
             .filter(oauth_identities::user_id.eq(user_id))
             .order(oauth_identities::created_at.desc())
-            .load::<OauthIdentity>(conn)
+            .load::<OauthIdentity>(conn).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to fetch identities"))?;
@@ -70,14 +70,14 @@ pub async fn unlink_identity(
     let user_id = depot.user_id()?;
     let identity_id = id.into_inner();
 
-    let result = with_conn(move |conn| {
-        conn.transaction::<_, diesel::result::Error, _>(|conn| {
+    let result = with_conn!(move |conn| {
+        horme::transaction(conn, async |conn| {
             diesel::sql_query("LOCK TABLE oauth_identities IN SHARE ROW EXCLUSIVE MODE")
-                .execute(conn)?;
+                .execute(conn).await?;
             let identity = oauth_identities::table
                 .find(identity_id)
                 .filter(oauth_identities::user_id.eq(user_id))
-                .first::<OauthIdentity>(conn)
+                .first::<OauthIdentity>(conn).await
                 .optional()?;
             if identity.is_none() {
                 return Ok(0);
@@ -85,22 +85,22 @@ pub async fn unlink_identity(
             let has_password = base_passwords::table
                 .filter(base_passwords::user_id.eq(user_id))
                 .count()
-                .get_result::<i64>(conn)?
+                .get_result::<i64>(conn).await?
                 > 0;
             let count = oauth_identities::table
                 .filter(oauth_identities::user_id.eq(user_id))
                 .filter(oauth_identities::verified_at.is_not_null())
                 .count()
-                .get_result::<i64>(conn)?;
+                .get_result::<i64>(conn).await?;
             if !has_password
                 && count <= 1
                 && identity.as_ref().is_some_and(|i| i.verified_at.is_some())
             {
                 return Ok(-1);
             }
-            diesel::delete(oauth_identities::table.find(identity_id)).execute(conn)?;
+            diesel::delete(oauth_identities::table.find(identity_id)).execute(conn).await?;
             Ok(1)
-        })
+        }).await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("无法解除绑定，请重试"))?;
@@ -121,18 +121,18 @@ pub async fn unlink_identity(
 pub async fn get_account_status(depot: &mut Depot) -> JsonResult<AccountStatusResponse> {
     let user_id = depot.user_id()?;
 
-    let (has_password, identities) = with_conn(move |conn| {
+    let (has_password, identities) = with_conn!(move |conn| {
         let has_password = base_passwords::table
             .filter(base_passwords::user_id.eq(user_id))
             .select(base_passwords::id)
-            .first::<i64>(conn)
+            .first::<i64>(conn).await
             .optional()?
             .is_some();
 
         let identities: Vec<OauthIdentity> = oauth_identities::table
             .filter(oauth_identities::user_id.eq(user_id))
             .order(oauth_identities::created_at.desc())
-            .load::<OauthIdentity>(conn)?;
+            .load::<OauthIdentity>(conn).await?;
 
         Ok((has_password, identities))
     })
