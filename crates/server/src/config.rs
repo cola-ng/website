@@ -43,6 +43,10 @@ impl AppConfig {
         let bind_addr = std::env::var("BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:8119".into());
         let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL is required");
         let jwt_secret = std::env::var("JWT_SECRET").expect("JWT_SECRET is required");
+        assert!(
+            valid_jwt_secret(&jwt_secret),
+            "JWT_SECRET must be a random secret of at least 32 bytes, not a placeholder"
+        );
         let jwt_ttl_seconds: u64 = std::env::var("JWT_TTL_SECONDS")
             .ok()
             .and_then(|v| v.parse().ok())
@@ -88,3 +92,23 @@ impl AppConfig {
 
 //     CONFIG.set(conf).expect("config should be set once");
 // }
+
+fn valid_jwt_secret(secret: &str) -> bool {
+    secret.len() >= 32
+        && !["your", "change", "example", "placeholder"]
+            .iter()
+            .any(|word| secret.to_ascii_lowercase().contains(word))
+}
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn rejects_placeholder_signing_secrets() {
+        assert!(!super::valid_jwt_secret("your_jwt_secret_key"));
+        assert!(!super::valid_jwt_secret(
+            "your-secret-key-that-is-longer-than-32-bytes"
+        ));
+        assert!(super::valid_jwt_secret(
+            "95f872b3b809c4dd3ac967f8793b08b09d479a7e04f1e745"
+        ));
+    }
+}

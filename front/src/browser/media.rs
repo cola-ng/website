@@ -1,6 +1,8 @@
 use super::*;
 #[wasm_bindgen(module = "/src/browser/platform.js")]
 extern "C" {
+    #[wasm_bindgen(js_name = focusPageHeading)]
+    pub fn focus_page_heading();
     #[wasm_bindgen(js_name = trackViewport)]
     fn track_viewport() -> js_sys::Function;
     #[wasm_bindgen(js_name = watchMedia)]
@@ -21,6 +23,8 @@ extern "C" {
     async fn stop_recording() -> std::result::Result<JsValue, JsValue>;
     #[wasm_bindgen(catch, js_name = playAudio)]
     async fn play_audio(path: &str, token: &str) -> std::result::Result<JsValue, JsValue>;
+    #[wasm_bindgen(catch, js_name = playAudioData)]
+    async fn play_audio_data(encoded: &str, mime: &str) -> std::result::Result<JsValue, JsValue>;
     #[wasm_bindgen(js_name = stopAudio)]
     pub fn stop_audio();
     #[wasm_bindgen(js_name = openVoice)]
@@ -129,6 +133,15 @@ pub fn speak(text: &str, error: Cage<String>) {
 pub fn play(path: String, error: Cage<String>) {
     spawn(async move {
         if let Err(e) = play_audio(&path, &token().unwrap_or_default()).await
+            && error.is_alive()
+        {
+            error.revise(|v| *v = message(e));
+        }
+    });
+}
+pub fn play_data(output: Value, error: Cage<String>) {
+    spawn(async move {
+        if let Err(e) = play_audio_data(&string(&output, "audio"), &string(&output, "mime")).await
             && error.is_alive()
         {
             error.revise(|v| *v = message(e));

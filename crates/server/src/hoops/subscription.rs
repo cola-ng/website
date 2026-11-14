@@ -45,6 +45,8 @@ pub async fn has_active_subscription(user_id: i64) -> bool {
                     .eq("active")
                     .or(user_subscriptions::status.eq("trial")),
             )
+            .filter(user_subscriptions::expires_at.is_null()
+                .or(user_subscriptions::expires_at.gt(chrono::Utc::now())))
             .select(user_subscriptions::id)
             .first::<i64>(conn)
             .await

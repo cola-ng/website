@@ -66,7 +66,8 @@ class Handler(BaseHTTPRequestHandler):
         structured = {'use_lang': 'en', 'original_en': body['messages'][-1]['content'], 'original_zh': '测试输入', 'reply_en': 'Hello from your own provider.', 'reply_zh': '来自个人服务的回复。', 'issues': []}
         if body['messages'][-1]['content'] == 'Voice ordered test':
             structured = {'reply_en':'First sentence. Second sentence.','reply_zh':'分段语音测试','use_lang':'en','original_en':'Voice ordered test','original_zh':'语音测试','issues':[]}
-        content = json.dumps(structured, ensure_ascii=False) if body.get('response_format') else f'{actor} translation'
+        structured_request = body.get('response_format') or any(m.get('role') == 'system' and 'reply_en' in str(m.get('content', '')) for m in body['messages'])
+        content = json.dumps(structured, ensure_ascii=False) if structured_request else f'{actor} translation'
         if body.get('stream'):
             self.send_response(200)
             self.send_header('Content-Type', 'text/event-stream')

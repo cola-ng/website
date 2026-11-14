@@ -250,6 +250,7 @@ diesel::table! {
         expires_at -> Timestamptz,
         used_at -> Nullable<Timestamptz>,
         created_at -> Timestamptz,
+        token_version -> Int8,
     }
 }
 
@@ -326,6 +327,7 @@ diesel::table! {
         created_by -> Nullable<Int8>,
         created_at -> Timestamptz,
         handle -> Text,
+        token_version -> Int8,
     }
 }
 
@@ -1202,3 +1204,39 @@ diesel::allow_tables_to_appear_in_same_query!(
     wallet_accounts,
     wallet_transactions,
 );
+
+diesel::table! {
+    learn_observations (id) {
+        id -> Int8,
+        user_id -> Int8,
+        #[max_length = 32]
+        source -> Varchar,
+        redacted_text -> Text,
+        topics -> Jsonb,
+        #[max_length = 64]
+        screen_fingerprint -> Varchar,
+        observed_at -> Timestamptz,
+        created_at -> Timestamptz,
+    }
+}
+
+diesel::table! {
+    learn_person_memories (id) {
+        id -> Int8,
+        user_id -> Int8,
+        #[max_length = 32]
+        memory_type -> Varchar,
+        #[max_length = 160]
+        subject -> Varchar,
+        summary -> Text,
+        confidence -> Float4,
+        evidence_count -> Int4,
+        positive_feedback -> Int4,
+        negative_feedback -> Int4,
+        first_seen_at -> Timestamptz,
+        last_seen_at -> Timestamptz,
+        is_active -> Bool,
+        created_at -> Timestamptz,
+        updated_at -> Timestamptz,
+    }
+}

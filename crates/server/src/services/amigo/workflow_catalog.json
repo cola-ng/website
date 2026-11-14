@@ -1,0 +1,321 @@
+{
+  "version": 1,
+  "modes": [
+    {
+      "id": "conversation",
+      "fast_stages": ["converse", "reflect"],
+      "title": "自由对话",
+      "description": "Respond to the person's content naturally. Gentle recasts when appropriate; do not force a lesson or ask a question every turn.",
+      "entry": [
+        "converse",
+        "reflect"
+      ],
+      "stages": [
+        {
+          "id": "converse",
+          "next": [
+            "converse",
+            "reflect"
+          ],
+          "strategy": "Content first. Preserve agency; concise natural English. Corrections are optional.",
+          "title": "自然交流"
+        },
+        {
+          "id": "reflect",
+          "next": [
+            "converse",
+            "reflect"
+          ],
+          "strategy": "Briefly reflect on the conversation or a useful expression without testing unasked.",
+          "title": "回顾与联系"
+        }
+      ],
+      "fictional": false,
+      "allow_proactive": true,
+      "exposure_stage": null,
+      "tool_failure_stage": null
+    },
+    {
+      "id": "vocabulary",
+      "title": "词汇学习",
+      "description": "Learn a few useful words in context, then reduce support and invite retrieval and transfer. New words are unknown, not learner failures.",
+      "entry": [
+        "establish",
+        "explain",
+        "guided_practice",
+        "retrieve",
+        "transfer"
+      ],
+      "stages": [
+        {
+          "id": "establish",
+          "next": [
+            "establish",
+            "explain"
+          ],
+          "strategy": "Identify the word, intended meaning, purpose and relevant context; ask only for missing information.",
+          "title": "确认目标与词义"
+        },
+        {
+          "id": "explain",
+          "next": [
+            "explain",
+            "guided_practice",
+            "retrieve",
+            "transfer",
+            "reflect"
+          ],
+          "strategy": "Give a concise meaning and a concrete example or association. Do not claim mastery after exposure.",
+          "title": "理解词义与语境"
+        },
+        {
+          "id": "guided_practice",
+          "next": [
+            "guided_practice",
+            "explain",
+            "retrieve",
+            "reflect"
+          ],
+          "strategy": "Invite a small usage task with explicit support. Track help separately from independent performance.",
+          "title": "有支持的练习"
+        },
+        {
+          "id": "retrieve",
+          "next": [
+            "retrieve",
+            "explain",
+            "guided_practice",
+            "transfer",
+            "reflect"
+          ],
+          "strategy": "Offer a retrieval opportunity before revealing the answer; give feedback after the user's attempt.",
+          "title": "主动回忆"
+        },
+        {
+          "id": "transfer",
+          "next": [
+            "transfer",
+            "retrieve",
+            "explain",
+            "reflect"
+          ],
+          "strategy": "Use the word in a different situation; invite original production, not repetition of the example.",
+          "title": "换情景运用"
+        },
+        {
+          "id": "reflect",
+          "next": [
+            "reflect",
+            "explain",
+            "retrieve",
+            "establish"
+          ],
+          "strategy": "Summarize useful distinctions and leave a future review opportunity; do not inflate mastery.",
+          "title": "回顾与联系"
+        }
+      ],
+      "fictional": false,
+      "allow_proactive": true,
+      "exposure_stage": "explain",
+      "tool_failure_stage": null
+    },
+    {
+      "id": "roleplay",
+      "fast_stages": ["in_scene"],
+      "title": "情景角色对话",
+      "description": "Simulate a film-like or everyday scene. Characters and fictional events are not facts about the real user. Default to immersive interaction and delayed correction.",
+      "entry": [
+        "setup",
+        "in_scene"
+      ],
+      "stages": [
+        {
+          "id": "setup",
+          "next": [
+            "setup",
+            "in_scene"
+          ],
+          "strategy": "Agree only on missing scene, roles, communicative goal and difficulty. Prefer original dialogue over reproducing film scripts.",
+          "title": "准备场景与角色"
+        },
+        {
+          "id": "in_scene",
+          "next": [
+            "in_scene",
+            "repair",
+            "debrief",
+            "setup"
+          ],
+          "strategy": "Stay in character and advance the scene with concise lines. Do not interrupt each turn with grammar teaching.",
+          "title": "进入情景对话"
+        },
+        {
+          "id": "repair",
+          "next": [
+            "repair",
+            "in_scene",
+            "debrief"
+          ],
+          "strategy": "Briefly help with a word or expression when requested, mark assistance, then return to the scene.",
+          "title": "短暂帮助与修复"
+        },
+        {
+          "id": "debrief",
+          "next": [
+            "debrief",
+            "in_scene",
+            "setup"
+          ],
+          "strategy": "Discuss communicative success, one or two useful corrections and transferable expressions; distinguish scripted from independent language.",
+          "title": "结束后反馈"
+        }
+      ],
+      "fictional": true,
+      "allow_proactive": false,
+      "exposure_stage": null,
+      "tool_failure_stage": null
+    },
+    {
+      "id": "reading",
+      "title": "阅读与看图",
+      "description": "Ground the user's material before reading, explaining or checking comprehension. A camera is a tool, not a prerequisite for all reading.",
+      "entry": [
+        "ground",
+        "read",
+        "understand",
+        "retell",
+        "apply"
+      ],
+      "stages": [
+        {
+          "id": "ground",
+          "next": [
+            "ground",
+            "read",
+            "understand"
+          ],
+          "strategy": "Resolve the source. Ask for a fresh camera photo only when needed; pasted text can be sufficient. Never ask for a manual screenshot when the camera tool is available.",
+          "title": "取得并确认材料"
+        },
+        {
+          "id": "read",
+          "next": [
+            "read",
+            "ground",
+            "understand",
+            "retell",
+            "apply"
+          ],
+          "strategy": "Read or explain the actual supplied material; identify unreadable portions rather than inventing them.",
+          "title": "朗读与解释"
+        },
+        {
+          "id": "understand",
+          "next": [
+            "understand",
+            "read",
+            "ground",
+            "retell",
+            "apply"
+          ],
+          "strategy": "Discuss meaning and, if appropriate, ask a focused comprehension question; OCR text is not the user's language production.",
+          "title": "理解材料"
+        },
+        {
+          "id": "retell",
+          "next": [
+            "retell",
+            "understand",
+            "apply",
+            "ground"
+          ],
+          "strategy": "Invite a short retelling in the user's own words, adapt support and record assistance.",
+          "title": "用自己的话复述"
+        },
+        {
+          "id": "apply",
+          "next": [
+            "apply",
+            "understand",
+            "ground"
+          ],
+          "strategy": "Connect an expression or idea to a new situation without confusing copying with transfer.",
+          "title": "联系实际运用"
+        }
+      ],
+      "fictional": false,
+      "allow_proactive": true,
+      "exposure_stage": null,
+      "tool_failure_stage": "ground"
+    },
+    {
+      "id": "pronunciation",
+      "title": "发音跟练",
+      "description": "Model one English word or short phrase, invite a spoken repetition, and adapt the next cue from genuine audio assessment when available. Encourage intelligibility and avoid accent judgments.",
+      "entry": ["model"],
+      "stages": [
+        {"id":"model","title":"示范跟读","next":["model","repeat","feedback"],"strategy":"Say the target clearly in a short phrase and invite one repetition. Use a pronunciation_repeat task with one pronunciation target."},
+        {"id":"repeat","title":"短句跟练","next":["model","repeat","feedback"],"strategy":"Respond to the actual attempt and repeat the target or use it in a short phrase. Assign one spoken repetition at a time."},
+        {"id":"feedback","title":"反馈与下一步","next":["model","repeat","feedback"],"strategy":"Use the available acoustic feedback and practice history to suggest another short drill, using the word in conversation, or finishing. Let the learner choose."}
+      ],
+      "fictional": false,
+      "allow_proactive": false,
+      "exposure_stage": null,
+      "tool_failure_stage": null
+    },
+    {
+      "id": "review",
+      "title": "间隔复习",
+      "description": "Review due targets in a suitable context. Let the learner retrieve before revealing the answer; allow skipping and do not infer long-term mastery from a single success.",
+      "entry": [
+        "select",
+        "retrieve"
+      ],
+      "stages": [
+        {
+          "id": "select",
+          "next": [
+            "select",
+            "retrieve"
+          ],
+          "strategy": "Select at most two due targets that fit the user's context and willingness.",
+          "title": "选择复习目标"
+        },
+        {
+          "id": "retrieve",
+          "next": [
+            "retrieve",
+            "feedback"
+          ],
+          "strategy": "Use a short retrieval task with a known target and explicit support level; do not reveal the answer first.",
+          "title": "主动回忆"
+        },
+        {
+          "id": "feedback",
+          "next": [
+            "feedback",
+            "retrieve",
+            "transfer",
+            "select"
+          ],
+          "strategy": "Give specific feedback based on the actual response; distinguish help from independent recall.",
+          "title": "反馈与再尝试"
+        },
+        {
+          "id": "transfer",
+          "next": [
+            "transfer",
+            "feedback",
+            "select"
+          ],
+          "strategy": "Try a new context, then schedule another opportunity rather than declaring permanent mastery.",
+          "title": "换情景运用"
+        }
+      ],
+      "fictional": false,
+      "allow_proactive": true,
+      "exposure_stage": null,
+      "tool_failure_stage": null
+    }
+  ]
+}

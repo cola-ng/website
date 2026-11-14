@@ -49,7 +49,11 @@ pub(super) fn go(path: &str) {
             {
                 return false;
             }
+            let page_changed = next.split('#').next() != location.get_untracked().split('#').next();
             location.revise(|value| *value = next);
+            if page_changed {
+                media::focus_page_heading();
+            }
             window().scroll_to_with_x_and_y(0.0, 0.0);
             true
         });
@@ -68,7 +72,12 @@ pub(super) fn install(scope: &Scope) -> Cage<String> {
         if location.is_alive() {
             let next = current_location();
             if location.get_untracked() != next {
+                let page_changed =
+                    next.split('#').next() != location.get_untracked().split('#').next();
                 location.revise(|value| *value = next);
+                if page_changed {
+                    media::focus_page_heading();
+                }
             }
         }
     });

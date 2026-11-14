@@ -1,0 +1,26 @@
+[package]
+name = "amigo"
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+rust-version = "1.96.0"
+description = "Hardware-independent firmware logic for an English-learning robot"
+
+[features]
+default = []
+protocol = ["dep:serde"]
+simulator = ["protocol", "dep:serde_json", "dep:tokio", "dep:tokio-tungstenite", "dep:futures-util", "dep:reqwest"]
+
+[dependencies]
+serde = { version = "1.0.219", optional = true, features = ["derive"] }
+serde_json = { version = "1.0.146", optional = true }
+tokio = { version = "1.49.0", optional = true, features = ["macros", "rt-multi-thread", "time", "fs", "net"] }
+tokio-tungstenite = { version = "0.26", optional = true, features = ["native-tls"] }
+futures-util = { version = "0.3.24", optional = true, features = ["io", "sink"] }
+reqwest = { version = "0.13.1", optional = true, features = ["json"] }
+
+[[example]]
+name = "gateway_simulator"
+required-features = ["simulator"]
+
+[workspace]

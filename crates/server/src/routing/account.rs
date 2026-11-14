@@ -85,12 +85,19 @@ pub struct LoginRequest {
 
 /// User login with email and password
 #[endpoint(tags("Account"))]
-pub async fn login(input: JsonBody<LoginRequest>) -> JsonResult<AuthResponse> {
+pub async fn login(req: &mut Request, input: JsonBody<LoginRequest>) -> JsonResult<AuthResponse> {
     let email_input = input.email.trim().to_lowercase();
-    if email_input.is_empty() {
+    if email_input.is_empty() || email_input.len() > 320 {
         return Err(StatusError::bad_request().brief("email is required").into());
     }
 
+    crate::auth::limit_password_attempt(
+        &req.remote_addr()
+            .ip()
+            .map(|ip| ip.to_string())
+            .unwrap_or_default(),
+        &email_input,
+    )?;
     let user: User = with_conn!(move |conn| {
         base_users::table
             .filter(base_users::email.eq(email_input))
@@ -103,9 +110,13 @@ pub async fn login(input: JsonBody<LoginRequest>) -> JsonResult<AuthResponse> {
     crate::auth::verify_password(&user, &input.password).await?;
 
     let config = AppConfig::get();
-    let access_token =
-        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+    let access_token = crate::auth::issue_access_token(
+        user.id,
+        user.token_version,
+        &config.jwt_secret,
+        config.jwt_ttl.as_secs(),
+    )
+    .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     let is_admin = is_user_admin(user.id).await;
 
@@ -122,17 +133,27 @@ const ERR_PHONE_EXISTS: &str = "PHONE_EXISTS";
 
 /// Register a new user account
 #[endpoint(tags("Account"))]
-pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthResponse> {
+pub async fn register(
+    req: &mut Request,
+    input: JsonBody<RegisterRequest>,
+) -> JsonResult<AuthResponse> {
     let email = input.email.trim().to_lowercase();
-    if email.is_empty() {
+    if email.is_empty() || email.len() > 320 {
         return Err(StatusError::bad_request().brief("email is required").into());
     }
-    if input.password.len() < 8 {
+    if !(8..=1024).contains(&input.password.len()) {
         return Err(StatusError::bad_request()
-            .brief("password must be at least 8 characters")
+            .brief("password must contain 8 to 1024 bytes")
             .into());
     }
 
+    crate::auth::limit_password_attempt(
+        &req.remote_addr()
+            .ip()
+            .map(|ip| ip.to_string())
+            .unwrap_or_default(),
+        &email,
+    )?;
     // Normalize phone: trim and filter empty strings
     let phone: Option<String> = input
         .phone
@@ -141,7 +162,10 @@ pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthRespon
         .filter(|p: &String| !p.is_empty());
 
     let password_hash = crate::auth::hash_password(&input.password)
-        .map_err(|_| StatusError::internal_server_error().brief("failed to create user"))?;
+        .await
+        .map_err(|error| if error.contains("busy") {
+            StatusError::too_many_requests().brief("password service busy; try again")
+        } else { StatusError::service_unavailable().brief("password service unavailable") })?;
 
     let email_for_check = email.clone();
     let phone_for_check = phone.clone();
@@ -227,9 +251,13 @@ pub async fn register(input: JsonBody<RegisterRequest>) -> JsonResult<AuthRespon
     })?;
 
     let config = AppConfig::get();
-    let access_token =
-        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+    let access_token = crate::auth::issue_access_token(
+        user.id,
+        user.token_version,
+        &config.jwt_secret,
+        config.jwt_ttl.as_secs(),
+    )
+    .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     // New users are never admins
     Ok(Json(AuthResponse {
@@ -336,6 +364,7 @@ pub struct ChangePasswordRequest {
 #[derive(Serialize, ToSchema)]
 pub struct ChangePasswordResponse {
     success: bool,
+    access_token: String,
 }
 
 /// Change user password
@@ -346,66 +375,89 @@ pub async fn change_password(
 ) -> JsonResult<ChangePasswordResponse> {
     let user_id = depot.user_id()?;
 
-    if input.new_password.len() < 8 {
+    if !(8..=1024).contains(&input.new_password.len()) {
         return Err(StatusError::bad_request()
-            .brief("password must be at least 8 characters")
+            .brief("password must contain 8 to 1024 bytes")
             .into());
     }
 
-    // Check if user currently has a password
-    let has_password = with_conn!(move |conn| {
-        base_passwords::table
-            .filter(base_passwords::user_id.eq(user_id))
-            .select(base_passwords::id)
+    // Verify outside the transaction, then compare the version under a row lock.
+    // A concurrent password change must invalidate this attempt, even for OAuth accounts.
+    let (old_hash, version) = with_conn!(move |conn| {
+        let version = base_users::table
+            .find(user_id)
+            .select(base_users::token_version)
             .first::<i64>(conn)
+            .await?;
+        let hash = base_passwords::table
+            .filter(base_passwords::user_id.eq(user_id))
+            .select(base_passwords::hash)
+            .first::<String>(conn)
             .await
-            .optional()
+            .optional()?;
+        Ok((hash, version))
     })
     .await
-    .map(|opt| opt.is_some())
-    .unwrap_or(false);
-
-    // If user has a password, verify the current one
-    if has_password {
-        let current = input.current_password.as_deref().unwrap_or("");
-        if current.is_empty() {
-            return Err(StatusError::bad_request()
-                .brief("current password is required")
-                .into());
-        }
-        let user: User = with_conn!(move |conn| {
-            base_users::table
-                .filter(base_users::id.eq(user_id))
-                .first(conn)
-                .await
-        })
-        .await
-        .map_err(|_| StatusError::not_found().brief("user not found"))?;
-
-        crate::auth::verify_password(&user, current).await?;
+    .map_err(|_| StatusError::service_unavailable().brief("cannot verify password state"))?;
+    if let Some(hash) = old_hash {
+        crate::auth::verify_hash(hash, input.current_password.clone().unwrap_or_default()).await?;
     }
-
-    // Hash and save the new password
     let new_hash = crate::auth::hash_password(&input.new_password)
-        .map_err(|_| StatusError::internal_server_error().brief("failed to hash password"))?;
-
-    with_conn!(move |conn| {
-        // Delete existing password entry if any
-        diesel::delete(base_passwords::table.filter(base_passwords::user_id.eq(user_id)))
-            .execute(conn)
+        .await
+        .map_err(|_| {
+            StatusError::too_many_requests().brief("password service busy or invalid password")
+        })?;
+    let next_version = with_conn!(move |conn| horme::transaction(conn, async |conn| {
+        let current = base_users::table
+            .find(user_id)
+            .for_update()
+            .select(base_users::token_version)
+            .first::<i64>(conn)
             .await?;
-        // Insert new password
+        if current != version {
+            return Err(horme::Error::from(
+                diesel::result::Error::RollbackTransaction,
+            ));
+        }
         diesel::insert_into(base_passwords::table)
             .values(NewPassword {
                 user_id,
-                hash: new_hash,
+                hash: new_hash.clone(),
                 created_at: Utc::now(),
             })
+            .on_conflict(base_passwords::user_id)
+            .do_update()
+            .set((
+                base_passwords::hash.eq(new_hash),
+                base_passwords::created_at.eq(Utc::now()),
+            ))
             .execute(conn)
-            .await
-    })
+            .await?;
+        let next = diesel::update(base_users::table.find(user_id))
+            .set(base_users::token_version.eq(base_users::token_version + 1))
+            .returning(base_users::token_version)
+            .get_result::<i64>(conn)
+            .await?;
+        Ok(next)
+    }))
     .await
-    .map_err(|_| StatusError::internal_server_error().brief("failed to update password"))?;
-
-    json_ok(ChangePasswordResponse { success: true })
+    .map_err(|error| {
+        if error.to_ascii_lowercase().contains("rollback") {
+            StatusError::conflict().brief("password changed concurrently; retry")
+        } else {
+            StatusError::service_unavailable().brief("password update failed; retry")
+        }
+    })?;
+    let config = AppConfig::get();
+    let access_token = crate::auth::issue_access_token(
+        user_id,
+        next_version,
+        &config.jwt_secret,
+        config.jwt_ttl.as_secs(),
+    )
+    .map_err(|_| StatusError::internal_server_error())?;
+    json_ok(ChangePasswordResponse {
+        success: true,
+        access_token,
+    })
 }

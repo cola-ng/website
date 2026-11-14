@@ -7,8 +7,13 @@ on:
 jobs:
   test-backend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: website
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
@@ -16,11 +21,17 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libpq-dev cmake
       - run: cargo fmt -p colang-front --check
       - run: cargo check --locked -p colang --bin colang
+      - run: python3 scripts/sync-amigo-protocol.py --check
       - run: cargo test --locked -p colang --lib
   test-frontend:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: website
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.99.0'
@@ -30,16 +41,65 @@ jobs:
       - run: cargo test --locked -p colang-front
       - run: cargo clippy --locked -p colang-front --target wasm32-unknown-unknown -- -D warnings
       - run: trunk build --release --locked
-        working-directory: front
-  build-docker-image:
+        working-directory: website/front
+  integration:
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend]
+    defaults:
+      run:
+        working-directory: website
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_USER: colang_qa
+          POSTGRES_PASSWORD: isolated-ci-database
+          POSTGRES_DB: colang_qa
+        ports: ['55439:5432']
+        options: >-
+          --health-cmd "pg_isready -U colang_qa -d colang_qa"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      QA_DATABASE_URL: postgresql://colang_qa:isolated-ci-database@127.0.0.1:55439/colang_qa
     steps:
       - uses: actions/checkout@v4
+        with:
+          path: website
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+          targets: wasm32-unknown-unknown
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: sudo apt-get update && sudo apt-get install -y libpq-dev postgresql-client cmake
+      - run: cargo install trunk --version 0.22.1 --locked
+      - run: npm ci --prefix tests
+      - run: npx --prefix tests playwright install --with-deps chromium
+      - run: node --test tests/platform.test.cjs
+      - run: npm test --prefix miniprogram
+      - run: python3 tests/run-ci.py
+      - uses: https://github.com/christopherHX/gitea-upload-artifact@v4
+        if: always()
+        with:
+          name: integration-results
+          path: |
+            website/target/ci-*.log
+            website/target/qa-ui
+            website/target/qa-responsive
+  build-docker-image:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
+    needs: [test-backend, test-frontend, integration]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: website
       - uses: docker/setup-buildx-action@v3
       - uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./Dockerfile
+          context: ./website
+          file: ./website/Dockerfile
           load: true
           tags: colang:latest

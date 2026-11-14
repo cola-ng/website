@@ -333,7 +333,8 @@ fn account_security(account: Resource) -> impl Widget {
             field_state("确认新密码",repeat,Purpose::Password,false.into(),enabled.into()),
             action_button().label(account.data.map(|v|if v["has_password"]==true{"更新密码"}else{"设置密码"}.into())).enabled(enabled).on_press(move || {
                 if password.get().len()<8||password.get()!=repeat.get(){action.error.revise(|e|*e="新密码至少 8 字节，两次输入必须一致".into());return;}
-                action.run("POST","/api/me/change-password".into(),Some(json!({"current_password":if old.get().is_empty(){Value::Null}else{json!(old.get())},"new_password":password.get()})),move |_|{
+                action.run("POST","/api/me/change-password".into(),Some(json!({"current_password":if old.get().is_empty(){Value::Null}else{json!(old.get())},"new_password":password.get()})),move |value|{
+                    if let Some(store)=storage() { let _=store.set_item("colang.token", &string(&value,"access_token")); }
                     old.revise(String::clear);password.revise(String::clear);repeat.revise(String::clear);
                     password_open.revise(|v|*v=false);notice.revise(|s|*s="密码已更新".into());account.load("/api/me/account-status");
                 });

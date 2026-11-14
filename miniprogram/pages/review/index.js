@@ -34,7 +34,10 @@ definePage({
     this.setData({ type, name: names[type] });
   },
   onShow() {
-    if (api.token()) this.load();
+    if (api.token() && !this._loaded) this.load();
+  },
+  onSessionChange() {
+    this._loaded = false;
   },
   cancelMedia() {
     media.stop(this);
@@ -51,6 +54,7 @@ definePage({
           typeLabel: names[item.review_type] || "复习",
         }),
       );
+      this._loaded = true;
       this.setData({
         items,
         index: 0,

@@ -1,126 +1,221 @@
-//! Study Time Tracking Service
-//!
-//! Uses in-memory cache to reduce database write frequency.
-//! Periodically flushes accumulated study time to the database.
-
-use std::collections::HashMap;
-use std::sync::LazyLock;
-
-use chrono::{DateTime, NaiveDate, Utc};
-use tokio::sync::RwLock;
-
+//! Count elapsed active time once per account; retain unacknowledged flush batches.
 use crate::models::learn::{PageType, StudyTimeIncrement, UserActivityState};
+use chrono::{DateTime, NaiveDate, Utc};
+use std::{
+    collections::HashMap,
+    sync::LazyLock,
+    time::{Duration, Instant},
+};
+use tokio::sync::Mutex;
 
-/// Global study time tracker instance
 pub static STUDY_TIME_TRACKER: LazyLock<StudyTimeTracker> = LazyLock::new(StudyTimeTracker::new);
-
-/// Study time tracking service
-///
-/// Uses in-memory cache to reduce database write frequency.
+pub type Increments = HashMap<(i64, NaiveDate), StudyTimeIncrement>;
+#[derive(Clone)]
+pub struct Batch {
+    pub id: uuid::Uuid,
+    pub increments: Increments,
+}
+struct Activity {
+    state: UserActivityState,
+    tick: Instant,
+    remainder: Duration,
+}
+#[derive(Default)]
+struct State {
+    users: HashMap<i64, Activity>,
+    pending: Increments,
+    inflight: Option<Batch>,
+}
+#[derive(Default)]
 pub struct StudyTimeTracker {
-    /// User last activity state: user_id -> UserActivityState
-    user_states: RwLock<HashMap<i64, UserActivityState>>,
-    /// Pending increments to be persisted: (user_id, date) -> StudyTimeIncrement
-    pending_increments: RwLock<HashMap<(i64, NaiveDate), StudyTimeIncrement>>,
-    /// Maximum gap in seconds before considering a new session
-    max_gap_seconds: i64,
-    /// Seconds to add per heartbeat
-    heartbeat_interval_seconds: i32,
+    state: Mutex<State>,
 }
-
 impl StudyTimeTracker {
-    /// Create a new tracker with default settings
     pub fn new() -> Self {
-        Self {
-            user_states: RwLock::new(HashMap::new()),
-            pending_increments: RwLock::new(HashMap::new()),
-            max_gap_seconds: 120,           // 2 minutes
-            heartbeat_interval_seconds: 20, // heartbeat interval
-        }
+        Self::default()
     }
-
-    /// Process a heartbeat from the frontend
-    ///
-    /// Returns true if study time was recorded (i.e., conditions were met)
-    pub async fn process_heartbeat(&self, user_id: i64, page_type: PageType) -> bool {
-        let now = Utc::now();
-        let today = now.date_naive();
-
-        let mut states = self.user_states.write().await;
-        let should_record = if let Some(prev_state) = states.get(&user_id) {
-            // Check conditions: time gap < 2 minutes AND same page type
-            let gap = now.signed_duration_since(prev_state.last_activity_time);
-            gap.num_seconds() < self.max_gap_seconds && prev_state.last_page_type == page_type
+    pub async fn process_heartbeat(&self, user_id: i64, page: PageType) -> bool {
+        self.process_at(user_id, page, Utc::now(), Instant::now())
+            .await
+    }
+    async fn process_at(
+        &self,
+        user_id: i64,
+        page: PageType,
+        wall: DateTime<Utc>,
+        tick: Instant,
+    ) -> bool {
+        let mut state = self.state.lock().await;
+        let mut recorded = false;
+        if let Some(previous) = state.users.get_mut(&user_id) {
+            let elapsed = tick.saturating_duration_since(previous.tick);
+            let valid = elapsed < Duration::from_secs(120) && previous.state.last_page_type == page;
+            let elapsed = if valid {
+                elapsed + previous.remainder
+            } else {
+                Duration::ZERO
+            };
+            let seconds = elapsed.as_secs() as i32;
+            previous.tick = tick;
+            previous.remainder = elapsed - Duration::from_secs(seconds as u64);
+            previous.state = UserActivityState {
+                last_activity_time: wall,
+                last_page_type: page,
+            };
+            if seconds > 0 {
+                // Attribute the interval ending at this heartbeat across UTC midnight.
+                let midnight = wall.date_naive().and_hms_opt(0, 0, 0).unwrap().and_utc();
+                let today_seconds =
+                    (wall - midnight).num_seconds().max(0).min(seconds as i64) as i32;
+                if today_seconds > 0 {
+                    state
+                        .pending
+                        .entry((user_id, wall.date_naive()))
+                        .or_default()
+                        .add_seconds(page, today_seconds);
+                }
+                if today_seconds < seconds {
+                    state
+                        .pending
+                        .entry((user_id, wall.date_naive().pred_opt().unwrap()))
+                        .or_default()
+                        .add_seconds(page, seconds - today_seconds);
+                }
+                recorded = true;
+            }
         } else {
-            false
-        };
-
-        // Update user state
-        states.insert(
-            user_id,
-            UserActivityState {
-                last_activity_time: now,
-                last_page_type: page_type,
-            },
-        );
-
-        if should_record {
-            // Accumulate study time
-            let mut increments = self.pending_increments.write().await;
-            let key = (user_id, today);
-            let increment = increments.entry(key).or_default();
-            increment.add_seconds(page_type, self.heartbeat_interval_seconds);
+            state.users.insert(
+                user_id,
+                Activity {
+                    state: UserActivityState {
+                        last_activity_time: wall,
+                        last_page_type: page,
+                    },
+                    tick,
+                    remainder: Duration::ZERO,
+                },
+            );
         }
-
-        should_record
+        recorded
     }
-
-    /// Record a valid activity (e.g., sending a message, submitting an answer)
-    ///
-    /// This updates the last_activity_time for more accurate tracking.
-    pub async fn record_valid_activity(&self, user_id: i64, page_type: PageType) {
-        let now = Utc::now();
-        let mut states = self.user_states.write().await;
-        states.insert(
-            user_id,
-            UserActivityState {
-                last_activity_time: now,
-                last_page_type: page_type,
-            },
-        );
+    pub async fn record_valid_activity(&self, user_id: i64, page: PageType) {
+        self.process_heartbeat(user_id, page).await;
     }
-
-    /// Take pending increments for persistence
-    ///
-    /// Returns all pending increments and clears the internal buffer.
-    pub async fn take_pending_increments(&self) -> HashMap<(i64, NaiveDate), StudyTimeIncrement> {
-        let mut increments = self.pending_increments.write().await;
-        std::mem::take(&mut *increments)
+    pub async fn begin_flush(&self) -> Option<Batch> {
+        let mut state = self.state.lock().await;
+        if state.inflight.is_none() && !state.pending.is_empty() {
+            state.inflight = Some(Batch {
+                id: uuid::Uuid::new_v4(),
+                increments: std::mem::take(&mut state.pending),
+            });
+        }
+        state.inflight.clone()
     }
-
-    /// Clean up stale user states (inactive for more than 10 minutes)
+    pub async fn acknowledge(&self, id: uuid::Uuid) {
+        let mut state = self.state.lock().await;
+        if state.inflight.as_ref().is_some_and(|batch| batch.id == id) {
+            state.inflight = None;
+        }
+    }
     pub async fn cleanup_stale_states(&self) {
-        let threshold = Utc::now() - chrono::Duration::minutes(10);
-        let mut states = self.user_states.write().await;
-        states.retain(|_, state| state.last_activity_time > threshold);
+        let now = Instant::now();
+        self.state.lock().await.users.retain(|_, activity| {
+            now.saturating_duration_since(activity.tick) < Duration::from_secs(600)
+        });
     }
-
-    /// Get today's study time summary for a user (from cache)
     pub async fn get_today_summary(&self, user_id: i64) -> Option<StudyTimeIncrement> {
-        let today = Utc::now().date_naive();
-        let increments = self.pending_increments.read().await;
-        increments.get(&(user_id, today)).cloned()
+        let state = self.state.lock().await;
+        let key = (user_id, Utc::now().date_naive());
+        let mut value = state.pending.get(&key).cloned().unwrap_or_default();
+        if let Some(increment) = state.inflight.as_ref().and_then(|b| b.increments.get(&key)) {
+            value.merge(increment);
+        }
+        (!value.is_empty()).then_some(value)
     }
-
-    /// Get user's current activity state
     pub async fn get_user_state(&self, user_id: i64) -> Option<UserActivityState> {
-        let states = self.user_states.read().await;
-        states.get(&user_id).cloned()
+        self.state
+            .lock()
+            .await
+            .users
+            .get(&user_id)
+            .map(|v| v.state.clone())
     }
 }
-
-impl Default for StudyTimeTracker {
-    fn default() -> Self {
-        Self::new()
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[tokio::test]
+    async fn rapid_duplicate_heartbeats_and_retry_do_not_invent_or_lose_time() {
+        let tracker = StudyTimeTracker::new();
+        let t = Instant::now();
+        let wall = Utc::now();
+        tracker.process_at(1, PageType::Chat, wall, t).await;
+        for _ in 0..100 {
+            assert!(!tracker.process_at(1, PageType::Chat, wall, t).await);
+        }
+        tracker
+            .process_at(
+                1,
+                PageType::Chat,
+                wall + chrono::Duration::seconds(20),
+                t + Duration::from_secs(20),
+            )
+            .await;
+        let batch = tracker.begin_flush().await.unwrap();
+        assert_eq!(
+            batch
+                .increments
+                .values()
+                .map(|v| v.total_seconds())
+                .sum::<i32>(),
+            20
+        );
+        tracker
+            .process_at(
+                1,
+                PageType::Chat,
+                wall + chrono::Duration::seconds(30),
+                t + Duration::from_secs(30),
+            )
+            .await;
+        assert_eq!(tracker.begin_flush().await.unwrap().id, batch.id);
+        tracker.acknowledge(batch.id).await;
+        let next = tracker.begin_flush().await.unwrap();
+        assert_ne!(next.id, batch.id);
+        assert_eq!(
+            next.increments
+                .values()
+                .map(|v| v.total_seconds())
+                .sum::<i32>(),
+            10
+        );
+    }
+    #[tokio::test]
+    async fn subsecond_intervals_accumulate_and_midnight_splits() {
+        let tracker = StudyTimeTracker::new();
+        let t = Instant::now();
+        let wall = DateTime::parse_from_rfc3339("2026-11-13T23:59:59Z")
+            .unwrap()
+            .with_timezone(&Utc);
+        for n in 0..=20 {
+            tracker
+                .process_at(
+                    1,
+                    PageType::Review,
+                    wall + chrono::Duration::milliseconds(n * 100),
+                    t + Duration::from_millis(n as u64 * 100),
+                )
+                .await;
+        }
+        let batch = tracker.begin_flush().await.unwrap();
+        assert_eq!(batch.increments.len(), 2);
+        assert_eq!(
+            batch
+                .increments
+                .values()
+                .map(|v| v.total_seconds())
+                .sum::<i32>(),
+            2
+        );
     }
 }

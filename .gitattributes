@@ -1,0 +1,2 @@
+# Protocol snapshot hashes cover exact bytes; do not normalize line endings.
+/vendor/amigo/** -text whitespace=cr-at-eol

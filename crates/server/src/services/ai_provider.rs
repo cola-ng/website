@@ -114,6 +114,13 @@ pub struct WordPronunciationScore {
 /// ASR (Speech-to-Text) Service Trait
 #[async_trait]
 pub trait AsrService: Send + Sync {
+    fn stream_pcm(
+        &self,
+        _partial: tokio::sync::mpsc::Sender<super::asr_stream::AsrPartial>,
+    ) -> Option<super::asr_stream::PcmAsrStream> {
+        None
+    }
+
     /// Transcribe audio to text
     ///
     /// # Arguments
@@ -134,6 +141,22 @@ pub trait AsrService: Send + Sync {
 /// TTS (Text-to-Speech) Service Trait
 #[async_trait]
 pub trait TtsService: Send + Sync {
+    fn supports_pcm_stream(&self) -> bool {
+        false
+    }
+
+
+    /// Bounded PCM16/16k/mono chunks. A failed stream must never be replayed
+    /// through a fallback after any audio has already reached the speaker.
+    async fn synthesize_pcm_stream(
+        &self,
+        _text: &str,
+        _voice: Option<&str>,
+        _speed: Option<f32>,
+        _audio: tokio::sync::mpsc::Sender<Vec<u8>>,
+    ) -> Result<(), AiProviderError> {
+        Err(AiProviderError::NotSupported("PCM streaming TTS".into()))
+    }
     /// Synthesize text to audio
     ///
     /// # Arguments
@@ -197,6 +220,22 @@ pub struct TextIssue {
 /// Chat (LLM) Service Trait
 #[async_trait]
 pub trait ChatService: Send + Sync {
+    /// Latency-sensitive continuation; full semantic planning keeps its normal request.
+    async fn chat_stream_fast(&self,messages:Vec<ChatMessage>,chunks:tokio::sync::mpsc::Sender<String>)->Result<String,AiProviderError>{self.chat_stream(messages,chunks).await}
+
+    async fn chat_stream(
+        &self,
+        messages: Vec<ChatMessage>,
+        chunks: tokio::sync::mpsc::Sender<String>,
+    ) -> Result<String, AiProviderError> {
+        let text = self.chat(messages, None, Some(1600)).await?;
+        chunks
+            .send(text.clone())
+            .await
+            .map_err(|_| AiProviderError::Request("chat consumer cancelled".into()))?;
+        Ok(text)
+    }
+
     /// Send chat completion request
     ///
     /// # Arguments

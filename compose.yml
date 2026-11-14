@@ -6,8 +6,8 @@ services:
     ports:
       - "8119:8119"
     environment:
-      - DATABASE_URL=postgresql://user:password@db:5432/colang
-      - JWT_SECRET=your_jwt_secret_key
+      - DATABASE_URL=${DATABASE_URL:?Set DATABASE_URL for the internal db service}
+      - JWT_SECRET=${JWT_SECRET:?Set a random JWT_SECRET of at least 32 bytes}
       - PUBLIC_BASE_URL=${PUBLIC_BASE_URL:-}
       - GITHUB_CLIENT_ID=${GITHUB_CLIENT_ID:-}
       - GITHUB_CLIENT_SECRET=${GITHUB_CLIENT_SECRET:-}
@@ -35,9 +35,7 @@ services:
     environment:
       POSTGRES_DB: colang
       POSTGRES_USER: user
-      POSTGRES_PASSWORD: password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a random database password}
     volumes:
       - /data/colang/pgsql:/var/lib/postgresql/data
-    ports:
-      - "7654:5432"
     restart: unless-stopped

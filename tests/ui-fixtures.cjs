@@ -5,7 +5,7 @@ const turn = {id:1,speaker:'ai',content_en:'Hello! Let us practice English.',con
 const review = {id:1,word:'hello',word_zh:'你好',example:'Say hello to a friend.',example_zh:'向朋友问好。',review_type:'recognition',source:'vocabulary',source_id:1};
 const domain = {id:1,code:'daily',name_en:'Daily life',name_zh:'日常生活'};
 const plan = {id:1,code:'free',name_zh:'基础版',description_zh:'每日学习，持续积累。',price_display:'免费',trial_days:0,features:['基础词典','词汇复习']};
-function fixture(url,method='GET') {
+function fixture(url,method='GET',body={}) {
   const p=url.pathname;
   if(p==='/api/auth/providers')return {providers:[{id:'github',name:'GitHub'},{id:'google',name:'Google'}]};
   if(p==='/api/achievements/profile')return {total_xp:240,current_streak_days:7,rank:{level:1,name_zh:'初学者',min_xp:0,color:'#c2410c'},next_rank:{level:2,name_zh:'探索者',min_xp:500},xp_to_next_rank:260,recent_achievements:[],total_achievements:10,completed_achievements:2};
@@ -39,6 +39,8 @@ function fixture(url,method='GET') {
   if(p==='/api/learn/summary')return {learning_days:7,total_vocabulary_count:32,pending_review_count:5,weekly_chat_minutes:48,mastered_vocabulary_count:27,average_mastery:0.84,total_review_times:19,weekly_minutes:[{day:'周一',minutes:12},{day:'周二',minutes:5},{day:'周三',minutes:0},{day:'周四',minutes:8},{day:'周五',minutes:6},{day:'周六',minutes:10},{day:'周日',minutes:7}]};
   if(p==='/api/me/account-status')return {has_password:true,linked_identities:[]};
   if(p==='/api/ai-providers/catalog')return require('./provider-catalog.json');
+  if(p.includes('/voice-catalog/')||p==='/api/ai-providers/voices'||/^\/api\/ai-providers\/\d+\/voices$/.test(p))return [{id:p.endsWith('/openai')?'marin':'tongtong',name:'QA Voice',gender:'unknown',language:'multi',description:'Deterministic test voice'}];
+  if(p==='/api/ai-providers/models')return {...require('./provider-catalog.json').find(p=>p.id===(body.provider_type||'zhipu')),source:'static',capability_sources:{chat:'static',tts:'static',asr:'static'}};
   if(p.startsWith('/api/sentence-audio/'))return {audio_url:'/api/asset/read/sentences/1/audio',official:true,can_generate:false,status:'approved'};
   if(p==='/api/ai-providers/access')return {source:'personal',platform_allowed:false,active_provider_id:1,message:'当前使用你自己的 AI 服务。'};
   if(p==='/api/ai-providers')return [{id:1,provider_type:'zhipu',is_active:true,tts_active:true,asr_active:true,settings:{chat_model:'example-model'}}];

@@ -32,10 +32,12 @@ button, input, textarea { font: inherit; }
 button, a, input, textarea { touch-action: manipulation; }
 button { cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: 1; }
-a:focus-visible, button:focus-visible, input:focus-visible, textarea:focus-visible {
+a:focus-visible, button:focus-visible {
   outline: 2px solid var(--focus-ring);
   outline-offset: 3px;
 }
+input:focus-visible, textarea:focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 2px; box-shadow: none; }
+input.sapid-text-field:focus:not([data-gly-invalid]), textarea.sapid-text-field:focus:not([data-gly-invalid]) { border-color: var(--focus-ring) !important; }
 h1, h2, h3, p { margin: 0; }
 img { max-width: 100%; }
 .site { min-height: 100dvh; display: flex; flex-direction: column; font-size: var(--text-body); line-height: 1.65; }
@@ -509,8 +511,8 @@ body:has(.chat-page) .footer { display: none; }
 .audio-review-card p { overflow-wrap:anywhere; }
 
 .provider-select-field { position:relative; min-width:0; }
-.provider-select-field::after { content:'⌄'; pointer-events:none; position:absolute; right:14px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:18px; }
-.provider-select-field input { padding-right:36px!important; }
+.provider-select-field > .provider-select-chevron { position:absolute; right:4px; top:0; bottom:0; }
+.provider-select-field input { padding-right:44px!important; }
 
 .audio-admin { display:grid; gap:20px; min-width:0; }
 
@@ -540,3 +542,42 @@ body:has(.chat-page) .footer { display: none; }
  .chat-composer .compose-text { grid-column:1 / -1; }
  .chat-voice-controls { min-width:0; }
 }
+
+/* Amigo hardware console uses the website's native controls and account shell. */
+.amigo-console,.amigo-editor{max-width:1160px;margin:auto}.amigo-console .eyebrow{font-size:12px;letter-spacing:2px;color:#7b8a71}.amigo-toolbar{display:flex;align-items:center;justify-content:space-between;gap:24px;border-bottom:1px solid #e4e7de;padding:20px 0;margin-bottom:24px}.amigo-toolbar .field{max-width:300px;margin:0}.amigo-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}.amigo-device{min-width:0}.amigo-device-title{display:flex;gap:14px;align-items:center;margin-bottom:24px}.amigo-device-title h2{font-size:19px;margin:0 0 8px}.amigo-avatar{width:48px;height:48px;border-radius:13px;background:#edf2e8;color:#6d865b;text-align:center;font-size:30px;flex-shrink:0}.amigo-online{color:#648451;font-size:14px}.amigo-meta{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:12px 0}.amigo-meta .muted{font-size:13px}.amigo-meta p{font-size:14px;overflow-wrap:anywhere}.amigo-device>.muted{font-size:13px}.amigo-card-actions{border-top:1px solid #e4e7de;padding-top:16px;margin-top:18px;justify-content:space-between}.amigo-card-actions a{font-size:14px}.amigo-service{margin-top:26px;display:flex;align-items:center;justify-content:space-between;gap:16px}.amigo-empty{padding:50px;text-align:center}.amigo-code{font-family:monospace;font-size:13px;padding:12px;background:#f4f6f0;border:1px solid #e3e8dc;border-radius:7px;white-space:pre-wrap;overflow-wrap:anywhere;user-select:all}.amigo-editor>.panel{margin-top:20px;max-width:850px}.amigo-editor .choices{margin:22px 0}.amigo-settings-values{display:grid;grid-template-columns:1fr 1fr;gap:14px 24px;margin-bottom:24px}.amigo-toggle{padding:12px 0;border-bottom:1px solid #edf0e8;display:flex;flex-direction:column;gap:8px;grid-column:1/-1}.amigo-toggle .muted{font-size:14px}.amigo-settings-values h2,.amigo-settings-values .choices{grid-column:1/-1}.amigo-settings .field{margin-bottom:16px}.amigo-event{padding:18px 0;border-bottom:1px solid #e3e8dc}.amigo-event p{white-space:pre-wrap;overflow-wrap:anywhere}.amigo-editor .success{display:block;margin-top:14px}.amigo-history{margin-top:20px}@media(max-width:1000px){.amigo-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}@media(max-width:640px){.amigo-grid{grid-template-columns:1fr}.amigo-toolbar,.amigo-service{align-items:stretch;flex-direction:column}.amigo-toolbar .field{max-width:none}.amigo-settings-values{grid-template-columns:1fr}.amigo-console>.section-heading{align-items:flex-start;gap:16px}.amigo-console>.section-heading h1{font-size:26px}.amigo-meta{gap:12px}.amigo-card-actions{flex-wrap:nowrap}}
+
+.amigo-values-hidden{display:none!important}
+
+.amigo-pair-form{display:flex;flex-direction:column;gap:18px;min-width:0;max-width:100%;line-height:1.65}.amigo-pair-form>p{margin:0}.amigo-pair-form>.field{display:flex;flex-direction:column;gap:8px;margin:0;width:100%;min-width:0}.amigo-pair-form>.muted{display:block;font-size:13px;overflow-wrap:anywhere}.amigo-pair-form input{box-sizing:border-box;width:100%;min-width:0}.amigo-code{display:block;box-sizing:border-box;max-width:100%}
+
+.amigo-call-log{display:grid;gap:18px;min-width:0}.amigo-call-row{display:grid;gap:8px;padding:18px 0;border-bottom:1px solid var(--line);min-width:0}.amigo-call-row h2{font-size:16px}.amigo-call-row p{font-size:13px}.amigo-call-row [data-gly-kind=text]{display:block;overflow-wrap:anywhere}
+body:has(.amigo-editor) .main{width:min(1400px,100%)}
+.device-ai-settings{display:grid;gap:16px;margin-top:20px;min-width:0}
+.device-ai-cap{display:grid;gap:14px;min-width:0;padding:20px;border:1px solid var(--line);border-radius:10px;background:#fff}
+.device-ai-cap h2{font-size:18px;margin:0}
+.device-ai-cap>.choices{margin:0;flex-wrap:wrap}
+.device-ai-cap .voice-picker{margin:0}
+.device-ai-cap .form-fields{min-width:0}
+.device-ai-settings>.success{white-space:pre-wrap}
+@media(max-width:640px){.device-ai-cap{padding:14px}.device-ai-settings>.actions{align-items:stretch;flex-direction:column}}
+.amigo-editor{width:100%;max-width:none;margin:0}
+.amigo-editor>.panel{width:100%;max-width:none;box-sizing:border-box}
+.amigo-call-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.amigo-call-heading h2{margin:0}
+.amigo-call-detail{display:grid;gap:18px;min-width:0}
+.amigo-call-details-meta{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 24px}
+.amigo-call-details-meta>div{display:grid;gap:4px;min-width:0;overflow-wrap:anywhere}
+.amigo-diagnostic-log{display:block;white-space:pre-wrap;overflow-wrap:anywhere;max-width:100%;padding:14px;border:1px solid var(--line);border-radius:8px;background:#fafaf9;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.65;user-select:text}
+.amigo-call-timeline{display:grid;gap:12px}
+.amigo-call-step{display:grid;gap:5px;padding:12px;border-left:2px solid #fed7aa;background:#fafaf9;min-width:0;overflow-wrap:anywhere}
+@media(max-width:640px){.amigo-call-details-meta{grid-template-columns:1fr}.amigo-call-heading{gap:10px}.amigo-call-heading button{flex-shrink:0}}
+
+.voice-picker{display:grid;gap:12px;min-width:0;padding:14px;border:1px solid var(--line);border-radius:10px}.voice-picker h2{font-size:16px}.voice-picker .field{margin:0}.voice-picker p,.voice-picker>.muted{display:block;font-size:13px;overflow-wrap:anywhere}.voice-picker .sapid-combobox{width:100%;min-width:0}
+
+.voice-current{display:grid;gap:6px;padding:10px 12px;background:var(--accent-soft);border-radius:8px;overflow-wrap:anywhere}.voice-current>[data-gly-kind=text]:first-child{font-weight:600}
+
+.provider-model-choice,.provider-catalog-info{display:grid;gap:8px;min-width:0}.provider-catalog-info,.provider-model-choice>.muted{font-size:13px;overflow-wrap:anywhere}
+
+.provider-model-sections{display:grid;gap:12px;min-width:0}
+
+.voice-selection,.voice-filters,.voice-advanced{display:grid;gap:10px;min-width:0}.voice-options{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;min-width:0}.voice-option{min-width:0;overflow-wrap:anywhere;white-space:normal;text-align:left;justify-content:flex-start}.voice-option[aria-pressed=true]{background:var(--accent-soft);border-color:var(--accent);font-weight:600}

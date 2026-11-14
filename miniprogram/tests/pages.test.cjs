@@ -211,3 +211,18 @@ test("恢复生成中的对话有界轮询，离开页面清理定时器", async
   assert.equal(page._timers.size, 0);
   assert.equal(page.data.recovering, false);
 });
+
+test("复习切后台保留当前题目、答案与提交进度", async () => {
+  const h = setup(); h.login(); const page = h.page("review");
+  page.onShow();
+  // onShow emits the heartbeat before loading the review items.
+  h.respond({ recorded: false });
+  h.respond([{source:"vocabulary",source_id:1,word:"hello",review_type:"spelling"}]);
+  await h.flush();
+  page.setData({answer:"hello",index:4,completed:4,saved:true});
+  page.onHide(); page.onShow();
+  assert.equal(page.data.answer,"hello"); assert.equal(page.data.index,4);
+  assert.equal(page.data.completed,4); assert.equal(page.data.saved,true);
+  assert(!h.pending.some(r=>r.url.includes("review/items")));
+  page.onUnload();
+});

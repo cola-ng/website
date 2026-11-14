@@ -38,7 +38,18 @@ def allow(enabled):call('PUT','/api/admin/sentence-audio/whitelist',{'provider_t
 def counts():return json.load(urlopen(upstream))
 
 catalog=call('GET','/api/ai-providers/catalog')
-assert catalog==json.loads((Path(__file__).parent/'provider-catalog.json').read_text())
+# The public model catalogue evolves independently of the sentence-audio contract.
+# Keep UI fixtures deterministic, while verifying the actual API shape and capabilities.
+assert len({p['id'] for p in catalog}) == len(catalog)
+for provider in catalog:
+    assert provider['label'] and provider['docs_url'].startswith('https://')
+    assert provider['checked_at'] and isinstance(provider['model_notes'], dict)
+    assert set(provider['regions']) <= {'cn', 'global'}
+    for capability in ['chat_models', 'tts_models', 'asr_models']:
+        assert isinstance(provider[capability], list)
+        assert all(isinstance(model, str) and model for model in provider[capability])
+    assert not {'api_key', 'base_url', 'secret'} & provider.keys()
+assert next(p for p in catalog if p['id']=='zhipu')['tts_models']
 assert {'qwen','deepseek','minimax','kimi','openai','anthropic','gemini','siliconflow','baidu','hunyuan'}<=set(p['id'] for p in catalog)
 call('GET','/api/ai-providers/catalog',auth=None,expected=401)
 pid=int(sql(f"SELECT id FROM user_ai_providers WHERE user_id={uid} AND provider_type='zhipu'"))

@@ -15,7 +15,7 @@ function verify(value,description){assert(value,description);checks++;}
 async function setup(context){
  await context.addInitScript(u=>{if(!sessionStorage.getItem('qa-responsive')){localStorage.setItem('colang.token','responsive-fixture');localStorage.setItem('colang.user',JSON.stringify(u));sessionStorage.setItem('qa-responsive','1');}},longUser);
  await context.route('**/api/**',route=>{
-  const url=new URL(route.request().url());let data=fixture(url,route.request().method());
+  const url=new URL(route.request().url());let data=fixture(url,route.request().method(),url.pathname.endsWith('/models')?route.request().postDataJSON():{});
   if(url.pathname==='/api/me')data=longUser;
   if(url.pathname==='/api/learn/chats')data=Array.from({length:12},(_,i)=>({id:i+1,title:'英语对话练习 '+(i+1)}));
   if(url.pathname.includes('/turns'))data={items:Array.from({length:20},(_,i)=>({...turn,id:i+1,speaker:i%2?'user':'ai',content_en:'A longer conversation message for reading, scrolling and viewport checks. Message '+(i+1)})),has_prev:false};

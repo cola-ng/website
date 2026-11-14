@@ -1,23 +1,6 @@
-#[macro_use]
-extern crate tracing;
-
-pub mod auth;
-mod config;
-mod db;
-mod error;
-mod global;
-mod hoops;
-mod models;
-mod routing;
-mod services;
-mod tasks;
-pub use global::*;
-pub mod user;
-pub use error::AppError;
+use colang::{AppConfig, db, routing, tasks};
 use salvo::oapi::OpenApi;
 use salvo::prelude::*;
-
-use crate::config::AppConfig;
 
 #[tokio::main]
 async fn main() {
@@ -46,7 +29,7 @@ async fn main() {
     db::init(&app_config.database).await;
 
     // Start background tasks
-    tasks::start_all();
+    let (stop_tasks, tasks_done) = tasks::start_all();
 
     salvo::http::request::set_global_secure_max_size(100_000_000);
     let router = routing::router();
@@ -74,5 +57,27 @@ async fn main() {
 
     let acceptor = TcpListener::new(bind_addr).bind().await;
     println!("acceptor: {:?}", acceptor);
-    Server::new(acceptor).serve(router).await;
+    let server = Server::new(acceptor);
+    let handle = server.handle();
+    tokio::spawn(async move {
+        shutdown_signal().await;
+        handle.stop_graceful(Some(std::time::Duration::from_secs(15)));
+    });
+    server.serve(router).await;
+    let _ = stop_tasks.send(());
+    let _ = tasks_done.await;
+}
+
+async fn shutdown_signal() {
+    #[cfg(unix)]
+    {
+        let mut terminate =
+            tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+                .expect("install SIGTERM handler");
+        tokio::select! { _ = tokio::signal::ctrl_c() => {}, _ = terminate.recv() => {} }
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = tokio::signal::ctrl_c().await;
+    }
 }

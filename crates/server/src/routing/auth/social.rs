@@ -563,7 +563,7 @@ async fn complete(req: &mut Request, res: &mut Response) -> AppResult<()> {
     }
     let config = AppConfig::get();
     let token =
-        crate::auth::issue_access_token(user.id, &config.jwt_secret, config.jwt_ttl.as_secs())
+        crate::auth::issue_access_token(user.id, user.token_version, &config.jwt_secret, config.jwt_ttl.as_secs())
             .map_err(|_| StatusError::internal_server_error().brief("无法完成登录，请重试"))?;
     let is_admin = crate::hoops::is_user_admin(user.id).await;
     let secure = std::env::var("PUBLIC_BASE_URL").is_ok_and(|v| v.starts_with("https://"));
@@ -651,7 +651,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires an explicitly isolated local colang_qa PostgreSQL database"]
     async fn oauth_database_flow() {
         let database = std::env::var("QA_DATABASE_URL").expect("QA_DATABASE_URL required");
@@ -670,7 +670,7 @@ mod tests {
             space_path: String::new(),
         };
         crate::config::APP_CONFIG.set(config.clone()).unwrap();
-        crate::db::init(&config.database);
+        crate::db::init(&config.database).await;
         let suffix = random_code();
         let subject = format!("google-{suffix}");
         let email = format!("oauth-{suffix}@example.test");

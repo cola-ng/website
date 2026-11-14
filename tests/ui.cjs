@@ -18,8 +18,8 @@ async function scenario(name,run){await run();checks++;results.push({name,status
 (async()=>{
   browser=await chromium.launch({headless:true,args:['--use-fake-device-for-media-stream','--use-fake-ui-for-media-stream']});
   const context=await browser.newContext({viewport:{width:1280,height:900},permissions:['microphone']});
-  page=await context.newPage();const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',page.url(),e.message);});page.on('dialog',d=>d.accept());page.on('console',m=>{if(m.type()==='error'&&m.text().startsWith('Glory frame:'))errors.push(m.text());});
-  await page.route('**/api/**',route=>route.fulfill({json:fixture(new URL(route.request().url()),route.request().method())}));
+  page=await context.newPage();const errors=[];page.on('pageerror',e=>{errors.push(e.message);console.error('PAGE ERROR',page.url(),e.message);});page.on('dialog',d=>d.accept());page.on('console',m=>{if(m.type()==='error'){if(m.text().startsWith('Glory frame:'))errors.push(m.text());console.error('BROWSER CONSOLE',page.url(),m.text());}});
+  await page.route('**/api/**',route=>route.fulfill({json:fixture(new URL(route.request().url()),route.request().method(),route.request().url().endsWith('/models')?route.request().postDataJSON():{})}));
   await scenario('slow WASM startup shows a loading message and removes it after mounting',async()=>{
     let release;const gate=new Promise(resolve=>{release=resolve;});
     await page.route('**/*_bg.wasm',async route=>{await gate;await route.continue();});
@@ -86,7 +86,7 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     assert.equal(await page.getByRole('dialog').count(),0);await section.getByRole('button',{name:'新建记录',exact:true}).click();const editor=page.getByRole('dialog');
     await editor.getByRole('button',{name:'保存记录',exact:true}).click();await editor.getByRole('alert').waitFor();assert.equal(await editor.getByRole('textbox',{name:'代码 *',exact:true}).getAttribute('aria-invalid'),'true');
     await editor.getByRole('textbox',{name:'代码 *',exact:true}).fill('ui-new');await editor.getByRole('textbox',{name:'英文名称 *',exact:true}).fill('UI new');await editor.getByRole('textbox',{name:'中文名称 *',exact:true}).fill('界面测试');
-    await page.route('**/api/asset/domains',async route=>{if(route.request().method()==='POST'){await new Promise(r=>setTimeout(r,400));return route.fulfill({status:500,json:{error:{brief:'save failed'}}});}return route.fulfill({json:fixture(new URL(route.request().url()),route.request().method())});});
+    await page.route('**/api/asset/domains',async route=>{if(route.request().method()==='POST'){await new Promise(r=>setTimeout(r,400));return route.fulfill({status:500,json:{error:{brief:'save failed'}}});}return route.fulfill({json:fixture(new URL(route.request().url()),route.request().method(),route.request().url().endsWith('/models')?route.request().postDataJSON():{})});});
     await editor.getByRole('button',{name:'保存记录',exact:true}).click();await page.waitForFunction(()=>document.querySelector('.editor input')?.disabled);assert(await editor.getByRole('button',{name:'取消编辑',exact:true}).isDisabled());await editor.getByText('save failed',{exact:true}).waitFor();assert.equal(await editor.getByRole('textbox',{name:'代码 *',exact:true}).inputValue(),'ui-new');await page.unroute('**/api/asset/domains');
     await page.keyboard.press('Escape');assert.equal(await page.getByRole('dialog').count(),0);
   });
@@ -177,7 +177,7 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.screenshot({path:path.join(output,'account-linked.png'),fullPage:true});
     await page.getByRole('button',{name:'解除 Google 绑定',exact:true}).click();await page.getByRole('button',{name:'绑定 Google',exact:true}).waitFor();assert.equal(linked.length,1);assert(await page.getByRole('button',{name:'解除 GitHub 绑定',exact:true}).isDisabled());
     await page.screenshot({path:path.join(output,'account-unlinked.png'),fullPage:true});
-    await page.route('**/api/me/change-password',route=>{hasPassword=true;return route.fulfill({json:{success:true}});});
+    await page.route('**/api/me/change-password',route=>{hasPassword=true;return route.fulfill({json:{success:true,access_token:"ui-password-rotated"}});});
     await page.getByRole('button',{name:'设置密码',exact:true}).click();await page.getByRole('textbox',{name:'新密码',exact:true}).fill('valid-password');await page.getByRole('textbox',{name:'确认新密码',exact:true}).fill('valid-password');await page.getByRole('dialog').getByRole('button',{name:'设置密码',exact:true}).click();await page.getByRole('button',{name:'修改密码',exact:true}).waitFor();
     await page.getByRole('button',{name:'解除 GitHub 绑定',exact:true}).click();await page.getByRole('button',{name:'绑定 GitHub',exact:true}).waitFor();assert.equal(linked.length,0);
     await page.unroute('**/api/me/account-status');await page.unroute('**/api/me/oauth/*');await page.unroute('**/api/me/change-password');
@@ -187,6 +187,8 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.route('**/api/ai-providers**',route=>{
       const p=new URL(route.request().url()).pathname,method=route.request().method();
       if(p.endsWith('/catalog'))return route.fulfill({json:require('./provider-catalog.json')});
+      if(p.endsWith('/models'))return route.fulfill({json:fixture(new URL(route.request().url()),method,route.request().postDataJSON())});
+      if(method==='GET'&&(p.includes('/voice-catalog/')||p.endsWith('/voices')))return route.fulfill({json:fixture(new URL(route.request().url()),method)});
       if(p.endsWith('/access'))return route.fulfill({json:{source:rows.some(r=>r.is_active)?'personal':'none',platform_allowed:false,message:rows.some(r=>r.is_active)?'当前使用你自己的 AI 服务。':'请配置自己的密钥，免费用户不能使用平台 AI。'}});
       if(p==='/api/ai-providers'&&method==='GET')return route.fulfill({json:rows});
       if(p==='/api/ai-providers'&&method==='POST'){saved=route.request().postDataJSON();assert.deepEqual(saved.activate_for,['chat','tts','asr']);rows=[{id:44,provider_type:saved.provider_type,is_active:true,settings:{...saved.settings,api_key:'********'}}];return route.fulfill({status:201,json:rows[0]});}
@@ -217,7 +219,7 @@ async function scenario(name,run){await run();checks++;results.push({name,status
     await page.getByRole('combobox',{name:'语音合成 TTS模型',exact:true}).waitFor();assert.equal(await page.getByRole('combobox',{name:'语音识别 ASR模型',exact:true}).count(),0);
     await platform.fill('OpenAI');await page.getByRole('option',{name:'OpenAI',exact:true}).click();
     await page.waitForFunction(()=>[...document.querySelectorAll('input')].some(e=>e.value==='gpt-transcribe'));assert.equal(await page.getByRole('combobox',{name:'语音识别 ASR模型',exact:true}).inputValue(),'gpt-transcribe');
-    await page.getByRole('checkbox',{name:'配置语音合成 TTS',exact:true}).uncheck();await settle(page);assert.equal(await page.getByRole('textbox',{name:'TTS 音色 ID',exact:true}).count(),0);
+    await page.getByRole('checkbox',{name:'配置语音合成 TTS',exact:true}).uncheck();await settle(page);assert.equal(await page.locator('.voice-picker').count(),0);
     await platform.fill('unknown-platform');await settle(page);assert(await page.getByRole('button',{name:'添加并启用',exact:true}).isDisabled());await page.keyboard.press('Escape');await page.getByRole('button',{name:'关闭 AI 配置',exact:true}).click();
   });
   await scenario('example audio plays stored files without keys and generates only on an explicit click',async()=>{
@@ -252,6 +254,44 @@ async function scenario(name,run){await run();checks++;results.push({name,status
   await scenario('admin lists retain word status and reading sentence text',async()=>{
     await page.goto(base+'/admin/dict');await page.getByRole('cell',{name:'启用',exact:true}).waitFor();
     await page.goto(base+'/admin/read');await page.getByRole('tab',{name:'跟读句子',exact:true}).click();await page.getByRole('cell',{name:'Hello world.',exact:true}).waitFor();await page.getByRole('cell',{name:'你好，世界。',exact:true}).waitFor();
+  });
+  await scenario('navigation updates title and keyboard focus',async()=>{
+    await page.goto(base+'/dict/hello');await page.getByRole('heading',{name:'hello',exact:true}).waitFor();
+    await page.getByRole('button',{name:/我的账户/}).click();
+    await page.getByRole('link',{name:'我的学习',exact:true}).click();
+    await page.waitForFunction(()=>document.title==='账户设置 · Colang'&&document.querySelector('main')?.contains(document.activeElement));
+  });
+  await scenario('late 401 from an old credential preserves the newer session',async()=>{
+    let release,seen;const observed=new Promise(resolve=>seen=resolve);
+    await page.route('**/api/me/account-status',async route=>{seen();await new Promise(resolve=>release=resolve);await route.fulfill({status:401,json:{error:{brief:'old session'}}});});
+    await page.goto(base+'/me');await observed;
+    await page.evaluate(()=>localStorage.setItem('colang.token','newer-ui-fixture'));
+    const response=page.waitForResponse(r=>r.url().endsWith('/api/me/account-status'));
+    release();await response;await settle(page);
+    assert.equal(await page.evaluate(()=>localStorage.getItem('colang.token')),'newer-ui-fixture');
+    await page.unroute('**/api/me/account-status');
+  });
+  await scenario('device AI key draft survives detail tabs without saving',async()=>{
+    const device={id:'qa-device',name:'QA Amigo',online:true,configuration:{revision:1,volume:30},applied_revision:1};
+    const profile={active_agent_id:'qa-agent',agents:[{id:'qa-agent',name:'QA Companion',role_prompt:'Help me learn.',voice:{}}],settings:{english_level:'A1'},configuration:{volume:30}};
+    let saves=0;
+    await page.route('**/api/amigo/**',route=>{
+      const url=new URL(route.request().url()),path=url.pathname;
+      if(route.request().method()==='PUT')saves++;
+      const body=path.endsWith('/ai')?{bindings:{chat:null,asr:null,tts:null,realtime:null},effective:{}}:
+        path.endsWith('/devices')?[device]:path.endsWith('/qa-device')?profile:[];
+      return route.fulfill({json:body});
+    });
+    await page.goto(base+'/amigo/devices/qa-device');
+    const cap=page.locator('.device-ai-chat');await cap.getByRole('button',{name:'设备专用',exact:true}).click();
+    await cap.locator('input[type="password"]').fill('qa-unsaved-private-key');
+    await page.getByRole('button',{name:'调用日志',exact:true}).click();
+    await page.getByRole('button',{name:'设备配置',exact:true}).click();
+    assert.equal(await cap.locator('input[type="password"]').inputValue(),'qa-unsaved-private-key');
+    assert.equal(saves,0);
+    assert(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:path.join(output,'amigo-device-retained.png'),fullPage:true});
+    await page.unroute('**/api/amigo/**');
   });
   assert.deepEqual(errors,[]);fs.writeFileSync(path.join(output,'report.json'),JSON.stringify({pages:routes.length,viewports:[1280,390],audits:routes.length*2,results},null,2));for(const name of ['failure.png','failure.txt']){const file=path.join(output,name);if(fs.existsSync(file))fs.unlinkSync(file);}console.log(`${routes.length*2} page/viewport audits and ${checks-1} interaction regressions passed.`);
 })().catch(async error=>{if(page){await page.screenshot({path:path.join(output,'failure.png'),fullPage:true}).catch(()=>{});fs.writeFileSync(path.join(output,'failure.txt'),await page.locator('body').innerText().catch(()=>''));}console.error(error);process.exitCode=1;}).finally(async()=>{await browser?.close();});

@@ -70,11 +70,6 @@ async fn access_control(
     // headers.insert("Cross-Origin-Opener-Policy", "same-origin".parse().unwrap());
 }
 
-#[handler]
-pub async fn limit_rate() -> AppResult<()> {
-    Ok(())
-}
-
 // utf8 will cause complement testing fail.
 #[handler]
 pub async fn remove_json_utf8(

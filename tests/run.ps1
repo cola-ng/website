@@ -1,4 +1,4 @@
-param([int]$DatabasePort = 55439, [int]$ApiPort = 8129, [int]$WebPort = 5173, [int]$ProviderPort = 8134)
+param([int]$DatabasePort = 55439, [int]$ApiPort = 8129, [int]$WebPort = 5173, [int]$ProviderPort = 8134, [switch]$SkipBuild)
 $ErrorActionPreference = 'Stop'
 $repo = Split-Path $PSScriptRoot -Parent
 Set-Location -LiteralPath $repo
@@ -23,13 +23,15 @@ try {
     }
     Checked { cargo test --locked -p colang-front }
     Checked { cargo clippy --locked -p colang-front --target wasm32-unknown-unknown -- -D warnings }
-    Checked { cargo build --locked --jobs 2 -p colang --bin colang }
-    Push-Location -LiteralPath (Join-Path $repo 'front')
-    try {
-        # 0.17 is also usable on development machines; locked builds were added later.
-        if ((trunk build --help | Out-String).Contains('--locked')) { Checked { trunk build --release --locked } }
-        else { Checked { trunk build --release } }
-    } finally { Pop-Location }
+    if (!$SkipBuild) {
+        Checked { cargo build --locked --profile qa --jobs 2 -p colang --bin colang }
+        Push-Location -LiteralPath (Join-Path $repo 'front')
+        try {
+            # 0.17 is also usable on development machines; locked builds were added later.
+            if ((trunk build --help | Out-String).Contains('--locked')) { Checked { trunk build --release --locked } }
+            else { Checked { trunk build --release } }
+        } finally { Pop-Location }
+    }
     Checked { & (Join-Path $pgBin 'initdb') -D $databaseDir -U colang_qa --auth=trust --encoding=UTF8 --locale=C }
     # Redirect to files when starting a daemon so inherited stdout does not hold the caller pipeline open.
     $pgStart = Start-Process -FilePath (Join-Path $pgBin 'pg_ctl.exe') -ArgumentList @('-D',$databaseDir,'-l',(Join-Path $artifacts "qa-postgres-$PID.log"),'-o',"`"-p $DatabasePort -h 127.0.0.1`"",'-w','start') -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-pg-start-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-pg-start-$PID.err")
@@ -37,8 +39,10 @@ try {
     if ($pgStart.ExitCode) { throw 'isolated PostgreSQL failed to start' }
     $startedDatabase = $true
     Checked { & (Join-Path $pgBin 'createdb') -h 127.0.0.1 -p $DatabasePort -U colang_qa colang_qa }
+    $gatewayDatabase = "amigo_test_qa_$PID"
+    Checked { & (Join-Path $pgBin 'createdb') -h 127.0.0.1 -p $DatabasePort -U colang_qa $gatewayDatabase }
     $environment = @{
-        DATABASE_URL=$databaseUrl; JWT_SECRET='isolated-local-qa-secret'; BIND_ADDR="127.0.0.1:$ApiPort"
+        DATABASE_URL=$databaseUrl; JWT_SECRET='qa-8e49ea177bb247cb9a401a8696a7ed8e'; BIND_ADDR="127.0.0.1:$ApiPort"
         STATIC_DIR=(Join-Path $repo 'front/dist'); SPACE_PATH=(Join-Path $artifacts "qa-space-$PID")
         AI_PROVIDER_DEFAULT='zhipu'; ZHIPU_API_KEY='qa-platform-key'; ZHIPUAI_API_KEY='qa-platform-key'
         ZHIPUAI_BASE_URL="http://127.0.0.1:$ProviderPort"
@@ -52,23 +56,31 @@ try {
         if ($providerProcess.HasExited) { throw 'QA provider stub exited' }
         try { Invoke-RestMethod $env:QA_PROVIDER_URL | Out-Null; break } catch { Start-Sleep -Milliseconds 200 }
     }
-    $apiProcess = Start-Process -FilePath (Join-Path $artifacts 'debug/colang.exe') -WorkingDirectory $repo -Environment $environment -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-api-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-api-$PID.err")
+    $apiProcess = Start-Process -FilePath (Join-Path $artifacts 'qa/colang.exe') -WorkingDirectory $repo -Environment $environment -PassThru -WindowStyle Hidden -RedirectStandardOutput (Join-Path $artifacts "qa-api-$PID.log") -RedirectStandardError (Join-Path $artifacts "qa-api-$PID.err")
     $ready=$false
     for ($attempt=0; $attempt -lt 40; $attempt++) {
         if ($apiProcess.HasExited) { throw 'QA API exited during startup; inspect its log in target_directory' }
         try { Invoke-RestMethod "http://127.0.0.1:$ApiPort/api" | Out-Null; $ready=$true; break } catch { Start-Sleep -Milliseconds 500 }
     }
     if (!$ready) { throw 'QA API failed to become ready' }
+    $env:TEST_DATABASE_URL=$databaseUrl
+    $env:AMIGO_TEST_DATABASE_URL="postgresql://colang_qa@127.0.0.1:${DatabasePort}/$gatewayDatabase"
     $env:QA_DATABASE_URL=$databaseUrl
     $env:QA_API="http://127.0.0.1:$ApiPort"
     $env:QA_WEB="http://127.0.0.1:$WebPort"
     $env:QA_ARTIFACTS=$artifacts
     $env:QA_SPACE_PATH=$environment.SPACE_PATH
+    Checked { node --test tests/platform.test.cjs }
+    Checked { npm test --prefix miniprogram }
     Checked { python tests/api.py }
+    Checked { python tests/review_integrity.py }
     Checked { python tests/providers.py }
     Checked { python tests/sentence_audio.py }
     Checked { python tests/voice.py }
     Checked { cargo test --locked --jobs 2 -p colang --lib }
+    Checked { cargo test --locked --jobs 2 -p colang --lib pool_leases_are_released_between_queries_and_after_failures -- --ignored }
+    Checked { cargo test --locked --jobs 2 -p colang --lib gateway_end_to_end -- --ignored }
+    Checked { cargo test --locked --jobs 2 -p colang --lib study_flush_database_flow -- --ignored }
     Checked { cargo test --locked --jobs 2 -p colang --lib oauth_database_flow -- --ignored }
     Checked { cargo test --locked --jobs 2 -p colang --lib chat_stream_database_flow -- --ignored }
     Checked { python tests/oauth.py }
@@ -86,5 +98,5 @@ try {
     if ($webProcess -and !$webProcess.HasExited) { Stop-Process -Id $webProcess.Id }
     if ($apiProcess -and !$apiProcess.HasExited) { Stop-Process -Id $apiProcess.Id }
     if ($startedDatabase) { & (Join-Path $pgBin 'pg_ctl') -D $databaseDir -m fast -w stop }
-    Remove-Item Env:QA_DATABASE_URL,Env:QA_API,Env:QA_WEB,Env:QA_ARTIFACTS,Env:QA_SPACE_PATH,Env:QA_PROVIDER_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:TEST_DATABASE_URL,Env:AMIGO_TEST_DATABASE_URL,Env:QA_DATABASE_URL,Env:QA_API,Env:QA_WEB,Env:QA_ARTIFACTS,Env:QA_SPACE_PATH,Env:QA_PROVIDER_URL -ErrorAction SilentlyContinue
 }

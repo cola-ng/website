@@ -519,6 +519,15 @@ pub struct StudyTimeIncrement {
 }
 
 impl StudyTimeIncrement {
+    pub fn merge(&mut self, other: &Self) {
+        self.chat_seconds += other.chat_seconds;
+        self.review_seconds += other.review_seconds;
+        self.stage_seconds += other.stage_seconds;
+        self.read_seconds += other.read_seconds;
+        self.dictionary_seconds += other.dictionary_seconds;
+        self.translate_seconds += other.translate_seconds;
+        self.heartbeat_count += other.heartbeat_count;
+    }
     pub fn add_seconds(&mut self, page_type: PageType, seconds: i32) {
         match page_type {
             PageType::Chat => self.chat_seconds += seconds,

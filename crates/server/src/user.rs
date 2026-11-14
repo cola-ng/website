@@ -108,7 +108,7 @@ pub async fn create_user(name: impl Into<String>, password: Option<&str>) -> App
         .get_result::<User>(&mut conn().await?)
         .await?;
     if let Some(password) = password {
-        let hash = crate::auth::hash_password(password)?;
+        let hash = crate::auth::hash_password(password).await?;
         diesel::insert_into(base_passwords::table)
             .values(NewPassword {
                 user_id: user.id,
@@ -383,19 +383,16 @@ pub async fn get_password_hash(user_id: i64) -> AppResult<String> {
 }
 
 pub async fn set_password(user_id: i64, password: &str) -> AppResult<()> {
-    if let Ok(hash) = crate::auth::hash_password(password) {
+    let hash = crate::auth::hash_password(password).await?;
+    crate::db::with_conn!(move |conn| horme::transaction(conn, async |conn| {
+        base_users::table.find(user_id).for_update().select(base_users::id).first::<i64>(conn).await?;
         diesel::insert_into(base_passwords::table)
-            .values(NewPassword {
-                user_id: user_id.to_owned(),
-                hash,
-                created_at: Utc::now(),
-            })
-            .execute(&mut conn().await?)
-            .await?;
+            .values(NewPassword { user_id, hash: hash.clone(), created_at: Utc::now() })
+            .on_conflict(base_passwords::user_id).do_update()
+            .set(base_passwords::hash.eq(hash)).execute(conn).await?;
+        diesel::update(base_users::table.find(user_id))
+            .set(base_users::token_version.eq(base_users::token_version + 1)).execute(conn).await?;
         Ok(())
-    } else {
-        Err(StatusError::internal_server_error()
-            .brief("password does not meet the requirements")
-            .into())
-    }
+    })).await.map_err(|_| StatusError::service_unavailable().brief("password update failed"))?;
+    Ok(())
 }

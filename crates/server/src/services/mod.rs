@@ -1,8 +1,15 @@
 //! AI services provided by the supported model clients.
 use std::result::Result;
+pub mod amigo;
+pub mod asr_stream;
+pub mod minimax;
+pub mod ocr;
+
 
 pub mod activity;
 pub mod provider_catalog;
+pub mod model_catalog;
+pub mod openai_realtime;
 pub mod compatible;
 pub mod ai_provider;
 pub mod chat_stream;
@@ -188,7 +195,11 @@ pub fn create_provider_from_user_config(provider_type: &str, settings: &Value) -
 struct ConfiguredZhipu { client:ZhipuClient, settings:Value }
 impl AiProvider for ConfiguredZhipu {
     fn name(&self)->&'static str {"zhipu"}
-    fn chat_service(&self)->Option<Arc<dyn ChatService>> {provider_catalog::model(&self.settings,"chat").and_then(|_|self.client.chat_service())}
+    fn chat_service(&self)->Option<Arc<dyn ChatService>> {
+        let model=provider_catalog::model(&self.settings,"chat")?;
+        if model.starts_with("glm-5") {Some(Arc::new(compatible::CompatibleClient::new("zhipu",self.settings.clone())))}
+        else {self.client.chat_service()}
+    }
     fn tts(&self)->Option<Arc<dyn TtsService>> {provider_catalog::model(&self.settings,"tts").and_then(|_|self.client.tts())}
     fn asr(&self)->Option<Arc<dyn AsrService>> {provider_catalog::model(&self.settings,"asr").and_then(|_|self.client.asr())}
 }
@@ -209,3 +220,5 @@ pub async fn personal_tts(user:i64)->Result<(String,Value,Arc<dyn TtsService>),s
     let service=provider.tts().ok_or_else(||salvo::http::StatusError::bad_request().brief("请先启用自己的 TTS 模型"))?;
     Ok((row.provider_type,settings,service))
 }
+
+pub mod voices;

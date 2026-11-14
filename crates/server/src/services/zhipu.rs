@@ -10,7 +10,6 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use outfox_zhipu::Client as ZhipuSdkClient;
 use outfox_zhipu::config::ZhipuConfig;
-use outfox_zhipu::spec::asr::AudioInput;
 use outfox_zhipu::spec::chat::{
     ChatMessage as ZhipuChatMessage, CreateChatCompletionRequestArgs, ResponseFormat,
 };
@@ -20,6 +19,9 @@ use super::ai_provider::{
     AiProvider, AiProviderError, AsrResponse, AsrService, ChatMessage, ChatService,
     StructuredChatResponse, TextIssue, TtsResponse, TtsService,
 };
+
+#[derive(serde::Deserialize)]
+struct TranscriptionPayload { text: String }
 
 const DEFAULT_CHAT_MODEL: &str = "glm-4-flash";
 
@@ -87,20 +89,53 @@ impl AsrService for ZhipuClient {
             audio_data.len()
         );
 
-        let audio = AudioInput::from_bytes(audio_data, "audio.wav");
-        let request = outfox_zhipu::spec::asr::CreateTranscriptionRequest {
-            audio: Some(audio),
-            ..Default::default()
-        };
-
+        // The pinned SDK adds application/json before multipart(), which appends
+        // a second Content-Type. Send one multipart Content-Type with its boundary.
+        // Reuse the SDK's configured URL, credentials and HTTP transport.
+        let config = self.client.config();
+        let mut headers = config
+            .headers()
+            .map_err(|_| AiProviderError::Config("invalid ASR headers".into()))?;
+        headers.remove(reqwest::header::CONTENT_TYPE);
+        let audio = reqwest::multipart::Part::bytes(audio_data)
+            .file_name("audio.wav")
+            .mime_str("audio/wav")
+            .map_err(|_| AiProviderError::Request("invalid ASR audio type".into()))?;
+        let form = reqwest::multipart::Form::new()
+            .text("model", "glm-asr-2512")
+            .part("file", audio);
         let response = self
             .client
-            .asr()
-            .transcribe(request)
+            .http_client()
+            .post(config.url("/audio/transcriptions"))
+            .headers(headers)
+            .multipart(form)
+            .send()
             .await
-            .map_err(|e| AiProviderError::Api(e.to_string()))?;
+            .map_err(|_| AiProviderError::Request("Zhipu ASR connection failed".into()))?;
+        if !response.status().is_success() {
+            let status = response.status().as_u16();
+            let body: serde_json::Value = response.json().await.unwrap_or_default();
+            let code = body
+                .pointer("/error/code")
+                .map(|v| v.to_string())
+                .unwrap_or_default();
+            let code: String = code
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                .take(32)
+                .collect();
+            tracing::warn!(status, provider_code = %code, "Zhipu ASR rejected request");
+            return Err(AiProviderError::Api(format!(
+                "Zhipu ASR HTTP {status} code {code}"
+            )));
+        }
+        let response: TranscriptionPayload = response
+            .json()
+            .await
+            .map_err(|_| AiProviderError::Parse("invalid Zhipu ASR response".into()))?;
 
-        tracing::debug!("Zhipu ASR completed, {} chars", response.text.len());
+        tracing::info!(text_bytes = response.text.len(), "Zhipu ASR completed");
 
         Ok(AsrResponse {
             text: response.text,
@@ -119,14 +154,14 @@ impl TtsService for ZhipuClient {
     async fn synthesize(
         &self,
         text: &str,
-        _voice: Option<&str>,
+        voice: Option<&str>,
         speed: Option<f32>,
     ) -> Result<TtsResponse, AiProviderError> {
         tracing::info!("Zhipu TTS: synthesizing {} chars", text.len());
 
         let mut request = CreateSpeechRequest {
             input: text.to_string(),
-            voice: serde_json::from_value(serde_json::json!(self.voice)).map_err(|_|AiProviderError::Config("智谱音色无效".into()))?,
+            voice: serde_json::from_value(serde_json::json!(voice.unwrap_or(&self.voice))).map_err(|_|AiProviderError::Config("智谱音色无效".into()))?,
             ..Default::default()
         };
 

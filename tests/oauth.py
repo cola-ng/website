@@ -129,7 +129,9 @@ assert not status['has_password'] and len(status['linked_identities']) == 1
 remaining = status['linked_identities'][0]['id']
 call('DELETE', '/api/me/oauth/' + str(remaining), token=social['access_token'], expected=400)
 new_password = 'QA-social-password-2026!'
-call('POST', '/api/me/change-password', {'new_password': new_password}, token=social['access_token'])
+_, changed = call('POST', '/api/me/change-password', {'new_password': new_password}, token=social['access_token'])
+call('GET', '/api/me', token=social['access_token'], expected=401)
+social['access_token'] = changed['access_token']
 call('DELETE', '/api/me/oauth/' + str(remaining), token=social['access_token'])
 _, status = call('GET', '/api/me/account-status', token=social['access_token'])
 assert status['has_password'] and status['linked_identities'] == []

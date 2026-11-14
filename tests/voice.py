@@ -34,7 +34,7 @@ def call(path, body, expected=200, auth=True, request_id=None, voice_mode=None, 
 
 account = call('/api/register', {'name': 'Voice QA', 'email': f'voice-{uuid.uuid4().hex}@example.test', 'password': 'VoiceQATest123!'})
 token = account['access_token']
-personal=call('/api/ai-providers', {'provider_type': 'zhipu', 'settings': {'api_key': 'qa-slow-test-key'}, 'set_active': True}, 201)
+personal=call('/api/ai-providers', {'provider_type': 'zhipu', 'settings': {'api_key': 'qa-slow-test-key', 'chat_model':'glm-4-flash'}, 'set_active': True}, 201)
 chat = call('/api/learn/chats', {'title': 'Voice cancellation QA'}, 201)['id']
 path = f'/api/learn/chats/{chat}'
 body = {'type': 'text', 'message': 'Hello'}
@@ -78,7 +78,7 @@ assert turn()['status'] == 'cancelled'
 second = uuid.uuid4().hex
 with call(path + '/send/stream', body, request_id=second) as stream:
     frames = [json.loads(line[6:]) for line in stream if line.startswith(b'data: ')]
-assert any(frame['event'] == 'done' for frame in frames)
+assert any(frame['event'] == 'done' for frame in frames), frames
 # A late repeat cancel targets the old request, leaving the next reply intact.
 call(path + '/cancel', {'request_id': request_id})
 assert turn()['status'] == 'cancelled'

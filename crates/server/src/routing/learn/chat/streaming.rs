@@ -643,7 +643,7 @@ mod tests {
         }
     }
 
-    #[tokio::test]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "requires an explicitly isolated local colang_qa database"]
     async fn chat_stream_database_flow() {
         let database = std::env::var("QA_DATABASE_URL").expect("QA_DATABASE_URL required");
@@ -667,7 +667,7 @@ mod tests {
             .into(),
         };
         crate::config::APP_CONFIG.set(config.clone()).unwrap();
-        crate::db::init(&config.database);
+        crate::db::init(&config.database).await;
         let suffix = crate::auth::random_code();
         let (user, chat) = with_conn!(move |conn| {
             let user = diesel::insert_into(base_users::table)

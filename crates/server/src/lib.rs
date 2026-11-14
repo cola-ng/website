@@ -1,3 +1,4 @@
+#![deny(unused_must_use)]
 #[macro_use]
 extern crate tracing;
 
@@ -8,8 +9,9 @@ mod error;
 mod global;
 mod hoops;
 pub mod models;
-mod routing;
+pub mod routing;
 pub mod services;
+pub mod tasks;
 pub mod user;
 
 pub use config::{AppConfig, DbConfig};

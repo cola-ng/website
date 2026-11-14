@@ -1,0 +1,13 @@
+{
+  "source": "amigo/crates/amigo",
+  "sha256": {
+    "Cargo.toml": "4b491d9c390ac7ccc9970489377ea72c0d4cbdb3c367bfc17221102e11b85983",
+    "examples/gateway_simulator.rs": "84ee45e79455e9be791dcfd74cc2030bdc326a0136295be77978205caae596cc",
+    "examples/simulator.rs": "1c7a23312a2b6b6b065139fad137fa883b1dbecf745650da2a4dcfd9f456a9d1",
+    "src/audio.rs": "2c0b6da7351162929fca2398aab3e1eb70e59fe1e012188a73cc0fbdb67ab117",
+    "src/lib.rs": "b87e194f11d73e35c82fefa558ff6b25d0bcc03ff64031cfaa1cf656f4d14189",
+    "src/protocol.rs": "1030740d8b7b34c985ef445ba2708ecd78add90ae3e9b2579888336ba7f26aa4",
+    "src/session.rs": "26243a0891d7e20174102c17408613bb6e050ad897662bc09b788d1c577fc29f",
+    "tests/device_flow.rs": "18235e860ac6c4bea09abb2b1315be395fa4c9b67378efa76b648c1e963652c5"
+  }
+}

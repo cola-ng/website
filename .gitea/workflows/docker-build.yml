@@ -10,11 +10,15 @@ on:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: website
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+        with:
+          path: website
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -44,8 +48,8 @@ jobs:
       - name: Build and push WUI Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./front/Dockerfile
+          context: ./website
+          file: ./website/front/Dockerfile
           platforms: linux/amd64
           push: ${{ gitea.event_name != 'pull_request' }}
           tags: ${{ steps.meta_wui.outputs.tags }}
@@ -68,8 +72,8 @@ jobs:
       - name: Build and push API Docker image
         uses: docker/build-push-action@v5
         with:
-          context: .
-          file: ./crates/server/Dockerfile
+          context: ./website
+          file: ./website/crates/server/Dockerfile
           platforms: linux/amd64
           push: ${{ gitea.event_name != 'pull_request' }}
           tags: ${{ steps.meta_api.outputs.tags }}

@@ -61,7 +61,12 @@ export async function startRecording() {
   const owner=++recordingSequence;
   recordingOwner=owner;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({audio: true});
+    const acquired = await navigator.mediaDevices.getUserMedia({audio: true});
+    if (recordingOwner !== owner) {
+      acquired.getTracks().forEach(track => track.stop());
+      throw new Error('录音已取消');
+    }
+    stream = acquired;
     const mimeType = ['audio/webm;codecs=opus', 'audio/mp4', 'audio/webm'].find(t => MediaRecorder.isTypeSupported(t));
     recorder = new MediaRecorder(stream, mimeType ? {mimeType} : {});
     chunks = [];
@@ -105,8 +110,14 @@ export async function startRecording() {
     recorder.start();
     timer = setTimeout(() => { if (recorder?.state === 'recording') recorder.stop(); }, 60000);
     return owner;
-  } catch (error) { release(); recorder = undefined; pending = undefined; recordingOwner=undefined; rejectRecording=undefined; throw error; }
-  finally { starting = false; }
+  } catch (error) {
+    if (recordingOwner === owner) {
+      release(); recorder=undefined; pending=undefined; recordingOwner=undefined; rejectRecording=undefined;
+      starting=false;
+    }
+    throw error;
+  }
+  finally { if (recordingOwner === owner) starting=false; }
 }
 export async function stopRecording() {
   if (!pending) throw new Error('尚未开始录音');
@@ -120,7 +131,7 @@ export function cancelRecording(owner) {
   if (recorder) { recorder.onstop=null; recorder.onerror=null; recorder.ondataavailable=null; if(recorder.state==='recording')recorder.stop(); }
   release(); recorder=undefined; chunks=[];
   rejectRecording?.(new Error('录音已取消'));
-  pending=undefined; recordingOwner=undefined; rejectRecording=undefined;
+  pending=undefined; recordingOwner=undefined; rejectRecording=undefined; starting=false;
 }
 export function stopAudio() {
   audioGeneration++;
@@ -183,3 +194,22 @@ export function voiceWaiting(session) { session?.waiting(); }
 export function voiceReset(session) { session?.interrupt();session?.awaitReply(); }
 
 export function voiceAudio(session,frame) { session?.audioEvent(JSON.parse(frame)); }
+
+
+export async function playAudioData(encoded,mime) {
+  if(!['audio/mpeg','audio/wav'].includes(mime)||encoded.length>3*1024*1024)throw Error('试听音频无效');
+  stopAudio();const generation=audioGeneration;
+  const bytes=Uint8Array.from(atob(encoded),c=>c.charCodeAt(0));
+  objectUrl=URL.createObjectURL(new Blob([bytes],{type:mime}));audio=new Audio(objectUrl);
+  audio.onended=()=>{if(generation===audioGeneration)stopAudio();};await audio.play();
+}
+
+let navigationGeneration = 0;
+export function focusPageHeading() {
+  const generation = ++navigationGeneration;
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    if (generation !== navigationGeneration) return;
+    const heading = document.querySelector('main h1, main [role="heading"], main');
+    if (heading) { heading.setAttribute('tabindex','-1'); heading.focus({preventScroll:true}); }
+  }));
+}

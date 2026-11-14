@@ -51,24 +51,19 @@ pub async fn get_wallet(depot: &mut Depot) -> JsonResult<WalletInfo> {
     let user_id = depot.user_id()?;
 
     let (account, transactions) = with_conn!(move |conn| {
-        // Get or create wallet account
-        let account: WalletAccount = if let Some(account) = wallet_accounts::table
+        diesel::insert_into(wallet_accounts::table)
+            .values(NewWalletAccount {
+                user_id,
+                currency: "CNY".into(),
+            })
+            .on_conflict(wallet_accounts::user_id)
+            .do_nothing()
+            .execute(conn)
+            .await?;
+        let account: WalletAccount = wallet_accounts::table
             .filter(wallet_accounts::user_id.eq(user_id))
             .first(conn)
-            .await
-            .optional()?
-        {
-            account
-        } else {
-            let new_wallet = NewWalletAccount {
-                user_id,
-                currency: "CNY".to_string(),
-            };
-            diesel::insert_into(wallet_accounts::table)
-                .values(&new_wallet)
-                .get_result(conn)
-                .await?
-        };
+            .await?;
 
         // Get recent transactions
         let transactions: Vec<WalletTransaction> = wallet_transactions::table
@@ -209,6 +204,11 @@ pub async fn get_current_subscription(depot: &mut Depot) -> JsonResult<CurrentSu
                     .eq("active")
                     .or(user_subscriptions::status.eq("trial")),
             )
+            .filter(
+                user_subscriptions::expires_at
+                    .is_null()
+                    .or(user_subscriptions::expires_at.gt(Utc::now())),
+            )
             .order(user_subscriptions::created_at.desc())
             .first(conn)
             .await
@@ -281,7 +281,27 @@ pub async fn subscribe(
     let plan_code = input.plan_code.clone();
     let use_trial = input.use_trial.unwrap_or(true);
 
-    let (subscription, plan) = with_conn!(move |conn| {
+    let (subscription, plan) = with_conn!(move |conn| horme::transaction(conn, async |conn| {
+        // Serialize all subscription transitions for this account.
+        base_users::table
+            .find(user_id)
+            .for_update()
+            .select(base_users::id)
+            .first::<i64>(conn)
+            .await?;
+        diesel::update(
+            user_subscriptions::table
+                .filter(user_subscriptions::user_id.eq(user_id))
+                .filter(user_subscriptions::status.eq_any(["active", "trial"]))
+                .filter(user_subscriptions::expires_at.le(Utc::now())),
+        )
+        .set((
+            user_subscriptions::status.eq("expired"),
+            user_subscriptions::auto_renew.eq(false),
+            user_subscriptions::next_billing_at.eq(None::<chrono::DateTime<Utc>>),
+        ))
+        .execute(conn)
+        .await?;
         // Get the plan
         let plan: SubscriptionPlan = subscription_plans::table
             .filter(subscription_plans::code.eq(&plan_code))
@@ -298,6 +318,11 @@ pub async fn subscribe(
                 user_subscriptions::status
                     .eq("active")
                     .or(user_subscriptions::status.eq("trial")),
+            )
+            .filter(
+                user_subscriptions::expires_at
+                    .is_null()
+                    .or(user_subscriptions::expires_at.gt(Utc::now())),
             )
             .first(conn)
             .await
@@ -333,6 +358,18 @@ pub async fn subscribe(
         // For paid plans, check if trial is available and requested
         let trial_days = plan.trial_days.unwrap_or(0);
         if use_trial && trial_days > 0 {
+            let claimed = diesel::sql_query(
+                "INSERT INTO subscription_trial_claims(user_id) VALUES ($1) ON CONFLICT DO NOTHING",
+            )
+            .bind::<diesel::sql_types::BigInt, _>(user_id)
+            .execute(conn)
+            .await?;
+            if claimed == 0 {
+                return Err(horme::Error::from(diesel::result::Error::DatabaseError(
+                    diesel::result::DatabaseErrorKind::UniqueViolation,
+                    Box::new("trial_already_claimed".to_owned()),
+                )));
+            }
             let trial_ends = Utc::now() + chrono::Duration::days(trial_days as i64);
             let new_sub = NewUserSubscription {
                 user_id,
@@ -358,10 +395,12 @@ pub async fn subscribe(
             diesel::result::DatabaseErrorKind::NotNullViolation,
             Box::new("payment_required".to_string()),
         )))
-    })
+    }))
     .await
     .map_err(|e| {
-        if e.contains("already subscribed") {
+        if e.contains("trial_already_claimed") {
+            StatusError::conflict().brief("trial already claimed; choose a paid subscription")
+        } else if e.contains("already subscribed") {
             StatusError::conflict().brief("already have an active subscription")
         } else if e.contains("payment_required") {
             StatusError::payment_required().brief("payment required for this plan")
@@ -395,7 +434,13 @@ pub async fn cancel_subscription(
     let user_id = depot.user_id()?;
     let reason = input.reason.clone();
 
-    let subscription = with_conn!(move |conn| {
+    let subscription = with_conn!(move |conn| horme::transaction(conn, async |conn| {
+        base_users::table
+            .find(user_id)
+            .for_update()
+            .select(base_users::id)
+            .first::<i64>(conn)
+            .await?;
         // Get active subscription
         let subscription: UserSubscription = user_subscriptions::table
             .filter(user_subscriptions::user_id.eq(user_id))
@@ -403,6 +448,11 @@ pub async fn cancel_subscription(
                 user_subscriptions::status
                     .eq("active")
                     .or(user_subscriptions::status.eq("trial")),
+            )
+            .filter(
+                user_subscriptions::expires_at
+                    .is_null()
+                    .or(user_subscriptions::expires_at.gt(Utc::now())),
             )
             .first(conn)
             .await
@@ -429,7 +479,7 @@ pub async fn cancel_subscription(
         .await?;
 
         Ok::<_, horme::Error>(updated)
-    })
+    }))
     .await
     .map_err(|e| {
         if e.contains("NotFound") {

@@ -15,12 +15,14 @@ pub struct AuthCode {
     pub expires_at: DateTime<Utc>,
     pub used_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
+    pub token_version: i64,
 }
 
 #[derive(Insertable)]
 #[diesel(table_name = auth_codes)]
 pub struct NewAuthCode {
     pub user_id: i64,
+    pub token_version: i64,
     pub code_hash: String,
     pub redirect_uri: String,
     pub state: String,

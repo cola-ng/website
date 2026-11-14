@@ -3,6 +3,7 @@ use serde_json::Value;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Route {
     Landing,
+    Amigo(Option<String>),
     Login,
     Auth,
     AuthComplete,
@@ -24,6 +25,29 @@ pub enum Route {
     NotFound,
 }
 impl Route {
+    pub fn title(&self) -> &'static str {
+        match self {
+            Self::Landing => "Colang · 英语学习",
+            Self::Amigo(_) => "智能学伴 · Colang",
+            Self::Login => "登录 · Colang",
+            Self::Auth | Self::AuthComplete => "账户授权 · Colang",
+            Self::Dict(_) => "词典 · Colang",
+            Self::Translate => "翻译 · Colang",
+            Self::Chat(_) => "英语对话 · Colang",
+            Self::Review | Self::ReviewSession(_) => "复习练习 · Colang",
+            Self::Stages | Self::Stage(_) => "学习场景 · Colang",
+            Self::Read => "阅读跟读 · Colang",
+            Self::Me => "账户设置 · Colang",
+            Self::Favorites => "我的收藏 · Colang",
+            Self::Subscription => "订阅 · Colang",
+            Self::Feedback => "反馈 · Colang",
+            Self::Terms => "服务条款 · Colang",
+            Self::Privacy => "隐私政策 · Colang",
+            Self::Admin(_) => "内容管理 · Colang",
+            Self::NotFound => "页面未找到 · Colang",
+        }
+    }
+
     pub fn parse(path: &str) -> Self {
         let parts: Vec<_> = path
             .trim_matches('/')
@@ -33,6 +57,8 @@ impl Route {
         let id = |s: &str| s.parse::<i64>().ok().filter(|n| *n > 0);
         match parts.as_slice() {
             [] => Self::Landing,
+            ["amigo"] => Self::Amigo(None),
+            ["amigo", "devices", id] => Self::Amigo(Some((*id).into())),
             ["login"] => Self::Login,
             ["auth"] => Self::Auth,
             ["auth", "complete"] => Self::AuthComplete,
@@ -67,7 +93,8 @@ impl Route {
     pub fn requires_auth(&self) -> bool {
         matches!(
             self,
-            Self::Chat(_)
+            Self::Amigo(_)
+                | Self::Chat(_)
                 | Self::Translate
                 | Self::Review
                 | Self::ReviewSession(_)

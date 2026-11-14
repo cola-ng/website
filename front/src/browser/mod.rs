@@ -1,7 +1,9 @@
 mod account;
 mod admin;
+mod amigo;
 mod chat_stream;
 mod dashboard;
+mod device_ai;
 mod dictionary;
 mod learning;
 mod media;
@@ -10,6 +12,7 @@ mod routing;
 mod sentence_audio;
 mod theme;
 mod ui;
+mod voices;
 
 use crate::model::*;
 use glory::prelude::*;
@@ -108,7 +111,8 @@ pub async fn request(
     headers
         .set("Accept", "application/json")
         .map_err(js_error)?;
-    if let Some(token) = token() {
+    let sent_token = token();
+    if let Some(token) = &sent_token {
         headers
             .set("Authorization", &format!("Bearer {token}"))
             .map_err(js_error)?;
@@ -135,6 +139,9 @@ pub async fn request(
         .as_string()
         .unwrap_or_default();
     drop(timeout);
+    if token() != sent_token {
+        return Err("登录状态已变化，请重新操作".into());
+    }
     if !response.ok() {
         if status == 401 && path == "/api/login" {
             return Err("邮箱或密码不正确，请检查后重试".into());
@@ -231,6 +238,13 @@ impl Resource {
     }
 }
 pub fn start() -> std::result::Result<(), JsValue> {
+    // Preserve the Rust location as well as the JS/WASM stack when a page traps.
+    std::panic::set_hook(Box::new(|info| {
+        web_sys::console::error_2(
+            &JsValue::from_str(&format!("Colang panic: {info}")),
+            &js_sys::Error::new("Rust/WASM panic").into(),
+        );
+    }));
     theme::install()?;
     let root = document()
         .get_element_by_id("app")
@@ -288,6 +302,7 @@ pub fn start() -> std::result::Result<(), JsValue> {
                 .key(|entry| entry.clone())
                 .seed(move |(location, _)| {
                     let route = Route::parse(location.split(['?', '#']).next().unwrap_or("/"));
+                    document().set_title(route.title());
                     widget(move |scope| {
                         let logged =
                             !session.get().is_null() && session.get()["session_error"].is_null();
@@ -329,12 +344,16 @@ pub fn start() -> std::result::Result<(), JsValue> {
     APP.with(|app| *app.borrow_mut() = Some(web));
     Ok(())
 }
-fn main_navigation() -> impl Widget {
+fn main_navigation(session: Cage<Value>) -> impl Widget {
     view()
         .role(Role::Navigation)
         .name("主导航")
         .class("nav")
         .fill((
+            when(
+                session.map(|s| !s.is_null() && s["session_error"].is_null()),
+                || section_nav("智能学伴", "/amigo"),
+            ),
             section_nav("天天唠嗑", "/chat"),
             section_nav("温故知新", "/review"),
             section_nav("角色扮演", "/stages"),
@@ -349,7 +368,9 @@ fn header(session: Cage<Value>) -> impl Widget {
                 image().source("/colang-logo.svg").alt("开朗英语标志"),
                 text().content("开朗英语"),
             )),
-            view().class("desktop-navigation").fill(main_navigation()),
+            view()
+                .class("desktop-navigation")
+                .fill(main_navigation(session)),
             view().class("mobile-navigation").fill(
                 sapid::drawer("mobile-navigation")
                     .theme(theme::orange())
@@ -357,7 +378,7 @@ fn header(session: Cage<Value>) -> impl Widget {
                     .trigger_content(|| text().content("☰"))
                     .title("学习导航")
                     .close_label("关闭导航菜单")
-                    .content(main_navigation),
+                    .content(move || main_navigation(session)),
             ),
             when(
                 session.map(|s| !s.is_null() && s["session_error"].is_null()),
@@ -396,6 +417,8 @@ fn header(session: Cage<Value>) -> impl Widget {
 }
 fn page(route: Route, session: Cage<Value>) -> Nodes {
     let page: Box<dyn Widget> = match route {
+        Route::Amigo(None) => boxed(amigo::console()),
+        Route::Amigo(Some(id)) => boxed(amigo::device(id)),
         Route::Landing => boxed(dashboard::landing(session)),
         Route::Login => boxed(account::login_page(false)),
         Route::Auth => boxed(account::authorize()),

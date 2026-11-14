@@ -9,3 +9,6 @@ tests/node_modules
 uploads
 space
 *.sql
+
+# Embedded migrations are build inputs, unlike root database dumps.
+!crates/server/migrations/**/*.sql

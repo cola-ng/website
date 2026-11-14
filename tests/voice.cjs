@@ -43,7 +43,9 @@ exports.run=async({browser,fixture,base,artifacts})=>{
     await page.goto(`${base}/chat/${id}`);
     await page.getByRole('button',{name:'语音设置',exact:true}).click();
     assert.equal(await page.getByRole('button',{name:'用户配置的 TTS',exact:true}).getAttribute('aria-pressed'),'true');
-    await page.getByRole('button',{name:'浏览器系统语音',exact:true}).click();await page.keyboard.press('Escape');
+    await page.getByRole('button',{name:'浏览器系统语音',exact:true}).click();
+    await page.waitForFunction(()=>localStorage.getItem('chat.voice_output')==='browser');
+    await page.keyboard.press('Escape');
     await page.reload();
     assert.equal(await page.evaluate(()=>localStorage.getItem('chat.voice_output')),'browser');
     await page.getByRole('button',{name:'开启连续语音',exact:true}).click();
@@ -113,5 +115,9 @@ exports.run=async({browser,fixture,base,artifacts})=>{
     });
     assert.deepEqual(engine,{withoutAEC:'speaking',recording:'recording',onset:1,wavOnset:1,uploads:1});
     assert.deepEqual(errors,[]);console.log('PASS voice: real VAD/worklet, WAV, follow-up, playback interruption, cancellation, stale replies, onset preservation, AEC gate and cleanup');
+  } catch (error) {
+    await page.screenshot({path:path.join(artifacts,'qa-voice-failure.png'),fullPage:true}).catch(()=>{});
+    fs.writeFileSync(path.join(artifacts,'qa-voice-failure.txt'),await page.locator('body').innerText().catch(()=>''));
+    throw error;
   } finally { late?.();await context.close(); }
 };

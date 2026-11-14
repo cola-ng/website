@@ -20,3 +20,5 @@ pub use base::*;
 pub use chat::*;
 pub use oauth::*;
 pub use payment::*;
+
+pub mod companion;

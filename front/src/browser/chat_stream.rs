@@ -491,7 +491,8 @@ async fn receive(
     headers
         .set("Accept", "text/event-stream, application/json")
         .map_err(js_error)?;
-    if let Some(token) = token() {
+    let sent_token = token();
+    if let Some(token) = &sent_token {
         headers
             .set("Authorization", &format!("Bearer {token}"))
             .map_err(js_error)?;
@@ -506,6 +507,9 @@ async fn receive(
         .map_err(|_| "连接中断或超时，请重试".to_string())?
         .dyn_into()
         .map_err(js_error)?;
+        if token() != sent_token {
+            return Err("登录状态已变化，请重新操作".into());
+        }
         if !response.ok() {
             let status = response.status();
             let text = JsFuture::from(response.text().map_err(js_error)?)
@@ -513,7 +517,7 @@ async fn receive(
                 .map_err(js_error)?
                 .as_string()
                 .unwrap_or_default();
-            if status == 401 {
+            if status == 401 && token() == sent_token {
                 clear_auth();
             }
             return Err(error_message(&text, status));
@@ -529,6 +533,9 @@ async fn receive(
             let chunk = JsFuture::from(reader.read())
                 .await
                 .map_err(|_| "回复连接中断，请重试".to_string())?;
+            if token() != sent_token {
+                return Err("登录状态已变化，请重新操作".into());
+            }
             if js_sys::Reflect::get(&chunk, &JsValue::from_str("done"))
                 .map_err(js_error)?
                 .as_bool()

@@ -12,6 +12,7 @@ use serde_json::json;
 use crate::hoops::maybe_auth;
 use crate::{DepotExt, OkResponse};
 
+pub mod amigo;
 mod account;
 mod sentence_audio;
 mod achievement;
@@ -23,7 +24,8 @@ mod dict;
 mod learn;
 mod payment;
 
-pub fn router() -> Router {
+pub fn router() -> Router { router_with_amigo_backend(None) }
+pub fn router_with_amigo_backend(backend: Option<std::sync::Arc<dyn crate::services::amigo::tutor::Backend>>) -> Router {
     Router::new()
         .hoop(maybe_auth)
         .push(
@@ -48,6 +50,7 @@ pub fn router() -> Router {
                         .into_handler(),
                 )
                 .get(health)
+                .push(amigo::router_with_backend(backend))
                 .push(account::router())
                 .push(achievement::router())
                 .push(admin::router())

@@ -1,8 +1,8 @@
-use std::result::Result;
 use chrono::Utc;
 use horme::prelude::*;
 use salvo::prelude::*;
 use serde_json::Value;
+use std::result::Result;
 
 use crate::db::schema::*;
 use crate::db::with_conn;
@@ -17,12 +17,17 @@ pub fn router() -> Router {
         .post(create_provider)
         .push(Router::with_path("access").get(access))
         .push(Router::with_path("catalog").get(catalog))
+        .push(Router::with_path("models").post(discover_models))
+        .push(Router::with_path("voice-catalog/{kind}").get(voice_presets))
+        .push(Router::with_path("voices").get(active_voices))
+        .push(Router::with_path("voice-preview").post(voice_preview))
         .push(
             Router::with_path("{provider_id}")
                 .get(get_provider)
                 .put(update_provider)
                 .delete(delete_provider)
                 .push(Router::with_path("test").post(test_provider))
+                .push(Router::with_path("voices").get(saved_voices))
                 .push(Router::with_path("activate").post(activate_provider)),
         )
 }
@@ -64,6 +69,46 @@ fn validated_settings(kind: &str, settings: Value) -> Result<Value, StatusError>
 pub async fn catalog() -> JsonResult<Vec<provider_catalog::ProviderDefinition>> {
     json_ok(provider_catalog::catalog())
 }
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ModelQuery {
+    provider_type: String,
+    provider_id: Option<i64>,
+    api_key: Option<String>,
+    region: String,
+    workspace_id: Option<String>,
+    device_id: Option<uuid::Uuid>,
+    capability: Option<String>,
+}
+#[handler]
+async fn discover_models(req: &mut Request, depot: &mut Depot, res: &mut Response) -> JsonResult<Value> {
+    let user = depot.user_id()?;
+    let input: ModelQuery = req.parse_json().await.map_err(|_| StatusError::bad_request())?;
+    let definition = provider_catalog::definition(&input.provider_type).ok_or_else(StatusError::bad_request)?;
+    if !definition.regions.contains(&input.region.as_str()) { return Err(StatusError::bad_request().brief("服务区域无效").into()); }
+    let mut settings = if let Some(device_id) = input.device_id {
+        let row=device_provider(user,device_id,input.capability.as_deref().unwrap_or("tts")).await?;
+        if let Some(id)=input.provider_id {let p=voice_provider(user,Some(id)).await?;if p.provider_type!=input.provider_type{return Err(StatusError::bad_request().into())}p.settings}
+        else{row.filter(|p|p.kind==input.provider_type).map(|p|p.settings).unwrap_or_else(||serde_json::json!({}))}
+    } else if let Some(id) = input.provider_id {
+        let p = voice_provider(user, Some(id)).await?;
+        if p.provider_type != input.provider_type { return Err(StatusError::bad_request().brief("配置平台不匹配").into()); }
+        p.settings
+    } else { serde_json::json!({}) };
+    if let Some(key) = input.api_key.filter(|s| !s.trim().is_empty()) {
+        let key = key.trim();
+        if key.len() > 4096 || key.chars().any(char::is_control) || key.chars().all(|c| c == '*') { return Err(StatusError::bad_request().brief("API Key 格式无效").into()); }
+        settings["api_key"] = serde_json::json!(key);
+    }
+    if let Some(workspace) = input.workspace_id {
+        let workspace = workspace.trim();
+        if !workspace.is_empty() && !services::model_catalog::valid_workspace(workspace) { return Err(StatusError::bad_request().brief("业务空间 ID 格式无效").into()); }
+        settings["workspace_id"] = serde_json::json!(workspace);
+    }
+    settings["region"] = serde_json::json!(input.region);
+    res.headers_mut().insert("Cache-Control", "no-store".parse().unwrap());
+    json_ok(services::model_catalog::discover(&input.provider_type, &settings).await)
+}
 fn active_caps(
     settings: &Value,
     requested: Option<Vec<String>>,
@@ -101,17 +146,20 @@ async fn deactivate(
     if caps.iter().any(|c| c == "chat") {
         diesel::update(rows)
             .set(user_ai_providers::is_active.eq(false))
-            .execute(conn).await?;
+            .execute(conn)
+            .await?;
     }
     if caps.iter().any(|c| c == "tts") {
         diesel::update(rows)
             .set(user_ai_providers::tts_active.eq(false))
-            .execute(conn).await?;
+            .execute(conn)
+            .await?;
     }
     if caps.iter().any(|c| c == "asr") {
         diesel::update(rows)
             .set(user_ai_providers::asr_active.eq(false))
-            .execute(conn).await?;
+            .execute(conn)
+            .await?;
     }
     Ok(())
 }
@@ -146,7 +194,8 @@ pub async fn list_providers(depot: &mut Depot) -> JsonResult<Vec<UserAiProvider>
         user_ai_providers::table
             .filter(user_ai_providers::user_id.eq(user_id))
             .order(user_ai_providers::created_at.desc())
-            .load::<UserAiProvider>(conn).await
+            .load::<UserAiProvider>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to list providers"))?;
@@ -176,7 +225,8 @@ pub async fn create_provider(
                 .find(user_id)
                 .for_update()
                 .select(base_users::id)
-                .first::<i64>(conn).await?;
+                .first::<i64>(conn)
+                .await?;
             deactivate(conn, user_id, &caps).await?;
             let new_provider = NewUserAiProvider {
                 user_id,
@@ -189,8 +239,10 @@ pub async fn create_provider(
 
             diesel::insert_into(user_ai_providers::table)
                 .values(&new_provider)
-                .get_result::<UserAiProvider>(conn).await
-        }).await
+                .get_result::<UserAiProvider>(conn)
+                .await
+        })
+        .await
     })
     .await
     .map_err(|e| {
@@ -216,7 +268,8 @@ pub async fn get_provider(req: &mut Request, depot: &mut Depot) -> JsonResult<Us
         user_ai_providers::table
             .filter(user_ai_providers::id.eq(provider_id))
             .filter(user_ai_providers::user_id.eq(user_id))
-            .first::<UserAiProvider>(conn).await
+            .first::<UserAiProvider>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("provider not found"))?;
@@ -261,14 +314,17 @@ pub async fn delete_provider(
                 .find(user_id)
                 .for_update()
                 .select(base_users::id)
-                .first::<i64>(conn).await?;
+                .first::<i64>(conn)
+                .await?;
             diesel::delete(
                 user_ai_providers::table
                     .filter(user_ai_providers::id.eq(provider_id))
                     .filter(user_ai_providers::user_id.eq(user_id)),
             )
-            .execute(conn).await
-        }).await
+            .execute(conn)
+            .await
+        })
+        .await
     })
     .await
     .map_err(|_| provider_error())?;
@@ -297,7 +353,8 @@ pub async fn test_provider(
         user_ai_providers::table
             .filter(user_ai_providers::id.eq(provider_id))
             .filter(user_ai_providers::user_id.eq(user_id))
-            .first::<UserAiProvider>(conn).await
+            .first::<UserAiProvider>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::not_found().brief("provider not found"))?;
@@ -331,7 +388,8 @@ pub async fn test_provider(
             user_ai_providers::test_error.eq(saved_error),
             user_ai_providers::updated_at.eq(now),
         ))
-        .execute(conn).await
+        .execute(conn)
+        .await
     })
     .await
     .map_err(|_| provider_error())?;
@@ -370,11 +428,13 @@ async fn change_provider(
                 .find(user_id)
                 .for_update()
                 .select(base_users::id)
-                .first::<i64>(conn).await?;
+                .first::<i64>(conn)
+                .await?;
             let Some(existing) = user_ai_providers::table
                 .find(id)
                 .filter(user_ai_providers::user_id.eq(user_id))
-                .first::<UserAiProvider>(conn).await
+                .first::<UserAiProvider>(conn)
+                .await
                 .optional()?
             else {
                 return Ok(Err(StatusError::not_found().brief("AI 配置不存在")));
@@ -428,9 +488,11 @@ async fn change_provider(
                     test_status: settings_changed.then_some(None),
                     test_error: settings_changed.then_some(None),
                 })
-                .get_result::<UserAiProvider>(conn).await?;
+                .get_result::<UserAiProvider>(conn)
+                .await?;
             Ok(Ok(updated))
-        }).await
+        })
+        .await
     })
     .await
     .map_err(|_| provider_error())?
@@ -537,4 +599,115 @@ async fn test_provider_connection(provider_type: &str, settings: &Value) -> Vec<
     };
     let (chat, tts, asr) = tokio::join!(chat_test, tts_test, asr_test);
     [chat, tts, asr].into_iter().flatten().collect()
+}
+
+async fn voice_provider(user: i64, id: Option<i64>) -> Result<UserAiProvider, StatusError> {
+    with_conn!(move |conn| async {
+        let rows = user_ai_providers::table.filter(user_ai_providers::user_id.eq(user));
+        if let Some(id) = id {
+            rows.filter(user_ai_providers::id.eq(id)).first(conn).await
+        } else {
+            rows.filter(user_ai_providers::tts_active.eq(true))
+                .first(conn)
+                .await
+        }
+    })
+    .await
+    .map_err(|_| StatusError::not_found().brief("请先保存并选择 TTS 配置"))
+}
+async fn device_provider(user:i64,id:uuid::Uuid,cap:&str)->Result<Option<services::amigo::ai::Resolved>,StatusError>{
+    if !services::amigo::ai::CAPS.contains(&cap){return Err(StatusError::bad_request())}
+    let device=services::amigo::devices::owned(user,id).await.map_err(|_|StatusError::service_unavailable())?.ok_or_else(StatusError::not_found)?;
+    let bindings=services::amigo::ai::load(&device).await.map_err(|_|StatusError::service_unavailable())?;
+    services::amigo::ai::resolve(user,cap,bindings.get(cap).and_then(Option::as_ref)).await.map_err(|e|StatusError::bad_request().brief(e))
+}
+#[handler]
+async fn voice_presets(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<Vec<services::voices::Voice>> {
+    depot.user_id()?;
+    json_ok(services::voices::presets_for_model(
+        &req.param::<String>("kind").unwrap_or_default(),
+        &req.query::<String>("model").unwrap_or_default(),
+    ))
+}
+#[handler]
+async fn saved_voices(
+    req: &mut Request,
+    depot: &mut Depot,
+) -> JsonResult<Vec<services::voices::Voice>> {
+    let mut p = voice_provider(depot.user_id()?, Some(get_provider_id(req)?)).await?;
+    if let Some(model) = req.query::<String>("model").filter(|m| !m.is_empty()) {p.settings["tts_model"]=serde_json::json!(model);}
+    json_ok(
+        services::voices::list(&p.provider_type, &p.settings)
+            .await
+            .map_err(|e| StatusError::bad_gateway().brief(e))?,
+    )
+}
+#[handler]
+async fn active_voices(depot: &mut Depot) -> JsonResult<Vec<services::voices::Voice>> {
+    let p = voice_provider(depot.user_id()?, None).await?;
+    json_ok(
+        services::voices::list(&p.provider_type, &p.settings)
+            .await
+            .map_err(|e| StatusError::bad_gateway().brief(e))?,
+    )
+}
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct VoicePreview {
+    provider_id: Option<i64>,
+    voice_id: String,
+    provider_type: Option<String>,
+    tts_model: Option<String>,
+    api_key: Option<String>,
+    region: Option<String>,
+    device_id: Option<uuid::Uuid>,
+    capability: Option<String>,
+}
+#[handler]
+async fn voice_preview(
+    req: &mut Request,
+    depot: &mut Depot,
+    res: &mut Response,
+) -> JsonResult<Value> {
+    use base64::Engine;
+    let input: VoicePreview = req
+        .parse_json()
+        .await
+        .map_err(|_| StatusError::bad_request())?;
+    if !services::voices::valid(&input.voice_id) {
+        return Err(StatusError::bad_request().brief("请选择有效音色").into());
+    }
+    let user=depot.user_id()?;
+    let (kind,mut settings)=if let Some(id)=input.device_id {
+        let resolved=device_provider(user,id,input.capability.as_deref().unwrap_or("tts")).await?;
+        if let Some(provider)=input.provider_id {let p=voice_provider(user,Some(provider)).await?;if input.provider_type.as_ref().is_some_and(|kind|*kind!=p.provider_type){return Err(StatusError::bad_request().into())}(p.provider_type,p.settings)}
+        else if let Some(row)=resolved.filter(|r|input.provider_type.as_ref().is_none_or(|kind|*kind==r.kind)){(row.kind,row.settings)}
+        else {(input.provider_type.clone().ok_or_else(StatusError::bad_request)?,serde_json::json!({"chat_model":"","asr_model":"","tts_model":""}))}
+    }else if input.provider_id.is_some() || input.provider_type.is_none() {
+        let p=voice_provider(user,input.provider_id).await?;
+        if input.provider_type.as_ref().is_some_and(|kind| *kind!=p.provider_type){return Err(StatusError::bad_request().brief("配置平台不匹配").into());}
+        (p.provider_type,p.settings)
+    } else {
+        (input.provider_type.unwrap(),serde_json::json!({"chat_model":"","asr_model":"","tts_model":""}))
+    };
+    if let Some(model)=input.tts_model {settings["tts_model"]=serde_json::json!(model);}
+    if let Some(region)=input.region.filter(|s|!s.is_empty()) {settings["region"]=serde_json::json!(region);}
+    if let Some(key)=input.api_key.filter(|s|!s.trim().is_empty()) {settings["api_key"]=serde_json::json!(key);}
+    settings["tts_voice"]=serde_json::json!(input.voice_id);
+    let settings=validated_settings(&kind,settings)?;
+    let output = services::voices::preview(&kind, &settings, &input.voice_id)
+        .await
+        .map_err(|e| StatusError::bad_gateway().brief(e))?;
+    let mime = match output.format.as_str() {
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        _ => return Err(StatusError::bad_gateway().brief("不支持的试听格式").into()),
+    };
+    res.add_header("Cache-Control", "no-store", true)?;
+    json_ok(
+        serde_json::json!({"audio":base64::engine::general_purpose::STANDARD.encode(output.audio_data),"mime":mime}),
+    )
 }

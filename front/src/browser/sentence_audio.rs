@@ -11,23 +11,36 @@ pub fn player(
         let state = Resource::new(scope);
         let path = format!("/api/sentence-audio/{kind}/{id}");
         state.load(path.clone());
-        let watched=scope.cage(false);
-        let refresh_path=path.clone();
-        scope.effect(move||{
-            if state.data.get()["status"]=="generating" && !watched.get(){
-                watched.revise(|v|*v=true);let refresh_path=refresh_path.clone();
-                spawn(async move{
+        let watched = scope.cage(false);
+        let refresh_path = path.clone();
+        scope.effect(move || {
+            if state.data.get()["status"] == "generating" && !watched.get() {
+                watched.revise(|v| *v = true);
+                let refresh_path = refresh_path.clone();
+                spawn(async move {
                     for _ in 0..100 {
                         gloo_timers::future::TimeoutFuture::new(2000).await;
-                        if !watched.is_alive() {return;}
-                        let result=request("GET",&refresh_path,None).await;
-                        if !watched.is_alive(){return;}
+                        if !watched.is_alive() {
+                            return;
+                        }
+                        let result = request("GET", &refresh_path, None).await;
+                        if !watched.is_alive() {
+                            return;
+                        }
                         match result {
-                            Ok(value)=>{let done=value["status"]!="generating";state.data.revise(|v|*v=value);if done{break;}},
-                            Err(_)=>break,
+                            Ok(value) => {
+                                let done = value["status"] != "generating";
+                                state.data.revise(|v| *v = value);
+                                if done {
+                                    break;
+                                }
+                            }
+                            Err(_) => break,
                         }
                     }
-                    if watched.is_alive(){watched.revise(|v|*v=false);}
+                    if watched.is_alive() {
+                        watched.revise(|v| *v = false);
+                    }
                 });
             }
         });

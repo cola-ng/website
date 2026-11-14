@@ -47,3 +47,11 @@ OAuth 检查包含 `tests/oauth.py` 和隔离数据库中的 `oauth_database_flo
 `node tests/production.cjs` 在独立的无凭据浏览器中检查正式域名的公开页面、两家的授权跳转、HTTPS Cookie、PKCE 和取消授权。它只读取页面并创建随后取消的 OAuth 会话，不读取用户浏览器或修改生产内容。报告和截图位于 `target/qa-production`。
 
 需要真实对话检查时，可额外设置 `PRODUCTION_QA_FIXTURE` 为专门创建的临时测试账户文件，包含 `email`、`password`、`chat_id`；邮箱必须符合 `qa-stream-数字@example.invalid`。该可选流程会登录这个测试账户并发送一句英语，测量文字提前显示、确认回复保存；需先在该测试对话完成一次 API 生成作为对照，测试后清理专属测试数据。不要提供真实用户的账户、令牌或浏览器资料。
+
+## 安全与一致性回归（2026-11-14）
+
+`review_integrity.py` 在隔离库注入密码写入失败并验证原密码仍有效、改密撤销旧令牌、20路钱包/订阅并发、一次性试用及过期续订。`study_flush_database_flow` 使用临时触发器验证统计写入失败保留原批次，恢复后准确写入。
+
+`node --test tests/platform.test.cjs` 检查迟到麦克风授权与取消/新录音交错；`ui.cjs` 额外验证旧401不登出新会话、AI草稿切tab保留、标题与焦点。小程序回归包含后台恢复保留复习进度。
+
+一键脚本使用 `cargo build --profile qa`，可与开发服务同时存在。仅改测试数据时可以 `pwsh -File tests/run.ps1 -SkipBuild` 复用已验证的QA可执行文件与WASM产物；产品源码改变后必须重新构建。Linux CI使用 `tests/run-ci.py` 和独立的本地 `colang_qa` PostgreSQL服务；本机完整音频浏览器验收仍使用Windows一键脚本。

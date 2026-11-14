@@ -67,6 +67,10 @@ pub async fn create_code(
     let expires_at = Utc::now() + chrono::Duration::minutes(5);
     let record = NewAuthCode {
         user_id,
+        token_version: depot
+            .get::<i64>("token_version")
+            .copied()
+            .map_err(|_| StatusError::unauthorized())?,
         code_hash: code_hash.clone(),
         redirect_uri: input.redirect_uri.clone(),
         state: input.state.clone(),
@@ -76,7 +80,8 @@ pub async fn create_code(
     let _saved: AuthCode = with_conn!(move |conn| {
         diesel::insert_into(auth_codes::table)
             .values(&record)
-            .get_result::<AuthCode>(conn).await
+            .get_result::<AuthCode>(conn)
+            .await
     })
     .await
     .map_err(|_| StatusError::internal_server_error().brief("failed to create code"))?;
@@ -117,7 +122,7 @@ pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<Con
     let redirect_uri_value = input.redirect_uri.clone();
     let now = Utc::now();
 
-    let user_id: i64 = with_conn!(move |conn| {
+    let (user_id, version): (i64, i64) = with_conn!(move |conn| {
         // Claim and return the code in one statement so concurrent exchanges
         // cannot both consume the same authorization code.
         diesel::update(
@@ -128,15 +133,20 @@ pub async fn consume_code(input: JsonBody<ConsumeCodeRequest>) -> JsonResult<Con
                 .filter(auth_codes::expires_at.gt(now)),
         )
         .set(auth_codes::used_at.eq(now))
-        .returning(auth_codes::user_id)
-        .get_result::<i64>(conn).await
+        .returning((auth_codes::user_id, auth_codes::token_version))
+        .get_result::<(i64, i64)>(conn)
+        .await
     })
     .await
     .map_err(|_| StatusError::unauthorized().brief("invalid or expired code"))?;
 
-    let access_token =
-        crate::auth::issue_access_token(user_id, &config.jwt_secret, config.jwt_ttl.as_secs())
-            .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
+    let access_token = crate::auth::issue_access_token(
+        user_id,
+        version,
+        &config.jwt_secret,
+        config.jwt_ttl.as_secs(),
+    )
+    .map_err(|_| StatusError::internal_server_error().brief("failed to issue token"))?;
 
     json_ok(ConsumeCodeResponse { access_token })
 }
