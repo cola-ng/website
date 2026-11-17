@@ -13,10 +13,10 @@ const AUTH_ERROR_KEY: &str = "auth_error";
 /// Always succeeds - downstream handlers should use `require_auth` or check depot manually.
 #[handler]
 pub async fn maybe_auth(req: &mut Request, depot: &mut Depot, _res: &mut Response) {
-    let _ = depot.remove::<i64>("user_id");
-    let _ = depot.remove::<i64>("token_version");
-    let _ = depot.remove::<String>(AUTH_ERROR_KEY);
-    let _ = depot.remove::<bool>("auth_unavailable");
+    let _ = depot.remove("user_id");
+    let _ = depot.remove("token_version");
+    let _ = depot.remove(AUTH_ERROR_KEY);
+    let _ = depot.remove("auth_unavailable");
     let config = AppConfig::get();
 
     let result = (|| -> Result<(i64, i64), &'static str> {
